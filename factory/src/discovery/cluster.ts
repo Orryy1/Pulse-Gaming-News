@@ -30,6 +30,8 @@ export interface StoryCluster {
     arc?: string;
     /** The reason to follow the last line points to (src/editorial/why.ts). */
     follow?: import("../editorial/why.ts").WhyFollow;
+    /** A pre-made Short's slot (ISO): its time words are written for that moment (src/launchprep.ts). */
+    airs_at?: string;
   };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview; rehearsal?: boolean };
@@ -37,6 +39,10 @@ export interface StoryCluster {
   bigStory?: { key: string; entity: string; size: number; event: string; lateHours?: number };
   /** A topic from the launch run (src/shortrun.ts): planned by hand, so the game's own names may repeat in titles. */
   run?: boolean;
+  /** Made days ahead of its slot and held (RUN_PREMAKE_HOURS, src/shortrun.ts): counted on its slot's day. */
+  premade?: boolean;
+  /** A spare from the launch run: no slot of its own until a slot would go out empty; the days it may fill. */
+  spare?: { from?: string; until?: string };
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
 }

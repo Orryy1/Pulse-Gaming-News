@@ -41,6 +41,8 @@ import { TwinScriptSchema } from "../src/editorial/twin.ts";
 import { LongformPlanSchema } from "../src/editorial/longform.ts";
 import { WhyTopicSchema, type WhyTopic } from "../src/editorial/why.ts";
 import { maybeSelectWhy } from "../src/pipeline.ts";
+import { bumpForBreaking, videoMetadata } from "../src/pipeline.ts";
+import { VISION_SKIPPED } from "../src/qa/vision.ts";
 
 /** A small, valid ranking draft for the fake writer. */
 function rankingDraft(): EvergreenScript {
@@ -2486,4 +2488,285 @@ test("FRIEND_PASS off: no pass is asked for and the Short is as written", async 
   const ep = await only(db);
   assert.ok(!sites.includes("friend.short"));
   assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
+});
+// ---------------------------------------------------------------- GTA VI launch prep (11 Nov 2026)
+
+async function runFile(entries: unknown[]): Promise<string> {
+  const d = await tmpDir();
+  const file = path.join(d, "run.json");
+  await fs.writeFile(file, JSON.stringify(entries));
+  return file;
+}
+
+const NZ_WHY = {
+  kind: "why",
+  date: "2026-10-20",
+  slot: "12:00",
+  question: "Why does GTA 6 unlock in New Zealand first?",
+  title: "Why New Zealand Gets GTA 6 First",
+  game: "Grand Theft Auto VI",
+  arc: "a",
+  angle: "b",
+  sources: [{ url: "https://example.com/nz", source: "Kotaku" }],
+  make_at: "2026-10-16T11:00:00Z",
+};
+
+test("pre-make: a planned Why is made days early, checked, held, uploaded two hours before its slot to go public at it", async () => {
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whySlots: ["12:00", "18:30"],
+    shortRunFile: await runFile([NZ_WHY]),
+    newsSlots: ["03:00"],
+    breakingEnabled: false,
+    runPremakeUploadHours: 2,
+  });
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(new Date(ep.slot_at!).toISOString(), "2026-10-20T11:00:00.000Z");
+  assert.equal(ep.story_json.premade, true);
+  assert.equal(
+    ep.story_json.why?.airs_at,
+    "2026-10-20T11:00:00.000Z",
+    "written for its slot",
+  );
+  assert.equal(ep.status, "approved", ep.last_error ?? "");
+  assert.ok(ep.qa_json, "rendered and picture-checked days ahead");
+  assert.equal(ep.publish_at, null, "no publish time while held");
+  assert.equal(
+    new Date(ep.next_attempt_at!).toISOString(),
+    "2026-10-20T09:00:00.000Z",
+    "held until two hours before",
+  );
+  assert.equal(f.uploads, 0);
+  assert.equal(
+    await countToday(db, "Europe/London"),
+    0,
+    "a pre-made Short counts on its slot's day",
+  );
+  setClock(new Date("2026-10-20T08:30:00Z"));
+  await tick(s);
+  assert.equal(f.uploads, 0, "still held");
+  assert.equal(
+    (await listEpisodes(db)).length,
+    1,
+    "the slot is not made twice",
+  );
+  setClock(new Date("2026-10-20T09:01:00Z"));
+  await tick(s);
+  assert.equal(f.uploads, 1);
+  const status = (
+    f.resources[0] as unknown as { status: { publishAt?: string } }
+  ).status;
+  assert.equal(
+    status.publishAt,
+    "2026-10-20T11:00:00.000Z",
+    "scheduled for its slot",
+  );
+});
+
+test("a spare is made and held with no slot, then fills a slot that would otherwise go out empty", async () => {
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whySlots: ["12:00"],
+    shortRunFile: await runFile([
+      {
+        kind: "spare",
+        question: "How does the radio work in GTA 6?",
+        title: "GTA 6's Radio Follows You Out of the Car",
+        game: "Grand Theft Auto VI",
+        arc: "a",
+        angle: "b",
+        sources: [
+          {
+            url: "https://example.com/radio",
+            source: "Rockstar Newswire",
+            official: true,
+          },
+        ],
+        from: "2026-10-16",
+        until: "2026-10-23",
+      },
+    ]),
+    newsSlots: ["03:00"],
+    breakingEnabled: false,
+  });
+  setClock(new Date("2026-10-16T08:00:00Z"));
+  await tick(s);
+  let ep = await only(db);
+  assert.equal(ep.status, "approved", ep.last_error ?? "");
+  assert.equal(ep.slot_at, null);
+  assert.equal(f.uploads, 0, "held");
+  // 10:20Z: the 12:00 (11:00Z) slot is 40 minutes off and nothing has taken it.
+  setClock(new Date("2026-10-16T10:20:00Z"));
+  await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+  await tick(s);
+  ep = (await getEpisode(db, ep.id))!;
+  assert.equal(new Date(ep.slot_at!).toISOString(), "2026-10-16T11:00:00.000Z");
+  assert.equal(f.uploads, 1);
+  assert.ok(f.notifications.some((n) => /had nothing ready/.test(n)));
+});
+
+test("picture checker down: a Short with third-party pictures waits unrendered, then goes ahead when it is back", async () => {
+  const { db, f, s } = await setup();
+  let down = true;
+  s.visionDown = async () => down;
+  await tick(s);
+  let ep = await only(db);
+  assert.equal(ep.status, "voiced");
+  assert.ok(
+    f.notifications.some((n) => /waits for the PC picture checker/.test(n)),
+  );
+  assert.equal(f.uploads, 0);
+  await tick(s);
+  assert.equal(
+    f.notifications.filter((n) => /waits for the PC picture checker/.test(n))
+      .length,
+    1,
+    "told once",
+  );
+  down = false;
+  await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+  await tick(s);
+  ep = (await getEpisode(db, ep.id))!;
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+});
+
+test("picture check skipped mid-render: held with the render kept, never posted unchecked", async () => {
+  const { db, f, s } = await setup();
+  s.visionQa = async () => VISION_SKIPPED;
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "voiced");
+  assert.match(JSON.stringify(ep.qa_json), /Not checked/);
+  assert.equal(f.uploads, 0);
+  const [held] = await db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'vision_hold'`,
+  );
+  assert.equal(Number(held!.n), 1);
+});
+
+test("upload fallback: three tries ten minutes apart, then the next free slot with fresh tries", async () => {
+  const { db, f, s } = await setup({
+    whySlots: ["18:30"],
+    newsSlots: ["13:00", "22:00"],
+  });
+  const yt = s.youtube();
+  yt.uploadToSession = async () => {
+    throw new Error("503 backend error");
+  };
+  s.youtube = () => yt;
+  await tick(s);
+  let ep = await only(db);
+  assert.equal(ep.status, "uploading");
+  const wait = new Date(ep.next_attempt_at!).getTime() - Date.now();
+  assert.ok(
+    wait > 9 * 60_000 && wait <= 10 * 60_000 + 5_000,
+    `ten minutes, got ${wait}`,
+  );
+  for (let i = 0; i < 2; i++) {
+    await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+    await tick(s);
+  }
+  ep = (await getEpisode(db, ep.id))!;
+  assert.equal(ep.status, "uploading", "moved, not failed");
+  assert.equal(ep.attempts, 0, "fresh tries at the new slot");
+  const [moved] = await db.query<{ detail: { to: string } }>(
+    `SELECT detail FROM events WHERE kind = 'upload_moved'`,
+  );
+  assert.ok(moved, "moved to the next free slot");
+  assert.equal(new Date(ep.publish_at!).toISOString(), moved!.detail.to);
+  assert.ok(f.notifications.some((n) => /refused .* three times/.test(n)));
+  // The move happens once (UPLOAD_MOVES=1); three more failures and it gives up as before.
+  for (let i = 0; i < 3; i++) {
+    await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+    await tick(s);
+  }
+  assert.equal((await getEpisode(db, ep.id))!.status, "failed");
+});
+
+test("the 03:00 rule: a big overnight breaking Short moves the morning's first planned Short to the next open slot", async () => {
+  const { db, f, s, setClock } = await setup({
+    whySlots: ["12:00", "18:30"],
+    newsSlots: ["17:00", "22:00"],
+    breakingBumpScore: 90,
+    minUploadGapMinutes: 60,
+  });
+  setClock(new Date("2026-10-16T02:00:00Z"));
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, slot_at)
+     VALUES ('ep_noon', 'why:noon', 'voiced', '{"headline":"Noon Why","items":[]}', 'news', 40, '2026-10-16T11:00:00Z')`,
+  );
+  assert.equal(
+    await bumpForBreaking(s, "ep_brk", 80),
+    undefined,
+    "not bigger: stays",
+  );
+  assert.equal(await bumpForBreaking(s, "ep_brk", 95), "ep_noon");
+  const ep = (await getEpisode(db, "ep_noon"))!;
+  assert.equal(
+    new Date(ep.slot_at!).toISOString(),
+    "2026-10-16T16:00:00.000Z",
+    "17:00, the next open slot",
+  );
+  assert.ok(f.notifications.some((n) => /bigger than the/.test(n)));
+  // Inside the noon slot's own lead time it is too late to move.
+  setClock(new Date("2026-10-16T10:00:00Z"));
+  await db.query(
+    `UPDATE episodes SET slot_at = '2026-10-16T11:00:00Z' WHERE id = 'ep_noon'`,
+  );
+  assert.equal(await bumpForBreaking(s, "ep_brk2", 99), undefined);
+});
+
+test("GTA VI descriptions name the Leonida Intel page for their day; other games' do not", async () => {
+  const gta = goodScript({
+    game_title: "Grand Theft Auto VI",
+    headline: "GTA 6 unlock times",
+  });
+  const base = {
+    id: "ep_g",
+    story_hash: "g",
+    status: "uploading",
+    lane: "news",
+    story_json: {
+      headline: "GTA 6",
+      items: [],
+      gameHint: "Grand Theft Auto VI",
+    },
+    script_json: gta,
+    assets_json: {},
+  } as unknown as Parameters<typeof videoMetadata>[0];
+  const at = (iso: string) =>
+    videoMetadata(
+      { ...base, publish_at: iso } as typeof base,
+      "public",
+      true,
+      undefined,
+      true,
+    ).description;
+  assert.match(
+    at("2026-11-17T18:30:00Z"),
+    /leonida-intel\.com\/countdown\/\?utm_source=pulse \(from the same team\)/,
+  );
+  assert.match(
+    at("2026-11-18T12:00:00Z"),
+    /gta-6-server-status\/\?utm_source=pulse/,
+  );
+  assert.match(at("2026-11-20T12:00:00Z"), /\/map\/\?utm_source=pulse/);
+  assert.doesNotMatch(
+    videoMetadata(
+      { ...base, publish_at: "2026-11-17T18:30:00Z" } as typeof base,
+      "public",
+    ).description,
+    /leonida/,
+    "off by default",
+  );
+  const other = {
+    ...base,
+    script_json: goodScript(),
+    story_json: { headline: "Starfield", items: [] },
+  } as unknown as typeof base;
+  assert.doesNotMatch(
+    videoMetadata(other, "public", true, undefined, true).description,
+    /leonida/,
+  );
 });

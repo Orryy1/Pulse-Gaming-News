@@ -481,11 +481,23 @@ import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbac
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
   docRunDue,
+  premakeDue,
   readRun,
   runRepeatGame,
+  spareFits,
+  sparesDue,
   whyRunEntry,
+  type RunSpare,
   type RunWhy,
 } from "./shortrun.ts";
+import {
+  airTimeProblems,
+  isGta6,
+  leonidaLine,
+  nextOpenSlot,
+  releaseDateProblems,
+} from "./launchprep.ts";
+import { VISION_SKIPPED } from "./qa/vision.ts";
 import { stampColour } from "./render/brand.ts";
 import { chooseWordLook, motifIdFor, wordSoundCue } from "./render/wordlook.ts";
 import {
@@ -707,6 +719,8 @@ export interface Services {
     outDir: string,
     times: number[],
   ): Promise<string[]>;
+  /** True while the PC picture checker is down and nothing paid may stand in (src/services.ts); absent: never. */
+  visionDown?(): Promise<boolean>;
   visionQa(
     frames: string[],
     ctx: {
@@ -1437,6 +1451,11 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   });
   if (cut) return cut;
+  const premade = await maybeSelectPremade(s).catch((err) => {
+    log("warn", "pre-make selection failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (premade) return premade;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts. Nor does a big story, and a long
   // video is not a Short at all (4 Nov 2026: a documentary and a ranking used up the 22:00 slot's turn, silently).
   const total =
@@ -1550,6 +1569,12 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
           `INSERT INTO breaking_log (story_hash, franchise, episode_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
           [ep!.story_hash, franchiseKey(ep!.story_json), id],
         );
+        // The 03:00 rule: a big overnight story moves the morning's first planned Short to the next open slot.
+        const chosen = big.find((x) => x.cluster.hash === ep!.story_hash);
+        if (chosen)
+          await bumpForBreaking(s, id, breakingScore(chosen.cluster, chosen.sighting)).catch((err) =>
+            log("warn", "overnight slot move failed", { error: errorMessage(err) }),
+          );
         await s.notify({
           level: "info",
           content: `Breaking story picked${sprint ? ` (${showcase ?? `${cfg.focusTopic} launch wave`})` : ""}: "${ep!.story_json.headline}"`,
@@ -1760,8 +1785,10 @@ const WHY_DROP_RETRIES = 2;
  */
 export async function selectRunWhy(
   s: Services,
-  e: RunWhy,
-  due: Date,
+  e: RunWhy | RunSpare,
+  due: Date | undefined,
+  /** premade: made ahead of its slot and held; spare: no slot until a slot would go out empty (src/shortrun.ts). */
+  how: { premade?: boolean; spare?: boolean } = {},
 ): Promise<string | undefined> {
   const now = s.now();
   const read = await Promise.all(
@@ -1798,14 +1825,25 @@ export async function selectRunWhy(
     gameHint: e.game,
     visualNeed: "game_footage",
     run: true,
-    why: { question: e.question, angle: e.angle, arc: e.arc, follow },
+    why: {
+      question: e.question,
+      angle: e.angle,
+      arc: e.arc,
+      follow,
+      ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
+    },
+    ...(how.premade ? { premade: true } : {}),
+    ...(how.spare && e.kind === "spare"
+      ? { spare: { ...(e.from ? { from: e.from } : {}), ...(e.until ? { until: e.until } : {}) } }
+      : {}),
   };
   const id = shortId();
   if (
     !(await createEpisode(s.db, id, cluster, {
       lane: "news",
-      priority: LANE_PRIORITY.news,
-      slotAt: due,
+      // Made ahead: today's own Shorts go first on every tick.
+      priority: how.premade || how.spare ? LANE_PRIORITY.news - 10 : LANE_PRIORITY.news,
+      ...(due ? { slotAt: due } : {}),
     }))
   )
     return undefined;
@@ -1815,12 +1853,226 @@ export async function selectRunWhy(
     run: true,
     question: e.question,
     game: e.game,
-    slot_at: due.toISOString(),
+    slot_at: due?.toISOString() ?? null,
+    ...(how.premade ? { premade: true } : {}),
+    ...(how.spare ? { spare: true } : {}),
   });
   log("info", "launch run topic selected", { id, question: e.question });
   return id;
 }
 
+/**
+ * Pre-make (launch plan, 11 Nov 2026): a planned Why whose make time has come (make_at, make_hours_before or
+ * RUN_PREMAKE_HOURS) is written, voiced, rendered and picture-checked days ahead, then held and uploaded at its slot,
+ * so a Mac, PC or checker failure in launch week cannot stop a scheduled post. Then the run's spares, made and held
+ * with no slot. Only while nothing else is being made, so today's own Shorts always go first; one a tick.
+ */
+export async function maybeSelectPremade(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.whyEnabled || !cfg.shortRunFile) return undefined;
+  const run = readRun(cfg.shortRunFile);
+  if (!run.length) return undefined;
+  if ((await countProducing(db)) > 0) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const due = premakeDue(
+    run,
+    now,
+    await takenSlots(db),
+    cfg.timezone,
+    cfg.runPremakeHours,
+    cfg.slotLeadMinutes + 30,
+  );
+  for (const { entry, at } of due) {
+    // One try a day per slot: a topic whose sources cannot be read is left to the slot's own lead time.
+    if (await weeklyTried(db, `premake:${at.toISOString()}:${today}`)) continue;
+    const id = await selectRunWhy(s, entry, at, { premade: true }).catch(
+      (err) => {
+        log("warn", "pre-make failed", {
+          topic: entry.title,
+          error: errorMessage(err),
+        });
+        return undefined;
+      },
+    );
+    if (id) {
+      log("info", "planned Why pre-made ahead of its slot", {
+        id,
+        slot: at.toISOString(),
+      });
+      return id;
+    }
+  }
+  const made = new Set(
+    (
+      await db.query<{ hash: string }>(
+        `SELECT story_hash AS hash FROM episodes WHERE story_hash LIKE 'why:%'`,
+      )
+    ).map((r) => r.hash),
+  );
+  for (const e of sparesDue(run, now)) {
+    if (made.has(`why:${whySlug(e.question)}`)) continue;
+    if (e.until && today > e.until) continue;
+    if (await weeklyTried(db, `spare:${whySlug(e.question)}:${today}`))
+      continue;
+    const id = await selectRunWhy(s, e, undefined, { spare: true }).catch(
+      (err) => {
+        log("warn", "spare Short failed", {
+          topic: e.title,
+          error: errorMessage(err),
+        });
+        return undefined;
+      },
+    );
+    if (id) return id;
+  }
+  return undefined;
+}
+
+/**
+ * A slot about to go out empty (RUN_SPARE_SLOTS, default WHY_SLOTS) gets the first ready spare: a run spare already
+ * rendered, checked and approved, waiting with no slot (launch plan section 3). Nothing ready: nothing changes.
+ */
+export async function fillSpareGaps(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.shortRunFile) return undefined;
+  const now = s.now();
+  const slots = cfg.runSpareSlots.length ? cfg.runSpareSlots : cfg.whySlots;
+  const taken = await takenSlots(db);
+  const today = dayKey(now, cfg.timezone);
+  const gap = [today, addDays(today, 1)]
+    .flatMap((d) => slots.map((sl) => localTime(d, sl, cfg.timezone)))
+    .filter(
+      (t) =>
+        t.getTime() - now.getTime() <= cfg.runSpareMinutes * 60_000 &&
+        t.getTime() - now.getTime() > -cfg.slotGraceMinutes * 60_000 &&
+        !taken.some((x) => x.getTime() === t.getTime()),
+    )
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  if (!gap) return undefined;
+  // A slot the 03:00 rule emptied on purpose stays empty.
+  const [bumped] = await db.query(`SELECT 1 FROM settings WHERE key = $1`, [
+    `weekly_tried:bumped:${gap.toISOString()}`,
+  ]);
+  if (bumped) return undefined;
+  const ready = await db.query<Episode>(
+    `SELECT * FROM episodes WHERE status = 'approved' AND slot_at IS NULL AND story_json ? 'spare'
+      ORDER BY created_at ASC`,
+  );
+  const day = dayKey(gap, cfg.timezone);
+  const pick = ready.find((e) => spareFits(e.story_json.spare ?? {}, day));
+  if (!pick) return undefined;
+  const [moved] = await db.query<{ id: string }>(
+    `UPDATE episodes SET slot_at = $2, next_attempt_at = NULL WHERE id = $1 AND slot_at IS NULL RETURNING id`,
+    [pick.id, gap],
+  );
+  if (!moved) return undefined;
+  await logEvent(db, pick.id, "spare_filled", { slot_at: gap.toISOString() });
+  log("info", "a spare Short fills an empty slot", {
+    id: pick.id,
+    slot: gap.toISOString(),
+  });
+  await s
+    .notify({
+      level: "info",
+      content: `The ${slotLabel(gap, cfg.timezone)} slot had nothing ready, so the spare "${pick.script_json?.youtube.title ?? pick.story_json.headline}" goes out in it.`,
+    })
+    .catch(() => undefined);
+  return pick.id;
+}
+
+/**
+ * The 03:00 story rule (launch plan section 4): an overnight breaking Short at or above BREAKING_BUMP_SCORE is bigger
+ * than the morning's first planned Short, so that Short moves to the next open slot and the breaking story has the
+ * morning to itself. Only a Short not yet sent to YouTube moves; one a day.
+ */
+export async function bumpForBreaking(
+  s: Services,
+  breakingId: string,
+  score: number,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.breakingBumpScore || score < cfg.breakingBumpScore) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const first = [...cfg.whySlots].sort()[0];
+  if (!first) return undefined;
+  const slot = localTime(today, first, cfg.timezone);
+  // Overnight: before the first Why slot's own lead time began.
+  if (slot.getTime() - now.getTime() < (cfg.slotLeadMinutes + 30) * 60_000)
+    return undefined;
+  const [ep] = await db.query<Episode>(
+    `SELECT * FROM episodes WHERE slot_at = $1 AND status NOT IN ('failed','rejected','published','uploaded')
+        AND youtube_video_id IS NULL AND upload_session_uri IS NULL AND id <> $2`,
+    [slot, breakingId],
+  );
+  if (!ep) return undefined;
+  if (await weeklyTried(db, `breaking_bump:${today}`)) return undefined;
+  const slots = [...new Set([...cfg.whySlots, ...cfg.newsSlots])];
+  const busy = [...(await takenSlots(db)), ...(await publishTimes(db, now))];
+  const to = nextOpenSlot(
+    slot,
+    slots,
+    busy,
+    cfg.minUploadGapMinutes,
+    (d, hhmm) => localTime(d, hhmm, cfg.timezone),
+    (d) => dayKey(d, cfg.timezone),
+  );
+  if (!to) return undefined;
+  // The morning stays the breaking story's: the Why lane and the spares leave the vacated slot alone.
+  await weeklyTried(db, `why:${slot.toISOString()}`);
+  await weeklyTried(db, `bumped:${slot.toISOString()}`);
+  await db.query(
+    `UPDATE episodes SET slot_at = $2, publish_at = CASE WHEN publish_at IS NULL THEN NULL ELSE $2::timestamptz END,
+        next_attempt_at = CASE WHEN status = 'approved' AND next_attempt_at IS NOT NULL THEN $3::timestamptz ELSE next_attempt_at END
+      WHERE id = $1`,
+    [ep.id, to, new Date(to.getTime() - cfg.runPremakeUploadHours * 3600_000)],
+  );
+  await logEvent(db, ep.id, "slot_moved", {
+    from: slot.toISOString(),
+    to: to.toISOString(),
+    reason: "overnight breaking story",
+    breaking: breakingId,
+  });
+  await s
+    .notify({
+      level: "info",
+      content: `An overnight story is bigger than the ${slotLabel(slot, cfg.timezone)} Short, so "${ep.story_json.headline}" moves to ${slotLabel(to, cfg.timezone)}.`,
+    })
+    .catch(() => undefined);
+  return ep.id;
+}
+
+/**
+ * A planned documentary is meant to be on YouTube, private and scheduled, RUN_DOC_PRIVATE_HOURS before its slot
+ * (launch plan section 4: uploaded by 15:00 for 17:00, two hours to fix a failure). The factory's scheduled publish
+ * already does the switch to public; this tells the owner once when the upload is late.
+ */
+export async function docUploadLate(s: Services): Promise<boolean> {
+  const { db, cfg } = s;
+  if (!cfg.shortRunFile || cfg.runDocPrivateHours <= 0) return false;
+  const now = s.now();
+  for (const e of readRun(cfg.shortRunFile)) {
+    if (e.kind !== "doc") continue;
+    const at = localTime(e.date, e.slot, cfg.timezone);
+    const by = at.getTime() - cfg.runDocPrivateHours * 3600_000;
+    if (now.getTime() < by || now.getTime() >= at.getTime()) continue;
+    const [ep] = await db.query<Episode>(
+      `SELECT * FROM episodes WHERE slot_at = $1 AND lane = 'longform' AND status NOT IN ('failed','rejected')`,
+      [at],
+    );
+    if (ep?.youtube_video_id) continue;
+    if (await weeklyTried(db, `doc_late:${at.toISOString()}`)) continue;
+    await s.notify({
+      ping: true,
+      content: `The ${slotLabel(at, cfg.timezone)} documentary "${e.title}" is not on YouTube yet (${ep ? `it is at "${ep.status}"` : "it has not started"}). It was due up as private by ${slotLabel(new Date(by), cfg.timezone)}.`,
+    });
+    return true;
+  }
+  return false;
+}
 export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   if (!cfg.whyEnabled) return undefined;
@@ -5484,6 +5736,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ),
     );
     if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(sc.beats));
+    // GTA VI's release date in public copy: from November 18 in New Zealand, not just November 19 (src/launchprep.ts).
+    problems.push(...releaseDateProblems(publicText(sc)));
     if (s.cfg.shortEndPayoff) problems.push(...endingProblems(sc.loop_line));
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
@@ -5555,6 +5809,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")
       .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+    // A time word must be true when the Short goes public (a pre-made Short airs days after it is written).
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    if (airsAt) blockers.push(...airTimeProblems(publicText(script), new Date(airsAt)));
     if (
       check.verdict === "pass" &&
       check.rumour_labelling_ok &&
@@ -9940,6 +10197,45 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/** Everything a Short says in public: title, description, narration, headline and card text, for the launch rules. */
+export function publicText(sc: Script): string {
+  return [
+    sc.youtube.title,
+    sc.youtube.description,
+    sc.headline,
+    narrationOf(sc),
+    sc.pulse_take?.on_screen ?? "",
+    ...sc.beats.map((b) =>
+      [b.visual.primary, b.visual.secondary, ...(b.visual.items ?? [])].filter(Boolean).join(" "),
+    ),
+  ].join("\n");
+}
+
+/** True when the picture check could not look (the PC relay down, VISION_PAID_FALLBACK off: src/qa/vision.ts). */
+export function visionSkipped(v: VisionQa | undefined | null): boolean {
+  return !!v && (v === VISION_SKIPPED || v.notes === VISION_SKIPPED.notes);
+}
+
+/** Waits a quarter of an hour for the picture checker; the owner hears once per Short. */
+async function holdForVision(s: Services, ep: Episode): Promise<void> {
+  await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+    ep.id,
+    new Date(s.now().getTime() + 15 * 60_000),
+  ]);
+  const [told] = await s.db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'vision_hold'`,
+    [ep.id],
+  );
+  if (Number(told?.n ?? 0) > 0) return;
+  await logEvent(s.db, ep.id, "vision_hold", {});
+  await s
+    .notify({
+      level: "info",
+      content: `"${ep.story_json.headline}" waits for the PC picture checker: it uses third-party pictures, so it is not rendered or posted unchecked. It goes ahead by itself when the checker is back.`,
+    })
+    .catch(() => undefined);
+}
+
 /** A Short that is our own reading, not a report of someone else's news: a ranking, a list, a Why. */
 export function ownWorkShort(
   script: Pick<Script, "evergreen_format" | "story_type" | "is_rumour">,
@@ -9954,6 +10250,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "longform") return stepRenderLong(s, ep);
   if (ep.lane === "cutdown" || ep.lane === "gameplay")
     return stepRenderCutdown(s, ep);
+  // The PC picture checker is down and nothing paid may stand in: a Short built on third-party pictures waits for it
+  // rather than render now and go out unchecked. Shorts already checked, and the owner's gameplay, are not held.
+  if (s.cfg.visionQa && s.cfg.visionHold && (await s.visionDown?.().catch(() => false))) {
+    await holdForVision(s, ep);
+    return;
+  }
   const dir = episodeDir(s.cfg, ep.id);
   const script = ep.script_json!;
   const assets = { ...(ep.assets_json ?? {}) };
@@ -10505,6 +10807,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         : [`vision QA failed: ${vision.notes || "no reason given"}`]
       : [];
   const problems = [...tech.problems, ...visionProblems, ...entryProblems];
+  // The check was skipped (the relay went down mid-render): held, the render kept on disk, checked again when back.
+  if (
+    s.cfg.visionHold &&
+    visionSkipped(vision) &&
+    (assets.clips?.length ?? 0) + (assets.images?.length ?? 0) > 0
+  ) {
+    await s.db.query(`UPDATE episodes SET qa_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(qa)]);
+    await holdForVision(s, ep);
+    return;
+  }
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;
@@ -10853,6 +11165,29 @@ export function choosePublishAt(
 }
 
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
+  // A spare from the launch run waits, approved and checked, until a slot would go out empty (fillSpareGaps).
+  if (ep.story_json.spare && !ep.slot_at) {
+    await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+      ep.id,
+      new Date(s.now().getTime() + 30 * 60_000),
+    ]);
+    return;
+  }
+  // Made days ahead (RUN_PREMAKE_HOURS): held here, approved and checked, and scheduled on YouTube only
+  // RUN_PREMAKE_UPLOAD_HOURS before the slot, so a slot moved by the 03:00 rule or a late correction never meets a
+  // video already scheduled, and nothing that spaces uploads sees a publish time days out.
+  if (ep.story_json.premade && ep.slot_at) {
+    const holdUntil = new Date(
+      new Date(ep.slot_at).getTime() - s.cfg.runPremakeUploadHours * 3600_000,
+    );
+    if (holdUntil > s.now()) {
+      await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
+        ep.id,
+        holdUntil,
+      ]);
+      return;
+    }
+  }
   // A gameplay Short takes the first free gameplay slot, clear of everything already scheduled.
   if (ep.lane === "gameplay" && !ep.slot_at) {
     const rows = await s.db.query<{ at: string; lane: string }>(
@@ -11005,6 +11340,9 @@ export function videoMetadata(
   privacy: Config["youtubePrivacy"],
   syntheticMedia = true,
   affiliate?: AffiliateTags,
+  /** LEONIDA_LINK, and the time to judge the day by when the video has no publish time. */
+  leonidaLink = false,
+  now = new Date(),
 ) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
@@ -11067,6 +11405,12 @@ export function videoMetadata(
   const shop = affiliateBlock(script, affiliate, { free: ep.lane === "free" });
   // A Why Short's long video on the same game (src/youtube/longlink.ts), under the summary.
   const follow = ep.story_json.why?.follow;
+  // GTA VI launch: the Leonida Intel page for the day the video goes public (src/launchprep.ts).
+  const leonida =
+    leonidaLink &&
+    isGta6(`${script.game_title} ${ep.story_json.gameHint ?? ""} ${script.headline}`)
+      ? leonidaLine(ep.publish_at ? new Date(ep.publish_at) : now)
+      : undefined;
   // The disclosure and channel lines always survive the length cut (src/authenticity.ts fitDescription).
   const description = fitDescription(
     [
@@ -11076,6 +11420,7 @@ export function videoMetadata(
       nextLine(ep.assets_json?.nextDoc ?? undefined),
       "",
       body,
+      leonida ? `\n${leonida}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
         : "",
@@ -11309,6 +11654,8 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
             ? false
             : s.cfg.syntheticMedia,
           affiliateTags(s.cfg, ep.id),
+          s.cfg.leonidaLink,
+          s.now(),
         ),
         marker,
       ),
@@ -11359,6 +11706,8 @@ async function localizeMetadata(
       s.cfg.youtubePrivacy,
       s.cfg.syntheticMedia,
       affiliateTags(s.cfg, ep.id),
+      s.cfg.leonidaLink,
+      s.now(),
     );
     const loc = await translateMetadata(
       s.llm,
@@ -11795,12 +12144,23 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
   } catch (err) {
     const msg = errorMessage(err);
     const fatal = err instanceof FatalError;
+    // An upload is tried again UPLOAD_RETRY_MINUTES apart (launch plan section 4: three tries, ten minutes apart).
     const attempts = await recordFailure(
       s.db,
       ep.id,
       msg,
-      Math.min(60, 5 * 2 ** ep.attempts),
+      ep.status === "uploading"
+        ? s.cfg.uploadRetryMinutes
+        : Math.min(60, 5 * 2 ** ep.attempts),
     );
+    // Then it moves to YouTube's next free slot rather than giving up; a platform's login fault never moves.
+    if (
+      !fatal &&
+      ep.status === "uploading" &&
+      attempts >= s.cfg.maxAttempts &&
+      (await moveUpload(s, ep, msg).catch(() => false))
+    )
+      return false;
     log("error", "step failed", {
       id: ep.id,
       status: ep.status,
@@ -11862,6 +12222,54 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
 }
 
 const FATAL_PAUSE_HOURS = 12;
+
+/**
+ * Three failed upload tries: the Short moves to the channel's next free slot (WHY_SLOTS and NEWS_SLOTS, clear of every
+ * other publish by MIN_UPLOAD_GAP_MINUTES) with its tries reset, up to UPLOAD_MOVES times. Skip the slot, not the day.
+ */
+async function moveUpload(s: Services, ep: Episode, error: string): Promise<boolean> {
+  const { db, cfg } = s;
+  if (cfg.uploadMoves <= 0) return false;
+  const [row] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'upload_moved'`,
+    [ep.id],
+  );
+  if (Number(row?.n ?? 0) >= cfg.uploadMoves) return false;
+  const now = s.now();
+  const from = ep.publish_at ? new Date(ep.publish_at) : now;
+  const after = from > now ? from : now;
+  const busy = [
+    ...(await takenSlots(db)),
+    ...(await publishTimes(db, now, ep.lane === "twin")),
+  ].filter((t) => !ep.slot_at || t.getTime() !== new Date(ep.slot_at).getTime());
+  const to = nextOpenSlot(
+    after,
+    [...new Set([...cfg.whySlots, ...cfg.newsSlots])],
+    busy,
+    cfg.minUploadGapMinutes,
+    (d, hhmm) => localTime(d, hhmm, cfg.timezone),
+    (d) => dayKey(d, cfg.timezone),
+  );
+  if (!to) return false;
+  // The upload is tried again half an hour before the new slot, scheduled to go public at it.
+  const retry = new Date(Math.max(now.getTime() + cfg.uploadRetryMinutes * 60_000, to.getTime() - 30 * 60_000));
+  await db.query(
+    `UPDATE episodes SET attempts = 0, publish_at = $2, slot_at = $2, next_attempt_at = $3 WHERE id = $1 AND status = 'uploading'`,
+    [ep.id, to, retry],
+  );
+  await logEvent(db, ep.id, "upload_moved", {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    error: error.slice(0, 300),
+  });
+  await s
+    .notify({
+      level: "info",
+      content: `YouTube refused "${ep.script_json?.youtube.title ?? ep.story_json.headline}" three times (${error.slice(0, 120)}), so it moves to ${slotLabel(to, cfg.timezone)} and tries again then.`,
+    })
+    .catch(() => undefined);
+  return true;
+}
 
 export async function pauseSelection(
   db: Db,
@@ -12001,6 +12409,12 @@ export async function tick(
           content: `Story selection failed once: ${errorMessage(err)}`,
         });
     }
+    await fillSpareGaps(s).catch((err) =>
+      log("warn", "spare gap fill failed", { error: errorMessage(err) }),
+    );
+    await docUploadLate(s).catch((err) =>
+      log("warn", "documentary deadline check failed", { error: errorMessage(err) }),
+    );
     // A long video selected above is left to its own lane.
     for (const ep of await dueEpisodes(s.db, s.now()))
       if (!isLongEpisode(ep)) await pushEpisode(s, ep);

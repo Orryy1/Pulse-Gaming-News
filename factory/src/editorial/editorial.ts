@@ -2,6 +2,7 @@
 // this file enforces the rules that must never depend on model compliance.
 
 import { lateAngleNote } from "../bigstories.ts";
+import { airsAtNote, releaseDateNote } from "../launchprep.ts";
 import { pulseCheckRule, PULSE_CHECK_ASK } from "./newssegment.ts";
 import { whyBrief } from "./why.ts";
 import {
@@ -196,8 +197,8 @@ export async function writeScript(
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
   const why = cluster.why
-    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}`
-    : "";
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}${launchNotes(cluster)}`
+    : launchNotes(cluster);
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
       ? `\n\nRecent Shorts (do not open the take the same way or end on the same shape as any of these):\n${opts.recent.takes.map((t) => `- take opened: "${t}"`).join("\n")}\n${opts.recent.loops.map((l) => `- closed: "${l}"`).join("\n")}${recentShapeNotes(opts.recent)}`
@@ -286,6 +287,15 @@ export async function factCheckRanking(
   });
 }
 
+/** The launch week's notes for the writer and the fact check: when a pre-made Short airs, and GTA VI's release date. */
+export function launchNotes(cluster: StoryCluster): string {
+  const notes = [
+    cluster.why?.airs_at ? airsAtNote(new Date(cluster.why.airs_at), "Europe/London") : "",
+    releaseDateNote(cluster.gameHint ?? cluster.headline),
+  ].filter(Boolean);
+  return notes.length ? `\n\n${notes.join("\n")}` : "";
+}
+
 export async function factCheck(
   llm: Llm,
   script: Script,
@@ -295,7 +305,7 @@ export async function factCheck(
 ): Promise<FactCheck> {
   return llm.structured({
     system: factCheckPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}${launchNotes(cluster)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
       .map((b) => `- ${cardText(b.visual)}`)
       .join(
         "\n",

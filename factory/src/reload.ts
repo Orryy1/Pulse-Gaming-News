@@ -119,8 +119,9 @@ export function orchLeasesFile(): string {
 export async function inFlightCount(db: Db, now: Date): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes
-      WHERE status IN ('approved','uploaded')
-         OR (status = 'uploading' AND (next_attempt_at IS NULL OR next_attempt_at <= $1::timestamptz + interval '5 minutes'))
+      WHERE status = 'uploaded'
+         -- A pre-made Short or a spare held at "approved" for days (src/shortrun.ts) is not in flight until it is due.
+         OR (status IN ('approved','uploading') AND (next_attempt_at IS NULL OR next_attempt_at <= $1::timestamptz + interval '5 minutes'))
          OR (lane = 'news_breaking' AND status IN ('selected','scripted','voiced','rendered','awaiting_approval'))`,
     [now.toISOString()],
   );

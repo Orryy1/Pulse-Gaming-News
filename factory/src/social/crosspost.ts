@@ -51,6 +51,33 @@ export const PLATFORMS: Platform[] = [
   "tiktok",
 ];
 export const MAX_TRIES = 3;
+/**
+ * Upload fallbacks (GTA VI launch plan, 11 Nov 2026): a failed post is tried again no sooner than RETRY_MINUTES later
+ * (UPLOAD_RETRY_MINUTES), three tries; then it moves to that platform's next free slot (its gap, an hour at least)
+ * and gets three more, UPLOAD_MOVES times. One platform failing never holds another, nor YouTube.
+ */
+export const RETRY_MINUTES = 10;
+
+/** SQL: candidate `e` still has tries left on platform $p, its last failure is old enough and no move is pending. */
+export function retryClause(
+  p: string,
+  boot: string,
+  max: string,
+  now: string,
+  retryMinutes: number | undefined = RETRY_MINUTES,
+): string {
+  const mins =
+    retryMinutes !== undefined && Number.isFinite(retryMinutes)
+      ? Math.max(0, Math.round(retryMinutes))
+      : RETRY_MINUTES;
+  const since = `GREATEST(${boot}::timestamptz, COALESCE((SELECT max(m.created_at) FROM events m WHERE m.episode_id = e.id AND m.kind = 'crosspost_moved' AND m.detail->>'platform' = ${p}), ${boot}::timestamptz))`;
+  return `AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = ${p} AND v.created_at >= ${since}) < ${max}
+        AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = ${p}
+                          AND v.created_at > ${now}::timestamptz - make_interval(mins => ${mins}))
+        AND NOT EXISTS (SELECT 1 FROM events m WHERE m.episode_id = e.id AND m.kind = 'crosspost_moved' AND m.detail->>'platform' = ${p}
+                          AND (m.detail->>'at')::timestamptz > ${now}::timestamptz)`;
+}
+
 /** Failures before this process started do not count: a restart usually carries a fix, and a Short still inside its window deserves a fresh try. */
 const BOOT = new Date();
 
@@ -259,6 +286,7 @@ export async function nextForPlatform(
   delayFor?: (liveAt: Date) => number,
   /** Candidates to pass over this time (the analytics loop's Instagram holds). */
   skip?: (r: CrosspostCandidate) => boolean,
+  retryMinutes = RETRY_MINUTES,
 ): Promise<CrosspostCandidate | undefined> {
   const rows = await db.query<CrosspostCandidate>(
     `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
@@ -268,7 +296,7 @@ export async function nextForPlatform(
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = $4)
-        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $4 AND v.created_at >= $6) < $5
+        ${retryClause("$4", "$6", "$5", "$1", retryMinutes)}
       ORDER BY COALESCE(e.publish_at, e.updated_at) ASC
       LIMIT 25`,
     [now, delayMinutes, windowHours, platform, MAX_TRIES, BOOT],
@@ -385,7 +413,11 @@ export type CappedPickConfig = Pick<
   Partial<
     Pick<
       Config,
-      "tiktokFromHour" | "timezone" | "dataDir" | "analyticsLoopPosting"
+      | "tiktokFromHour"
+      | "timezone"
+      | "dataDir"
+      | "analyticsLoopPosting"
+      | "uploadRetryMinutes"
     >
   >;
 
@@ -422,7 +454,7 @@ export async function nextForCapped(
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - make_interval(hours => $3)
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('crosspost','crosspost_skip') AND v.detail->>'platform' = $6)
-        AND (SELECT count(*) FROM events v WHERE v.episode_id = e.id AND v.kind = 'crosspost_failed' AND v.detail->>'platform' = $6 AND v.created_at >= $5) < $4
+        ${retryClause("$6", "$5", "$4", "$1", cfg.uploadRetryMinutes)}
       ORDER BY COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
                / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) DESC,
                COALESCE(e.publish_at, e.updated_at) DESC
@@ -640,6 +672,7 @@ export async function crosspostTick(
             d.now(),
             delayFor,
             pass,
+            d.cfg.uploadRetryMinutes,
           );
     let ep = await pick(skip);
     // A hold never leaves Instagram under two posts a day: with nothing else to post, a held Short goes.
@@ -798,17 +831,36 @@ export async function crosspostTick(
       });
       log("warn", "crosspost failed", { platform, episode: ep.id, error });
       done.push({ platform, episode: ep.id, ok: false });
-      const [n] = await d.db.query<{ n: string }>(
-        `SELECT count(*) AS n FROM events WHERE episode_id = $1 AND kind = 'crosspost_failed' AND detail->>'platform' = $2 AND created_at >= $3`,
+      const [n] = await d.db.query<{ n: string; moves: string }>(
+        `SELECT (SELECT count(*) FROM events WHERE episode_id = $1 AND kind = 'crosspost_failed' AND detail->>'platform' = $2
+                   AND created_at >= GREATEST($3::timestamptz, COALESCE((SELECT max(created_at) FROM events WHERE episode_id = $1
+                     AND kind = 'crosspost_moved' AND detail->>'platform' = $2), $3::timestamptz))) AS n,
+                (SELECT count(*) FROM events WHERE episode_id = $1 AND kind = 'crosspost_moved' AND detail->>'platform' = $2) AS moves`,
         [ep.id, platform, BOOT],
       );
-      if (Number(n?.n ?? 0) >= MAX_TRIES)
-        await d
-          .notify({
-            level: "info",
-            content: `Could not post "${polishTitle(ep.script_json)}" to ${platform} after ${MAX_TRIES} tries: ${error.slice(0, 200)}`,
-          })
-          .catch(() => undefined);
+      if (Number(n?.n ?? 0) >= MAX_TRIES) {
+        // Three tries spent: the platform's next free slot, not the end of the Short there (UPLOAD_MOVES).
+        if (Number(n?.moves ?? 0) < (d.cfg.uploadMoves ?? 0)) {
+          const at = new Date(
+            d.now().getTime() + Math.max(60, gapMinutes(d.cfg, platform)) * 60_000,
+          );
+          await logEvent(d.db, ep.id, "crosspost_moved", {
+            platform,
+            at: at.toISOString(),
+          });
+          log("info", "crosspost moved to the next free slot", {
+            platform,
+            episode: ep.id,
+            at: at.toISOString(),
+          });
+        } else
+          await d
+            .notify({
+              level: "info",
+              content: `Could not post "${polishTitle(ep.script_json)}" to ${platform} after ${MAX_TRIES} tries: ${error.slice(0, 200)}`,
+            })
+            .catch(() => undefined);
+      }
     }
   }
   return done;

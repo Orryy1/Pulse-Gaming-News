@@ -476,7 +476,8 @@
         "url": "https://gtaboom.com/gta-6-edge-preview-new-gameplay-details-5848",
         "source": "GTA BOOM, summarising Edge issue 430's hands-on preview (29 Oct 2026)"
       }
-    ]
+    ],
+    "make_at": "2026-11-14T07:00:00Z"
   },
   {
     "kind": "why",
@@ -497,7 +498,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-14T08:00:00Z"
   },
   {
     "kind": "why",
@@ -521,7 +523,8 @@
         "url": "https://en.wikipedia.org/wiki/Grand_Theft_Auto_VI",
         "source": "Wikipedia"
       }
-    ]
+    ],
+    "make_at": "2026-11-15T03:00:00Z"
   },
   {
     "kind": "why",
@@ -542,7 +545,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-15T05:00:00Z"
   },
   {
     "kind": "why",
@@ -552,7 +556,7 @@
     "title": "5 Things to Do Before You Press Start in GTA 6",
     "game": "Grand Theft Auto VI",
     "arc": "Pre-load finished; storage cleared; capture settings; spoilers muted; the launch time checked.",
-    "angle": "Open close to: \"Do these 5 things before you start GTA 6.\" A checklist from official facts only: pre-load, up to 212 GB, the local midnight unlock, the free poster and map on November 19, and the Vintage Vice City Pack before November 20. Nothing about the story. Say only what the sources say and name them; anything Rockstar has not said is said to be unconfirmed.",
+    "angle": "Open close to: \"Do these 5 things before you start GTA 6.\" A checklist from official facts only: pre-load, up to 212 GB, the local midnight unlock (from November 18 in New Zealand), the free poster and map on November 19, and the Vintage Vice City Pack before November 20. Nothing about the story. Say only what the sources say and name them; anything Rockstar has not said is said to be unconfirmed.",
     "sources": [
       {
         "url": "https://www.rockstargames.com/newswire/article/k4ak9okk485712/grand-theft-auto-vi-pre-load-begins-on-november-10",
@@ -564,7 +568,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-13T01:00:00Z"
   },
   {
     "kind": "why",
@@ -585,7 +590,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-13T03:00:00Z"
   },
   {
     "kind": "why",
@@ -606,7 +612,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-13T05:00:00Z"
   },
   {
     "kind": "why",
@@ -627,7 +634,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-14T01:00:00Z"
   },
   {
     "kind": "why",
@@ -644,7 +652,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-14T03:00:00Z"
   },
   {
     "kind": "why",
@@ -661,7 +670,8 @@
         "source": "Rockstar Newswire",
         "official": true
       }
-    ]
+    ],
+    "make_at": "2026-11-14T05:00:00Z"
   },
   {
     "kind": "why",
@@ -671,13 +681,14 @@
     "title": "You'll Never Walk Back to Your Car in GTA 6",
     "game": "Grand Theft Auto VI",
     "arc": "An in-game delivery app from Edge's preview; your ride brought to you in seconds; now checkable in the released game.",
-    "angle": "Open close to: \"You'll never walk back to your car in GTA 6.\" The game is out today, so say only what Edge's preview described unless launch-day sources confirm more.",
+    "angle": "Open close to: \"You'll never walk back to your car in GTA 6.\" The game is out now (from November 18 in New Zealand). Say only what Edge's preview described, as a preview impression, never as something we tested.",
     "sources": [
       {
         "url": "https://gtaboom.com/gta-6-edge-preview-new-gameplay-details-5848",
         "source": "GTA BOOM, summarising Edge issue 430's hands-on preview (29 Oct 2026)"
       }
-    ]
+    ],
+    "make_at": "2026-11-15T01:00:00Z"
   },
   {
     "kind": "doc",
@@ -690,5 +701,64 @@
     "angle": "Mechanics only, never story. For each pre-launch claim in the test records say whether it held: true, wrong or not known yet, from what that clip showed and nothing more. Say what was tested on Xbox Series X and when. A record shows one attempt, so never turn it into a rule about the whole game. Under six usable tests this video does not run.",
     "evidence": [],
     "min_evidence": 6
+  },
+  {
+    "kind": "spare",
+    "question": "How does the radio work in GTA 6?",
+    "title": "GTA 6's Radio Follows You Out of the Car",
+    "game": "Grand Theft Auto VI",
+    "arc": "Every GTA radio stopped when you left the car; GTA 6 keeps it playing through your phone's headphones; celebrity hosts and podcasts on demand.",
+    "angle": "Open close to: \"In GTA 6 the radio doesn't stop when you get out of the car.\" Only Rockstar's music Newswire: radio on foot through the phone's headphones, the first six stations with celebrity hosts, on-demand podcasts. Name a host only if the source names them. Nothing about the story. Say only what the sources say and name them.",
+    "sources": [
+      {
+        "url": "https://www.rockstargames.com/newswire/article/o3982oa93a23k4/the-music-of-grand-theft-auto-vi-in-game-radio-stations",
+        "source": "Rockstar Newswire",
+        "official": true
+      }
+    ],
+    "make_at": "2026-11-15T07:00:00Z",
+    "from": "2026-11-17",
+    "until": "2026-11-23"
+  },
+  {
+    "kind": "spare",
+    "question": "What does PS5 Pro actually add to GTA 6?",
+    "title": "GTA 6 on PS5 Pro: What Sony Has Confirmed",
+    "game": "Grand Theft Auto VI",
+    "arc": "PS5 Pro Enhanced on the store page; DualSense haptics and Tempest 3D Audio; what is still not announced.",
+    "angle": "Open close to: \"Sony's own GTA 6 page lists three PS5 extras.\" From PlayStation's official page only: PS5 Pro Enhanced, DualSense haptic feedback and adaptive triggers if listed, Tempest 3D Audio. Say plainly that frame rate, resolution and graphics modes are not announced on that page. Never guess numbers. Say only what the sources say and name them.",
+    "sources": [
+      {
+        "url": "https://www.playstation.com/en-gb/games/grand-theft-auto-vi/",
+        "source": "PlayStation",
+        "official": true
+      }
+    ],
+    "make_at": "2026-11-16T01:00:00Z",
+    "from": "2026-11-17",
+    "until": "2026-11-23"
+  },
+  {
+    "kind": "spare",
+    "question": "Why does GTA 6 have its own 34-track album?",
+    "title": "GTA 6 Came With a 34-Track Album",
+    "game": "Grand Theft Auto VI",
+    "arc": "GTA VI: The Album from Atlantic Records, 34 tracks, out with the game; the launch trailer's Flower in a Hurricane.",
+    "angle": "Open close to: \"GTA 6 shipped with a 34-track album.\" Rockstar Newswire: GTA VI: The Album, Atlantic Records, 34 tracks, out November 19. The launch trailer (October 15) used \"Flower in a Hurricane\" by Justice featuring Tame Impala, SZA and King Gizzard & The Lizard Wizard. Never play or quote lyrics. Say only what the sources say and name them.",
+    "sources": [
+      {
+        "url": "https://www.rockstargames.com/newswire/article/7599a881942544/announcing-grand-theft-auto-vi-the-album-coming-november-19",
+        "source": "Rockstar Newswire",
+        "official": true
+      },
+      {
+        "url": "https://www.rockstargames.com/newswire/article/517572321a549a/watch-the-grand-theft-auto-vi-launch-trailer",
+        "source": "Rockstar Newswire",
+        "official": true
+      }
+    ],
+    "make_at": "2026-11-16T03:00:00Z",
+    "from": "2026-11-19",
+    "until": "2026-11-23"
   }
 ]

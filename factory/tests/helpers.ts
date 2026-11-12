@@ -416,6 +416,13 @@ export function testConfig(
     officialTrailers: false,
     cutsceneFootage: false,
     cutsceneMaxSeconds: 20,
+    sceneIndex: false,
+    sceneIndexProxyHeight: 480,
+    sceneIndexOcrFps: 2,
+    sceneIndexChunkMinutes: 10,
+    sceneIndexMaxHours: 12,
+    sceneIndexTurnSteps: 3,
+    sceneIndexMinConfidence: 0.45,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.

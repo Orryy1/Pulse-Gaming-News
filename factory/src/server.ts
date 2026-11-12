@@ -104,6 +104,9 @@ import {
 } from "./routines.ts";
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
+import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
+import { readLaunches as sceneLaunches } from "./discovery/launches.ts";
+import { readCalendar as sceneCalendar } from "./calendar.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
 import { sendDueNotices } from "./notices.ts";
 import { maybeReload } from "./reload.ts";
@@ -1700,6 +1703,21 @@ async function main(): Promise<void> {
           allow: cfg.routineLanAllow,
         }),
       );
+  }
+  // The per-game scene index (SCENE_INDEX): one bounded turn at a time, behind the Mac's turn-taker, for games a
+  // video asked for and for the launch calendar's releases from their launch day (src/sceneindex/job.ts).
+  if (cfg.sceneIndex) {
+    const pass = () =>
+      void sceneIndexTick(
+        cfg,
+        launchGames(
+          sceneLaunches(cfg.launchCalendarFile),
+          cfg.calendarFile ? sceneCalendar(cfg.calendarFile) : [],
+          new Date(),
+        ),
+      );
+    setTimeout(pass, 2 * 60_000);
+    setInterval(pass, 10 * 60_000);
   }
   // The highlight finder and the TinoTV download on the Mac (MAC_GAMEPLAY).
   if (cfg.macGameplay) {

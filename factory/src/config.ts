@@ -692,6 +692,14 @@ export interface Config {
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   cutsceneFootage: boolean; // CUTSCENE_FOOTAGE: opt in to screened YouTube cutscene sections
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
+  /** SCENE_INDEX: the per-game scene index (src/sceneindex): built in the background, looked up before cutscenes are searched. Off: nothing is built or read. */
+  sceneIndex: boolean;
+  sceneIndexProxyHeight: number; // SCENE_INDEX_PROXY_HEIGHT: the kept low-resolution copy; 480 keeps text boxes readable
+  sceneIndexOcrFps: number; // SCENE_INDEX_OCR_FPS: frames a second the text reader looks at
+  sceneIndexChunkMinutes: number; // SCENE_INDEX_CHUNK_MINUTES: minutes of the source indexed in one piece of work
+  sceneIndexMaxHours: number; // SCENE_INDEX_MAX_HOURS: no source longer than this
+  sceneIndexTurnSteps: number; // SCENE_INDEX_TURN_STEPS: pieces of work in one background turn
+  sceneIndexMinConfidence: number; // SCENE_INDEX_MIN_CONFIDENCE: a lookup below this falls back to the cutscene search
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
@@ -1439,6 +1447,13 @@ export function loadConfig(): Config {
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     cutsceneFootage: bool("CUTSCENE_FOOTAGE", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
+    sceneIndex: bool("SCENE_INDEX", false),
+    sceneIndexProxyHeight: Math.min(1080, Math.max(240, int("SCENE_INDEX_PROXY_HEIGHT", 480))),
+    sceneIndexOcrFps: Math.min(5, Math.max(0.5, Number(str("SCENE_INDEX_OCR_FPS", "2")) || 2)),
+    sceneIndexChunkMinutes: Math.max(1, int("SCENE_INDEX_CHUNK_MINUTES", 10)),
+    sceneIndexMaxHours: Math.max(1, int("SCENE_INDEX_MAX_HOURS", 12)),
+    sceneIndexTurnSteps: Math.max(1, int("SCENE_INDEX_TURN_STEPS", 3)),
+    sceneIndexMinConfidence: Math.min(1, Math.max(0, Number(str("SCENE_INDEX_MIN_CONFIDENCE", "0.45")) || 0.45)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),

@@ -14,11 +14,14 @@ import {
   usablePath,
 } from "./platform.ts";
 import {
+  parseBand,
   parseShortLengths,
   shortLengthsSummary,
+  type LengthBand,
   type ShortLengths,
 } from "./shortlengths.ts";
-import { strandSummary } from "./strand.ts";
+import { gtaFileSummary } from "./gtafile.ts";
+import { parseHomeFranchises } from "./editorial/why.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -227,13 +230,21 @@ export interface Config {
   whySlots: string[];
   /** Days a Why Short's game, topic and opening shape stay off limits for the next one (src/editorial/why.ts). */
   whyFreshDays: number;
-  /** The named daily Shorts strand (src/strand.ts): its name; empty = off (STRAND_NAME). */
-  strandName: string;
-  /** The strand's slot, local "HH:MM": it must already be one of NEWS_SLOTS (the plan's verdict slot), so no slot is added (STRAND_SLOT). */
-  strandSlot: string;
-  /** The strand's franchise and the other names it goes by, "|" between them, the on-screen name first, e.g. "GTA VI|GTA 6|Grand Theft Auto VI" (STRAND_FRANCHISE). */
-  strandFranchise: string;
-  /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,strand=60-75"; empty = the old 25-40 s for every Short. */
+  /** The Why as a numbered serial (src/editorial/why.ts, format redesign plan item 3): numbered, longer, home shelf (WHY_SERIAL_ENABLED). */
+  whySerialEnabled: boolean;
+  /** The serial Why's seconds (WHY_TARGET_SECONDS, "45-60"); applies only with WHY_SERIAL_ENABLED; undefined = unusable. */
+  whyTargetSeconds: LengthBand | undefined;
+  /** Share of Why slots, 0-1, that pick only from the home shelf (WHY_HOME_SHARE; serial only); 0 = off. */
+  whyHomeShare: number;
+  /** The home shelf's franchises (WHY_HOME_FRANCHISES, "|" between them; names from HOME_SHELF). */
+  whyHomeFranchises: string[];
+  /** The GTA File (src/gtafile.ts, plan item 4): the numbered daily GTA VI serial after launch (SERIES_GTA_FILE_ENABLED). */
+  seriesGtaFileEnabled: boolean;
+  /** Its slot, local "HH:MM": one of WHY_SLOTS, so no slot is added (SERIES_GTA_FILE_SLOT). */
+  seriesGtaFileSlot: string;
+  /** Its planned parts, a src/shortrun.ts file of "file" entries (SERIES_GTA_FILE_RUN_FILE). */
+  seriesGtaFileRunFile: string;
+  /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,gta_file=45-55"; empty = the old 25-40 s for every Short. */
   shortLengths: ShortLengths;
   /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
   instagramMaxSeconds: number;
@@ -999,9 +1010,15 @@ export function loadConfig(): Config {
     whySlot: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT"))[0]!,
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
-    strandName: str("STRAND_NAME", ""),
-    strandSlot: str("STRAND_SLOT", ""),
-    strandFranchise: str("STRAND_FRANCHISE", ""),
+    whySerialEnabled: bool("WHY_SERIAL_ENABLED", false),
+    whyTargetSeconds: parseBand(str("WHY_TARGET_SECONDS", "45-60")),
+    whyHomeShare: Math.min(1, Math.max(0, Number(str("WHY_HOME_SHARE", "0")) || 0)),
+    whyHomeFranchises: parseHomeFranchises(
+      str("WHY_HOME_FRANCHISES", "Grand Theft Auto|Resident Evil"),
+    ),
+    seriesGtaFileEnabled: bool("SERIES_GTA_FILE_ENABLED", false),
+    seriesGtaFileSlot: str("SERIES_GTA_FILE_SLOT", "18:30"),
+    seriesGtaFileRunFile: str("SERIES_GTA_FILE_RUN_FILE", ""),
     shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
     instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
@@ -1590,7 +1607,10 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       ? "off"
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
-    strand: strandSummary(c),
+    whySerial: c.whySerialEnabled
+      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
+      : "off",
+    gtaFile: gtaFileSummary(c),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,

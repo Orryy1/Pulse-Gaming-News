@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { testConfig, goodScript } from "./helpers.ts";
 import {
   lengthFormatOf,
+  parseBand,
+  withWhyTarget,
   overInstagramLength,
   parseShortLengths,
   SHORT_NARRATION_CAP_SECONDS,
@@ -19,14 +21,19 @@ import {
 } from "../src/editorial/editorial.ts";
 import { redactedConfig } from "../src/config.ts";
 
-const lanes = parseShortLengths("news=22-35, why=22-35, strand=60-75");
+const lanes = parseShortLengths("news=22-35, why=22-35, gta_file=60-75");
 
 test("SHORT_LENGTHS parses a band per format and drops anything it cannot use", () => {
   assert.deepEqual(lanes, {
     news: { min: 22, max: 35 },
     why: { min: 22, max: 35 },
-    strand: { min: 60, max: 75 },
+    gta_file: { min: 60, max: 75 },
   });
+  assert.deepEqual(
+    parseShortLengths("strand=60-75"),
+    { gta_file: { min: 60, max: 75 } },
+    "the strand's old key reads as The GTA File's lane",
+  );
   assert.deepEqual(parseShortLengths(""), {});
   assert.deepEqual(
     parseShortLengths(
@@ -41,7 +48,7 @@ test("off: no lane, so every Short keeps 25-40 seconds, 70-100 words, two to fou
   const cfg = testConfig("/tmp/x");
   assert.deepEqual(cfg.shortLengths, {});
   assert.equal(cfg.instagramMaxSeconds, 0);
-  for (const f of ["news", "why", "strand"] as const)
+  for (const f of ["news", "why", "gta_file"] as const)
     assert.equal(shortTarget(cfg.shortLengths, f), undefined);
   const prompt = scriptPrompt(true);
   assert.equal(prompt, scriptPrompt(true, undefined));
@@ -57,7 +64,7 @@ test("off: no lane, so every Short keeps 25-40 seconds, 70-100 words, two to fou
   assert.equal(redactedConfig(cfg).shortLengths, "off (25-40s)");
 });
 
-test("each Short is in its lane: news, why, or the strand's long lane only on own footage", () => {
+test("each Short is in its lane: news, why, or a GTA File part", () => {
   const news = { lane: "news", story_json: {} };
   assert.equal(lengthFormatOf(news), "news");
   assert.equal(
@@ -71,16 +78,9 @@ test("each Short is in its lane: news, why, or the strand's long lane only on ow
   assert.equal(
     lengthFormatOf({
       lane: "news",
-      story_json: { strand: { ownFootage: true } },
+      story_json: { why: { question: "q" }, gtaFile: { part: 2 } },
     }),
-    "strand",
-  );
-  assert.equal(
-    lengthFormatOf({
-      lane: "news",
-      story_json: { strand: { ownFootage: false } },
-    }),
-    "news",
+    "gta_file",
   );
   for (const lane of ["evergreen", "gameplay", "cutdown", "longform"])
     assert.equal(lengthFormatOf({ lane, story_json: {} }), undefined, lane);
@@ -103,26 +103,30 @@ test("the word budget follows the seconds at the narrator's own pace", () => {
     beatsMax: 4,
     capSeconds: 58,
   });
-  assert.deepEqual(shortTarget(lanes, "strand"), {
-    format: "strand",
+  assert.deepEqual(shortTarget(lanes, "gta_file"), {
+    format: "gta_file",
     seconds: { min: 60, max: 75 },
     wordsMin: 156,
     wordsMax: 195,
     beatsMax: 6,
     capSeconds: 80,
   });
-  // "why" without its own band follows news; so does the strand when its lane is not set.
+  // "why" without its own band follows news; a GTA File part follows why, else news.
   const newsOnly = parseShortLengths("news=22-35");
   assert.equal(shortTarget(newsOnly, "why")?.wordsMax, 91);
-  assert.equal(shortTarget(newsOnly, "strand")?.format, "news");
-  assert.equal(shortTarget(newsOnly, "strand")?.capSeconds, 58);
+  assert.equal(shortTarget(newsOnly, "gta_file")?.format, "news");
+  assert.equal(shortTarget(newsOnly, "gta_file")?.capSeconds, 58);
   assert.equal(
-    shortTarget(parseShortLengths("strand=60-75"), "news"),
+    shortTarget(parseShortLengths("news=22-35,why=45-60"), "gta_file")?.format,
+    "why",
+  );
+  assert.equal(
+    shortTarget(parseShortLengths("gta_file=60-75"), "news"),
     undefined,
   );
   assert.equal(
     shortLengthsSummary(lanes, 35),
-    "news 22-35s, why 22-35s, strand 60-75s; Instagram up to 35s",
+    "news 22-35s, why 22-35s, gta_file 60-75s; Instagram up to 35s",
   );
 });
 
@@ -132,7 +136,7 @@ test("the writer and the checks hold a Short to its lane", () => {
     scriptPrompt(true, news),
     /Write a 22-35 second vertical Short script \(57-91 spoken words/,
   );
-  const strand = shortTarget(lanes, "strand")!;
+  const strand = shortTarget(lanes, "gta_file")!;
   const long = scriptPrompt(false, strand);
   assert.match(
     long,
@@ -167,4 +171,30 @@ test("INSTAGRAM_MAX_SECONDS keeps a longer Short off Instagram; 0 is no limit", 
     "unknown length: not held back",
   );
   assert.equal(overInstagramLength(0, 70), false);
+});
+
+test("WHY_TARGET_SECONDS lays The Why's serial band over the lanes, only when WHY_SERIAL_ENABLED", () => {
+  assert.deepEqual(parseBand("45-60"), { min: 45, max: 60 });
+  assert.equal(parseBand("60-45"), undefined);
+  assert.equal(parseBand("forty"), undefined);
+  const band = { min: 45, max: 60 };
+  assert.deepEqual(withWhyTarget({}, false, band), {}, "serial off: lanes unchanged");
+  assert.deepEqual(withWhyTarget({}, true, undefined), {});
+  const on = withWhyTarget(parseShortLengths("news=22-35"), true, band);
+  assert.deepEqual(on.why, band);
+  assert.deepEqual(on.gta_file, band, "a GTA File part is written by the Why writer");
+  assert.deepEqual(shortTarget(on, "news")?.seconds, { min: 22, max: 35 });
+  const why = shortTarget(on, "why")!;
+  assert.equal(why.wordsMin, 117);
+  assert.equal(why.wordsMax, 156);
+  assert.equal(why.beatsMax, 6);
+  assert.equal(why.capSeconds, 65, "room past the minute for a 60 s Why");
+  assert.deepEqual(
+    withWhyTarget(parseShortLengths("gta_file=45-55"), true, band).gta_file,
+    { min: 45, max: 55 },
+    "the GTA File's own band wins",
+  );
+  const cfg = testConfig("/tmp/x");
+  assert.equal(cfg.whySerialEnabled, false);
+  assert.equal(redactedConfig(cfg).whySerial, "off");
 });

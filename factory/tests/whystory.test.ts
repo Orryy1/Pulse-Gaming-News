@@ -338,3 +338,96 @@ test("a Why Short that says the reason is unknown is sent back; one that gives a
   assert.equal(whyAnswerProblems("Nobody knows why it happened.").length, 1);
   assert.equal(whyAnswerProblems("Rockstar moved on because the team wanted a new setting.").length, 0);
 });
+
+// ------------------------------------------------------------------- The Why as a serial (format redesign item 3)
+
+import {
+  HOME_SHELF,
+  homeCandidates,
+  isHomeSlot,
+  nextWhyNumber,
+  parseHomeFranchises,
+  whySerialBrief,
+  whySerialProblems,
+} from "../src/editorial/why.ts";
+
+test("home slots: none at share 0, all at 1, a stable share in between", () => {
+  assert.equal(isHomeSlot(0, "2026-11-22", "12:00"), false);
+  assert.equal(isHomeSlot(1, "2026-11-22", "12:00"), true);
+  let home = 0;
+  for (let d = 1; d <= 28; d++)
+    for (const slot of ["12:00", "18:30"])
+      if (isHomeSlot(0.5, `2026-12-${String(d).padStart(2, "0")}`, slot)) home++;
+  assert.ok(home > 14 && home < 42, `about half of 56 slots, got ${home}`);
+  assert.equal(
+    isHomeSlot(0.5, "2026-11-22", "12:00"),
+    isHomeSlot(0.5, "2026-11-22", "12:00"),
+    "asked twice, the same answer",
+  );
+});
+
+test("the home shelf: GTA and Resident Evil by default, a third franchise is one setting", () => {
+  assert.deepEqual(parseHomeFranchises("Grand Theft Auto|Resident Evil|Nope"), [
+    "Grand Theft Auto",
+    "Resident Evil",
+  ]);
+  const list = homeCandidates(["Grand Theft Auto", "Resident Evil"], "2026-11-22");
+  assert.equal(
+    list.length,
+    HOME_SHELF["Grand Theft Auto"]!.length + HOME_SHELF["Resident Evil"]!.length,
+  );
+  assert.ok(list.every((c) => c.source === "home shelf"));
+  assert.ok(
+    /Grand Theft Auto|Resident Evil/.test(list[0]!.name) &&
+      /Grand Theft Auto|Resident Evil/.test(list[1]!.name) &&
+      list[0]!.name.split(" ")[0] !== list[1]!.name.split(" ")[0],
+    "the franchises take turns",
+  );
+  assert.notEqual(
+    homeCandidates(["Grand Theft Auto"], "2026-11-22")[0]!.name,
+    homeCandidates(["Grand Theft Auto"], "2026-11-23")[0]!.name,
+    "rotated by the day",
+  );
+  assert.deepEqual(homeCandidates([], "2026-11-22"), []);
+  assert.ok(homeCandidates(["Silent Hill"], "2026-11-22").some((c) => c.name === "Silent Hill 2"));
+});
+
+test("a numbered Why's brief and house rules: claim hook, counterpoint, one I line, 'Why [game] [claim]'", () => {
+  const brief = whySerialBrief({ number: 24, seconds: { min: 45, max: 60 } });
+  assert.match(brief, /This is The Why #24/);
+  assert.match(brief, /runs 45 to 60 seconds/);
+  assert.match(brief, /the claim Pulse will defend/);
+  assert.match(brief, /counterpoint/);
+  assert.match(brief, /one owned "I" line/);
+  assert.match(brief, /"Why \[game\] \[claim\]"/);
+  assert.ok(!/[—–]/.test(brief), "no em or en dashes");
+  const s = (hook: string, title: string) => ({ hook, youtube: { title } });
+  assert.deepEqual(
+    whySerialProblems(s("GTA San Andreas still feels bigger than GTA V.", "Why GTA San Andreas Still Feels Bigger Than GTA V")),
+    [],
+  );
+  const bad = whySerialProblems(s("Why does San Andreas feel bigger?", "Why Does San Andreas Feel Bigger?"));
+  assert.equal(bad.length, 2);
+  assert.match(bad[0]!, /title is "Why \[game\] \[claim\]"/);
+  assert.match(bad[1]!, /hook is the claim/);
+  assert.equal(whySerialProblems(s("x.", "San Andreas Still Feels Bigger")).length, 1);
+});
+
+test("the next Why number continues the back catalogue, then counts up; a dropped number is used again", async () => {
+  const db = await testDb();
+  const add = async (id: string, why: object, status = "selected") => {
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, status, lane, priority, story_json) VALUES ($1, $2, $3, 'news', 1, $4)`,
+      [id, `why:${id}`, status, JSON.stringify({ why })],
+    );
+  };
+  assert.equal(await nextWhyNumber(db), 1);
+  await add("a", { question: "q" });
+  await add("b", { question: "q" });
+  assert.equal(await nextWhyNumber(db), 3, "two unnumbered Why Shorts already out");
+  await add("c", { question: "q", serial: { number: 3, home: false } });
+  assert.equal(await nextWhyNumber(db), 4);
+  await add("d", { question: "q", serial: { number: 4, home: true } }, "rejected");
+  assert.equal(await nextWhyNumber(db), 4, "a rejected Short's number is used again");
+  await db.close();
+});

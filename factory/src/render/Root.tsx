@@ -4,6 +4,7 @@ import { Short } from "./Short.tsx";
 import { FPS, WIDTH, HEIGHT, SAMPLE_PROPS, type ShortProps } from "./props.ts";
 import { Avatar, Banner, Thumb, SAMPLE_THUMB } from "./Brand.tsx";
 import { ShortSearchThumb, SHORT_THUMB_H, SHORT_THUMB_W } from "./ShortSearchThumb.tsx";
+import { EraFrame, ERA_FRAME_H, ERA_FRAME_W, SAMPLE_ERA_FRAME } from "./EraFrame.tsx";
 import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
@@ -226,6 +227,14 @@ export const RemotionRoot: React.FC = () => (
       width={SHORT_THUMB_W}
       height={SHORT_THUMB_H}
       defaultProps={{ imageSrc: "", words: "HOOK WORDS" } as never}
+    />
+    {/* A game on the hardware of its day, for an every-game Short (src/editorial/everygame.ts). */}
+    <Still
+      id="PulseEraFrame"
+      component={EraFrame as never}
+      width={ERA_FRAME_W}
+      height={ERA_FRAME_H}
+      defaultProps={SAMPLE_ERA_FRAME as never}
     />
     {/* A timeline, not a Still: the motif thumbnail freezes a motif card part-way through its animation. */}
     <Composition

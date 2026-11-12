@@ -271,7 +271,10 @@ export type Script = z.infer<typeof ScriptSchema> & {
     | "hardest_achievements"
     | "documentary"
     | "steam_climbers"
-    | "steam_deals";
+    | "steam_deals"
+    | "every_game";
+  /** "The Story of Every [series] Game" (src/editorial/everygame.ts): each beat's game, year, hardware and year stamp. */
+  every_game?: import("./everygame.ts").EveryGameMeta;
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
   runtime?: "short" | "long";
   /** Long-form: the one criterion the ranking uses, shown under the title. */

@@ -442,6 +442,10 @@ export function keywordLead(script: Script): string {
     return `The best Steam deals right now: ${script.headline.replace(/\.$/, "")}. Steam sale, cheap PC games, best game deals today, by Pulse Gaming News.`;
   if (script.evergreen_format === "weekly_recap")
     return `This week in gaming: ${script.headline.replace(/\.$/, "")}. Gaming news recap, biggest gaming news this week, by Pulse Gaming News.`;
+  if (script.evergreen_format === "every_game") {
+    const short = script.every_game?.short ?? script.game_title;
+    return `Every ${short} game in release order, from ${script.every_game?.beats[0]?.year ?? "the first"} to ${script.every_game?.beats.at(-1)?.year ?? "now"}: ${script.headline.replace(/\.$/, "")}. All ${script.game_title} games in order, ${short} timeline, ${short} history, by Pulse Gaming News.`;
+  }
   if (n) {
     // A ranking is searched as "every X game ranked"; say so first, then the premise.
     const theme = script.game_title.trim() || "gaming";
@@ -483,6 +487,8 @@ export function pinnedComment(script: Script): string {
     return `Our pick: ${take}. Prices are Steam's at the time we checked and can change. Which one are you grabbing?`;
   if (script.evergreen_format === "weekly_recap")
     return `Which story was the biggest one for you this week?`;
+  if (script.evergreen_format === "every_game")
+    return `Which ${script.every_game?.short ?? game} game was the one for you? One title is enough.`;
   if (script.entries?.length && script.runtime === "long")
     return `Our number one: ${take}. Too high, too low? Name yours below, and tell us which series we should rank next. The most-asked ones go to the top of our list.`;
   // The comment is up from the first second, and a ranking keeps number one for its turn (src/editorial/spoilers.ts).

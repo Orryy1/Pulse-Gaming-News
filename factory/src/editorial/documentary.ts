@@ -326,7 +326,9 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   /** Approved gameplay tests that count as a source for this documentary alone (src/editorial/testevidence.ts). */
   test_records?: import("./testevidence.ts").TestRecord[];
   /** A planned entry's own format (src/shortrun.ts): a guide follows the player's journey when LONG_GUIDE_FORMAT is on. */
-  format?: "guide";
+  format?: "guide" | "everygame";
+  /** "everygame" (src/editorial/everygame.ts): the series' roster, one chapter per game in release order. */
+  roster?: import("./everygame.ts").SeriesRoster;
   /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
   sources?: Array<{ url: string; source: string; official?: boolean }>;
 };

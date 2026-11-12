@@ -43,6 +43,8 @@ export const RankingCard: React.FC<{
   date?: string;
   /** An achievement: what you must do to unlock it. Its chip is then the share of players (`year`). */
   requirement?: string;
+  /** A series in release order (src/editorial/everygame.ts): the badge shows the year, and its place in the run under it. */
+  chrono?: boolean;
 }> = ({
   rank,
   total,
@@ -54,6 +56,7 @@ export const RankingCard: React.FC<{
   accent,
   date,
   requirement,
+  chrono,
 }) => {
   const day = date?.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const dayName = day
@@ -88,6 +91,8 @@ export const RankingCard: React.FC<{
   const card = spring({ frame: t - 4, fps, config: SPRING.ENTER });
   const chip = spring({ frame: t - 16, fps, config: SPRING.SNAP });
   const top = rank === 1 && !date;
+  // In release order the badge is the year; the newest game (the last, "rank" 1) still wears the accent.
+  const yearBadge = chrono && year && !date && !requirement ? year : undefined;
   const achievement = Boolean(requirement);
   const artWidth = achievement ? BADGE_SIZE : BOX_WIDTH;
   const hasArt = Boolean(capsuleSrc);
@@ -98,7 +103,7 @@ export const RankingCard: React.FC<{
   // An achievement's chip is its percentage; the game's name sits under it when the Short spans games.
   const meta = achievement
     ? (platforms ?? "")
-    : [year, platforms].filter(Boolean).join(" · ");
+    : [yearBadge ? undefined : year, platforms].filter(Boolean).join(" · ");
   const metaWidth = achievement ? CARD_WIDTH : nameWidth(hasArt, artWidth);
   const metaFit = meta ? fitMeta(meta.toUpperCase(), metaWidth) : undefined;
   const chipText = achievement ? (year ?? verdict) : verdict;
@@ -180,7 +185,7 @@ export const RankingCard: React.FC<{
             style={{
               position: "relative",
               fontFamily: DISPLAY,
-              fontSize: day ? 72 : rank >= 10 ? 68 : 80,
+              fontSize: yearBadge ? 54 : day ? 72 : rank >= 10 ? 68 : 80,
               color: top && !day ? COLOUR.ink : COLOUR.paper,
               lineHeight: 1,
               textAlign: "center",
@@ -203,7 +208,7 @@ export const RankingCard: React.FC<{
                 {Number(day[3])}
               </>
             ) : (
-              rank
+              (yearBadge ?? rank)
             )}
           </div>
           <div
@@ -217,7 +222,7 @@ export const RankingCard: React.FC<{
               color: top && !day ? COLOUR.ink : "rgba(245,245,242,0.8)",
             }}
           >
-            {day ? dayName : `OF ${total}`}
+            {day ? dayName : yearBadge ? `${total - rank + 1} OF ${total}` : `OF ${total}`}
           </div>
         </div>
         {capsuleSrc ? (

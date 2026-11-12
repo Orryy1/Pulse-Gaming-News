@@ -730,6 +730,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                 beatIndex={beatIndexOf[i]}
                 steamPrices={props.steam?.prices}
                 quickFigures={props.quickFigures}
+                chrono={props.chrono}
               />
             )}
           </Sequence>

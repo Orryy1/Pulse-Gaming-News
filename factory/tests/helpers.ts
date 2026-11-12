@@ -129,6 +129,8 @@ export function testConfig(
     gameplayRemindHours: 12,
     gameplayRehearsalUntil: "",
     shortRunFile: "",
+    everyGameEnabled: false,
+    everyGameFile: "",
     docTestEvidence: false,
     shortSkeletons: false,
     shortArguesCheck: false,

@@ -96,6 +96,8 @@ export interface PlanInput {
   preferBright?: boolean;
   /** Code scenes (src/render/codescene.ts, CODE_SCENES): absent, the plan is as it always was. */
   codeScenes?: { ctx: SceneContext; stampsAt: number[] };
+  /** Frames a beat's shot aims for instead of TARGET_BY_KIND.beat (an every-game Short cuts about every 1.8 s). */
+  beatTarget?: number;
 }
 
 export type PlanMedia = {
@@ -240,6 +242,8 @@ export function planCuts(
   openOnMotion = false,
   /** All stills and plenty of them: each holds about 2.2 s, since nothing in the picture moves. */
   stillPace = false,
+  /** A beat's own shot target, in frames; absent, TARGET_BY_KIND's. */
+  beatTarget?: number,
 ): Array<{ start: number; end: number; segment: number }> {
   const ends = wordEnds(words);
   const clauses = clauseEnds(words);
@@ -262,7 +266,14 @@ export function planCuts(
     const kind = segments[i]!.kind;
     const parts = Math.max(
       1,
-      Math.round(bodyLen / (stillPace && kind !== "hook" ? 66 : (TARGET_BY_KIND[kind] ?? TARGET_SHOT))),
+      Math.round(
+        bodyLen /
+          (beatTarget && kind === "beat"
+            ? Math.max(MIN_SHOT, beatTarget)
+            : stillPace && kind !== "hook"
+              ? 66
+              : (TARGET_BY_KIND[kind] ?? TARGET_SHOT)),
+      ),
     );
     for (let p = 1; p < parts; p++) {
       const raw = bodyStart + Math.round((bodyLen * p) / parts);
@@ -1245,6 +1256,7 @@ export function buildPlan(input: PlanInput): RenderPlan {
               !input.segments.some((s) => s.visual?.kind === "rank")),
         )),
     !input.clips.length && input.images.length >= 16,
+    input.beatTarget,
   );
   const shots = planShots(
     input,

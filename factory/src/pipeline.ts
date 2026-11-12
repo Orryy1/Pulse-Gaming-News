@@ -507,6 +507,35 @@ import {
   whyRunEntry,
   type RunWhy,
 } from "./shortrun.ts";
+import {
+  everyLongDue,
+  everyShortDue,
+  readEveryGamePlan,
+  type EveryGameEntry,
+} from "./everygame.ts";
+import {
+  auditEveryGameAssets,
+  gatherEveryGameEntry,
+  loadEveryGameRoster,
+} from "./everygamestep.ts";
+import {
+  EVERY_SHOT_TARGET,
+  chapterList,
+  eraStampsFor,
+  everyGameDocOutline,
+  everyGameDocTopic,
+  everyGameToScript,
+  honestyProblems,
+  mustFixEveryGame,
+  outlineEveryGame,
+  rosterBrief,
+  shortEntries,
+  validateEveryGameOutline,
+  validateEveryGameShort,
+  writeEveryGameShort,
+  type EveryGameShort,
+  type SeriesRoster,
+} from "./editorial/everygame.ts";
 import { stampColour } from "./render/brand.ts";
 import { chooseWordLook, motifIdFor, wordSoundCue } from "./render/wordlook.ts";
 import {
@@ -707,6 +736,10 @@ export interface Services {
   /** Single frames of the long composition for the graphics check before the render (absent in tests). */
   renderLongStills?(input: LongStillsInput): Promise<void>;
   renderShortThumb?: typeof renderShortThumb;
+  /** A game on the hardware of its day, as one still, for an every-game Short (absent in tests). */
+  renderEraFrame?: typeof import("./render/render.ts").renderEraFrame;
+  /** Every IGDB entry of a series, for the every-game format's roster (absent in tests). */
+  igdbSeries?(series: string): Promise<import("./assets/igdb.ts").IgdbSeriesRow[]>;
   /** The Reporting API with this channel's login (src/reach.ts). */
   reachClient?: () => ReachClient;
   renderCutdown?: typeof renderCutdown;
@@ -1638,6 +1671,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (!slot || capped)
     return (
       (await maybeSelectDocumentary(s)) ??
+      (await maybeSelectEveryGame(s)) ??
       (await maybeSelectEvergreen(s)) ??
       (await maybeSelectWeekly(s)) ??
       (await maybeSelectLongform(s)) ??
@@ -1719,6 +1753,221 @@ export async function strandOwnFootage(
  * topic from what people are buying and the franchise seeds, avoiding topics
  * covered in the last six months.
  */
+/** What an every-game Short's episode carries from its selection to its script (factcheck_json.every_game). */
+export interface EveryGameJob {
+  series: string;
+  /** The Short's YouTube title, word for word, when the plan fixes one. */
+  title?: string;
+  wiki?: string;
+  scope: "every" | "mainline";
+  roster: SeriesRoster;
+}
+
+/**
+ * "The Story of Every [series] Game" as a Short (src/everygame.ts): behind EVERYGAME_ENABLED and the entry's own
+ * "on", a planned series takes its slot inside the evergreen lane's lead time. Nothing planned, nothing changes.
+ */
+export async function maybeSelectEveryGame(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.everyGameEnabled) return undefined;
+  const due = everyShortDue(
+    readEveryGamePlan(cfg.everyGameFile),
+    true,
+    s.now(),
+    await takenSlots(db),
+    {
+      timeZone: cfg.timezone,
+      leadMinutes: cfg.slotLeadMinutes + 45,
+      graceMinutes: cfg.slotGraceMinutes,
+    },
+  );
+  if (!due) return undefined;
+  return createEveryGameShort(s, due.entry, due.at);
+}
+
+/** Creates the Short's episode for one planned series: its roster is read from IGDB now and kept with it. */
+export async function createEveryGameShort(
+  s: Services,
+  entry: EveryGameEntry,
+  due: Date,
+): Promise<string | undefined> {
+  const { db } = s;
+  const now = s.now();
+  const roster = await loadEveryGameRoster(s, entry);
+  const picked = shortEntries(roster);
+  if (picked.scope === "too_few" || picked.scope === "too_many") {
+    if (!(await weeklyTried(db, `everygame:${entry.series}`)))
+      await s.notify({
+        content: `The every-game Short for ${entry.series} will not run: IGDB lists ${roster.entries.length} games, ${picked.scope === "too_few" ? "too few for the format" : "too many for 60 seconds even as main games only"}.`,
+      });
+    return undefined;
+  }
+  const slug = entry.series
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const headline = entry.short_video?.title ?? entry.title;
+  const cluster: StoryCluster = {
+    hash: `everygame:short:${slug}`,
+    headline,
+    items: [],
+    sources: ["IGDB"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: entry.series,
+  };
+  const id = shortId();
+  const created = await createEpisode(db, id, cluster, {
+    lane: "evergreen",
+    priority: LANE_PRIORITY.evergreen,
+    slotAt: due,
+  });
+  if (!created) return undefined;
+  const job: EveryGameJob = {
+    series: entry.series,
+    ...(entry.short_video?.title ? { title: entry.short_video.title } : {}),
+    ...(entry.wiki ? { wiki: entry.wiki } : {}),
+    scope: picked.scope,
+    roster,
+  };
+  await db.query(
+    `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+    [
+      id,
+      JSON.stringify({
+        topic: {
+          candidate_index: 0,
+          format: "every_game",
+          theme: entry.series,
+          title_idea: headline,
+          criterion: "release order",
+          reason: "Planned in the every-game schedule",
+        },
+        every_game: job,
+      }),
+    ],
+  );
+  await logEvent(db, id, "selected", {
+    headline,
+    lane: "evergreen",
+    format: "every_game",
+    theme: entry.series,
+    games: picked.entries.length,
+    scope: picked.scope,
+    left_out: roster.dropped.length,
+    slot_at: due.toISOString(),
+  });
+  log("info", "every-game Short selected", {
+    id,
+    series: entry.series,
+    games: picked.entries.length,
+  });
+  return id;
+}
+
+/**
+ * Writes an every-game Short: the roster kept exactly, the house rules, then the fact check against the roster and
+ * the series' article. What may never ship (a changed roster, an invented experience, a title outside the honest
+ * frame) stops the step; the rest is a style warning after the rewrites.
+ */
+async function stepScriptEveryGame(
+  s: Services,
+  ep: Episode,
+  job: EveryGameJob,
+): Promise<void> {
+  const roster = job.roster;
+  const entries =
+    job.scope === "mainline"
+      ? roster.entries.filter((e) => e.kind !== "expansion")
+      : roster.entries;
+  const background = await s
+    .research(job.wiki ?? roster.series, `${roster.series} video game series`, 9000)
+    .catch(() => undefined);
+  const opts = {
+    ...(job.title ? { title: job.title } : {}),
+    ...(background?.text ? { background: background.text } : {}),
+    scope: job.scope,
+  };
+  let draft: EveryGameShort | undefined;
+  let feedback: string[] = [];
+  for (let attempt = 0; attempt < 3; attempt++) {
+    draft = await writeEveryGameShort(s.llm, roster, entries, { ...opts, feedback });
+    feedback = validateEveryGameShort(draft, roster, entries, opts);
+    if (!feedback.length) break;
+  }
+  if (!draft) throw new Error("every-game script produced nothing");
+  const facts = [
+    {
+      title: "The roster this Short was built from (IGDB: titles, release years, platforms, the order)",
+      facts: rosterBrief(roster, entries),
+    },
+    ...(background?.text
+      ? [{ title: `Wikipedia: ${background.title}`, facts: background.text }]
+      : []),
+  ];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const factual = await adjudicateRanking(
+      s,
+      ep,
+      everyGameToScript(draft, roster, entries),
+      [],
+      attempt,
+      facts,
+    );
+    if (!factual.length) break;
+    draft = await writeEveryGameShort(s.llm, roster, entries, {
+      ...opts,
+      feedback: [...factual, ...validateEveryGameShort(draft, roster, entries, opts)],
+    });
+  }
+  const left = validateEveryGameShort(draft, roster, entries, opts);
+  const must = mustFixEveryGame(draft, roster, entries, opts);
+  if (must.length) throw new Error(`every-game script not fit to voice: ${must[0]}`);
+  if (left.length) await logEvent(s.db, ep.id, "style_warnings", { problems: left });
+  const script = everyGameToScript(draft, roster, entries);
+  await guardScript(s, ep, script, "after writing");
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      ...(ep.factcheck_json as Record<string, unknown> | null),
+      every_game: job,
+    },
+  });
+}
+
+/**
+ * The long video's outline for an every-game documentary: one chapter per roster game in release order, sent back
+ * once when it breaks that; an outline that still leaves a game out stops the step.
+ */
+async function everyGameOutlineFor(
+  s: Services,
+  ep: Episode,
+  topic: DocTopic,
+  notes: string,
+): Promise<import("./editorial/documentary.ts").DocOutline> {
+  const roster = topic.roster!;
+  let outline = await outlineEveryGame(s.llm, roster, topic.title_idea, topic.angle, notes);
+  let problems = validateEveryGameOutline(outline, roster);
+  if (problems.length) {
+    outline = await outlineEveryGame(s.llm, roster, topic.title_idea, topic.angle, notes, {
+      feedback: problems,
+    });
+    problems = validateEveryGameOutline(outline, roster);
+  }
+  await logEvent(s.db, ep.id, "every_game_outline", {
+    chapters: chapterList(outline, roster),
+    problems,
+  });
+  if (problems.length)
+    throw new Error(`every-game outline not fit to write: ${problems[0]}`);
+  return everyGameDocOutline(outline, roster, topic.title_idea);
+}
+
 export async function maybeSelectEvergreen(
   s: Services,
 ): Promise<string | undefined> {
@@ -2769,11 +3018,34 @@ export async function maybeSelectDocumentary(
         });
     }
   }
+  // "The Story of Every [series] Game" as a long video (src/everygame.ts): planned by date like a run's
+  // documentary, behind EVERYGAME_ENABLED and its entry's own "on"; its roster is read from IGDB now.
+  const everyLong = plannedDoc
+    ? undefined
+    : everyLongDue(
+        readEveryGamePlan(cfg.everyGameFile),
+        cfg.everyGameEnabled,
+        now,
+        await takenSlots(db),
+        cfg.timezone,
+      );
+  const everyTopic = everyLong
+    ? await loadEveryGameRoster(s, everyLong.entry)
+        .then((roster) =>
+          everyGameDocTopic(roster, everyLong.entry.title, everyLong.entry.angle, everyLong.entry.wiki),
+        )
+        .catch((err) => {
+          log("warn", "every-game roster failed", { series: everyLong.entry.series, error: errorMessage(err) });
+          return undefined;
+        })
+    : undefined;
   // The monthly documentary on its own week and day; otherwise, while ElevenLabs credits would be lost at
   // the reset, a banked one: made overnight now, while the credits are there, and scheduled for the next
   // free documentary evening, weeks ahead if need be (the owner's idea, 25 Oct 2026).
   let due = plannedDoc
     ? plannedDoc.at
+    : everyLong && everyTopic
+    ? everyLong.at
     : cfg.docWeeks.includes(weekOfMonth(now, cfg.timezone))
     ? evergreenDue(
         now,
@@ -2812,7 +3084,7 @@ export async function maybeSelectDocumentary(
   ).map((r) => r.headline);
   // The breakout picker (src/docpick.ts, DOC_BREAKOUT_PICKER) scores every candidate and takes the best with no
   // model call; the writer's pick from the lists stays the fallback.
-  const breakout = plannedDoc
+  const breakout = plannedDoc || everyTopic
     ? undefined
     : s.cfg.docBreakoutPicker
     ? await pickBreakoutDoc(s).catch((err) => {
@@ -2824,6 +3096,7 @@ export async function maybeSelectDocumentary(
     : undefined;
   const topic =
     plannedDoc?.topic ??
+    everyTopic ??
     breakout?.topic ??
     (await selectDocTopic(
     s.llm,
@@ -2950,7 +3223,10 @@ async function stepScriptDocumentary(
   const franchise = franchiseArticle
     ? withRunSources(withTestRecords(franchiseArticle, records))
     : franchiseArticle;
-  const outline = await outlineDoc(
+  const outline =
+    topic.format === "everygame" && topic.roster
+      ? await everyGameOutlineFor(s, ep, topic, franchise?.text ?? "")
+      : await outlineDoc(
     s.llm,
     topic,
     `${franchise?.text ?? ""}${strict ? testOutlineNote(records) : ""}`,
@@ -3063,6 +3339,11 @@ async function stepScriptDocumentary(
         loops: openLoops.loops,
         chapter: index + 1,
       });
+      // An every-game video never claims the games were played (src/editorial/everygame.ts): sent back like any fault.
+      if (topic.format === "everygame")
+        problems.push(
+          ...honestyProblems(chapter.paragraphs.map((x) => x.narration).join(" ")),
+        );
       // A note to the editor instead of narration goes back every time (DOC_META_GUARD).
       if (s.cfg.docMetaGuard)
         problems.push(
@@ -3350,6 +3631,11 @@ async function stepScriptDocumentary(
     });
   }
   const script = docToScript(draft);
+  // An every-game video keeps its planned title: none of the test titles a model writes is in the honest frame by rule.
+  if (topic.format === "everygame") {
+    script.youtube.title = topic.title_idea;
+    script.youtube.title_variants = [];
+  }
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];
   for (const u of runSources.urls)
@@ -5288,6 +5574,10 @@ export function groundAchievements<
 
 /** Writes a ranking Short against live Steam facts for each entry, with one rewrite on problems. */
 async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
+  // "The Story of Every [series] Game" has its own writer and rules (src/editorial/everygame.ts).
+  const everyGame = (ep.factcheck_json as { every_game?: EveryGameJob } | null)
+    ?.every_game;
+  if (everyGame) return stepScriptEveryGame(s, ep, everyGame);
   const topic = (
     ep.factcheck_json as {
       topic?: import("./editorial/evergreen.ts").EvergreenTopic;
@@ -6495,8 +6785,11 @@ export async function gatherMedia(
   });
   let budgetReported = false;
   // Prefer the exact store name resolved at script time so art and clips come from the same app as the facts.
-  const term =
-    ep.assets_json?.steam?.name ||
+  // An every-game Short has no topic page: a series' name finds a remaster or its newest game on the store, and
+  // each beat brings its own game's pictures (src/everygamestep.ts).
+  const term = script.every_game
+    ? ""
+    : ep.assets_json?.steam?.name ||
     script.steam_search_term ||
     script.game_title ||
     ep.story_json.gameHint ||
@@ -6564,6 +6857,7 @@ export async function gatherMedia(
     // usable trailer (Metal Gear Solid matched an old bundle whose one video would not download, 25 Oct 2026).
     (pictureStory || !app || clipAssets.length < 2 || steamShort) &&
     s.cfg.footage &&
+    !script.every_game &&
     script.game_title
       ? await s
           .fetchOfficialMedia(
@@ -7001,6 +7295,14 @@ export async function gatherMedia(
             clips,
               gatherBudget,
             ),
+            undefined,
+          );
+          continue;
+        }
+        // An every-game beat: that game's own era and nothing else (src/everygamestep.ts).
+        if (script.every_game) {
+          await gatherBudget.within(
+            gatherEveryGameEntry(s, script, entry, beatIndex, dir, images, clips),
             undefined,
           );
           continue;
@@ -10153,6 +10455,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
     }
   }
+  // An every-game Short: every beat shows its own game's era or it does not render (src/everygamestep.ts).
+  if (script.every_game) {
+    const era = auditEveryGameAssets(script, assets);
+    if (era.dropped.length) {
+      assets.images = era.images;
+      assets.clips = era.clips;
+      delete assets.plan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
+    await logEvent(s.db, ep.id, "every_game_era", {
+      beats: era.audit.map((a) => `${a.year} ${a.title}: ${a.shows}`),
+      dropped: era.dropped,
+      problems: era.problems,
+    });
+    if (era.problems.length)
+      throw new Error(`every-game pictures not fit to render: ${era.problems[0]}`);
+  }
   if (await belowMediaFloor(s, ep, assets)) return;
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
@@ -10264,6 +10583,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     noSourceChip: s.cfg.shortLabelsClean && ownWorkShort(script),
     statsWhenSpoken: s.cfg.shortLabelsClean,
     preferBright: s.cfg.shortBright,
+    ...(script.every_game ? { beatTarget: EVERY_SHOT_TARGET } : {}),
     codeScenes: s.cfg.codeScenes
       ? {
           ctx: {
@@ -10564,12 +10884,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
   const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  // The word stamp, and an every-game Short's year stamps: one at the first game and at each change of era.
+  const shownStamps = [
+    ...stampsFor(script, words),
+    ...eraStampsFor(
+      script,
+      segments.filter((g) => g.kind === "beat").map((g) => g.start),
+      stampColour("neutral"),
+    ),
+  ];
   const entrySpans = overlaySpans({
     segments,
     words,
     plan,
     layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
-    stamps: stampsFor(script, words),
+    stamps: shownStamps,
     sting: false,
   });
   await s.render({
@@ -10625,7 +10954,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       steam: steamLite,
       emphasis: emphasisWords(script),
       deskName: assets.desk?.voice.name,
-      stamps: stampsFor(script, words),
+      stamps: shownStamps,
+      chrono: Boolean(script.every_game),
       plan,
       suite: assets.suite,
       // The clean frame (src/render/cleanframe.ts): SHORTS_CLEAN, or the clean-frame retention test's arm or winner.

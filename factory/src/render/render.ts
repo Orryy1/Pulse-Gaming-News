@@ -711,6 +711,46 @@ export async function renderShortThumb(input: {
   }
 }
 
+/** A game on the hardware of its day, as one still (src/render/EraFrame.tsx), for an every-game Short. */
+export async function renderEraFrame(input: {
+  episodeDir: string;
+  outFile: string;
+  imageFile: string;
+  mode: "screen" | "box";
+  device: import("../editorial/everygame.ts").EraDevice;
+  gl?: LongRenderInput["gl"];
+  browserExecutable?: string;
+}): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.episodeDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  try {
+    const inputProps = {
+      imageSrc: `${files.url}/${webPath(input.imageFile)}`,
+      mode: input.mode,
+      device: input.device,
+    };
+    const still = await selectComposition({
+      serveUrl,
+      id: "PulseEraFrame",
+      inputProps,
+      browserExecutable,
+    });
+    await renderStill({
+      composition: still,
+      serveUrl,
+      output: input.outFile,
+      inputProps,
+      imageFormat: "jpeg",
+      jpegQuality: 90,
+      browserExecutable,
+      chromiumOptions: { gl: input.gl ?? "swangle" },
+    });
+  } finally {
+    await files.close();
+  }
+}
+
 export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);

@@ -56,6 +56,7 @@ export type ShortProps = {
   vivid?: boolean; // SHORT_VIVID: a lighter scrim and vignette
   clean?: boolean; // the clean frame (src/render/cleanframe.ts): full-bleed, one overlay at a time, a small mark
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
+  chrono?: boolean; // a series in release order (src/editorial/everygame.ts): rank cards show the year in the badge
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)
   logoSrc: string | null;
   audioSrc: string | null;

@@ -2779,3 +2779,115 @@ test("with SHORT_LENGTHS off the writer is briefed exactly as before; on, news S
     await db.close();
   }
 });
+
+test("an every-game Short is off by default; switched on, it takes its slot and is written from IGDB's roster", async () => {
+  const { maybeSelectEveryGame, advance } = await import("../src/pipeline.ts");
+  const { EveryGameShortSchema } = await import("../src/editorial/everygame.ts");
+  const { db, s, dir } = await setup({ evergreenEnabled: false, breakingEnabled: false });
+  // The plan: one series, switched on, its Short an hour ahead of the fixtures' clock (13:00 in London).
+  const plan = path.join(dir, "everygame.json");
+  const entry = {
+    series: "Halo",
+    on: true,
+    title: "The Story of Every Halo Game",
+    angle: "a",
+    short_video: { date: "2026-10-16", slot: "14:00", title: "The Story of Every Halo Game in 60 Seconds" },
+  };
+  await fs.writeFile(plan, JSON.stringify([entry]));
+  const games: Array<[string, string, string[], number]> = [
+    ["Halo: Combat Evolved", "2001-11-15", ["XBOX"], 0],
+    ["Halo 2", "2004-11-09", ["XBOX"], 0],
+    ["Halo 3", "2007-09-25", ["X360"], 0],
+    ["Halo 3: ODST", "2009-09-22", ["X360"], 4],
+    ["Halo: Reach", "2010-09-14", ["X360"], 0],
+    ["Halo 4", "2012-11-06", ["X360"], 0],
+    ["Halo Infinite", "2021-12-08", ["XONE", "PC"], 0],
+    ["Halo: The Master Chief Collection", "2014-11-11", ["XONE"], 3],
+  ];
+  s.igdbSeries = async () =>
+    games.map(([name, date, platforms, type], id) => ({
+      id,
+      name,
+      date,
+      year: Number(date.slice(0, 4)),
+      type,
+      edition: false,
+      platforms,
+      allPlatforms: platforms,
+      ratings: 500,
+      screenshots: 5,
+    }));
+  // The setting is off: the plan is never read.
+  s.cfg.everyGameFile = plan;
+  assert.equal(await maybeSelectEveryGame(s), undefined);
+  s.cfg.everyGameEnabled = true;
+  const id = await maybeSelectEveryGame(s);
+  assert.ok(id, "selected for its slot");
+  let ep = (await getEpisode(db, id!))!;
+  assert.equal(ep.lane, "evergreen");
+  assert.equal(new Date(ep.slot_at!).toISOString(), "2026-10-16T13:00:00.000Z");
+  const job = (ep.factcheck_json as unknown as { every_game: { roster: { entries: Array<{ title: string }> } } }).every_game;
+  assert.deepEqual(
+    job.roster.entries.map((e) => e.title),
+    ["Halo: Combat Evolved", "Halo 2", "Halo 3", "Halo 3: ODST", "Halo: Reach", "Halo 4", "Halo Infinite"],
+    "the collection is a bundle; the roster is the games",
+  );
+  assert.equal(await maybeSelectEveryGame(s), undefined, "one Short per planned slot");
+  // The writer's Short, kept to the roster: the script carries each beat's year and hardware from the roster.
+  const lines: Record<string, string> = {
+    "Halo: Combat Evolved": "Combat Evolved made you believe in console shooters.",
+    "Halo 2": "I'd argue Halo 2 is the one that built Xbox Live.",
+    "Halo 3": "Everyone loves Halo 3, and for once I agree.",
+    "Halo 3: ODST": "ODST swapped the super soldier for rain and jazz.",
+    "Halo: Reach": "Reach told you the ending first and still hurt.",
+    "Halo 4": "For me, Halo 4 looked better than it played.",
+    "Halo Infinite": "Halo Infinite finally opened the ring up.",
+  };
+  const base = s.llm;
+  let writes = 0;
+  s.llm = {
+    structured: (async (o: Parameters<Llm["structured"]>[0]) => {
+      if (o.schema !== (EveryGameShortSchema as unknown)) return base.structured(o);
+      writes++;
+      return {
+        hook: "You know Master Chief. Here are all 7 Halo games.",
+        entries: Object.entries(lines).map(([game_title, line]) => ({
+          game_title,
+          line,
+          caption: "THE ONE",
+          footage: { want: "gameplay", keywords: [game_title] },
+        })),
+        payoff: {
+          label: "THE TAKE",
+          narration: "Seven games, and the first three still set the bar. I'd take that run over most series.",
+          on_screen: "The first three set the bar",
+        },
+        loop_line: "Now you know more than Master Chief does.",
+        youtube: {
+          title: "The Story of Every Halo Game in 60 Seconds",
+          description: "Every Halo game in release order, one line each.",
+          tags: ["halo"],
+        },
+        claims: [],
+      };
+    }) as Llm["structured"],
+  };
+  await advance(s, ep);
+  ep = (await getEpisode(db, id!))!;
+  assert.equal(ep.status, "scripted", ep.last_error ?? "");
+  const events = await db.query<{ data: { problems?: string[] } }>(`SELECT detail AS data FROM events WHERE episode_id = $1 AND kind = 'style_warnings'`, [id]);
+  assert.deepEqual(events.flatMap((e) => e.data.problems ?? []), []);
+  assert.equal(writes, 1, "a draft that passes is written once");
+  const script = ep.script_json!;
+  assert.equal(script.evergreen_format, "every_game");
+  assert.equal(script.youtube.title, "The Story of Every Halo Game in 60 Seconds");
+  assert.deepEqual(script.every_game!.beats.map((b) => b.year), [2001, 2004, 2007, 2009, 2010, 2012, 2021]);
+  assert.deepEqual(
+    script.every_game!.beats.filter((b) => b.stamp).map((b) => b.year),
+    [2001, 2007, 2021],
+    "a year stamp at the first game and at each new console era",
+  );
+  assert.equal(script.every_game!.beats[0]!.device, "crt-tv");
+  assert.ok(script.entries!.every((e) => e.steam_search_term === ""));
+  assert.equal(script.beats.at(-1)!.visual.primary, "Halo Infinite");
+});

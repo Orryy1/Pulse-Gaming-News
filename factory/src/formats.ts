@@ -138,6 +138,7 @@ const NAMES: Record<string, string> = {
   weekly_recap: "Weekly recap",
   free: "Free games",
   ranking: "Rankings",
+  every_game: "Every-game Shorts",
   longform: "Long rankings",
 };
 export const formatName = (f: string) => NAMES[f] ?? f.replace(/_/g, " ");

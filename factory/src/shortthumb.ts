@@ -24,6 +24,8 @@ export interface ThumbImage {
   file: string;
   kind: string;
   aspect: number;
+  /** APPLE_AESTHETICS: Apple Vision's aesthetics score, -1 to 1; breaks ties within a kind. */
+  aesthetic?: number;
   wordy?: boolean;
 }
 
@@ -45,7 +47,11 @@ export function pickThumbImage(
   if (!usable.length) return undefined;
   const hero = heroIndex === undefined ? undefined : images?.[heroIndex];
   if (hero && usable.includes(hero) && kindRank(hero.kind) <= 1) return hero;
-  return [...usable].sort((a, b) => kindRank(a.kind) - kindRank(b.kind))[0];
+  return [...usable].sort(
+    (a, b) =>
+      kindRank(a.kind) - kindRank(b.kind) ||
+      (b.aesthetic ?? -9) - (a.aesthetic ?? -9),
+  )[0];
 }
 
 /** The tile's words (pure): the writer's hook only, or nothing and the Short stays on its first frame. */

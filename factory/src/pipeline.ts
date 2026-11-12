@@ -4,6 +4,7 @@
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
+import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
 import type { renderShortThumb } from "./render/render.ts";
 import { firstComment, shortComment } from "./social/firstcomment.ts";
@@ -11181,6 +11182,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "stamp_dropped", { stamp: script.stamp.text, tag });
     script.stamp = undefined;
   }
+  // APPLE_AESTHETICS (Mac only, off until switched on): Apple's aesthetics score for each still, once, so the most
+  // striking clean picture opens the Short and leads its search tile (src/assets/appleaesthetics.ts).
+  if (s.cfg.appleAesthetics) {
+    const todo = (assets.images ?? []).filter((i) => i.aesthetic === undefined);
+    const scores = await scoreAesthetics(
+      true,
+      todo.map((i) => path.join(dir, i.file)),
+    );
+    for (const i of todo) {
+      const a = coverWorth(scores.get(path.join(dir, i.file)));
+      if (a !== undefined) i.aesthetic = a;
+    }
+  }
   const planInput = {
     segments,
     words,
@@ -11191,6 +11205,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: i.beatIndex,
       wordy: i.wordy,
       luma: i.luma,
+      aesthetic: i.aesthetic,
       frame: i.frame,
       then: i.then,
       forWords: i.forWords,

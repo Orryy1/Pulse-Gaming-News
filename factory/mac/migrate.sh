@@ -85,7 +85,11 @@ prepare)
   # Mac reaches them over the LAN, so no model is pulled onto its 16 GB.
   echo "== depth layers for long videos' stills (src/render/parallax.py on Apple's GPU) and the picture-text reader"
   on_mac 'cd ~/PulseFactory && { [ -x parallax/bin/python ] || python3.12 -m venv parallax; } && parallax/bin/pip install -q --upgrade pip torch transformers opencv-python-headless pillow numpy && parallax/bin/python -c "import torch, cv2, PIL, transformers; print(\"parallax ok, mps:\", torch.backends.mps.is_available())"'
-  on_mac 'cd ~/PulseFactory && { [ -x ocr/bin/python ] || python3.12 -m venv ocr; } && ocr/bin/pip install -q --upgrade pip pyobjc-framework-Vision pyobjc-framework-Quartz && ocr/bin/python -c "import Vision, Quartz; print(\"picture-text reader ok\")"'
+  on_mac 'cd ~/PulseFactory && { [ -x ocr/bin/python ] || python3.12 -m venv ocr; } && ocr/bin/pip install -q --upgrade pip pyobjc-framework-Vision pyobjc-framework-Quartz pyobjc-framework-SoundAnalysis pyobjc-framework-AVFoundation && ocr/bin/python -c "import Vision, Quartz, SoundAnalysis; print(\"picture-text reader, aesthetics and sound tags ok\")"'
+  # MAC_VISION's model (12 Nov 2026): Qwen3.5-4B (Apache 2.0) from Qwen's own Hugging Face page, quantised to 4-bit MLX
+  # here (about 3 GB on disk, 3.2 GB in memory while loaded, nothing while idle). The conversion takes a turn.
+  echo "== picture checks on the Mac (MLX vision model, loaded only on demand)"
+  on_mac 'cd ~/PulseFactory && mkdir -p macvision/models macvision/hf && { [ -x macvision/venv/bin/python ] || python3.12 -m venv macvision/venv; } && macvision/venv/bin/pip install -q --upgrade pip mlx-vlm && { [ -f macvision/models/qwen3.5-4b-4bit/config.json ] || HF_HOME=$HOME/PulseFactory/macvision/hf ~/orch/macrun.sh macvision-convert macvision/venv/bin/python -m mlx_vlm.convert --hf-path Qwen/Qwen3.5-4B --mlx-path macvision/models/qwen3.5-4b-4bit -q --q-bits 4; }'
   echo "== checks on the Mac"
   on_mac 'cd ~/PulseFactory/factory && npx tsc --noEmit -p . && node --import tsx --test tests/*.test.ts 2>&1 | grep -E "^ℹ (pass|fail)"'
   echo "prepare done: run mac/migrate.sh cutover when ready"

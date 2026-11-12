@@ -40,6 +40,7 @@ export interface PlanImage {
   kind: string;
   aspect: number; // width / height
   luma?: number; // 0-255 mean brightness if known
+  aesthetic?: number; // APPLE_AESTHETICS: Apple Vision's aesthetics score (-1 to 1), only when switched on
   beatIndex?: number; // tagged for one entry of a ranking Short
   wordy?: boolean; // the local screen saw menu or HUD text on it: used after clean art
   frame?: boolean; // a trailer frame, last-resort: only after published art, once each, never two in a row
@@ -442,10 +443,18 @@ export function pickHero(images: PlanImage[], preferBright = false): number {
       x.img.aspect >= 1.2 && x.img.aspect <= 2.1;
     const brightest = (xs: typeof pool) =>
       [...xs].sort((a, b) => (b.img.luma ?? 0) - (a.img.luma ?? 0))[0];
+    // APPLE_AESTHETICS: with Apple's scores, the most striking clean wide still opens (src/assets/appleaesthetics.ts).
+    const striking = (xs: typeof pool) =>
+      xs.some((x) => x.img.aesthetic !== undefined)
+        ? [...xs].sort(
+            (a, b) => (b.img.aesthetic ?? -9) - (a.img.aesthetic ?? -9),
+          )[0]
+        : undefined;
+    const cleanWide = pool.filter((x) => isWide(x) && !x.img.wordy);
     const wide =
-      (preferBright
-        ? brightest(pool.filter((x) => isWide(x) && !x.img.wordy))
-        : pool.find((x) => isWide(x) && !x.img.wordy)) ?? pool.find(isWide);
+      striking(cleanWide) ??
+      (preferBright ? brightest(cleanWide) : cleanWide[0]) ??
+      pool.find(isWide);
     if (wide) return wide.i;
     const tall = pool.find((x) => x.img.aspect < 0.9);
     if (tall) return tall.i;

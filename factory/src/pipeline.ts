@@ -583,6 +583,21 @@ import {
   isWeeklyGuide,
   readGuidePlan,
 } from "./longguide.ts";
+import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
+import {
+  retroChapterProblems,
+  retroChapterSource,
+  retroChapterSpans,
+  retroFootageCaps,
+  retroIndex,
+  retroOutlineFor,
+  retroQuoteOptions,
+  retroResearchFocus,
+  retroSandboxChapters,
+  retroServices,
+} from "./retrostep.ts";
+import { withRetroWarning } from "./editorial/retrospective.ts";
+import { requestSceneIndex } from "./sceneindex/job.ts";
 import {
   auditEveryGameAssets,
   gatherEveryGameEntry,
@@ -1155,11 +1170,14 @@ export function unitHash(id: string): number {
 export function gameAudioOn(
   cfg: Pick<Config, "gameAudioBed" | "gameAudioShare">,
   id: string,
+  /** A retrospective always has the game's sound under it while GAME_AUDIO_BED is on (owner: "use game audio generously"). */
+  always = false,
 ): boolean {
   return (
     cfg.gameAudioBed &&
-    cfg.gameAudioShare > 0 &&
-    unitHash(`gameaudio:${id}`) < cfg.gameAudioShare
+    (always ||
+      (cfg.gameAudioShare > 0 &&
+        unitHash(`gameaudio:${id}`) < cfg.gameAudioShare))
   );
 }
 
@@ -3560,6 +3578,9 @@ export async function maybeSelectDocumentary(
   // The weekly guide (src/longguide.ts, GUIDE_WEEKLY): this week's guide, planned by date as a run's documentary is,
   // so a guide built on our own tests goes through the same evidence check just below.
   if (!plannedDoc && cfg.guideWeekly) plannedDoc = await weeklyGuideDue(s, now);
+  // A full game retrospective (src/retrospective.ts, RETRO_ENABLED): its slot's game, once its spoiler window has
+  // ended and its full-story movie is filed in the scene index.
+  if (!plannedDoc && cfg.retroEnabled) plannedDoc = await retrospectiveDue(s, now);
   // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
   // not run at all, once told, and the slot goes back to the usual lanes.
   if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
@@ -3754,6 +3775,57 @@ async function weeklyGuideDue(
 }
 
 /**
+ * This slot's retrospective (src/retrospective.ts) when its making window is open. A game whose movie is not filed
+ * yet is queued for the scene index; the games passed over are told once a day.
+ */
+async function retrospectiveDue(
+  s: Services,
+  now: Date,
+): Promise<{ at: Date; topic: DocTopic; entry: RunDoc } | undefined> {
+  const { db, cfg } = s;
+  const plan = readRetroPlan(cfg.retroFile);
+  if (!plan) return undefined;
+  const made = (
+    await db.query<{ key: string }>(
+      `SELECT factcheck_json->'topic'->'retro'->>'key' AS key FROM episodes WHERE lane = 'longform' AND factcheck_json->'topic'->'retro'->>'key' IS NOT NULL AND status NOT IN ('failed','rejected')`,
+    )
+  ).map((r) => r.key);
+  // Each game's scene index, read once: the movie must be filed and nearly all of it indexed.
+  const filed = new Map<string, string[]>();
+  for (const g of plan.games) {
+    if (!g.on || made.includes(g.key)) continue;
+    const index = await retroIndex(cfg, g.game).catch(() => undefined);
+    const problems = retroIndexProblems(index, { minShare: cfg.retroMinIndexed, minHeard: cfg.retroMinHeard });
+    filed.set(g.key, problems);
+    if (problems.length && cfg.sceneIndex)
+      await requestSceneIndex(cfg, g.game, "a planned retrospective", false, now);
+  }
+  const windows = spoilerWindows();
+  const { due, waiting } = retroDue(plan, cfg.retroEnabled, now, await takenSlots(db), made, cfg.timezone, (g, at) => ({
+    filed: filed.get(g.key) ?? [],
+    windowOpen: Boolean(windowFor(windows, g.game, at)),
+  }));
+  if (!due && waiting.length && !(await weeklyTried(db, `retro_wait:${dayKey(now, cfg.timezone)}`)))
+    await s.notify({
+      level: "info",
+      content: `This slot's retrospective is waiting: ${waiting.join("; ").slice(0, 900)}.`,
+    });
+  if (!due) return undefined;
+  log("info", "retrospective due", { key: due.game.key, title: due.topic.title_idea, at: due.at.toISOString() });
+  const entry: RunDoc = {
+    kind: "doc",
+    date: dayKey(due.at, cfg.timezone),
+    slot: plan.slot,
+    make_hours_before: plan.make_hours_before,
+    title: due.topic.title_idea,
+    franchise: due.game.game,
+    wiki: due.game.wiki,
+    angle: due.game.angle,
+  };
+  return { at: due.at, topic: due.topic, entry };
+}
+
+/**
  * More to write from: the chapter's own article at greater length, the story's main article and the other articles
  * the outline names. A chapter short of evidence gets this rather than a tighter restriction.
  */
@@ -3796,13 +3868,24 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // A full game retrospective (src/retrospective.ts): every model call under its own "retro." site, its own outline
+  // from the scene index's acts, and each chapter's own sources (its section's reading, its press, its act's lines).
+  const retro = topic.format === "retro" ? topic.retro : undefined;
+  if (retro) s = retroServices(s);
+  const retroIdx = retro ? await retroIndex(s.cfg, topic.franchise) : undefined;
   // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
   // The Inspiration rules (src/editorial/longrules.ts), all off by default; a guide is a planned entry's own format.
-  const rules = longRulesFor(s.cfg, "documentary", topic.format === "guide");
+  const rules = {
+    ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
+    ...(retro ? { retro: true } : {}),
+  };
   // A planned entry's own sources, beside each chapter's article, so a verdict can name who said it.
   const runSources = await readRunSources(s, topic);
+  // A retrospective's press goes only to the sections it belongs to (a review to reception), not to every chapter.
+  const press = retro ? runSources.parts : [];
+  if (retro) runSources.text = "";
   // A weekly guide also writes from the confirmed facts file and the owner's play notes (src/longguide.ts).
   if (topic.guide && s.cfg.guideWeekly) {
     const g = guideSourceText(topic.guide);
@@ -3817,7 +3900,8 @@ async function stepScriptDocumentary(
     topic.kind === "story"
       ? topic.franchise
       : `${topic.franchise} video game series`,
-    DOC_OUTLINE_SOURCE_CHARS,
+    retro ? DOC_WIDE_SOURCE_CHARS : DOC_OUTLINE_SOURCE_CHARS,
+    ...(retro ? ["development plot story gameplay reception legacy"] : []),
   );
   const franchise = franchiseArticle
     ? withRunSources(withTestRecords(franchiseArticle, records))
@@ -3825,6 +3909,8 @@ async function stepScriptDocumentary(
   const outline =
     topic.format === "everygame" && topic.roster
       ? await everyGameOutlineFor(s, ep, topic, franchise?.text ?? "")
+      : retro
+      ? await retroOutlineFor(s, ep, topic, franchise?.text ?? "")
       : await outlineDoc(
     s.llm,
     topic,
@@ -3846,16 +3932,22 @@ async function stepScriptDocumentary(
   );
   const chapters: DocDraft["chapters"] = [];
   const warnings: string[] = [];
+  // A retrospective sandbox may pick its chapters (RETRO_SANDBOX_CHAPTERS, "1,story:1"); the outline index of each
+  // chapter as written is kept, in order, for its footage and quotes.
+  const pick = retro ? retroSandboxChapters(s.cfg.retroSandboxChapters, retro.chapters ?? []) : undefined;
+  const written: number[] = [];
   // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
-  for (const [index, plan] of (s.cfg.docSandboxChapters
-    ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
-    : outline.chapters
-  ).entries()) {
+  for (const index of pick ??
+    (s.cfg.docSandboxChapters
+      ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
+      : outline.chapters
+    ).map((_, i) => i)) {
+    const plan = outline.chapters[index]!;
     const article = await s.research(
       plan.wiki_title,
       `${plan.game_title} ${plan.year} video game`,
       DOC_CHAPTER_SOURCE_CHARS,
-      `${plan.chapter_title} ${plan.focus}`,
+      retro ? retroResearchFocus(retro, index, plan) : `${plan.chapter_title} ${plan.focus}`,
     );
     if (!article) {
       warnings.push(
@@ -3863,7 +3955,11 @@ async function stepScriptDocumentary(
       );
       continue;
     }
-    let source = withRunSources(withTestRecords(article, records));
+    const sourceOf = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
+      retro
+        ? retroChapterSource(retro, index, withTestRecords(a, records), press, retroIdx)
+        : withRunSources(withTestRecords(a, records));
+    let source = sourceOf(article);
     let widened = false;
     // Short of evidence: more to write from, on the first sign. A refusal or a list of unsupported lines is what a
     // thin brief produces; asking again with the same brief and a tighter rule turned a chapter into its own refusal.
@@ -3876,7 +3972,7 @@ async function stepScriptDocumentary(
         topic.wiki ?? franchiseArticle?.title,
         outline.chapters.map((c) => c.wiki_title),
       ).catch(() => undefined);
-      if (wider) source = withRunSources(withTestRecords(wider, records));
+      if (wider) source = sourceOf(wider);
       await logEvent(s.db, ep.id, "doc_source_widened", {
         chapter: index + 1,
         also: wider?.also ?? [],
@@ -3942,6 +4038,11 @@ async function stepScriptDocumentary(
       if (topic.format === "everygame")
         problems.push(
           ...honestyProblems(chapter.paragraphs.map((x) => x.narration).join(" ")),
+        );
+      // A retrospective's quoted reviews and lines are word for word from the source and say who said them.
+      if (retro)
+        problems.push(
+          ...retroChapterProblems(chapter.paragraphs.map((x) => x.narration).join(" "), source, topic.franchise),
         );
       // A note to the editor instead of narration goes back every time (DOC_META_GUARD).
       if (s.cfg.docMetaGuard)
@@ -4143,13 +4244,14 @@ async function stepScriptDocumentary(
       });
     }
     chapters.push({ plan, chapter: grounded.chapter, source, moments });
+    written.push(index);
     log("info", "documentary chapter written", {
       episode: ep.id,
       chapter: index + 1,
       game: plan.game_title,
     });
   }
-  if (!s.cfg.docSandboxChapters && chapters.length < DOC_CHAPTERS_MIN)
+  if (!s.cfg.docSandboxChapters && !pick && chapters.length < DOC_CHAPTERS_MIN)
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources`,
     );
@@ -4185,6 +4287,14 @@ async function stepScriptDocumentary(
       warnings.push(
         ...clean.removed.map((r) => `Bookend line with no test behind it cut: ${r}`),
       );
+  }
+  // A retrospective opens on its spoiler warning, its very first line, and keeps which chapters were written.
+  if (retro) {
+    bookends = {
+      ...bookends,
+      intro: { ...bookends.intro, narration: withRetroWarning(bookends.intro.narration, retro.short) },
+    };
+    retro.written = written;
   }
   const draft: DocDraft = { topic, outline, chapters, bookends };
   if (s.cfg.docOpenLoops) {
@@ -4230,7 +4340,12 @@ async function stepScriptDocumentary(
     });
   }
   // CHARACTER_QUOTES (src/charquotestep.ts): a few of the game's own lines, each set up and answered by the narrator.
-  const script = await quoteLongStep(s, ep, docToScript(draft));
+  const script = await quoteLongStep(
+    s,
+    ep,
+    docToScript(draft),
+    retro ? retroQuoteOptions(s.cfg, retro, topic.franchise) : {},
+  );
   // An every-game video keeps its planned title: none of the test titles a model writes is in the honest frame by rule.
   if (topic.format === "everygame") {
     script.youtube.title = topic.title_idea;
@@ -4238,6 +4353,12 @@ async function stepScriptDocumentary(
   }
   // A weekly guide keeps its fixed frame: one title shape and one set of thumbnail words for the strand.
   if (topic.guide && s.cfg.guideWeekly) applyGuideFrame(script, topic.guide);
+  // A retrospective keeps its planned title (it says it spoils) and thumbnail words.
+  if (retro) {
+    script.youtube.title = retro.title;
+    script.youtube.title_variants = [];
+    if (retro.thumb) script.youtube.thumb_text = retro.thumb;
+  }
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];
   for (const u of runSources.urls)
@@ -4259,23 +4380,27 @@ async function stepScriptDocumentary(
 async function readRunSources(
   s: Services,
   topic: DocTopic,
-): Promise<{ text: string; urls: string[]; read: number; missed: string[] }> {
+): Promise<{ text: string; urls: string[]; read: number; missed: string[]; parts: Array<{ url: string; text: string }> }> {
   const list = topic.sources ?? [];
-  if (!list.length || topic.format !== "guide" || !s.cfg.longGuideFormat)
-    return { text: "", urls: [], read: 0, missed: [] };
+  if (!list.length || (topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
+    return { text: "", urls: [], read: 0, missed: [], parts: [] };
   const got = await Promise.all(
     list.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
   );
   const parts: string[] = [];
   const urls: string[] = [];
   const missed: string[] = [];
+  const each: Array<{ url: string; text: string }> = [];
   list.forEach((u, i) => {
     const a = got[i];
     if (!a?.text?.trim()) return void missed.push(u.url);
-    parts.push(`[${u.source}] ${a.title}\n${a.text.slice(0, 2500)}`);
+    // A retrospective's press (a review, a making-of feature) is read at more length: its quotes are the chapter's.
+    const text = `[${u.source}] ${a.title}\n${a.text.slice(0, topic.format === "retro" ? 6000 : 2500)}`;
+    parts.push(text);
+    each.push({ url: u.url, text });
     urls.push(u.url);
   });
-  return { text: parts.join("\n\n"), urls, read: urls.length, missed };
+  return { text: parts.join("\n\n"), urls, read: urls.length, missed, parts: each };
 }
 
 /**
@@ -8121,8 +8246,13 @@ export async function gatherMedia(
             images,
             clips,
               gatherBudget,
-              // A weekly guide is the owner's own play: his recordings are asked for every target (GUIDE_OWN_FIRST).
-              { ownFirst: s.cfg.guideOwnFirst && isWeeklyGuide(ep.factcheck_json) },
+              // A weekly guide is the owner's own play: his recordings are asked for every target (GUIDE_OWN_FIRST);
+              // a retrospective asks them first too (RETRO_OWN_FIRST).
+              {
+                ownFirst:
+                  (s.cfg.guideOwnFirst && isWeeklyGuide(ep.factcheck_json)) ||
+                  (s.cfg.retroOwnFirst && isRetrospective(ep.factcheck_json)),
+              },
             ),
             undefined,
           );
@@ -8334,6 +8464,13 @@ export async function gatherMedia(
   // Cutscenes are a separate opt-in and share the remaining budget with the footage already gathered.
   if (s.cfg.cutsceneFootage && s.fetchCutscenes && !gatherBudget.over()) {
     const jobs: CutsceneJob[] = [];
+    // A retrospective (src/retrospective.ts): each chapter its own footage allowance, scaled from the publisher's
+    // per-Short cap, and a story chapter's lines looked for only inside its act of the scene index, in order.
+    const retroT = isRetrospective(ep.factcheck_json)
+      ? (ep.factcheck_json as unknown as { topic: DocTopic }).topic.retro
+      : undefined;
+    const retroCaps = retroT ? retroFootageCaps(s.cfg, script, script.game_title) : [];
+    const retroSpans = retroT ? retroChapterSpans(retroT, retroT.written ?? []) : [];
     if (script.entries?.length) {
       const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
       for (const [beatIndex, entry] of entries.entries()) {
@@ -8346,9 +8483,14 @@ export async function gatherMedia(
           key: `beat:${beatIndex}`, text: script.beats[beatIndex]?.narration ?? entry.game_title,
           want: want?.want ?? "cinematic", energy: "medium", keywords: want?.keywords ?? [entry.game_title],
         }];
+        const span = retroSpans[beatIndex];
+        const placed = span
+          ? targets.map((t, k) => ({ ...t, within: { ...span, at: targets.length > 1 ? k / (targets.length - 1) : 0.5 } }))
+          : targets;
         jobs.push({ gameTitle: entry.game_title, recentRelease: entry.year >= s.now().getFullYear() - 1, episodeDir: path.join(dir, `entry_${beatIndex}`),
-          pathPrefix: `entry_${beatIndex}`, beatIndex, targets,
-          publisherNames: [...(eapp?.details?.publishers ?? []), ...(eapp?.details?.developers ?? [])] });
+          pathPrefix: `entry_${beatIndex}`, beatIndex, targets: placed,
+          publisherNames: [...(eapp?.details?.publishers ?? []), ...(eapp?.details?.developers ?? [])],
+          ...(retroT ? { ownSeconds: retroCaps[beatIndex] ?? 0 } : {}) });
       }
     } else if (script.game_title) {
       jobs.push({ gameTitle: script.game_title, episodeDir: dir, targets: topicTargets,
@@ -8358,7 +8500,9 @@ export async function gatherMedia(
     }
     const added = await gatherCutsceneSources({
       enabled: true,
-      videoLimit: isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
+      videoLimit: retroT
+        ? retroCaps.reduce((n, x) => n + x, 0)
+        : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
       jobs, existing: clips, shouldStop: () => gatherBudget.over(),
       fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
         targets: job.targets, maxClips: Math.min(24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
@@ -9699,11 +9843,17 @@ async function deferLong(s: Services, ep: Episode): Promise<void> {
   ]);
 }
 
-function allowedEpisodeCutscenes(cfg: Config, script: Script, assets: EpisodeAssets, long: boolean): NonNullable<EpisodeAssets["clips"]> {
+function allowedEpisodeCutscenes(cfg: Config, script: Script, assets: EpisodeAssets, long: boolean, retro = false): NonNullable<EpisodeAssets["clips"]> {
+  // A retrospective's chapters each keep their own allowance (src/retrospective.ts).
+  const caps = retro ? retroFootageCaps(cfg, script, script.game_title) : [];
   const jobs = script.entries?.length
-    ? [...script.entries].sort((a, b) => b.rank - a.rank).map((entry, beatIndex) => ({ gameTitle: entry.game_title, beatIndex }))
+    ? [...script.entries]
+        .sort((a, b) => b.rank - a.rank)
+        .map((entry, beatIndex) => ({ gameTitle: entry.game_title, beatIndex, ...(retro ? { ownSeconds: caps[beatIndex] ?? 0 } : {}) }))
     : [{ gameTitle: script.game_title }];
-  const limit = !cfg.cutsceneFootage ? 0 : long
+  const limit = !cfg.cutsceneFootage ? 0 : retro
+    ? caps.reduce((n, x) => n + x, 0)
+    : long
     ? cutsceneBudgetSeconds(cfg.cutsceneMaxSeconds, assets.durationSeconds ?? 45)
     : cfg.cutsceneMaxSeconds;
   return reconcileCutsceneBudgets(assets.clips ?? [], jobs, limit);
@@ -9778,7 +9928,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // The footage-first pass may add more of the same publisher after cutscenes were gathered.
   if (assets.clips?.some((c) => /^Cutscenes for "/.test(c.provenance))) {
-    const allowed = allowedEpisodeCutscenes(s.cfg, script, assets, true);
+    const allowed = allowedEpisodeCutscenes(s.cfg, script, assets, true, isRetrospective(ep.factcheck_json));
     if (JSON.stringify(allowed) !== JSON.stringify(assets.clips)) {
       assets.clips = allowed;
       delete assets.longPlan;
@@ -9991,7 +10141,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const hasMoments = moments.some((m) => m.length);
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the cutscenes' own sound goes into their clips and
   // the long render's game-sound envelope plays it (under the voice, up in long pauses, silent under a quote).
-  const gameAudio = gameAudioOn(s.cfg, ep.id);
+  const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
   const sounded =
     gameAudio && assets.clips?.length
       ? await longSoundClips({
@@ -11532,7 +11682,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       role: c.role,
       cutsceneMatch: c.cutsceneMatch,
       // GAME_AUDIO_BED: a mild preference for footage whose own sound the bed can carry (trailers stay silent).
-      ...(gameAudioOn(s.cfg, ep.id) && heardInBed(c, s.cfg.gameAudioTrailers) ? { heard: true } : {}),
+      ...(gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) && heardInBed(c, s.cfg.gameAudioTrailers) ? { heard: true } : {}),
     })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,
@@ -11881,7 +12031,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   });
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
-  const gameAudio = gameAudioOn(s.cfg, ep.id);
+  const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
   const gameBed =
     gameAudio && assets.clips?.length
       ? await buildShortBed({

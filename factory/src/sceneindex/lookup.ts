@@ -143,6 +143,28 @@ export interface FindShotsOptions {
   /** Shots shorter than this cannot carry a line: left out. */
   minSeconds?: number;
   minConfidence?: number;
+  /** Only shots inside this stretch of the source, in seconds (a retrospective's story act). */
+  within?: { from: number; to: number };
+}
+
+/**
+ * The act's own shot nearest a place in it (pure): `at` 0 to 1 across [from, to), clean and long enough to carry a line.
+ * For a story line whose words name nothing the index knows, the scene at the same point of the story still shows it.
+ */
+export function shotAtPlace(
+  index: SceneIndex,
+  within: { from: number; to: number; at?: number },
+  minSeconds = 0,
+): number | undefined {
+  const at = within.from + Math.min(1, Math.max(0, within.at ?? 0.5)) * (within.to - within.from);
+  let best: { id: number; d: number } | undefined;
+  for (const s of index.shots) {
+    if (s.blank || s.menu || s.start < within.from || s.end > within.to) continue;
+    if (s.end - s.start < minSeconds) continue;
+    const d = Math.abs((s.start + s.end) / 2 - at);
+    if (!best || d < best.d) best = { id: s.id, d };
+  }
+  return best?.id;
 }
 
 /** Every stemmed word of the game's cast and place names: a target word among them is a name. */
@@ -207,6 +229,7 @@ export function findShots(
     const shot = index.shots[i]!;
     if (shot.blank || shot.menu) continue;
     if (shot.end - shot.start < minSeconds) continue;
+    if (o.within && (shot.start < o.within.from || shot.end > o.within.to)) continue;
     let score = 0;
     let named = 0;
     const matched: string[] = [];

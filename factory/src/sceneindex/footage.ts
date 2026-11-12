@@ -29,7 +29,7 @@ import { clipBigText } from "../assets/cliptext.ts";
 import { checkClip, namedSubjects, SUBJECT_CONFIDENCE, type SubjectAsk } from "../assets/scenecheck.ts";
 import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
 import type { VisualAsset } from "../assets/steam.ts";
-import { findQuote, findShots } from "./lookup.ts";
+import { findQuote, findShots, shotAtPlace } from "./lookup.ts";
 import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
 import {
@@ -144,9 +144,17 @@ export function planIndexedClips(
       confidence: number;
       quote?: string;
     }> = [];
+    // A retrospective's story line looks only inside its act (FootageTarget.within), a little slack either side.
+    const within = t.within
+      ? { from: t.within.from - 2, to: t.within.to + 2 }
+      : undefined;
+    const insideAct = (shot: number) => {
+      const s = index.shots[shot];
+      return !within || Boolean(s && s.start >= within.from && s.end <= within.to);
+    };
     for (const q of quotedWords(t.text)) {
       const hit = findQuote(index, q, { max: 1, minConfidence: 0.8 })[0];
-      if (hit)
+      if (hit && insideAct(hit.shot))
         candidates.push({
           shot: hit.shot,
           confidence: hit.confidence,
@@ -157,8 +165,15 @@ export function planIndexedClips(
       max: 4 + extra * 2,
       minConfidence: extra ? Math.min(o.minConfidence, NAMED_MIN_CONFIDENCE) : o.minConfidence,
       minSeconds: MIN_CLIP_SECONDS + 0.3,
+      ...(within ? { within } : {}),
     }))
       candidates.push({ shot: h.shot, confidence: h.confidence });
+    // Nothing in the act matched by name or words: the act's own scene at the line's place in the chapter.
+    if (t.within) {
+      const at = shotAtPlace(index, t.within, MIN_CLIP_SECONDS + 0.3);
+      if (at !== undefined && !candidates.some((c) => c.shot === at))
+        candidates.push({ shot: at, confidence: 0.3 });
+    }
     for (const c of candidates) {
       const shot = index.shots[c.shot];
       if (!shot || shot.blank || shot.menu || (o.allow && !o.allow(shot, t.key))) continue;

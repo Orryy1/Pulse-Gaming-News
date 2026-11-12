@@ -731,6 +731,26 @@ export interface CutsceneJob {
   beatIndex?: number;
   targets: FootageTarget[];
   publisherNames?: string[];
+  /**
+   * A retrospective's chapter (src/editorial/retrospective.ts): the publisher footage this chapter alone may carry, in
+   * place of the publisher's one allowance for the whole video. Counted against this chapter's own clips only (the
+   * owner's own capture never counts: it is his footage).
+   */
+  ownSeconds?: number;
+}
+
+/** Publisher footage already on a chapter (pure): its clips, never stock or the owner's own capture. */
+export function chapterFootageUsed(
+  clips: ReadonlyArray<{ provenance: string; durationSeconds?: number; beatIndex?: number; stock?: boolean }>,
+  beatIndex: number | undefined,
+): number {
+  return clips.reduce(
+    (n, c) =>
+      c.beatIndex === beatIndex && !c.stock && !/^Pulse's own gameplay capture/.test(c.provenance)
+        ? n + (c.durationSeconds ?? 0)
+        : n,
+    0,
+  );
 }
 
 /** Drop or shorten only cutscenes if a later footage pass has spent their allowance. */
@@ -744,9 +764,15 @@ export function reconcileCutsceneBudgets<
   },
 >(
   clips: T[],
-  jobs: Array<Pick<CutsceneJob, "gameTitle" | "beatIndex" | "publisherNames">>,
+  jobs: Array<Pick<CutsceneJob, "gameTitle" | "beatIndex" | "publisherNames" | "ownSeconds">>,
   videoLimit: number,
 ): T[] {
+  // A retrospective's chapters each carry their own allowance (CutsceneJob.ownSeconds).
+  const ownByBeat = new Map(
+    jobs.flatMap((job) =>
+      job.beatIndex === undefined || job.ownSeconds === undefined ? [] : [[job.beatIndex, job.ownSeconds] as const],
+    ),
+  );
   const isCutscene = (clip: T) => /^Cutscenes for "/.test(clip.provenance);
   const ownerByBeat = new Map(
     jobs.flatMap((job) =>
@@ -787,12 +813,11 @@ export function reconcileCutsceneBudgets<
           : ownerByBeat.get(item.beatIndex));
       return sum + (!known || known === owner.key ? item.durationSeconds : 0);
     }, 0);
-    const allowed = cutsceneAllowance(
-      videoLimit,
-      videoUsed,
-      owner.seconds,
-      used,
-    );
+    const own = clip.beatIndex === undefined ? undefined : ownByBeat.get(clip.beatIndex);
+    const allowed =
+      own !== undefined
+        ? cutsceneAllowance(videoLimit, videoUsed, own, chapterFootageUsed([...other, ...kept.values()], clip.beatIndex))
+        : cutsceneAllowance(videoLimit, videoUsed, owner.seconds, used);
     const next = capFootage([clip], allowed, 4.8, true)[0];
     if (!next) continue;
     const duration = next.durationSeconds;
@@ -856,12 +881,10 @@ export async function gatherCutsceneSources(o: {
         sum + (!known || known === owner.key ? (clip.durationSeconds ?? 0) : 0)
       );
     }, 0);
-    const maxSeconds = cutsceneAllowance(
-      o.videoLimit,
-      videoUsed,
-      owner.seconds,
-      used,
-    );
+    const maxSeconds =
+      job.ownSeconds !== undefined
+        ? cutsceneAllowance(o.videoLimit, videoUsed, job.ownSeconds, chapterFootageUsed([...o.existing, ...added], job.beatIndex))
+        : cutsceneAllowance(o.videoLimit, videoUsed, owner.seconds, used);
     if (maxSeconds < 1.6 || !job.targets.length) continue;
     const found = await o
       .fetch({

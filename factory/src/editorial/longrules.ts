@@ -49,7 +49,12 @@ export interface LongRules {
   guide: boolean;
   /** Each guide chapter ends in a job for day one. */
   chapterAction: boolean;
+  /** A full game retrospective (src/editorial/retrospective.ts): its own chapter shape, full spoilers. */
+  retro?: boolean;
 }
+
+/** How a retrospective's chapter runs (the brief's section and focus say what it covers). */
+export const RETRO_CHAPTER_SHAPE = `This is one chapter of a retrospective of a single game; the brief names its section. A story chapter tells its stretch of the story in order, full spoilers, from the game's own scenes: open inside a scene, say who says what (the SOURCE's transcript is the game's own dialogue: quote a line word for word in quote marks and name who says it, a few times in the chapter), and keep the story in the present tense. A review is quoted word for word from the SOURCE in quote marks with the outlet or critic named in the same sentence, the praise and the complaints both. Every other chapter opens on a moment that names the year, then the people and the decisions, then what it changed. Swearing in the game's lines is never repeated: say it in your own words.`;
 
 /** A ranking plans fewer loops than a guide: its entries are short and its order is already a promise. */
 export const RANKING_LOOPS_MAX = 3;

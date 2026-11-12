@@ -107,6 +107,13 @@ export function testConfig(
     alertDigest: false,
     hypeAsk: false,
     newsSegment: false,
+    newsSegmentSeries: false,
+    seriesNextLine: false,
+    rumourShare: 1,
+    shortMinSeconds: 0,
+    newsLateSlotEnabled: true,
+    breakingHomeOnly: false,
+    homeShelf: ["GTA", "Grand Theft Auto", "Resident Evil"],
     // Off in tests, so a scripted fake model is never asked for a rewrite it wasn't given; the friend pass tests turn it on.
     friendPass: [],
     friendPassTier: "mid",

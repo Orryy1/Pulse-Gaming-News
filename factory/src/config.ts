@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
+import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import {
   defaultBackupDir,
@@ -430,6 +431,25 @@ export interface Config {
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
+  /** The Pulse Check on every series Short too (format redesign plan item 6, src/series.ts): The Why and The GTA File
+   * end their take on it, and Buy, Wait or Skip can ask for it (seriesPulseCheck). Kept apart from NEWS_SEGMENT, which is
+   * already on for news, so nothing changes before 22 Nov: NEWS_SEGMENT_SERIES, default off. */
+  newsSegmentSeries: boolean;
+  /** The next-part line test (plan item 9, src/editorial/shortrules.ts nextLineRule): on The Why and The GTA File, one
+   * spoken line naming the next part and its day, only when the launch run has that part planned and dated, on
+   * alternate days (src/experiments.ts nextLineArm): SERIES_NEXT_LINE, default off. */
+  seriesNextLine: boolean;
+  /** Plan item 2: the day's rumour allowance scaled by this share; 0 stops rumour Shorts: RUMOUR_SHARE, default 1 (unchanged). */
+  rumourShare: number;
+  /** Plan item 2: the news writer's Shorts must reach this many seconds of narration (words at the narrator's pace); 0 is
+   * off: SHORT_MIN_SECONDS, default 0. */
+  shortMinSeconds: number;
+  /** Plan item 2: false drops the late news slot (21:00 or later) from NEWS_SLOTS: NEWS_LATE_SLOT_ENABLED, default true. */
+  newsLateSlotEnabled: boolean;
+  /** Plan item 2: breaking news only on a HOME_SHELF game, or when the story desk rates it major: BREAKING_HOME_ONLY, default off. */
+  breakingHomeOnly: boolean;
+  /** The home shelf, "|"-separated names a headline would use: HOME_SHELF, default GTA and Resident Evil. */
+  homeShelf: string[];
   /** The Hype ask (src/youtube/hype.ts, plan item 11): a short line in a documentary's end card and pinned comment. YouTube
    * offers Hype only to Partner Programme channels of 500-500,000 subscribers, so leave this off until Pulse has joined;
    * with it on, the subscriber count is still checked before each ask: HYPE_ASK, default off. */
@@ -911,11 +931,14 @@ export function loadConfig(): Config {
 
     dailyTarget: int("SHORTS_PER_DAY", int("DAILY_TARGET", 3)),
     timezone: str("TIMEZONE", "Europe/London"),
-    newsSlots: str("NEWS_SLOTS", "13:00,17:00,22:00")
-      .split(",")
-      .map((t) => t.trim())
-      .filter((t) => /^\d\d:\d\d$/.test(t))
-      .sort(),
+    newsSlots: newsSlotsFor(
+      str("NEWS_SLOTS", "13:00,17:00,22:00")
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => /^\d\d:\d\d$/.test(t))
+        .sort(),
+      bool("NEWS_LATE_SLOT_ENABLED", true),
+    ),
     slotLeadMinutes: int("SLOT_LEAD_MINUTES", 75),
     slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
     maxProducing: int("MAX_PRODUCING", 2),
@@ -1209,6 +1232,13 @@ export function loadConfig(): Config {
     seriesPlaylists: bool("SERIES_PLAYLISTS", false),
     sequelWinners: bool("SEQUEL_WINNERS", false),
     newsSegment: bool("NEWS_SEGMENT", false),
+    newsSegmentSeries: bool("NEWS_SEGMENT_SERIES", false),
+    seriesNextLine: bool("SERIES_NEXT_LINE", false),
+    rumourShare: rumourShareFrom(str("RUMOUR_SHARE", "1")),
+    shortMinSeconds: Math.max(0, int("SHORT_MIN_SECONDS", 0)),
+    newsLateSlotEnabled: bool("NEWS_LATE_SLOT_ENABLED", true),
+    breakingHomeOnly: bool("BREAKING_HOME_ONLY", false),
+    homeShelf: parseHomeShelf(str("HOME_SHELF", "GTA|Grand Theft Auto|Resident Evil")),
     friendPass: friendPassFrom(process.env.FRIEND_PASS),
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     hypeAsk: bool("HYPE_ASK", false),

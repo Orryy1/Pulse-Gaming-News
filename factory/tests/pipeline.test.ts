@@ -2487,3 +2487,58 @@ test("FRIEND_PASS off: no pass is asked for and the Short is as written", async 
   assert.ok(!sites.includes("friend.short"));
   assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
 });
+
+// ------------------------------------------------------------------ the series (format redesign plan items 1, 2, 9)
+
+test("every news Short is saved with its series tag; with the flags off nothing else changes", async () => {
+  const { db, s } = await setup();
+  await tick(s);
+  const ep = await only(db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  assert.equal(ep.lane, "news");
+  assert.equal(ep.script_json!.series, "news_control");
+  assert.equal(ep.script_json!.next_line, undefined, "SERIES_NEXT_LINE off: no arm recorded");
+});
+
+test("BREAKING_HOME_ONLY: a fresh official story off the home shelf does not break; on the shelf it does", async () => {
+  const at = new Date("2026-10-16T08:00:00Z");
+  const base = {
+    dailyTarget: 4,
+    newsSlots: ["19:30"],
+    breakingScoreMin: 40,
+    breakingHomeOnly: true,
+  };
+  const off = await setup({ ...base, homeShelf: ["Resident Evil"], bigStorySize: 1000 });
+  off.setClock(at);
+  breakingStory(off.s, at);
+  await tick(off.s);
+  assert.equal(
+    (await listEpisodes(off.db)).filter((e) => e.lane === "news_breaking").length,
+    0,
+    "GTA is not on this shelf and the story is not major",
+  );
+  // Off the shelf but rated major by the story desk (src/discovery/storysize.ts): it still breaks.
+  const major = await setup({ ...base, homeShelf: ["Resident Evil"], bigStorySize: 1 });
+  major.setClock(at);
+  breakingStory(major.s, at);
+  await tick(major.s);
+  assert.equal((await only(major.db)).lane, "news_breaking");
+  const on = await setup({ ...base, homeShelf: ["GTA", "Grand Theft Auto"] });
+  on.setClock(at);
+  breakingStory(on.s, at);
+  await tick(on.s);
+  assert.equal((await only(on.db)).lane, "news_breaking");
+});
+
+test("SHORT_MIN_SECONDS: a news Short still under the floor after its rewrite is dropped and frees its slot", async () => {
+  const { db, f, s } = await setup({ shortMinSeconds: 60 });
+  await tick(s);
+  const rejected = (await listEpisodes(db)).find((e) => e.status === "rejected");
+  assert.ok(rejected, "the short draft is not made");
+  assert.match(rejected!.last_error ?? "", /under the 156 a 60-second Short needs/);
+  assert.ok(f.notifications.some((n) => n.startsWith("Dropped as too thin")));
+  // At 30 seconds the same draft is long enough.
+  const ok = await setup({ shortMinSeconds: 30 });
+  await tick(ok.s);
+  assert.equal((await only(ok.db)).status, "published");
+});

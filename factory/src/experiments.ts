@@ -16,6 +16,7 @@ import type { DiscordMessage } from "./approval/discord.ts";
 import { LIVE_AT } from "./analytics.ts";
 import { dayKey } from "./lanes.ts";
 import { log } from "./lib/util.ts";
+import { rumourCapFor } from "./series.ts";
 
 /** Only Shorts live this long with this many views count on either side. */
 export const MIN_DAYS_LIVE = 2;
@@ -86,15 +87,19 @@ export async function deskShareNow(
   return share((await readOverride(db, OVERRIDE.desk)) ?? cfg.deskShare);
 }
 
-/** Rumour Shorts a day now: the verdict's setting when there is one, else RUMOURS_PER_DAY. */
+/**
+ * Rumour Shorts a day now: the verdict's setting when there is one, else RUMOURS_PER_DAY, scaled by RUMOUR_SHARE
+ * (format redesign plan item 2: 0 stops rumour Shorts whatever the verdict left).
+ */
 export async function rumoursPerDayNow(
   db: Db,
-  cfg: Pick<Config, "rumoursPerDay">,
+  cfg: Pick<Config, "rumoursPerDay"> & Partial<Pick<Config, "rumourShare">>,
 ): Promise<number> {
-  return Math.max(
+  const perDay = Math.max(
     0,
     Math.round((await readOverride(db, OVERRIDE.rumours)) ?? cfg.rumoursPerDay),
   );
+  return rumourCapFor(perDay, cfg.rumourShare ?? 1);
 }
 
 /** Pip's share now: the verdict's setting when there is one, else MASCOT_SHARE. */
@@ -706,4 +711,22 @@ export async function primeTimeVerdict(
   });
   log("info", "posting-time test reported", { kept: kept > 0 });
   return true;
+}
+
+// ---- The next-part line test (format redesign plan 4.4 and section 6, item 9) ---------------------------------------
+
+/** The test runs from Sun 29 Nov 2026; before it no Short gets the line, whatever SERIES_NEXT_LINE says. */
+export const NEXT_LINE_START = "2026-11-29";
+
+export type NextLineArm = "line" | "none";
+
+/**
+ * Which arm a UK day is in: the arms alternate by day, so both series and every slot see both arms in a week. The
+ * day itself decides (days since 1 Jan 1970, even days carry the line), so a retry or a restart keeps its side.
+ * Before NEXT_LINE_START every day is "none".
+ */
+export function nextLineArm(day: string): NextLineArm {
+  if (day < NEXT_LINE_START) return "none";
+  const n = Math.round(Date.parse(`${day}T12:00:00Z`) / 86_400_000);
+  return Number.isFinite(n) && n % 2 === 0 ? "line" : "none";
 }

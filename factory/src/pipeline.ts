@@ -252,7 +252,12 @@ import {
   friendCheckVerdict,
   shortSettledText,
 } from "./editorial/friendpass.ts";
-import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
+import {
+  narrationOf,
+  tidyLoopLine,
+  wordCount,
+  type Script,
+} from "./editorial/schema.ts";
 import { translateMetadata } from "./editorial/localize.ts";
 import { hotBlock, readHotTopic, watchHits } from "./hits.ts";
 import type { Deal } from "./discovery/deals.ts";
@@ -305,6 +310,8 @@ import {
   lineNamesLaterVersion,
   sourceTag,
   endingProblems,
+  nextLineProblems,
+  nextLineRule,
   evergreenRuleNote,
   shortRuleNote,
   thinProblems,
@@ -338,6 +345,7 @@ import {
   mascotShareNow,
   primeTimeVerdict,
   rumoursPerDayNow,
+  nextLineArm,
 } from "./experiments.ts";
 import {
   growthAssign,
@@ -439,7 +447,19 @@ import {
   HYPE_END_LINE,
   hypeAllowed,
 } from "./youtube/hype.ts";
-import { pulseCheckProblems } from "./editorial/newssegment.ts";
+import {
+  pulseCheckFor,
+  pulseCheckProblems,
+  seriesPulseCheckNote,
+} from "./editorial/newssegment.ts";
+import {
+  FLOOR_LANES,
+  breakingAllowed,
+  seriesTagFor,
+  shortFloorProblems,
+  shortFloorRule,
+} from "./series.ts";
+import { nextPartFor } from "./nextpart.ts";
 import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
@@ -1499,8 +1519,17 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         )
       ).map((r) => r.franchise),
     );
+    // BREAKING_HOME_ONLY (format redesign plan item 2): only home-shelf games, or a story the desk rates major.
+    const major = cfg.breakingHomeOnly
+      ? new Set(
+          (await currentStories(db, cfg, now).catch(() => []))
+            .filter((st) => st.size >= cfg.bigStorySize)
+            .flatMap((st) => st.hashes),
+        )
+      : new Set<string>();
     const qualified = eligible.filter(
       (x) =>
+        breakingAllowed(cfg, storyText(x.cluster), major.has(x.cluster.hash)) &&
         (isBreaking(x.cluster, x.sighting, now, rule) ||
           (sprint &&
             (SHOWCASE.test(storyText(x.cluster)) ||
@@ -5448,7 +5477,35 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
   if (s.cfg.voiceTestShare > 0)
     await logEvent(s.db, ep.id, "voice_test", { personal }).catch(() => undefined);
-  const variantNote = [growthNotes(test, testDefaults), shortRuleNote(s.cfg, ep), personal ? PERSONAL_VOICE : ""]
+  // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
+  const series = seriesTagFor(ep);
+  // The Pulse Check is the news desk's own segment; with NEWS_SEGMENT_SERIES every series Short ends on it too.
+  const pulseCheck = pulseCheckFor(s.cfg, {
+    lane: ep.lane,
+    why: !!cluster.why,
+    argument,
+    series,
+  });
+  // The next-part line test (SERIES_NEXT_LINE, plan item 9): The Why and The GTA File, on alternate days, and only
+  // when the run has the next part planned and dated (src/nextpart.ts). No plan, no line.
+  const lineArm =
+    s.cfg.seriesNextLine && (series === "why" || series === "gta_file") && ep.slot_at
+      ? nextLineArm(dayKey(new Date(ep.slot_at), s.cfg.timezone))
+      : undefined;
+  const nextPart =
+    lineArm === "line" && ep.slot_at
+      ? nextPartFor(readRun(s.cfg.shortRunFile), new Date(ep.slot_at), s.cfg.timezone)
+      : undefined;
+  // SHORT_MIN_SECONDS (plan item 2): the news writer's Shorts reach the floor.
+  const floor = FLOOR_LANES.includes(ep.lane) ? s.cfg.shortMinSeconds : 0;
+  const variantNote = [
+    growthNotes(test, testDefaults),
+    shortRuleNote(s.cfg, ep),
+    personal ? PERSONAL_VOICE : "",
+    shortFloorRule(floor),
+    pulseCheck && s.cfg.newsSegmentSeries ? seriesPulseCheckNote(series) : "",
+    nextPart ? nextLineRule(nextPart) : "",
+  ]
     .filter(Boolean)
     .join("\n\n");
   const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
@@ -5459,12 +5516,6 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         () => [],
       )
     : [];
-  // The Pulse Check is the news desk's own segment: a Why Short has its question and its reason to follow instead.
-  const pulseCheck =
-    s.cfg.newsSegment &&
-    !argument &&
-    !cluster.why &&
-    (ep.lane === "news" || ep.lane === "news_breaking");
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
     const problems = validateScript(sc, recent);
@@ -5484,7 +5535,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ),
     );
     if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(sc.beats));
-    if (s.cfg.shortEndPayoff) problems.push(...endingProblems(sc.loop_line));
+    if (s.cfg.shortEndPayoff)
+      problems.push(...endingProblems(sc.loop_line, nextPart));
+    if (lineArm) problems.push(...nextLineProblems(sc.loop_line, nextPart));
+    // Under SHORT_MIN_SECONDS after the rewrite, a Short stops like a thin one: a big story still goes out.
+    const short = shortFloorProblems(wordCount(narrationOf(sc)), floor);
+    problems.push(...short);
+    thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(sc, test, testDefaults));
@@ -5692,7 +5749,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ...(friend.kept ? { tags: (script.voice_tags ?? []).length } : {}),
     }).catch(() => undefined);
   }
-  if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
+  // RUMOUR_SHARE=0 (format redesign plan item 2) stops rumour Shorts the same way.
+  if (
+    (script.is_rumour || mustLabelRumour) &&
+    (!s.cfg.includeRumours || s.cfg.rumourShare <= 0)
+  ) {
     log("info", "story dropped: a rumour, and rumours are off", {
       episode: ep.id,
       headline: cluster.headline,
@@ -5711,6 +5772,18 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
+  const tag = seriesTagFor(ep, script);
+  if (tag) script = { ...script, series: tag };
+  if (lineArm)
+    script = {
+      ...script,
+      next_line: {
+        arm: lineArm,
+        said: !!nextPart && !nextLineProblems(script.loop_line, nextPart).length,
+        ...(nextPart ? { part: nextPart.part, day: nextPart.day } : {}),
+      },
+    };
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

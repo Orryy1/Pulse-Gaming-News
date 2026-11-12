@@ -37,6 +37,8 @@ export interface StoryCluster {
   bigStory?: { key: string; entity: string; size: number; event: string; lateHours?: number };
   /** A topic from the launch run (src/shortrun.ts): planned by hand, so the game's own names may repeat in titles. */
   run?: boolean;
+  /** The series a selector made this story for (src/series.ts): kept on the script as its series tag. */
+  series?: import("../series.ts").SeriesTag;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
 }

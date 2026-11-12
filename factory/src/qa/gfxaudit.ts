@@ -547,7 +547,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
   for (const e of elements) {
     const sec = (f: number) => (f / fps).toFixed(1);
     // Reading time. The hook's headline also opens the loop and is the thumbnail: measured, never fixed here.
-    if (e.words > 0) {
+    if (e.words > 0 && e.key !== "loop") {
       const hard = readNeed(e.words, READ_PER_WORD_MIN);
       // A shelf strip that never shows is the one-at-a-time rule working, not a fault.
       if (e.shown <= 0) {
@@ -908,7 +908,10 @@ function clashWith(e: GfxElement, spans: Span[], kept: Span[]): string {
 
 function statsOf(elements: GfxElement[], findings: GfxFinding[]): GfxStats {
   // Text on screen: every element with words that shows at all (one the arbitration leaves out is a clash, not text).
-  const texts = elements.filter((e) => e.words > 0 && e.shown > 0);
+  // The loop's closing return to the opening poster repeats frame 0 for its last 2 s by design: not counted.
+  const texts = elements.filter(
+    (e) => e.words > 0 && e.shown > 0 && e.key !== "loop",
+  );
   const has = (key: string, check: GfxCheck, levels: GfxLevel[]) =>
     findings.some(
       (f) => f.key === key && f.check === check && levels.includes(f.level),

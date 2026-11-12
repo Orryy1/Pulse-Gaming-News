@@ -21,7 +21,7 @@ import {
   sceneQueries,
   type CutsceneUpload,
 } from "../src/assets/cutscenes.ts";
-import { preferredSceneAssignments, verifySceneAssignments } from "../src/assets/clipscore.ts";
+import { preferredSceneAssignments, rankByModel, SCENE_PROMPT, SCENE_REVIEW_FRAMES, sceneCandidates, verifySceneAssignments } from "../src/assets/clipscore.ts";
 import { quoteProblems } from "../src/editorial/quotes.ts";
 import { writeScript } from "../src/editorial/editorial.ts";
 import { validateChapter, writeChapter } from "../src/editorial/documentary.ts";
@@ -685,5 +685,110 @@ test("later targets are attempted when earlier targets produce no usable clips",
         } },
     });
     assert.equal(clips[0]?.cutsceneMatch?.targetKey, "beat:2");
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+// 8 Nov 2026 Ocarina trial: "All Ganondorf Scenes" was found, its chapter "Ganondorf's introduction" starts at 0:00, and
+// the only frame at or before that second was a white flash, so the check never saw Ganondorf. These frames copy that
+// section's brightness: a flash at 0 s, Link at 6 s, Ganondorf before the castle at night (luma 33) at 24 s.
+const ganonTarget = { key: "beat:0", text: "Ganondorf rises over Hyrule Castle", want: "cinematic" as const,
+  energy: "medium" as const, keywords: ["Ganondorf", "Hyrule Castle"] };
+const sceneTrailers = [
+  { file: "ganon.mp4", name: "All Ganondorf Scenes", url: "g", total: 30, targetKey: "beat:0", anchor: 1, sceneMethod: "scene upload" as const },
+  { file: "other.mp4", name: "Other", url: "o", total: 30, targetKey: "beat:9", anchor: 15, sceneMethod: "chapter" as const },
+];
+const sceneFrame = (index: number, movie: number, time: number, luma: number, extra: object = {}) =>
+  ({ index, movie, time, luma, motion: 5, frame: `frame_${index}.jpg`, nextCut: time + 4, ...extra });
+const sceneFrames = [sceneFrame(1, 0, 0, 240), sceneFrame(2, 0, 6, 47), sceneFrame(3, 0, 24, 33),
+  sceneFrame(4, 0, 25.5, 60, { nextCut: 26 }), sceneFrame(5, 0, 12, 20), sceneFrame(6, 1, 24, 100)];
+
+test("a located section offers every lit frame after a chapter's start, night scenes included", () => {
+  assert.deepEqual(sceneCandidates(ganonTarget, sceneFrames, sceneTrailers).map((c) => c.index), [2, 3]);
+  // Without a picture check the frame nearest the timestamp is the guess, either side of it.
+  assert.equal(preferredSceneAssignments([ganonTarget], sceneFrames, sceneTrailers)[0]?.candidate, 2);
+  const many = Array.from({ length: 30 }, (_, i) => sceneFrame(100 + i, 0, i, 90, { nextCut: i + 3 }));
+  const spread = sceneCandidates(ganonTarget, many, sceneTrailers);
+  assert.equal(spread.length, SCENE_REVIEW_FRAMES);
+  assert.ok(spread[0]!.time < 3 && spread.at(-1)!.time > 24);
+});
+
+test("the picture check accepts the frame that shows the named character and refuses a wrong or unsure one", async () => {
+  const seen: number[][] = [];
+  const reviewer = (answer: { key?: string; candidate: number; confidence: number }) =>
+    async (targets: { key: string }[], frames: { index: number }[]) => {
+      seen.push(frames.map((f) => f.index));
+      assert.deepEqual(targets.map((t) => t.key), ["beat:0"]);
+      return [{ key: answer.key ?? "beat:0", candidate: answer.candidate, confidence: answer.confidence, reason: "Ganondorf before Hyrule Castle" }];
+    };
+  const none = new Map();
+  const ok = await verifySceneAssignments([ganonTarget], sceneFrames, sceneTrailers, none, reviewer({ candidate: 3, confidence: 0.9 }));
+  assert.deepEqual(ok.map((a) => a.candidate), [3]);
+  assert.match(ok[0]!.reason, /scene upload checked/);
+  assert.deepEqual(seen[0], [2, 3]); // only this line's own section, never another target's
+  for (const wrong of [{ candidate: 3, confidence: 0.3 }, { candidate: 6, confidence: 1 }, { candidate: 1, confidence: 1 },
+    { key: "beat:9", candidate: 3, confidence: 1 }])
+    assert.deepEqual(await verifySceneAssignments([ganonTarget], sceneFrames, sceneTrailers, none, reviewer(wrong)), [], JSON.stringify(wrong));
+  // A failed call falls back to the local screen, and with no verdict at all nothing is used.
+  const clean = new Map([[2, { text: false, webcam: false, gore: false, dark: false, hud: false, letterbox: false, blurry: false }]]);
+  const failing = async () => { throw new Error("vision call failed"); };
+  assert.deepEqual((await verifySceneAssignments([ganonTarget], sceneFrames, sceneTrailers, clean, failing)).map((a) => a.candidate), [2]);
+  assert.deepEqual(await verifySceneAssignments([ganonTarget], sceneFrames, sceneTrailers, none, failing), []);
+  assert.deepEqual(await verifySceneAssignments([ganonTarget], sceneFrames, sceneTrailers, none), []);
+});
+
+test("the scene check uses its own instructions and refuses a frame it reads text or a watermark in", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-scene-check-test-"));
+  try {
+    const frames = sceneFrames.map((f) => ({ ...f, frame: path.join(dir, f.frame) }));
+    for (const f of frames) await fs.writeFile(f.frame, "jpeg");
+    const asked: string[] = [];
+    const answer = (textOnGanondorf: boolean) => ({
+      structured: async (o: { system: string; content: Array<{ type: string; text?: string }> }) => {
+        asked.push(o.system);
+        assert.match(o.content.at(-1)!.text!, /Ganondorf rises over Hyrule Castle/);
+        return {
+          candidates: [{ index: 2, label: "Link and Navi at night", has_text_or_logo: false, energy: "low" },
+            { index: 3, label: "Ganondorf before the castle", has_text_or_logo: textOnGanondorf, energy: "medium" }],
+          assignments: [{ key: "beat:0", candidate_index: 3, confidence: 0.92, reason: "Ganondorf on screen, castle behind" }],
+        };
+      },
+    }) as never;
+    for (const withText of [false, true]) {
+      const textFrames = new Set<number>();
+      const picks = await verifySceneAssignments([ganonTarget], frames, sceneTrailers, new Map(),
+        (t, f) => rankByModel(answer(withText), t, f, textFrames, SCENE_PROMPT));
+      assert.deepEqual(picks.map((a) => a.candidate), withText ? [] : [3]);
+      assert.equal(textFrames.has(3), withText);
+    }
+    assert.ok(asked.every((s) => s === SCENE_PROMPT));
+  } finally { await fs.rm(dir, { recursive: true, force: true }); }
+});
+
+test("a chapter's section starts at the chapter and a rejected scene upload gives way to the next", async () => {
+  const dir = await fs.mkdtemp(path.join(process.cwd(), "cutscene-next-scene-test-"));
+  const first = upload("Example Game All Ganondorf Scenes", { videoId: "AAAAAAAAAAA", duration: 1112, viewCount: 5000,
+    chapters: [{ title: "Ganondorf's introduction", start: 0, end: 246 }, { title: "Ganondorf's defeat", start: 607, end: 730 }] });
+  const second = upload("Example Game All Ganondorf Scenes", { videoId: "BBBBBBBBBBB", duration: 1100, viewCount: 10 });
+  const target = { key: "beat:0", text: "Ganondorf rises", want: "character" as const, energy: "medium" as const, keywords: ["Ganondorf"] };
+  const calls: Array<{ id: string; from: number; to: number }> = [];
+  try {
+    const clips = await cutsceneMedia({ enabled: true, scenes: true, recentRelease: true, gameTitle: "Example Game", episodeDir: dir,
+      maxClips: 1, maxSeconds: 4.8, ytdlp: "unused", targets: [target],
+      deps: { search: async (query) => query.includes("Ganondorf") ? [first, second] : [], details: async (item) => item,
+        captions: async () => "", lease: async () => () => undefined,
+        download: async (item, from, to) => { calls.push({ id: item.videoId, from, to }); },
+        screen: async () => true,
+        match: async (options) => {
+          const trailer = options.trailers[0]!;
+          if (trailer.url.includes(first.videoId)) return [];
+          return [{ kind: "clip" as const, file: "assets/next.mp4", sourceUrl: trailer.url, sourceSectionId: trailer.sectionId,
+            durationSeconds: 4, beatIndex: 0, startSeconds: 3, provenance: options.describe(trailer, 4, 3) }];
+        } },
+    });
+    assert.deepEqual(calls.map((c) => c.id), [first.videoId, second.videoId]);
+    assert.equal(calls[0]!.from, 0); // "Ganondorf's introduction" at 0:00, not a section centred on it
+    assert.equal(calls[0]!.to, 30);
+    assert.equal(clips[0]?.youtubeSource?.videoId, second.videoId);
+    assert.equal(clips[0]?.cutsceneMatch?.how, "scene upload");
   } finally { await fs.rm(dir, { recursive: true, force: true }); }
 });

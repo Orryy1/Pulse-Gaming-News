@@ -14,3 +14,9 @@ To complete playback:
 6. Add no-network tests for both writers, exact ID and text validation, rejected unsafe or unavailable cues, the audio exception, source offsets, non-overlapping narration and quote windows, timing shifts, captions, retries, both formats and disabled settings. Follow with a locally authorised proof render and listen to the complete mix before enabling this path.
 
 Chapter and caption matches are textual hints, not visual proof of an action. A scene-upload title identifies a source, not the exact moment inside it. The current planner prefers a located clip for its target, but does not guarantee a match on every spoken word. Visual and timing review remains necessary.
+
+## Status, 11 Nov 2026
+
+Not built. It does not fit a contained change: step 4 needs the voice step (`src/voice/*` and the pipeline's voice and alignment step) to synthesise the narration around a reserved gap and shift every word timing, which another change is reworking now, and steps 1, 3 and 5 touch both writers, the cutscene download (a second, audio-keeping path) and both renderers. `CUTSCENE_QUOTES` still only saves caption candidates to `cutscene_quotes.json`. Zelda's characters mostly do not speak, so the first proof should be a voiced game (GTA, God of War, Final Fantasy, Metal Gear).
+
+Scene footage itself (`CUTSCENE_SCENES`) now has the picture check it was missing: every lit keyframe of a located section goes to Claude with its line, one call per line, and a clip is cut from the frame Claude confirms, inside that shot. See `docs/cutscene-scenes-proof.json`.

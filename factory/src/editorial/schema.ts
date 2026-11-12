@@ -332,6 +332,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     language: string;
     pinned: string;
   };
+  /** CHARACTER_QUOTES (src/editorial/charquote.ts): the game's own lines played between the narrator's lines. */
+  character_quotes?: import("./charquote.ts").CharacterQuote[];
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

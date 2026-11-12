@@ -608,6 +608,14 @@ import {
   countProducing,
   takenSlots,
 } from "./episodes.ts";
+import {
+  fitClipsAroundQuotes,
+  openQuotes,
+  prepareQuotes,
+  quoteLongStep,
+  quoteRenderFiles,
+  quoteScriptStep,
+} from "./charquotestep.ts";
 
 export interface Services {
   db: Db;
@@ -3888,7 +3896,8 @@ async function stepScriptDocumentary(
       runSourcesMissed: runSources.missed,
     });
   }
-  const script = docToScript(draft);
+  // CHARACTER_QUOTES (src/charquotestep.ts): a few of the game's own lines, each set up and answered by the narrator.
+  const script = await quoteLongStep(s, ep, docToScript(draft));
   // An every-game video keeps its planned title: none of the test titles a model writes is in the honest frame by rule.
   if (topic.format === "everygame") {
     script.youtube.title = topic.title_idea;
@@ -5605,7 +5614,7 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     if (missed.length)
       await logEvent(s.db, ep.id, "style_warnings", { problems: missed });
   }
-  const script = withSpoilerWarning(longformToScript(draft));
+  const script = await quoteLongStep(s, ep, withSpoilerWarning(longformToScript(draft)));
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -6390,6 +6399,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  // CHARACTER_QUOTES (src/charquotestep.ts): one real line from the game's cutscene, set up and answered by the narrator.
+  script = await quoteScriptStep(s, ep, script, {
+    house: (sc) => houseProblems(sc).problems,
+    wordsMax: length?.wordsMax ?? WORDS_MAX,
+    capSeconds: length?.capSeconds ?? SHORT_NARRATION_CAP_SECONDS,
+    story: cluster.headline,
+  });
   await guardScript(s, ep, script, "after writing");
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
   if (skeleton) script = { ...script, skeleton: skeleton.key };
@@ -6655,6 +6671,10 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(ep.assets_json),
     ]);
   }
+  // CHARACTER_QUOTES (src/charquotestep.ts): each quote's clip is made before the voice, so the voice leaves its exact
+  // length; a quote that cannot be played is taken out of the script first, so no setup line points at a silence.
+  const quoteClips = await prepareQuotes(s, ep, ep.script_json!, dir);
+  if (quoteClips.script !== ep.script_json) ep = { ...ep, script_json: quoteClips.script };
   // Voice rotation: the n-th Short the channel has made picks the n-th voice of the pool, so a few Shorts in a row share a voice and the analytics can say which one sticks.
   const [ord] = await s.db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes WHERE created_at < $1 AND status NOT IN ('failed','rejected')`,
@@ -6886,6 +6906,20 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     throw new FatalError(
       `narration is ${narration.durationSeconds.toFixed(1)}s, over the ${maxSeconds}s cap for the ${ep.lane} lane`,
     );
+  // CHARACTER_QUOTES: the quotes' silences go into the voice and every later word moves (src/voice/quotegap.ts).
+  const opened = await openQuotes(
+    s,
+    ep,
+    ep.script_json!,
+    dir,
+    { file: path.join(dir, "voice.mp3"), words: narration.words, durationSeconds: narration.durationSeconds },
+    quoteClips.prepared,
+    maxSeconds,
+  );
+  if (opened) {
+    narration.words = opened.words;
+    narration.durationSeconds = opened.durationSeconds;
+  }
   // A documentary breathes before each chapter: a few seconds with the narrator silent, the music up
   // and the chapter's title full screen (owner, 27 Oct 2026: "very narrative and word heavy"). Every long
   // video's quiet beats take a breath (31 Oct 2026); only chapter cards get breathers, so a ranking gets none.
@@ -6937,7 +6971,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
   }
   await fs.writeFile(
     path.join(dir, "captions.srt"),
-    srtFromWords(narration.words),
+    srtFromWords(opened?.captionWords ?? narration.words),
     "utf8",
   );
   const assets: EpisodeAssets = {
@@ -6947,6 +6981,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     durationSeconds: narration.durationSeconds,
     srt: "captions.srt",
     voice: narration.voice,
+    quotes: opened?.quotes,
     ...(breaks?.length ? { breaks } : {}),
     ...(desk && s.stitchTakes
       ? {
@@ -10248,6 +10283,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         clipFiles: clips,
         plan,
         renderDate: s.now().toISOString().slice(0, 10),
+        quoteFiles: quoteRenderFiles(assets),
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
@@ -10778,6 +10814,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
     }
   }
+  // CHARACTER_QUOTES: a quote counts against its publisher's footage cap and the cutscene budget like any clip.
+  if (assets.quotes?.length && assets.clips?.length) {
+    const fitted = fitClipsAroundQuotes(assets.clips, assets.quotes, s.cfg.cutsceneFootage ? s.cfg.cutsceneMaxSeconds : Infinity);
+    if (fitted.length !== assets.clips.length) {
+      assets.clips = fitted;
+      delete assets.plan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
+  }
   // An every-game Short: every beat shows its own game's era or it does not render (src/everygamestep.ts).
   if (script.every_game) {
     const era = auditEveryGameAssets(script, assets);
@@ -11286,6 +11331,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
       renderDate: s.now().toISOString().slice(0, 10),
+      quoteFiles: quoteRenderFiles(assets),
     },
   });
   await s.normalise(raw, final);

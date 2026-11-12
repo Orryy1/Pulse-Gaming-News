@@ -198,6 +198,17 @@ export interface EpisodeAssets {
     url: string;
     clipSeconds: number;
   }; // the publisher's YouTube trailer, for games not on Steam
+  /** CHARACTER_QUOTES (src/charquotestep.ts): each quote's clip and where it plays on the narration's timeline. */
+  quotes?: Array<
+    import("./assets/quoteclip.ts").PreparedQuote & {
+      start: number;
+      end: number;
+      speaker: string;
+      text: string;
+      game: string;
+      credit: string;
+    }
+  >;
 }
 
 export async function getEpisode(

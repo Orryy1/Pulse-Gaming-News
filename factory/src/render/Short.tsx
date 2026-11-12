@@ -58,6 +58,7 @@ import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } 
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
+import { QuoteMoment, inQuote } from "./components/QuoteMoment.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -554,12 +555,18 @@ export const Short: React.FC<ShortProps> = (props) => {
     () => bedEnvelope(speaking, fps, 0.085, 0.13),
     [speaking, fps],
   );
+  // CHARACTER_QUOTES: the game's own lines, in the silences the narration left for them; the bed dips under them too.
+  const quoteSpans = (props.quotes ?? []).map((q) => ({
+    q,
+    from: Math.round(q.start * fps),
+    frames: Math.max(1, Math.round(q.seconds * fps)),
+  }));
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 12], [0, 1], {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
-    return fadeIn * (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085);
+    return fadeIn * (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) * (inQuote(quoteSpans, f) ? 0.45 : 1);
   };
 
   return (
@@ -814,7 +821,7 @@ export const Short: React.FC<ShortProps> = (props) => {
           totalFrames={durationInFrames}
         />
       )}
-      <Captions
+      {inQuote(quoteSpans, frame) ? null : <Captions
         pages={pages}
         accent={accent}
         emphasis={emphasis}
@@ -828,7 +835,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               }
             : undefined
         }
-      />
+      />}
       <TurnFlash turns={plan.turns} accent={accent} />
       {motif?.card && stingOn && (!kept || (keptSpan(kept, "sting")?.from === hookEnd && keptSpan(kept, "sting")?.to === hookEnd + MOTIF_STING)) ? (
         <Sequence from={hookEnd} durationInFrames={MOTIF_STING} layout="none">
@@ -869,9 +876,16 @@ export const Short: React.FC<ShortProps> = (props) => {
               cue.volume *
               (speaking[Math.min(durationInFrames, cue.frame + f)]
                 ? UNDER_VOICE
-                : 1)
+                : 1) *
+              (inQuote(quoteSpans, cue.frame + f) ? 0 : 1)
             }
           />
+        </Sequence>
+      ))}
+
+      {quoteSpans.map(({ q, from, frames }, k) => (
+        <Sequence key={`quote${k}`} from={from} durationInFrames={frames} layout="none">
+          <QuoteMoment src={q.src} speaker={q.speaker} text={q.text} credit={q.credit} mode={q.mode} frames={frames} accent={accent} />
         </Sequence>
       ))}
 

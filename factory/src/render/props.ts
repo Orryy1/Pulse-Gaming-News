@@ -64,7 +64,20 @@ export type ShortProps = {
   durationSeconds: number;
   variant: number;
   renderDate: string; // ISO date the Short is made on (passed in, never read from a clock in the composition)
+  quotes?: ShortQuote[]; // CHARACTER_QUOTES: the game's own lines, played in the silences the narration left for them
 };
+
+/** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */
+export interface ShortQuote {
+  src: string;
+  /** Seconds into the Short, and how long the clip plays. */
+  start: number;
+  seconds: number;
+  speaker: string;
+  text: string;
+  credit: string;
+  mode: "bleed" | "framed";
+}
 
 export const SAMPLE_PROPS: ShortProps = {
   headline: "Starfield Expansion Slips To 2027",

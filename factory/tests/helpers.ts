@@ -432,6 +432,8 @@ export function testConfig(
     spoilerGuard: false,
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
+    characterQuotes: false,
+    characterQuotesLong: 3,
     ytdlpPath: "yt-dlp",
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.

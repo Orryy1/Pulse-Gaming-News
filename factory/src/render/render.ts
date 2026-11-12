@@ -420,9 +420,11 @@ export interface RenderInput {
   episodeDir: string;
   props: Omit<
     ShortProps,
-    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc"
+    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "quotes"
   > & {
     audioFile: string | null;
+    /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
+    quoteFiles?: Array<Omit<import("./props.ts").ShortQuote, "src"> & { file: string }>;
     imageFiles: Array<{
       file: string;
       kind: string;
@@ -470,6 +472,7 @@ export interface LongRenderInput {
     | "next"
     | "voiceFx"
     | "pocketBeds"
+    | "quotes"
   > & {
     audioFile: string | null;
     /** The narration's texture slices (src/render/voicefx.ts makeVoiceFx), relative to the episode folder. */
@@ -502,6 +505,8 @@ export interface LongRenderInput {
       label?: string;
     }>;
     musicFile: string | null;
+    /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
+    quoteFiles?: Array<Omit<import("./props.ts").ShortQuote, "src"> & { file: string }>;
   };
   outFile: string;
   posterFile: string;
@@ -551,10 +556,14 @@ export function longProps(
     musicFile,
     next,
     voiceFxFiles,
+    quoteFiles,
     ...rest
   } = p;
   return {
     ...rest,
+    ...(quoteFiles?.length
+      ? { quotes: quoteFiles.map(({ file, ...q }) => ({ ...q, src: `${filesUrl}/${webPath(file)}` })) }
+      : {}),
     // The narration's texture slices (src/render/voicefx.ts), made in the episode's folder before the render.
     ...(voiceFxFiles?.length
       ? {
@@ -862,10 +871,14 @@ export async function renderShort(input: RenderInput): Promise<void> {
       clipFiles,
       musicFile,
       heroCutFile,
+      quoteFiles,
       ...rest
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      ...(quoteFiles?.length
+        ? { quotes: quoteFiles.map(({ file, ...q }) => ({ ...q, src: `${files.url}/${webPath(file)}` })) }
+        : {}),
       heroCut: heroCutFile
         ? { fg: `${files.url}/${webPath(heroCutFile.fg)}`, x: heroCutFile.x }
         : undefined,

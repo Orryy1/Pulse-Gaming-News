@@ -316,6 +316,26 @@ export interface Config {
   everyGameEnabled: boolean;
   /** EVERYGAME_FILE: the plan of series, dates and slots; empty = everygame.json beside package.json. Each entry has its own "on". */
   everyGameFile: string;
+  /** RUN_PREMAKE_HOURS: a planned Why is made this long before its slot and held (src/shortrun.ts); 0 = only entries with their own make time. */
+  runPremakeHours: number;
+  /** RUN_PREMAKE_UPLOAD_HOURS: a pre-made Short is uploaded (scheduled on YouTube) this long before its slot, no earlier. */
+  runPremakeUploadHours: number;
+  /** RUN_SPARE_SLOTS: local "HH:MM" slots a ready spare from the run fills when nothing else has taken them. */
+  runSpareSlots: string[];
+  /** RUN_SPARE_MINUTES: a slot still empty this close to its time is given to a ready spare. */
+  runSpareMinutes: number;
+  /** UPLOAD_RETRY_MINUTES: a failed upload (YouTube or a cross-post) is tried again this long after, up to three tries. */
+  uploadRetryMinutes: number;
+  /** UPLOAD_MOVES: after three failed tries an upload moves to that platform's next free slot this many times, then gives up. */
+  uploadMoves: number;
+  /** BREAKING_BUMP_SCORE: an overnight breaking Short this big moves the morning's first planned Short to the next open slot; 0 = off. */
+  breakingBumpScore: number;
+  /** VISION_HOLD: with the PC picture checker down, a Short with unchecked third-party pictures waits for it. */
+  visionHold: boolean;
+  /** LEONIDA_LINK: GTA VI videos name the Leonida Intel page for the day in their description (src/launchprep.ts). */
+  leonidaLink: boolean;
+  /** RUN_DOC_PRIVATE_HOURS: a planned documentary should be uploaded (private, scheduled) this long before its slot; the owner hears if not. */
+  runDocPrivateHours: number;
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
@@ -1117,6 +1137,19 @@ export function loadConfig(): Config {
     shortRunFile: str("SHORT_RUN_FILE", ""),
     everyGameEnabled: bool("EVERYGAME_ENABLED", false),
     everyGameFile: str("EVERYGAME_FILE", ""),
+    runPremakeHours: Math.max(0, int("RUN_PREMAKE_HOURS", 0)),
+    runPremakeUploadHours: Math.max(0, int("RUN_PREMAKE_UPLOAD_HOURS", 2)),
+    runSpareSlots: str("RUN_SPARE_SLOTS", "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean),
+    runSpareMinutes: Math.max(16, int("RUN_SPARE_MINUTES", 45)),
+    uploadRetryMinutes: Math.max(1, int("UPLOAD_RETRY_MINUTES", 10)),
+    uploadMoves: Math.max(0, int("UPLOAD_MOVES", 1)),
+    breakingBumpScore: Math.max(0, int("BREAKING_BUMP_SCORE", int("BREAKING_BIG_SCORE", 95))),
+    visionHold: bool("VISION_HOLD", true),
+    leonidaLink: bool("LEONIDA_LINK", true),
+    runDocPrivateHours: Math.max(0, int("RUN_DOC_PRIVATE_HOURS", 2)),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
     codeScenes: bool("CODE_SCENES", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
@@ -1618,6 +1651,12 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     strand: strandSummary(c),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
+    runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
+    runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),
+    uploadRetry: `${c.uploadRetryMinutes} min apart, ${c.uploadMoves} move(s)`,
+    breakingBumpScore: c.breakingBumpScore || "off",
+    visionHold: c.visionHold,
+    leonidaLink: c.leonidaLink,
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,
     approvalTimeoutMinutes: c.approvalTimeoutMinutes,

@@ -358,8 +358,12 @@ export async function countToday(
 ): Promise<number> {
   // The owner's day: "today" rolls over at local midnight in winter and summer alike.
   const [row] = await db.query<{ n: string | number }>(
+    // A Short made days ahead of its slot, or a spare given an empty slot, counts on its slot's day (src/shortrun.ts).
     `SELECT count(*) AS n FROM episodes
-      WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
+      WHERE (CASE WHEN story_json ? 'premade' OR story_json ? 'spare' THEN slot_at ELSE created_at END)
+              >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
+        AND (CASE WHEN story_json ? 'premade' OR story_json ? 'spare' THEN slot_at ELSE created_at END)
+              < (date_trunc('day', now() AT TIME ZONE $1) + interval '1 day') AT TIME ZONE $1
         AND status NOT IN ('failed','rejected')
         AND (($2::text IS NULL AND lane NOT IN ('gameplay','twin')) OR lane = $2)`,
     [timeZone, lane ?? null],

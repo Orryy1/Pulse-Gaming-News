@@ -26,8 +26,37 @@ const RunWhySchema = z.object({
   arc: z.string(),
   angle: z.string(),
   sources: z.array(SourceSchema).min(1),
+  /**
+   * Pre-make (launch plan, 11 Nov 2026): the Short is written, voiced, rendered and picture-checked this long before
+   * its slot, then held and uploaded at the slot. Wins over RUN_PREMAKE_HOURS; make_at wins over both.
+   */
+  make_hours_before: z.number().nonnegative().optional(),
+  /** Pre-make from this instant (ISO, e.g. "2026-11-14T09:00:00Z"). */
+  make_at: z.string().datetime({ offset: true }).optional(),
+  /** False: never pre-made (a topic that needs launch-day sources); made in the slot's usual lead time. */
+  premake: z.boolean().optional(),
 });
 export type RunWhy = z.infer<typeof RunWhySchema>;
+
+/**
+ * A spare (launch plan section 3): an evergreen Short with no slot of its own, made early and held. When a slot in
+ * RUN_SPARE_SLOTS (default WHY_SLOTS) would otherwise go out empty, the first ready spare takes it. Confirmed facts only.
+ */
+const RunSpareSchema = z.object({
+  kind: z.literal("spare"),
+  question: z.string(),
+  title: z.string(),
+  game: z.string(),
+  arc: z.string(),
+  angle: z.string(),
+  sources: z.array(SourceSchema).min(1),
+  /** Made from this instant (ISO); absent: as soon as the run file has it. */
+  make_at: z.string().datetime({ offset: true }).optional(),
+  /** Local YYYY-MM-DD: the first and last day it may fill a slot. */
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+export type RunSpare = z.infer<typeof RunSpareSchema>;
 
 const RunDocSchema = z.object({
   kind: z.literal("doc"),
@@ -53,9 +82,9 @@ const RunDocSchema = z.object({
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
 const RunSchema = z.array(
-  z.discriminatedUnion("kind", [RunWhySchema, RunDocSchema]),
+  z.discriminatedUnion("kind", [RunWhySchema, RunDocSchema, RunSpareSchema]),
 );
-export type RunEntry = RunWhy | RunDoc;
+export type RunEntry = RunWhy | RunDoc | RunSpare;
 
 /** The run's entries; a missing or broken file means no run, with a warning, never a stopped factory. */
 export function readRun(file: string): RunEntry[] {
@@ -124,4 +153,56 @@ export function docRunDue(
  */
 export function runRepeatGame(game: string, run?: boolean): string {
   return run ? `${game} gta 6 vi` : game;
+}
+
+/** When a planned Why may start being made: make_at, else its own make_hours_before, else RUN_PREMAKE_HOURS; none: undefined. */
+export function premakeFrom(
+  e: RunWhy,
+  timeZone: string,
+  defaultHours: number,
+): Date | undefined {
+  if (e.premake === false) return undefined;
+  const at = localTime(e.date, e.slot, timeZone);
+  if (e.make_at) return new Date(e.make_at);
+  const hours = e.make_hours_before ?? defaultHours;
+  return hours > 0 ? new Date(at.getTime() - hours * 3600_000) : undefined;
+}
+
+/**
+ * The planned Whys whose pre-make has begun and whose slot is still ahead and untaken, earliest slot first. A slot
+ * closer than `leadMinutes` is left to the usual Why lane, which makes it in its own lead time.
+ */
+export function premakeDue(
+  run: RunEntry[],
+  now: Date,
+  taken: Date[],
+  timeZone: string,
+  defaultHours: number,
+  leadMinutes: number,
+): Array<{ entry: RunWhy; at: Date }> {
+  const out: Array<{ entry: RunWhy; at: Date }> = [];
+  for (const e of run) {
+    if (e.kind !== "why") continue;
+    const from = premakeFrom(e, timeZone, defaultHours);
+    if (!from || now.getTime() < from.getTime()) continue;
+    const at = localTime(e.date, e.slot, timeZone);
+    if (at.getTime() - now.getTime() <= leadMinutes * 60_000) continue;
+    if (taken.some((t) => t.getTime() === at.getTime())) continue;
+    out.push({ entry: e, at });
+  }
+  return out.sort((a, b) => a.at.getTime() - b.at.getTime());
+}
+
+/** The run's spares whose make time has come, in file order. */
+export function sparesDue(run: RunEntry[], now: Date): RunSpare[] {
+  return run.filter(
+    (e): e is RunSpare =>
+      e.kind === "spare" &&
+      (!e.make_at || now.getTime() >= new Date(e.make_at).getTime()),
+  );
+}
+
+/** May this spare fill a slot on this local day (YYYY-MM-DD)? */
+export function spareFits(e: Pick<RunSpare, "from" | "until">, day: string): boolean {
+  return (!e.from || day >= e.from) && (!e.until || day <= e.until);
 }

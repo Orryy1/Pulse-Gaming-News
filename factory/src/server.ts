@@ -2049,7 +2049,8 @@ async function main(): Promise<void> {
     const day = now.toISOString().slice(0, 10);
     if (now.getUTCHours() !== 4 || day === lastRestartDay || running) return;
     const [busy] = await db.query<{ n: string }>(
-      `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','approved','uploading')`,
+      `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced')
+          OR (status IN ('approved','uploading') AND (next_attempt_at IS NULL OR next_attempt_at <= now() + interval '5 minutes'))`,
     );
     if (Number(busy?.n ?? 0) > 0) return;
     lastRestartDay = day;

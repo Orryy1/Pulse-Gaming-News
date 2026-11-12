@@ -87,7 +87,9 @@ async function publishedShort(
 test("crossposting: staggered per platform, once each, skips private videos, gives up after three failures", async () => {
   const db = await testDb();
   const dir = await tmpDir();
-  const cfg = testConfig(dir);
+  // No move to a later slot here (UPLOAD_MOVES=0): the give-up path. The move has its own test below.
+  const cfg = testConfig(dir, { uploadMoves: 0 });
+  let clock = Date.now();
   for (const id of ["ep_a", "ep_b", "ep_long"]) {
     await fs.mkdir(path.join(dir, id), { recursive: true });
     await fs.writeFile(path.join(dir, id, "short.mp4"), "x");
@@ -102,7 +104,7 @@ test("crossposting: staggered per platform, once each, skips private videos, giv
   const deps = {
     db,
     cfg,
-    now: () => new Date(),
+    now: () => new Date(clock),
     isPublic: async (v: string) => v !== "yt_ep_b",
     notify: async () => true,
     episodeDir: (id: string) => path.join(dir, id),
@@ -128,13 +130,20 @@ test("crossposting: staggered per platform, once each, skips private videos, giv
   await db.query(
     `UPDATE episodes SET publish_at = now() - interval '2 hours' WHERE id = 'ep_a'`,
   );
-  for (let i = 0; i < MAX_TRIES + 1; i++) await crosspostTick(deps);
+  // Tries are ten minutes apart (UPLOAD_RETRY_MINUTES): a tick sooner than that leaves the failed Short alone.
+  await crosspostTick(deps);
+  await crosspostTick(deps);
+  for (let i = 0; i < MAX_TRIES; i++) {
+    clock += 11 * 60_000;
+    await crosspostTick(deps);
+  }
   assert.deepEqual(posted, ["x:a", "facebook", "instagram"]);
   const [fails] = await db.query<{ n: string }>(
     `SELECT count(*) AS n FROM events WHERE kind = 'crosspost_failed'`,
   );
   assert.equal(Number(fails!.n), MAX_TRIES);
   failTikTok = false;
+  clock += 11 * 60_000;
   await crosspostTick(deps);
   assert.deepEqual(posted, ["x:a", "facebook", "instagram"]);
   // A video made private on YouTube is skipped everywhere.
@@ -196,7 +205,9 @@ test("a lost response never posts twice: the uncertain post is left for the owne
   const deps2 = { ...deps, posters: { tiktok: async () => { dPosts++; if (fail) { fail = false; throw new Error("tiktok down"); } return "t2"; } } };
   await crosspostTick(deps2);
   await crosspostTick(deps2);
-  assert.equal(dPosts, 2, "retried after a plain failure");
+  assert.equal(dPosts, 1, "not again within ten minutes");
+  await crosspostTick({ ...deps2, now: () => new Date(Date.now() + 11 * 60_000) });
+  assert.equal(dPosts, 2, "retried after a plain failure, ten minutes on");
   const [done] = await db.query<{ n: string }>(`SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND episode_id = 'ep_d'`);
   assert.equal(Number(done!.n), 1);
   await db.close();
@@ -532,5 +543,57 @@ test("INSTAGRAM_MAX_SECONDS never skips a launch run topic: the GTA VI calendar'
   const deps = capDeps(db, dir, testConfig(dir, { instagramMaxSeconds: 35 }), posted);
   for (let i = 0; i < 3; i++) await crosspostTick(deps);
   assert.deepEqual(await postedOn(db, "instagram"), ["planned"]);
+  await db.close();
+});
+
+test("upload fallback: three tries ten minutes apart, then the platform's next free slot, then three more; others carry on", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const cfg = testConfig(dir, { uploadMoves: 1, uploadRetryMinutes: 10 });
+  await fs.mkdir(path.join(dir, "ep_m"), { recursive: true });
+  await fs.writeFile(path.join(dir, "ep_m", "short.mp4"), "x");
+  await publishedShort(db, "ep_m", 180);
+  let clock = Date.now();
+  let tiktokTries = 0;
+  let failTikTok = true;
+  const ig: string[] = [];
+  const notes: string[] = [];
+  const deps = {
+    db,
+    cfg,
+    now: () => new Date(clock),
+    isPublic: async () => true,
+    notify: async (m: { content?: string }) => (notes.push(m.content ?? ""), true),
+    episodeDir: (id: string) => path.join(dir, id),
+    posters: {
+      instagram: async () => (ig.push("ig"), "i1"),
+      tiktok: async () => {
+        tiktokTries++;
+        if (failTikTok) throw new Error("tiktok down");
+        return "t1";
+      },
+    },
+  };
+  for (let i = 0; i < 3; i++) {
+    await crosspostTick(deps);
+    clock += 11 * 60_000;
+  }
+  assert.equal(tiktokTries, 3);
+  assert.deepEqual(ig, ["ig"], "Instagram is not held by TikTok");
+  const [moved] = await db.query<{ at: string }>(
+    `SELECT detail->>'at' AS at FROM events WHERE kind = 'crosspost_moved' AND detail->>'platform' = 'tiktok'`,
+  );
+  assert.ok(moved, "moved to the next free slot");
+  assert.ok(!notes.some((n) => /Could not post/.test(n)), "no give-up message yet");
+  await crosspostTick(deps);
+  assert.equal(tiktokTries, 3, "waits for the new slot");
+  clock = new Date(moved!.at).getTime() + 60_000;
+  failTikTok = false;
+  await crosspostTick(deps);
+  assert.equal(tiktokTries, 4, "tried again at the new slot");
+  const [done] = await db.query<{ n: string }>(
+    `SELECT count(*) AS n FROM events WHERE kind = 'crosspost' AND detail->>'platform' = 'tiktok'`,
+  );
+  assert.equal(Number(done!.n), 1);
   await db.close();
 });

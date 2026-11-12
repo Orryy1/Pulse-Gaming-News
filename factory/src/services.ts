@@ -526,6 +526,9 @@ export function createServices(db: Db, cfg: Config): Services {
     technicalQa,
     extractFrames,
     visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
+    // The picture checker's hold (VISION_HOLD): down when the relay is down and neither the paid API nor Codex may look.
+    visionDown: async () =>
+      !cfg.visionPaidFallback && !(codexHere && cfg.codexVision) && (await localVisionDown()),
     stitchTakes: async (parts, outPath) => {
       const words: Narration["words"] = [];
       let offset = 0;

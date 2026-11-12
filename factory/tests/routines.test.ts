@@ -449,3 +449,57 @@ test("routine pages through the server: data, done records, poll result, and a 4
     server.close();
   }
 });
+
+test("related routine under the funnel test: only cuts from a long video link, earlier links elsewhere are cleared once", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const cfg = { ...testConfig(dir), funnelTest: true };
+  clearRelatedCache();
+  const scripts: Record<string, unknown> = {
+    SHORTNEWS01: { headline: "Call of Duty Black Ops 7 leak" },
+    SHORTLINK01: { headline: "GTA 6: the car wash loop", cutdown: { parent_video: "LONGGUIDE01", funnel: "link" } },
+    SHORTCTRL01: { headline: "GTA 6: selling cars", cutdown: { parent_video: "LONGGUIDE01", funnel: "none" } },
+  };
+  for (const [i, [yt, script]] of Object.entries(scripts).entries()) {
+    const id = `ep${i}`;
+    await createEpisode(db, id, clusterItems([item(`Story number ${i} about games`, "Xbox Wire", "official")])[0]!);
+    await db.query(
+      `UPDATE episodes SET status = 'published', youtube_video_id = $2, publish_at = now() - interval '1 hour', script_json = $1::jsonb WHERE id = $3`,
+      [JSON.stringify(script), yt, id],
+    );
+  }
+  // The news Short was linked to the hub before the test began.
+  fs.mkdirSync(path.join(dir, "admin"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "admin", "related_done.json"), JSON.stringify(["SHORTNEWS01"]));
+  const ctx = {
+    db,
+    cfg,
+    pollCandidates: async () => [],
+    channelLongs: async () => [{ id: "LONGGUIDE01", title: "GTA 6 Best Early Money, Learned From Real Play" }],
+    now: () => new Date(),
+  };
+  const direct = http.createServer(async (rq, rs) => {
+    if (!(await handleRoutine(rq, rs, new URL(rq.url!, "http://local"), ctx)))
+      rs.writeHead(404).end("Not found");
+  });
+  await new Promise<void>((r) => direct.listen(0, "127.0.0.1", r));
+  const base = `http://127.0.0.1:${(direct.address() as AddressInfo).port}`;
+  const get = async (p: string) => JSON.parse(await (await fetch(`${base}${p}`)).text());
+  try {
+    let j = await get("/routine/related");
+    assert.deepEqual(
+      j.items.map((x: { action: string; short: string; target: string }) => [x.action, x.short, x.target]).sort(),
+      [
+        ["clear", "SHORTNEWS01", ""],
+        ["set", "SHORTLINK01", "LONGGUIDE01"],
+      ],
+    );
+    await get("/routine/done?kind=related_clear&key=SHORTNEWS01");
+    await get("/routine/done?kind=related&key=SHORTLINK01");
+    j = await get("/routine/related");
+    assert.equal(j.count, 0);
+  } finally {
+    direct.close();
+    clearRelatedCache();
+  }
+});

@@ -12,6 +12,7 @@
 // to reuse their facts, and a draft that copies an example line word for word is sent back (EXAMPLE_LINES).
 
 import { writerNoteProblems } from "./writernotes.ts";
+import { spoilerProblems } from "../sceneindex/spoilers.ts";
 import { voiceTagsSetting } from "../config.ts";
 
 /** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
@@ -376,7 +377,8 @@ export const YEAR_POSSESSIVE = new RegExp(
  */
 export function phraseProblems(text: string): string[] {
   // Every writer's validators come through here, so a note to the editor is sent back in every lane.
-  const p: string[] = [...writerNoteProblems(text)];
+  // SPOILER_GUARD: a game in its spoiler window is never spoiled by any writer (src/sceneindex/spoilers.ts).
+  const p: string[] = [...writerNoteProblems(text), ...spoilerProblems(text)];
   const t = outsideQuotes(text);
   for (const re of VOICE_BANNED) {
     const m = t.match(re);

@@ -27,8 +27,15 @@ import {
 } from "../assets/clipscore.ts";
 import { clipBigText } from "../assets/cliptext.ts";
 import { findQuote, findShots } from "./lookup.ts";
-import { loadSceneIndex, sceneSlug, type SceneIndex } from "./schema.ts";
+import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
+import {
+  footageAllowed,
+  LONG_SPOILER_FREE_SECONDS,
+  spoilerWindows,
+  windowFor,
+  type SpoilerWindow,
+} from "./spoilers.ts";
 import type { Config } from "../config.ts";
 
 export interface PlannedClip {
@@ -89,6 +96,8 @@ export function planIndexedClips(
     maxSeconds: number;
     minConfidence: number;
     clipSeconds?: number;
+    /** SPOILER_GUARD: whether a shot may be used for a line (src/sceneindex/spoilers.ts); unset: every shot. */
+    allow?: (shot: SceneShot, key: string) => boolean;
   },
 ): PlannedClip[] {
   const clipSeconds = o.clipSeconds ?? CLIP_SECONDS;
@@ -120,7 +129,7 @@ export function planIndexedClips(
       candidates.push({ shot: h.shot, confidence: h.confidence });
     for (const c of candidates) {
       const shot = index.shots[c.shot];
-      if (!shot || shot.blank || shot.menu) continue;
+      if (!shot || shot.blank || shot.menu || (o.allow && !o.allow(shot, t.key))) continue;
       // A quoted line is shown while it is on screen; any other line gets the part of its shot with no words
       // over the picture when there is one (the clean-frame screen drops a clip with subtitles across it).
       const span = c.quote
@@ -163,6 +172,8 @@ export interface IndexedOptions {
   ytdlp: string;
   publisher?: string;
   textCheck?: boolean;
+  /** SPOILER_GUARD: whether a shot may be used for a line. */
+  allow?: (shot: SceneShot, key: string) => boolean;
   deps?: {
     /** Fetches [from, to) of the source at full quality into `file`. */
     download?: (
@@ -468,9 +479,35 @@ async function findIndex(dataDir: string, game: string): Promise<SceneIndex | un
   }
 }
 
+/** The key a cutscene clip was fetched for, as the targets name it ("hook", "beat:3"). */
+function clipKey(c: CutsceneClip): string {
+  return c.role === "hook" ? "hook" : c.beatIndex === undefined ? "" : `beat:${c.beatIndex}`;
+}
+
+/**
+ * Whether a moment may fill a line during a game's spoiler window (pure): the hook is a first frame; in a long
+ * video the hook and the first beat are its first minute; everything else follows footageAllowed.
+ */
+export function spoilerAllow(
+  w: SpoilerWindow,
+  o: { long?: boolean; spoilerWarned?: boolean },
+  now: Date,
+): (index: SceneIndex, at: number, key: string) => boolean {
+  return (index, at, key) => {
+    const first = key === "hook" || /^beat:0(?!\d)/.test(key);
+    return footageAllowed(w, index, at, key === "hook" ? "first-frame" : o.long ? "long" : "short", now, {
+      warned: o.spoilerWarned,
+      placedAt: first ? 0 : LONG_SPOILER_FREE_SECONDS,
+    }).ok;
+  };
+}
+
 /**
  * fetchCutscenes with the scene index in front (src/services.ts). SCENE_INDEX off: exactly the search. On: a game
  * with a usable index gets its exact shots first; a game without one is queued for indexing and gets the search.
+ * SPOILER_GUARD, during a game's spoiler window: indexed shots only where the story position allows them, and the
+ * ordinary search keeps only moments of the index's own upload that the index places where they are allowed (a
+ * search clip the index cannot place could be from anywhere in the story: it is dropped).
  */
 export async function indexFirstCutscenes<
   O extends {
@@ -481,14 +518,41 @@ export async function indexFirstCutscenes<
     maxClips: number;
     maxSeconds: number;
     publisher?: string;
+    /** A long video (late-story footage may follow its spoiler warning) and whether it opens with one. */
+    long?: boolean;
+    spoilerWarned?: boolean;
   },
 >(
-  cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath">,
+  cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
+    Partial<Pick<Config, "spoilerGuard">>,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
   deps?: IndexedOptions["deps"],
+  now = new Date(),
+  windows: readonly SpoilerWindow[] = spoilerWindows(),
 ): Promise<CutsceneClip[]> {
-  if (!cfg.sceneIndex) return search(options);
+  const w = cfg.spoilerGuard ? windowFor(windows, options.gameTitle, now) : undefined;
+  const allow = w ? spoilerAllow(w, options, now) : undefined;
+  const known = w ? await findIndex(cfg.dataDir, options.gameTitle) : undefined;
+  const searched = allow
+    ? async (o: O) =>
+        (await search(o)).filter((c) => {
+          const ok = Boolean(
+            known &&
+              c.youtubeSource?.videoId === known.source.videoId &&
+              allow(known, c.span.from, clipKey(c)) &&
+              allow(known, Math.max(c.span.from, c.span.to - 0.05), clipKey(c)),
+          );
+          if (!ok)
+            log("info", "spoiler guard: cutscene clip left out", {
+              game: o.gameTitle,
+              video: c.youtubeSource?.videoId,
+              at: c.span.from,
+            });
+          return ok;
+        })
+    : search;
+  if (!cfg.sceneIndex) return searched(options);
   return cutscenesIndexFirst(
     options,
     async (o) => {
@@ -508,9 +572,15 @@ export async function indexFirstCutscenes<
         minConfidence: cfg.sceneIndexMinConfidence,
         ytdlp: cfg.ytdlpPath,
         publisher: o.publisher,
+        ...(allow
+          ? {
+              allow: (shot: SceneShot, key: string) =>
+                allow(index, shot.start, key) && allow(index, Math.max(shot.start, shot.end - 0.05), key),
+            }
+          : {}),
         deps,
       });
     },
-    search,
+    searched,
   );
 }

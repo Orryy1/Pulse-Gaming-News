@@ -43,6 +43,8 @@ import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
+import { hasSpoilerWarning } from "./sceneindex/spoilers.ts";
+import { streamClipSpoiler } from "./sceneindex/spoilerclips.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
 import {
@@ -704,6 +706,9 @@ export interface Services {
     maxClips: number;
     maxSeconds: number;
     publisher?: string;
+    /** SPOILER_GUARD: a long video, and whether it opens with a spoiler warning (src/sceneindex/spoilers.ts). */
+    long?: boolean;
+    spoilerWarned?: boolean;
   }): Promise<CutsceneClip[]>;
   /** A tight-cap publisher's trailer as last-resort stills, once published art has been counted. */
   trailerFrames?(
@@ -4631,9 +4636,20 @@ export async function ingestGameplay(
           review,
         });
       }
-      const keep =
+      let keep =
         worthPosting(review, minScoreFor(meta, cfg)) ||
         Boolean(meta.rehearsal && meta.rehearsal_force);
+      // SPOILER_GUARD: during the game's spoiler window a clip that looks like a story cutscene from beyond the
+      // opening waits until the window closes (src/sceneindex/spoilerclips.ts); gameplay moments go on.
+      let spoilerHeld: string | undefined;
+      if (keep && cfg.spoilerGuard) {
+        const held = await streamClipSpoiler(cfg, dir, meta, review.game_title, review.spoiler, s.now());
+        if (held?.hold) {
+          keep = false;
+          spoilerHeld = held.until;
+          await logEvent(db, null, "gameplay_spoiler_held", { id: meta.id, reason: held.reason, until: held.until });
+        }
+      }
       const [made_before] = await db.query<{ id: string }>(
         `SELECT id FROM episodes WHERE story_hash = $1`,
         [`gameplay:${meta.id}`],
@@ -4683,7 +4699,8 @@ export async function ingestGameplay(
         review: {
           at: s.now().toISOString(),
           keep: Boolean(keep && episode),
-          reason: review.reason,
+          reason: spoilerHeld ? `held for spoilers until ${spoilerHeld.slice(0, 10)}: ${review.reason}` : review.reason,
+          ...(spoilerHeld ? { spoiler_held_until: spoilerHeld } : {}),
           episode,
           radio: review.radio_audible,
           game: review.game_title,
@@ -7791,7 +7808,8 @@ export async function gatherMedia(
       jobs, existing: clips, shouldStop: () => gatherBudget.over(),
       fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
         targets: job.targets, maxClips: Math.min(24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
-        maxSeconds: job.maxSeconds, publisher: job.publisher }),
+        maxSeconds: job.maxSeconds, publisher: job.publisher,
+        long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
     });
     clips.push(...added.map((c) => ({ ...c, durationSeconds: c.durationSeconds ?? 4.8 })));
   }

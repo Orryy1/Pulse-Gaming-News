@@ -700,6 +700,17 @@ export interface Config {
   sceneIndexMaxHours: number; // SCENE_INDEX_MAX_HOURS: no source longer than this
   sceneIndexTurnSteps: number; // SCENE_INDEX_TURN_STEPS: pieces of work in one background turn
   sceneIndexMinConfidence: number; // SCENE_INDEX_MIN_CONFIDENCE: a lookup below this falls back to the cutscene search
+  /** GAME_FETCH: full movies and no-commentary playthroughs of every big release fetched into the scene index (src/sceneindex/gamefetch.ts); needs SCENE_INDEX. */
+  gameFetch: boolean;
+  gameFetchTitles: string; // GAME_FETCH_TITLES: "Title@release~window end; Title2", always fetched first
+  gameFetchSignals: string; // GAME_FETCH_SIGNALS: owner,calendar,bigstory,videos,radar (empty: all)
+  gameFetchHours: number; // GAME_FETCH_HOURS: hours between searches from release until a clean upload is found
+  gameFetchRecheckHours: number; // GAME_FETCH_RECHECK_HOURS: hours between looks for a longer or better upload
+  gameFetchRecheckDays: number; // GAME_FETCH_RECHECK_DAYS: days after release the looks go on (at least the spoiler window)
+  /** SPOILER_GUARD: no late-story footage, words or stream cutscenes during a game's spoiler window (src/sceneindex/spoilers.ts). */
+  spoilerGuard: boolean;
+  spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
+  spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
@@ -1454,6 +1465,15 @@ export function loadConfig(): Config {
     sceneIndexMaxHours: Math.max(1, int("SCENE_INDEX_MAX_HOURS", 12)),
     sceneIndexTurnSteps: Math.max(1, int("SCENE_INDEX_TURN_STEPS", 3)),
     sceneIndexMinConfidence: Math.min(1, Math.max(0, Number(str("SCENE_INDEX_MIN_CONFIDENCE", "0.45")) || 0.45)),
+    gameFetch: bool("GAME_FETCH", false),
+    gameFetchTitles: str("GAME_FETCH_TITLES", ""),
+    gameFetchSignals: str("GAME_FETCH_SIGNALS", ""),
+    gameFetchHours: Math.max(1, int("GAME_FETCH_HOURS", 3)),
+    gameFetchRecheckHours: Math.max(6, int("GAME_FETCH_RECHECK_HOURS", 24)),
+    gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
+    spoilerGuard: bool("SPOILER_GUARD", false),
+    spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
+    spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),

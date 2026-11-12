@@ -59,7 +59,11 @@ export interface GameplayMeta {
     radio?: boolean;
     /** The game the reviewer saw (the stream title can be wrong); long videos use the clip as footage of it. */
     game?: string;
+    /** SPOILER_GUARD: held from Shorts as a story cutscene until the game's spoiler window closes (ISO). */
+    spoiler_held_until?: string;
   };
+  /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
+  sound?: { speech_share?: number };
 }
 
 export interface Experiment {
@@ -164,6 +168,13 @@ export async function newClips(
     const dir = path.join(inbox, name);
     const meta = await readMeta(dir);
     if (meta?.status === "new") found.push({ dir, meta });
+    // A clip held for spoilers is looked at again once its game's window has closed.
+    else if (
+      meta?.status === "rejected" &&
+      meta.review?.spoiler_held_until &&
+      Date.parse(meta.review.spoiler_held_until) <= Date.now()
+    )
+      found.push({ dir, meta });
     // A review that died part-way (a locked file, a restart) left "reviewing" behind: look again after 30 minutes.
     else if (meta?.status === "reviewing") {
       const at =

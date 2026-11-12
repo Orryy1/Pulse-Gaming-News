@@ -704,3 +704,13 @@ test("each retrospective chapter keeps its own footage allowance, not one for th
   );
   assert.ok(old.reduce((n, c) => n + c.durationSeconds, 0) <= 40);
 });
+
+test("an outline that talks about its own material is sent back, title or description", () => {
+  const budget = { ...retroChapterBudget(40), history: 1, making: 1, innovations: 1, story: 3, moments: 1, reception: 1, legacy: 1 };
+  const o = outline();
+  o.chapters[5]!.chapter_title = "The Ending Still Needs Its Scenes Missing";
+  o.youtube.description = "This source-limited plan remains incomplete: acts 1-3 are supplied only as excerpts.";
+  const problems = validateRetroOutline(o, budget, 3).join(" ");
+  assert.match(problems, /talks about the material/);
+  assert.match(problems, /Not for the viewer/);
+});

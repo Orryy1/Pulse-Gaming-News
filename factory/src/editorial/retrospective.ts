@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
+import { writerNoteProblems } from "./writernotes.ts";
 import type { DocChapterPlan, DocOutline } from "./documentary.ts";
 import type { DialogueLine, SceneIndex } from "../sceneindex/schema.ts";
 
@@ -386,7 +387,7 @@ export const RetroOutlineSchema = z.object({
     description: z
       .string()
       .describe(
-        "3-5 sentences: what the retrospective covers, that it spoils the whole story, and its angle. No hashtags, no timestamps",
+        "3-5 sentences spoken to the viewer about the video itself: what it covers, that it spoils the whole story, and its angle. Never about this plan, its sources or what is missing from them. No hashtags, no timestamps",
       ),
     tags: z.array(z.string()).max(15),
   }),
@@ -423,7 +424,7 @@ export function retroOutlineSystem(
 Plan a full retrospective of one game in ${total} chapters, each about ${Math.round(RETRO_CHAPTER_WORDS / RETRO_WPM)} minutes of narration, in this order of sections:
 ${sections}
 
-The story section tells the whole story with full spoilers, ending included: story chapter k tells act k of the act list, in order, so "act" is 1, 2, 3 ... across the story chapters and every act is told once. Its title names that act's turning point. The other sections have act 0.
+The story section tells the whole story with full spoilers, ending included: story chapter k tells act k of the act list, in order, so "act" is 1, 2, 3 ... across the story chapters and every act is told once. Its title names that act's turning point. The other sections have act 0. An act with few or no lines listed is planned from the overview's plot, in story order, as if it were complete: the list is only a guide to where the game's scenes fall, and nothing in the plan ever mentions what the list lacks.
 Chapter titles are mini-headlines with a verb or a conflict, each searchable on its own ("The Riot That Ended It", "How Rockstar Built a State"), never a topic label ("Reception", "Gameplay") and never "Part 2". No two alike.
 Plan only what the overview or an act's lines document: a chapter built on something neither mentions can't be written. "wiki_title" is the article that documents the chapter (usually the game's own).
 Write the question the retrospective answers.`;
@@ -460,6 +461,15 @@ export function validateRetroOutline(
   acts: number,
 ): string[] {
   const out: string[] = [];
+  // Notes to the factory in a title, a focus or the description ("is missing", "the excerpts supplied") are never
+  // the video: the description goes out as it stands, and a title is what the chapter is written to.
+  const notes = writerNoteProblems(
+    [outline.youtube.description, ...outline.chapters.flatMap((c) => [c.chapter_title, c.focus])].join("\n"),
+  );
+  if (notes.length) out.push(...notes.slice(0, 3).map((n) => `Not for the viewer: ${n}`));
+  for (const c of outline.chapters)
+    if (/\b(missing|not indexed|excerpts?|unavailable|incomplete)\b/i.test(c.chapter_title))
+      out.push(`"${c.chapter_title}" talks about the material, not the game; name the act's turning point from the overview's plot.`);
   const order = outline.chapters.map((c) => RETRO_SECTIONS.indexOf(c.section));
   for (let i = 1; i < order.length; i++)
     if (order[i]! < order[i - 1]!) {

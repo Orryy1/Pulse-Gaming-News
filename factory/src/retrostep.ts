@@ -31,6 +31,7 @@ import {
   type StoryAct,
 } from "./editorial/retrospective.ts";
 import { sourcesForSection } from "./retrospective.ts";
+import { writerNoteProblems } from "./editorial/writernotes.ts";
 import { quoteIndexFor } from "./charquotestep.ts";
 import { cutscenePublisher } from "./assets/cutscenes.ts";
 import type { SceneIndex } from "./sceneindex/schema.ts";
@@ -97,9 +98,20 @@ export async function retroOutlineFor(
     })),
     problems,
   }).catch(() => undefined);
-  // Counts a chapter or so off the budget are a style matter; the order and the story's acts are not.
+  // A description that still talks to the factory is replaced by a plain one from the plan: it goes out as it stands.
+  if (writerNoteProblems(outline.youtube.description).length) {
+    outline = {
+      ...outline,
+      youtube: {
+        ...outline.youtube,
+        description: `${topic.angle} Full spoilers: this covers the whole story of ${retro.short}, ending included.`,
+      },
+    };
+    problems = validateRetroOutline(outline, budget, acts.length);
+  }
+  // Counts a chapter or so off the budget are a style matter; the order, the story's acts and notes are not.
   const must = problems.filter((p) =>
-    /in order|must tell|needs at least|names no source/.test(p),
+    /in order|must tell|needs at least|names no source|Not for the viewer|talks about the material/.test(p),
   );
   if (must.length)
     throw new Error(`retrospective outline not fit to write: ${must[0]}`);

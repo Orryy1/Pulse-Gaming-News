@@ -82,6 +82,8 @@ s.notify = async (m: any) => {
 const at =
   KIND === "file" ? "2026-11-22T17:00:00Z" : KIND === "why" ? `${day}T10:30:00Z` : undefined;
 let [ep] = await listEpisodes(db, 5);
+// A pick the fact check dropped: select again in the same sandbox, so the editor knows what was dropped.
+if (ep && ["rejected", "failed"].includes(ep.status) && process.env.PROOF_RESELECT) ep = undefined as any;
 if (!ep) {
   if (at) {
     const fixed = new Date(at).getTime();

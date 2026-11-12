@@ -39,6 +39,8 @@ export interface StoryCluster {
   run?: boolean;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
+  /** A Short in the named daily strand (src/strand.ts): its name, its franchise and whether it opens on the owner's own footage. */
+  strand?: { name: string; franchise: string; ownFootage: boolean };
 }
 
 const STOPWORDS = new Set(

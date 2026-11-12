@@ -24,6 +24,7 @@ import {
   TikTokSignedOut,
 } from "./tiktokBrowser.ts";
 import { bufferPostVideo } from "./buffer.ts";
+import { lengthFormatOf, overInstagramLength } from "../shortlengths.ts";
 import {
   heldKeys,
   heldMayPost,
@@ -220,6 +221,8 @@ export interface CrosspostCandidate {
   lane?: string;
   story_hash?: string | null;
   duration?: number | string | null;
+  /** A planned launch run topic (story_json.run, src/shortrun.ts): never held to the Shorts length lanes. */
+  run?: boolean | null;
   /** Capped platforms only: YouTube views per hour since it went live, the number it is ranked on. */
   vph?: number | string;
 }
@@ -262,7 +265,7 @@ export async function nextForPlatform(
 ): Promise<CrosspostCandidate | undefined> {
   const rows = await db.query<CrosspostCandidate>(
     `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
-            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration FROM episodes e
+            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration, e.story_json->'run' AS run FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane NOT IN ('longform','twin')
         AND COALESCE(e.script_json->>'runtime', 'short') = 'short'
         AND COALESCE(e.publish_at, e.updated_at) <= $1::timestamptz - make_interval(mins => $2)
@@ -413,7 +416,7 @@ export async function nextForCapped(
   if (await capReached(db, cfg, platform, now)) return undefined;
   const rows = await db.query<CrosspostCandidate>(
     `SELECT e.id, e.youtube_video_id, e.script_json, COALESCE(e.publish_at, e.updated_at) AS live_at,
-            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration,
+            e.lane, e.story_hash, e.assets_json->'durationSeconds' AS duration, e.story_json->'run' AS run,
             COALESCE((SELECT max(m.views) FROM video_metrics m WHERE m.episode_id = e.id), 0)
               / GREATEST(1, EXTRACT(EPOCH FROM ($1::timestamptz - COALESCE(e.publish_at, e.updated_at))) / 3600) AS vph
        FROM episodes e
@@ -649,6 +652,24 @@ export async function crosspostTick(
         [d.now()],
       );
       if (Number(today?.n ?? 0) < 2) ep = await pick();
+    }
+    // INSTAGRAM_MAX_SECONDS (src/shortlengths.ts): a Short over it is skipped on Instagram for good. The cutdown code cuts
+    // entries out of long rankings and cannot make a shorter cut of a Short, so there is no 20-35 second version to send.
+    // Like the length lanes, it covers ordinary news and why Shorts only: never a launch run topic or another lane.
+    while (
+      ep &&
+      platform === "instagram" &&
+      lengthFormatOf({ lane: ep.lane ?? "", story_json: { run: ep.run === true } }) !== undefined &&
+      overInstagramLength(
+        d.cfg.instagramMaxSeconds,
+        traitsOf(ep).durationSeconds,
+      )
+    ) {
+      await logEvent(d.db, ep.id, "crosspost_skip", {
+        platform,
+        reason: `runs ${Math.round(traitsOf(ep).durationSeconds ?? 0)} s, over INSTAGRAM_MAX_SECONDS (${d.cfg.instagramMaxSeconds} s)`,
+      });
+      ep = await pick(skip);
     }
     if (!ep) continue;
     const timing =

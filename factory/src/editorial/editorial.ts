@@ -4,6 +4,7 @@
 import { lateAngleNote } from "../bigstories.ts";
 import { pulseCheckRule, PULSE_CHECK_ASK } from "./newssegment.ts";
 import { whyBrief } from "./why.ts";
+import { strandBrief } from "../strand.ts";
 import {
   voiceFor,
   voiceProblems,
@@ -65,12 +66,26 @@ You are the editor choosing today's story. Pick the single candidate that will m
 Return candidate_index -1 if nothing is worth a Short today.`;
 }
 
+/** A Short's length lane (SHORT_LENGTHS, src/shortlengths.ts): its seconds, its word budget and how many beats it may have. */
+export interface ScriptLength {
+  seconds: { min: number; max: number };
+  wordsMin: number;
+  wordsMax: number;
+  beatsMax: number;
+}
+
 /** The news writer's brief. With the desk voice off (DESK_SHARE=0, owner 5 Nov 2026) no desk question is asked for: a take
- * written to answer it reads as an answer to nothing once the question is gone. */
-export function scriptPrompt(desk = true): string {
+ * written to answer it reads as an answer to nothing once the question is gone. Without a length lane, the old 25-40 s. */
+export function scriptPrompt(desk = true, length?: ScriptLength): string {
+  const seconds = length ? `${length.seconds.min}-${length.seconds.max}` : "25-40";
+  const words = length
+    ? `${length.wordsMin}-${length.wordsMax}`
+    : `${WORDS_MIN}-${WORDS_MAX}`;
+  const beats =
+    length && length.beatsMax > 4 ? `two to ${numberWords(length.beatsMax)}` : "two to four";
   return `${HOUSE_STYLE}
 
-Write a 25-40 second vertical Short script (${WORDS_MIN}-${WORDS_MAX} spoken words in total across hook, beats, take and loop line). Quoted examples in this brief show a shape; a draft that reuses one word for word is sent back.
+Write a ${seconds} second vertical Short script (${words} spoken words in total across hook, beats, take and loop line). Quoted examples in this brief show a shape; a draft that reuses one word for word is sent back.
 
 Structure:
 1. hook: 5-10 words with the game or company named in the first five words, in the Pulse voice, never more than 12 (on our channel, hooks of 16 or more words drew a median 114 views a Short against 303 for shorter ones). It opens a gap the Short closes, never a bare "X announced Y" (in a study of 1,345 gaming Shorts, plain announcement openers were twice as common among each channel's weakest Shorts as among its hits, and openers that posed a specific, answerable question or a surprising claim were more than twice as common among hits). Three shapes work; vary them:
@@ -78,7 +93,7 @@ Structure:
    - an answerable question the take will answer, carrying the news: "Is Switch 2's $80 Zelda really the new normal?"
    - the surprising fact first: "Silksong sold a million copies before lunch."
    No superlatives or hype in the hook (biggest, greatest, craziest, insane, massive, ever): they were rarer in hits than in weak Shorts. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys", a greeting or the channel's name, and never a question the Short does not answer.
-2. beats: two to four short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. It adds a new detail: never the hook's own date or price said again (the card can show it), and no date or price said more than twice in the whole Short. Context and history come later or in the take. Pick the card that fits the fact:
+2. beats: ${beats} short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. It adds a new detail: never the hook's own date or price said again (the card can show it), and no date or price said more than twice in the whole Short. Context and history come later or in the take. Pick the card that fits the fact:
    - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
    - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
    - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
@@ -193,6 +208,8 @@ export async function writeScript(
     skeleton?: Skeleton;
     /** DROP_ANGLE: an official drop, written as one reframing idea (src/editorial/dropangle.ts). */
     dropAngle?: boolean;
+    /** SHORT_LENGTHS: this Short's length lane; absent, the old 25-40 seconds and 70-100 words. */
+    length?: ScriptLength;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -203,6 +220,10 @@ export async function writeScript(
     : "";
   const why = cluster.why
     ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}`
+    : "";
+  // The named daily strand (src/strand.ts): one test, how-to or "is it true" check, never an announcement.
+  const strand = cluster.strand
+    ? `\n\n${strandBrief({ ...cluster.strand, longLane: (opts.length?.seconds.max ?? 0) > 45 })}`
     : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
@@ -219,14 +240,14 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${strand}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
     opts.feedback?.length &&
     !opts.feedback.some((f) => /rumou?r labell?ing/i.test(f))
       ? await reviseByEdits(llm, {
-          system: scriptPrompt(opts.desk ?? true),
+          system: scriptPrompt(opts.desk ?? true, opts.length),
           content: brief,
           schema: ScriptSchema,
           draft: opts.draft,
@@ -237,7 +258,7 @@ export async function writeScript(
   const script =
     edited ??
     (await llm.structured({
-      system: scriptPrompt(opts.desk ?? true),
+      system: scriptPrompt(opts.desk ?? true, opts.length),
       content: `${brief}${feedback}`,
       schema: ScriptSchema,
       effort: "medium",
@@ -550,7 +571,15 @@ export function midQuestions(s: Pick<Script, "beats" | "pulse_take">): string[] 
     .filter((q) => q && !PULSE_CHECK_ASK.test(q));
 }
 
-export function validateScript(s: Script, recent?: RecentShapes): string[] {
+export function validateScript(
+  s: Script,
+  recent?: RecentShapes,
+  /** SHORT_LENGTHS: the lane's word budget and beats; absent, 70-100 words and two to four beats. */
+  length?: Pick<ScriptLength, "wordsMin" | "wordsMax" | "beatsMax">,
+): string[] {
+  const wordsMin = length?.wordsMin ?? WORDS_MIN;
+  const wordsMax = length?.wordsMax ?? WORDS_MAX;
+  const beatsMax = length?.beatsMax ?? 4;
   const problems: string[] = [];
   const spoken = narrationOf(s);
   const words = wordCount(spoken);
@@ -575,9 +604,9 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
         `The loop line ends "${s.loop_line.trim().split(/\s+/).slice(-3).join(" ")}" like a recent Short; close on a different shape.`,
       );
   }
-  if (words < WORDS_MIN || words > WORDS_MAX)
+  if (words < wordsMin || words > wordsMax)
     problems.push(
-      `Spoken word count is ${words}; it must be ${WORDS_MIN}-${WORDS_MAX}.`,
+      `Spoken word count is ${words}; it must be ${wordsMin}-${wordsMax}.`,
     );
   if (BANNED_OPENERS.test(s.hook.trim()))
     problems.push(
@@ -647,8 +676,12 @@ export function validateScript(s: Script, recent?: RecentShapes): string[] {
     problems.push(
       `The loop line "${s.loop_line.trim()}" is unfinished; end it as one complete sentence.`,
     );
-  if (s.beats.length < 2 || s.beats.length > 4)
-    problems.push("There must be two to four beats.");
+  if (s.beats.length < 2 || s.beats.length > beatsMax)
+    problems.push(
+      beatsMax === 4
+        ? "There must be two to four beats."
+        : `There must be two to ${beatsMax} beats.`,
+    );
   const allText = [
     spoken,
     s.headline,

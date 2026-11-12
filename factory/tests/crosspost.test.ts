@@ -470,3 +470,67 @@ test("TikTok's daily pick is unchanged: TIKTOK_DAILY, best views per hour, nothi
   assert.equal(await tiktokTooSoon(db, { tiktokGapMinutes: 60 }, new Date()), true);
   await db.close();
 });
+
+// ------------------------------------------------------------------ Instagram's length limit (src/shortlengths.ts)
+
+test("INSTAGRAM_MAX_SECONDS: a longer Short is skipped on Instagram for good and posts everywhere else; 0 changes nothing", async () => {
+  const seed = async (db: Awaited<ReturnType<typeof testDb>>, dir: string) => {
+    for (const [id, seconds] of [["long", 52], ["fit", 31]] as const) {
+      await fs.mkdir(path.join(dir, id), { recursive: true });
+      await fs.writeFile(path.join(dir, id, "short.mp4"), "x");
+      await db.query(
+        `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, publish_at, updated_at, assets_json)
+         VALUES ($1, $1, '{"headline":"x","items":[]}', 'published', 'news', $2, $3, now() - interval '3 hours', now(), $4)`,
+        [id, JSON.stringify(goodScript()), `yt_${id}`, JSON.stringify({ durationSeconds: seconds })],
+      );
+    }
+  };
+  {
+    const db = await testDb();
+    const dir = await tmpDir();
+    await seed(db, dir);
+    const posted: string[] = [];
+    const deps = capDeps(db, dir, testConfig(dir, { instagramMaxSeconds: 35 }), posted);
+    for (let i = 0; i < 3; i++) await crosspostTick(deps);
+    assert.deepEqual(await postedOn(db, "instagram"), ["fit"]);
+    assert.deepEqual((await postedOn(db, "facebook")).sort(), ["fit", "long"]);
+    const [skip] = await db.query<{ episode_id: string; reason: string }>(
+      `SELECT episode_id, detail->>'reason' AS reason FROM events WHERE kind = 'crosspost_skip' AND detail->>'platform' = 'instagram'`,
+    );
+    assert.equal(skip?.episode_id, "long");
+    assert.match(skip!.reason, /runs 52 s, over INSTAGRAM_MAX_SECONDS \(35 s\)/);
+    await db.close();
+  }
+  {
+    const db = await testDb();
+    const dir = await tmpDir();
+    await seed(db, dir);
+    const posted: string[] = [];
+    const deps = capDeps(db, dir, testConfig(dir), posted);
+    for (let i = 0; i < 3; i++) await crosspostTick(deps);
+    assert.deepEqual((await postedOn(db, "instagram")).sort(), ["fit", "long"], "off: every Short, as before");
+    await db.close();
+  }
+});
+
+test("INSTAGRAM_MAX_SECONDS never skips a launch run topic: the GTA VI calendar's Whys keep their own length", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  for (const [id, seconds, story] of [
+    ["planned", 52, '{"headline":"x","items":[],"run":true,"why":{"question":"Why?"}}'],
+    ["ordinary", 52, '{"headline":"x","items":[]}'],
+  ] as const) {
+    await fs.mkdir(path.join(dir, id), { recursive: true });
+    await fs.writeFile(path.join(dir, id, "short.mp4"), "x");
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, story_json, status, lane, script_json, youtube_video_id, publish_at, updated_at, assets_json)
+       VALUES ($1, $1, $5, 'published', 'news', $2, $3, now() - interval '3 hours', now(), $4)`,
+      [id, JSON.stringify(goodScript()), `yt_${id}`, JSON.stringify({ durationSeconds: seconds }), story],
+    );
+  }
+  const posted: string[] = [];
+  const deps = capDeps(db, dir, testConfig(dir, { instagramMaxSeconds: 35 }), posted);
+  for (let i = 0; i < 3; i++) await crosspostTick(deps);
+  assert.deepEqual(await postedOn(db, "instagram"), ["planned"]);
+  await db.close();
+});

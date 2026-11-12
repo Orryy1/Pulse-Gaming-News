@@ -13,6 +13,12 @@ import {
   relocatedFile,
   usablePath,
 } from "./platform.ts";
+import {
+  parseShortLengths,
+  shortLengthsSummary,
+  type ShortLengths,
+} from "./shortlengths.ts";
+import { strandSummary } from "./strand.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -221,6 +227,16 @@ export interface Config {
   whySlots: string[];
   /** Days a Why Short's game, topic and opening shape stay off limits for the next one (src/editorial/why.ts). */
   whyFreshDays: number;
+  /** The named daily Shorts strand (src/strand.ts): its name; empty = off (STRAND_NAME). */
+  strandName: string;
+  /** The strand's slot, local "HH:MM": it must already be one of NEWS_SLOTS (the plan's verdict slot), so no slot is added (STRAND_SLOT). */
+  strandSlot: string;
+  /** The strand's franchise and the other names it goes by, "|" between them, the on-screen name first, e.g. "GTA VI|GTA 6|Grand Theft Auto VI" (STRAND_FRANCHISE). */
+  strandFranchise: string;
+  /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,strand=60-75"; empty = the old 25-40 s for every Short. */
+  shortLengths: ShortLengths;
+  /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
+  instagramMaxSeconds: number;
   /** A breaking Short past BREAKING_PER_DAY is allowed once more only at or above this score; 0 = never (src/storymix.ts). */
   breakingBigScore: number;
   /** Big stories (src/bigstories.ts): off, report (say what it would do, change nothing) or make. */
@@ -987,6 +1003,11 @@ export function loadConfig(): Config {
     whySlot: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT"))[0]!,
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
+    strandName: str("STRAND_NAME", ""),
+    strandSlot: str("STRAND_SLOT", ""),
+    strandFranchise: str("STRAND_FRANCHISE", ""),
+    shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
+    instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
     bigStoryMode: (["off", "report", "make"] as const).find(
       (m) => m === str("BIG_STORY_MODE", "report"),
@@ -1577,6 +1598,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       ? "off"
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
+    strand: strandSummary(c),
+    shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     demandCheck: c.demandCheck,
     approvalMode: c.approvalMode,
     approvalTimeoutMinutes: c.approvalTimeoutMinutes,

@@ -506,7 +506,10 @@ test("scene and quote settings follow their safe defaults and explicit overrides
     for (const key of keys) delete process.env[key];
     assert.equal(loadConfig().cutsceneScenes, false);
     assert.equal(loadConfig().cutsceneQuotes, false);
+    // Cutscene footage alone no longer switches the scene search on (12 Nov 2026: the Mac runs CUTSCENE_FOOTAGE=true).
     process.env.CUTSCENE_FOOTAGE = "true";
+    assert.equal(loadConfig().cutsceneScenes, false);
+    process.env.CUTSCENE_SCENES = "true";
     assert.equal(loadConfig().cutsceneScenes, true);
     process.env.CUTSCENE_SCENES = "false";
     process.env.CUTSCENE_QUOTES = "true";

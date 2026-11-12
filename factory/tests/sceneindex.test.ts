@@ -88,6 +88,9 @@ import {
   indexFirstCutscenes,
   indexFitsRelease,
   indexedCutsceneClips,
+  indexedSceneStills,
+  firstSpoken,
+  stillConfirmed,
   matchingSlug,
   planIndexedClips,
   quotedWords,
@@ -1776,4 +1779,171 @@ test("in a game that writes out what it says, a line only heard stays when the s
   // A voiced game with no subtitles keeps everything it hears.
   const unsubtitled = tidyIndex({ ...index, lines: [heard(6902, "Nobody wrote this down."), heard(6904, "Or this.")] });
   assert.equal(unsubtitled.lines.length, 2);
+});
+
+test("SCENE_MATCH: a named line keeps its next best shots, and an unnamed line keeps one", () => {
+  const index = sample();
+  const plan = planIndexedClips(
+    index,
+    [
+      target("beat:0", "Ganondorf rises over Hyrule Castle"),
+      target("beat:1", "The camera drifts through the mist"),
+    ],
+    { maxClips: 8, maxSeconds: 60, minConfidence: 0.2, alternates: 3, gameTitle: GAME },
+  );
+  const [named] = plan;
+  assert.deepEqual(named!.names, ["Hyrule Castle", "Ganondorf"]);
+  assert.equal(index.shots[named!.shot]!.start, 6900);
+  assert.ok(named!.alternates?.length, "the next Ganondorf shots ride along");
+  assert.ok(named!.alternates!.every((a) => a.shot !== named!.shot && a.seconds <= named!.seconds));
+  const unnamed = plan.find((p) => p.key === "beat:1");
+  if (unnamed) assert.equal(unnamed.alternates, undefined);
+  // Off: exactly the old plan, no names and no alternates.
+  const off = planIndexedClips(index, [target("beat:0", "Ganondorf rises over Hyrule Castle")], {
+    maxClips: 8,
+    maxSeconds: 60,
+    minConfidence: 0.2,
+  });
+  assert.equal(off[0]!.names, undefined);
+  assert.equal(off[0]!.alternates, undefined);
+});
+
+test("SCENE_MATCH: a named moment the picture check refuses gives way to the next shot; seen, it is the line's alone", async () => {
+  const dir = await tmpDir();
+  const asked: Array<{ at: number; names: string[]; line: string }> = [];
+  const clips = await indexedCutsceneClips({
+    index: sample(),
+    gameTitle: GAME,
+    episodeDir: dir,
+    targets: [target("beat:2", "Ganondorf rises over Hyrule Castle")],
+    maxClips: 8,
+    maxSeconds: 60,
+    minConfidence: 0.2,
+    ytdlp: "yt-dlp",
+    check: async (file, _seconds, ask) => {
+      asked.push({ at: Number(fsSync.readFileSync(file, "utf8")), names: ask.names, line: ask.line });
+      return asked.length === 2; // the first shot is refused, the second seen
+    },
+    deps: {
+      download: async (_id, from, _to, file) => fs.writeFile(file, String(from)),
+      cut: async (section, at, _s, file) =>
+        fs.writeFile(file, String(Number(fsSync.readFileSync(section, "utf8")) + at)),
+      screen: async () => true,
+    },
+  });
+  assert.equal(asked.length, 2);
+  assert.equal(asked[0]!.line, "Ganondorf rises over Hyrule Castle");
+  assert.deepEqual(asked[0]!.names, ["Hyrule Castle", "Ganondorf"]);
+  assert.equal(clips.length, 1);
+  assert.equal(clips[0]!.beatIndex, 2);
+  assert.notEqual(clips[0]!.span.from, asked[0]!.at, "not the refused shot");
+  assert.deepEqual(clips[0]!.cutsceneMatch, { targetKey: "beat:2", how: "index" });
+  assert.match(clips[0]!.reason ?? "", /seen by the picture check/);
+  // Every shot refused: nothing from the index, so the ordinary search covers the line.
+  const dir2 = await tmpDir();
+  const none = await indexedCutsceneClips({
+    index: sample(),
+    gameTitle: GAME,
+    episodeDir: dir2,
+    targets: [target("beat:2", "Ganondorf rises over Hyrule Castle")],
+    maxClips: 8,
+    maxSeconds: 60,
+    minConfidence: 0.2,
+    ytdlp: "yt-dlp",
+    check: async () => false,
+    deps: {
+      download: async (_id, _f, _t, file) => fs.writeFile(file, "s"),
+      cut: async (_s, _a, _x, file) => fs.writeFile(file, "c"),
+      screen: async () => true,
+    },
+  });
+  assert.equal(none.length, 0);
+  assert.deepEqual(await fs.readdir(path.join(dir2, "assets")), [], "refused clips are not left on disk");
+});
+
+test("SCENE_MATCH: an unnamed line is not sent to the picture check", async () => {
+  const dir = await tmpDir();
+  let asked = 0;
+  const clips = await indexedCutsceneClips({
+    index: sample(),
+    gameTitle: GAME,
+    episodeDir: dir,
+    targets: [target("beat:0", "a red-haired man in dark armour floats above the ruins", ["ruins", "storm"])],
+    maxClips: 8,
+    maxSeconds: 60,
+    minConfidence: 0.2,
+    ytdlp: "yt-dlp",
+    check: async () => {
+      asked++;
+      return false;
+    },
+    deps: {
+      download: async (_id, _f, _t, file) => fs.writeFile(file, "s"),
+      cut: async (_s, _a, _x, file) => fs.writeFile(file, "c"),
+      screen: async () => true,
+    },
+  });
+  assert.equal(asked, 0);
+  assert.equal(clips.length, 1);
+  assert.equal(clips[0]!.cutsceneMatch, undefined);
+});
+
+test("SCENE_MATCH stills: a stills-only publisher's named moment comes as one checked frame, placed on the name", async () => {
+  const data = await tmpDir();
+  const index = sample();
+  await saveSceneIndex(data, index);
+  const dir = await tmpDir();
+  const looked: string[] = [];
+  const cfg = { ...testConfig(data), sceneIndex: true, sceneMatch: true, spoilerGuard: false };
+  const stills = await indexedSceneStills(
+    cfg,
+    {
+      gameTitle: GAME,
+      recentRelease: true,
+      episodeDir: dir,
+      targets: [
+        target("beat:0", "Then Princess Zelda watches Ganondorf rise over Hyrule Castle"),
+        target("beat:1", "Sales doubled in a week"),
+      ],
+      max: 4,
+    },
+    {
+      precheck: null,
+      download: async (_id, from, _to, file) => fs.writeFile(file, String(from)),
+      grab: async (section, at, file) => fs.writeFile(file, String(Number(fsSync.readFileSync(section, "utf8")) + at)),
+      // The first frame shows someone else; the second shows the moment.
+      look: async (file) => {
+        looked.push(fsSync.readFileSync(file, "utf8"));
+        return looked.length === 1
+          ? { shows: false, confidence: 0.2, seen: "a hall" }
+          : { shows: true, confidence: 0.9, seen: "a red-haired man above a ruined castle" };
+      },
+      screen: async () => ({ hud: false, text: false, webcam: false, gore: false, letterbox: false, dark: false, blurry: false }),
+    },
+  );
+  assert.equal(looked.length, 2, "the unnamed line is never looked at");
+  assert.equal(stills.length, 1);
+  const [still] = stills;
+  assert.equal(still!.kind, "screenshot");
+  assert.equal(still!.beatIndex, 0);
+  assert.equal(still!.forWords, "Princess Zelda", "placed on the first name as it is said");
+  assert.match(still!.provenance, /^Cutscene still for "The Legend of Zelda: Ocarina of Time" from YouTube video/);
+  assert.match(still!.provenance, /seen by the picture check/);
+  assert.ok(fsSync.existsSync(path.join(dir, still!.file)));
+  // Off: nothing at all.
+  assert.deepEqual(
+    await indexedSceneStills({ ...cfg, sceneMatch: false }, { gameTitle: GAME, recentRelease: true, episodeDir: dir, targets: [target("beat:0", "Ganondorf rises")], max: 2 }),
+    [],
+  );
+});
+
+test("SCENE_MATCH stills: a frame with text across it is refused even when it shows the moment", () => {
+  const yes = { shows: true, confidence: 0.9, seen: "Ganondorf" };
+  const clean = { hud: false, text: false, webcam: false, gore: false, letterbox: false, dark: false, blurry: false };
+  assert.equal(stillConfirmed(yes, clean), true);
+  assert.equal(stillConfirmed(yes, { ...clean, text: true }), false);
+  assert.equal(stillConfirmed(yes, { ...clean, hud: true }), true, "the game's own small HUD is fine");
+  assert.equal(stillConfirmed({ ...yes, confidence: 0.4 }, clean), false);
+  assert.equal(stillConfirmed(undefined, clean), false);
+  assert.equal(firstSpoken("And at Lon Lon Ranch, Malon sings to Epona.", ["Malon", "Epona", "Lon Lon Ranch"]), "Lon Lon Ranch");
 });

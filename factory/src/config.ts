@@ -691,7 +691,9 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   cutsceneFootage: boolean; // CUTSCENE_FOOTAGE: opt in to screened YouTube cutscene sections
-  cutsceneScenes: boolean; // CUTSCENE_SCENES: seek named scenes when cutscene footage is on
+  cutsceneScenes: boolean; // CUTSCENE_SCENES: seek named scenes in the cutscene search (chapters, captions, scene uploads); off by default
+  /** SCENE_MATCH: a line that names a moment ("Ganondorf rises") gets an indexed or located clip only once the free local vision model sees it there (src/assets/scenecheck.ts); off: the index and the search decide alone. */
+  sceneMatch: boolean;
   cutsceneQuotes: boolean; // CUTSCENE_QUOTES: collect caption quotes for future review
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   /** SCENE_INDEX: the per-game scene index (src/sceneindex): built in the background, looked up before cutscenes are searched. Off: nothing is built or read. */
@@ -1459,7 +1461,9 @@ export function loadConfig(): Config {
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     cutsceneFootage: bool("CUTSCENE_FOOTAGE", false),
-    cutsceneScenes: bool("CUTSCENE_SCENES", bool("CUTSCENE_FOOTAGE", false)),
+    // Off unless asked for: the Mac runs CUTSCENE_FOOTAGE=true, and the scene search must not switch on with it unreviewed.
+    cutsceneScenes: bool("CUTSCENE_SCENES", false),
+    sceneMatch: bool("SCENE_MATCH", false),
     cutsceneQuotes: bool("CUTSCENE_QUOTES", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
     sceneIndex: bool("SCENE_INDEX", false),

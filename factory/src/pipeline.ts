@@ -41,7 +41,7 @@ import { factsText } from "./assets/steam.ts";
 import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
-import { cutsceneBudgetSeconds, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
+import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
 import { hasSpoilerWarning } from "./sceneindex/spoilers.ts";
 import { streamClipSpoiler } from "./sceneindex/spoilerclips.ts";
@@ -710,6 +710,11 @@ export interface Services {
     long?: boolean;
     spoilerWarned?: boolean;
   }): Promise<CutsceneClip[]>;
+  /**
+   * SCENE_MATCH for a stills-only publisher (Nintendo): one checked still of each named moment from the game's scene
+   * index, placed on the name as it is said (src/sceneindex/footage.ts indexedSceneStills).
+   */
+  fetchSceneStills?(options: import("./sceneindex/footage.ts").SceneStillOptions): Promise<VisualAsset[]>;
   /** A tight-cap publisher's trailer as last-resort stills, once published art has been counted. */
   trailerFrames?(
     trailer: { videoId: string; title: string; channelTitle: string; url: string },
@@ -7812,6 +7817,20 @@ export async function gatherMedia(
         long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
     });
     clips.push(...added.map((c) => ({ ...c, durationSeconds: c.durationSeconds ?? 4.8 })));
+    // SCENE_MATCH: a stills-only publisher's game (Nintendo) plays no cutscene, so each named moment comes as a
+    // checked still of that exact scene, on the name as it is said. A Short about one game only.
+    const job = jobs.length === 1 && !script.entries?.length ? jobs[0] : undefined;
+    if (s.cfg.sceneMatch && s.fetchSceneStills && job && cutscenePublisher(job.gameTitle, job.publisherNames).seconds === 0) {
+      const stills = await s
+        .fetchSceneStills({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: dir, targets: job.targets,
+          max: job.targets.length, long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) })
+        .catch((err) => {
+          log("warn", "scene stills failed", { episode: ep.id, error: errorMessage(err) });
+          return [] as VisualAsset[];
+        });
+      if (stills.length) await logEvent(s.db, ep.id, "scene_stills", { count: stills.length, lines: stills.map((a) => a.reason) });
+      images.push(...stills);
+    }
   }
   // A story about a person shows the person: a freely licensed photo from Wikimedia Commons,
   // credited on screen, on the first line that names them (else wherever a still is needed).

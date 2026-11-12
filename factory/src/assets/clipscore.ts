@@ -753,6 +753,8 @@ export interface MatchClipsOptions {
   /** Read each clip with the local OCR: big burned-in text is cut away, or the clip dropped (src/assets/cliptext.ts). */
   textCheck?: boolean;
   preserveWork?: boolean;
+  /** SCENE_MATCH: the located-scene check on the local vision model (src/assets/scenecheck.ts), in place of `llm`. */
+  sceneReview?: (targets: FootageTarget[], candidates: Candidate[]) => Promise<Assignment[]>;
 }
 
 /**
@@ -864,7 +866,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     const pool = spread(base.filter((c) => !o.trailers[c.movie]?.targetKey), MAX_CANDIDATES_TO_MODEL);
     const flagByIndex = new Map(screened.map((candidate, i) => [candidate.index, flags[i]]));
     let assignments: Assignment[] = await verifySceneAssignments(o.targets, base, o.trailers, flagByIndex,
-      o.llm ? (targets, frames) => rankByModel(o.llm!, targets, frames, textFrames, SCENE_PROMPT) : undefined);
+      o.sceneReview ?? (o.llm ? (targets, frames) => rankByModel(o.llm!, targets, frames, textFrames, SCENE_PROMPT) : undefined));
     const located = new Set(assignments.map((a) => a.key));
     let how = "rule";
     if (o.llm && pool.length) {

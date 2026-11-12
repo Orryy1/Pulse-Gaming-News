@@ -18,6 +18,7 @@ import {
 } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
+import { localSceneReview } from "./scenecheck.ts";
 import { safeCutsceneQuote, type CutsceneQuote } from "../editorial/quotes.ts";
 
 export interface CutsceneChapter { title: string; start: number; end?: number }
@@ -647,6 +648,8 @@ async function screenSection(file: string, seconds: number): Promise<boolean> {
 export interface CutsceneOptions {
   enabled: boolean;
   scenes?: boolean;
+  /** SCENE_MATCH: a located scene is confirmed by the free local vision model, never by `llm` (src/assets/scenecheck.ts). */
+  sceneCheck?: boolean;
   quotes?: boolean;
   gameTitle: string;
   recentRelease?: boolean;
@@ -1036,6 +1039,7 @@ export async function cutsceneMedia(
         targets,
         maxClips: o.maxClips - clean.length,
         llm: o.llm,
+        ...(o.sceneCheck ? { sceneReview: localSceneReview(o.gameTitle) } : {}),
         prefix: `${path.basename(workDir)}_${pass++}`,
         textCheck: true,
         preserveWork: true,

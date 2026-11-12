@@ -68,7 +68,7 @@ export interface LongClip {
   beatIndex?: number;
   role?: "hook";
   moment?: number;
-  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
+  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
   /** Licensed stock, not the game: never on a chapter's card or a line naming a real person, never to fill a gap. */
   stock?: boolean;
   /** Where in its source video the clip was cut (seconds), when known: two clips overlapping there are one moment. */

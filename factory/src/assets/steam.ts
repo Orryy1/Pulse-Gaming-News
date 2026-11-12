@@ -30,7 +30,7 @@ export interface VisualAsset {
   youtubeSource?: { videoId: string; title: string; uploader: string };
   sourceSectionId?: string;
   assignedTargetKey?: string;
-  cutsceneMatch?: { targetKey?: string; requestedTarget?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
+  cutsceneMatch?: { targetKey?: string; requestedTarget?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
   width?: number;
   height?: number;
   durationSeconds?: number;

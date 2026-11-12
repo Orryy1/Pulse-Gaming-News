@@ -53,7 +53,7 @@ export interface PlanClip {
   motion?: number; // 0-1 if scored
   luma?: number;
   beatIndex?: number; // tagged for a beat by the clip ranking step
-  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
+  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
 
   role?: "hook"; // chosen for the opening line
 }

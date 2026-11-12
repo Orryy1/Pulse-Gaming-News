@@ -417,6 +417,7 @@ export function testConfig(
     cutsceneFootage: false,
     cutsceneScenes: overrides.cutsceneFootage ?? false,
     cutsceneQuotes: false,
+    sceneMatch: false,
     cutsceneMaxSeconds: 20,
     sceneIndex: false,
     sceneIndexProxyHeight: 480,

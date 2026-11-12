@@ -49,7 +49,7 @@ import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
 import { trailerFrames, officialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneMedia } from "./assets/cutscenes.ts";
-import { indexFirstCutscenes } from "./sceneindex/footage.ts";
+import { indexFirstCutscenes, indexedSceneStills } from "./sceneindex/footage.ts";
 import {
   archiveLibrary,
   libraryStockClips,
@@ -436,12 +436,15 @@ export function createServices(db: Db, cfg: Config): Services {
         : Promise.resolve([]),
     // SCENE_INDEX: a game with a scene index gives each line its exact shot first (src/sceneindex/footage.ts);
     // the cutscene search below then covers only the lines the index was not sure of. Off: the search alone.
+    // SCENE_MATCH stills for a stills-only publisher's game (Nintendo); off, or SCENE_INDEX off: nothing.
+    fetchSceneStills: (options) => indexedSceneStills(cfg, options),
     fetchCutscenes: (options) =>
       indexFirstCutscenes(cfg, options, (o) =>
         cutsceneMedia({
           ...o,
           enabled: cfg.cutsceneFootage,
           scenes: cfg.cutsceneScenes,
+          sceneCheck: cfg.sceneMatch,
           quotes: cfg.cutsceneQuotes,
           ytdlp: cfg.ytdlpPath,
           llm: cfg.clipRanking === "llm" ? llm : undefined,

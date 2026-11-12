@@ -916,3 +916,32 @@ export async function lightFrames(
     ),
   );
 }
+
+/**
+ * The upload a light index is built from: the launch picker's choice (clean, whole game, 1080p, most complete), but
+ * since the light index reads the captions, the best clean upload that has them, of up to three looked at; else the
+ * best one without. The searches are made once. Undefined when nothing clean is found.
+ */
+export async function pickLightSource(
+  game: string,
+  s: { ytdlp: string; maxHours: number },
+  o: { recentRelease?: boolean; siblings?: string[]; exclude?: Set<string> } = {},
+): Promise<SceneSource | undefined> {
+  const { chooseSource, launchSearch } = await import("./build.ts");
+  const exclude = new Set(o.exclude ?? []);
+  const found = new Map<string, Awaited<ReturnType<typeof launchSearch>>>();
+  const search = async (q: string) => {
+    if (!found.has(q)) found.set(q, await launchSearch(q, s.ytdlp));
+    return found.get(q)!.filter((u) => !exclude.has(u.videoId));
+  };
+  let first: SceneSource | undefined;
+  for (let i = 0; i < 3; i++) {
+    const picked = await chooseSource(game, s, { recentRelease: o.recentRelease, complete: true, siblings: o.siblings }, { search });
+    if (!picked) break;
+    first ??= picked;
+    const info = await uploadInfo(picked.videoId, s.ytdlp).catch(() => undefined);
+    if (info && hasCaptions(info)) return picked;
+    exclude.add(picked.videoId);
+  }
+  return first;
+}

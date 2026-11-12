@@ -21,7 +21,7 @@ import {
   launchCandidates,
   judgeUploads,
 } from "../sceneindex/build.ts";
-import { buildLight } from "../sceneindex/light.ts";
+import { buildLight, pickLightSource } from "../sceneindex/light.ts";
 import { gameNames } from "../sceneindex/names.ts";
 import { loadSceneIndex, type SceneSource } from "../sceneindex/schema.ts";
 
@@ -155,11 +155,7 @@ async function main(): Promise<void> {
         const source =
           had?.source ??
           picks.find((p) => p.game === g.game)?.pick ??
-          (await chooseSource(
-            g.game,
-            { ytdlp, maxHours: 12 },
-            { recentRelease: g.recent, complete: true, siblings: siblingsOf(g.game) },
-          ));
+          (await pickLightSource(g.game, { ytdlp, maxHours: 12 }, { recentRelease: g.recent, siblings: siblingsOf(g.game) }));
         if (!source) {
           console.log(
             JSON.stringify({

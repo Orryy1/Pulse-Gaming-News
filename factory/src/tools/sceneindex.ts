@@ -57,7 +57,7 @@ import {
   type SceneIndex,
 } from "../sceneindex/schema.ts";
 import { findQuote, findShots } from "../sceneindex/lookup.ts";
-import { buildLight, hasCaptions, uploadInfo } from "../sceneindex/light.ts";
+import { buildLight, pickLightSource } from "../sceneindex/light.ts";
 import { siblingsOf } from "../sceneindex/archive.ts";
 import { gameNames } from "../sceneindex/names.ts";
 import { keyframeTimes } from "../sceneindex/shots.ts";
@@ -506,26 +506,7 @@ async function main(): Promise<void> {
         ? index.source
         : undefined;
     if (!source) {
-      // The light index reads the captions: of the clean uploads, the best one that has them (up to three looked
-      // at), else the best one without. The searches are made once.
-      const found = new Map<string, Awaited<ReturnType<typeof launchSearch>>>();
-      const search = async (q: string) => {
-        if (!found.has(q)) found.set(q, await launchSearch(q, s.ytdlp));
-        return found.get(q)!.filter((u) => !exclude.has(u.videoId));
-      };
-      let first: SceneIndex["source"] | undefined;
-      for (let i = 0; i < 3; i++) {
-        const picked = await chooseSource(game, s, { recentRelease: Boolean(flag("recent")), complete: true, siblings: siblingsOf(game) }, { search });
-        if (!picked) break;
-        first ??= picked;
-        const info = await uploadInfo(picked.videoId, s.ytdlp).catch(() => undefined);
-        if (info && hasCaptions(info)) {
-          source = picked;
-          break;
-        }
-        exclude.add(picked.videoId);
-      }
-      source ??= first;
+      source = await pickLightSource(game, s, { recentRelease: Boolean(flag("recent")), siblings: siblingsOf(game), exclude });
     }
     if (!source) {
       console.log("no-source");

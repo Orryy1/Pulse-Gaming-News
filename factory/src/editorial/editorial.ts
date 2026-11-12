@@ -45,6 +45,7 @@ import {
   type Selection,
   type FactCheck,
 } from "./schema.ts";
+import { searchBrief } from "../searchq/brief.ts";
 
 export const WORDS_MIN = 70;
 // Our own Shorts of 38-44 s held 57% of viewers against 39% for those over a minute (26 Oct 2026).
@@ -217,6 +218,8 @@ export async function writeScript(
     /** SHORT_LENGTHS: this Short's length lane; absent, the old 25-40 seconds and 70-100 words. */
     length?: ScriptLength;
     availableQuotes?: readonly CutsceneQuote[];
+    /** The step, so CODEX_CALLS can route this writer (the search lane: "search.write"). Absent: read from the caller. */
+    site?: string;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -238,6 +241,10 @@ export async function writeScript(
   const file = cluster.gtaFile
     ? `\n\n${gtaFileBrief({ ...cluster.gtaFile, seconds: opts.length?.seconds })}`
     : "";
+  // A search Short (src/searchq): the answer first and the title in the searcher's own words.
+  const search = cluster.search
+    ? `\n\n${searchBrief(cluster.search, cluster.gameHint ?? cluster.headline)}`
+    : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
       ? `\n\nRecent Shorts (do not open the take the same way or end on the same shape as any of these):\n${opts.recent.takes.map((t) => `- take opened: "${t}"`).join("\n")}\n${opts.recent.loops.map((l) => `- closed: "${l}"`).join("\n")}${recentShapeNotes(opts.recent)}`
@@ -253,13 +260,14 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${search}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
     opts.feedback?.length &&
     !opts.feedback.some((f) => /rumou?r labell?ing/i.test(f))
       ? await reviseByEdits(llm, {
+          ...(opts.site ? { site: opts.site } : {}),
           system: scriptPrompt(opts.desk ?? true, opts.length),
           content: brief,
           schema: ScriptSchema,
@@ -271,6 +279,7 @@ export async function writeScript(
   const script =
     edited ??
     (await llm.structured({
+      ...(opts.site ? { site: opts.site } : {}),
       system: scriptPrompt(opts.desk ?? true, opts.length),
       content: `${brief}${feedback}`,
       schema: ScriptSchema,
@@ -348,8 +357,11 @@ export async function factCheck(
   cluster: StoryCluster,
   articles: ArticleText[],
   storeData?: string,
+  /** The step, so CODEX_CALLS can route this check (the search lane: "search.check"). Absent: read from the caller. */
+  site?: string,
 ): Promise<FactCheck> {
   return llm.structured({
+    ...(site ? { site } : {}),
     system: factCheckPrompt(),
     content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}${launchNotes(cluster)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
       .map((b) => `- ${cardText(b.visual)}`)

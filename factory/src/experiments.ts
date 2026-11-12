@@ -642,6 +642,11 @@ export function primeTimeLines(
       .map((r) => r.views);
     if (inside.length < PRIME_MIN_EACH || outside.length < PRIME_MIN_EACH)
       return `• ${names[p]}: not enough numbers to compare (${inside.length} posts in the evening window, ${outside.length} outside; ${PRIME_MIN_EACH} a side needed).`;
+    // Nothing counted on either side is not "about the same": the platform showed the posts to nobody, so the hour
+    // cannot be judged (12 Nov 2026: Facebook's own counters gave 0 plays on all 101 reels, 0 page media views since 22 Oct).
+    const seen = mine.filter((r) => r.views > 0).length;
+    if (seen <= mine.length * 0.1)
+      return `• ${names[p]}: no reach to compare: ${names[p]}'s own numbers give ${seen ? `views on only ${seen} of ${mine.length}` : `0 views on all ${mine.length}`} posts, so the posts are not being shown and posting time cannot be judged.`;
     const a = mid(inside);
     const b = mid(outside);
     const verdict =

@@ -317,8 +317,8 @@ export class YouTubeClient {
   }
 
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
-  /** The newest comment threads across every video on a channel (one request, one quota unit). */
-  async listChannelComments(channelId: string): Promise<
+  /** The newest comment threads across every video on a channel (one quota unit a page of 50). */
+  async listChannelComments(channelId: string, pages = 1): Promise<
     Array<{
       id: string;
       videoId: string;
@@ -327,20 +327,30 @@ export class YouTubeClient {
       likes: number;
       replies: number;
       publishedAt: string;
+      authorName: string;
+      /** Channels that replied in the thread (the first few YouTube returns with it, at no extra cost). */
+      replyAuthors: string[];
     }>
   > {
     const q = new URLSearchParams({
-      part: "snippet",
+      part: "snippet,replies",
       allThreadsRelatedToChannelId: channelId,
       order: "time",
       maxResults: "50",
       textFormat: "plainText",
     });
-    const res = await this.fetchFn(`${API}/commentThreads?${q}`, {
-      headers: await this.auth(),
-    });
-    if (!res.ok) throw await apiError(res, "commentThreads.list (channel)");
-    return (((await res.json()) as any).items ?? []).map((t: any) => {
+    const items: any[] = [];
+    for (let i = 0; i < Math.max(1, pages); i++) {
+      const res = await this.fetchFn(`${API}/commentThreads?${q}`, {
+        headers: await this.auth(),
+      });
+      if (!res.ok) throw await apiError(res, "commentThreads.list (channel)");
+      const body = (await res.json()) as any;
+      items.push(...(body.items ?? []));
+      if (!body.nextPageToken) break;
+      q.set("pageToken", String(body.nextPageToken));
+    }
+    return items.map((t: any) => {
       const c = t.snippet?.topLevelComment?.snippet ?? {};
       return {
         id: String(t.snippet?.topLevelComment?.id ?? t.id),
@@ -350,8 +360,60 @@ export class YouTubeClient {
         likes: Number(c.likeCount ?? 0),
         replies: Number(t.snippet?.totalReplyCount ?? 0),
         publishedAt: String(c.publishedAt ?? ""),
+        authorName: String(c.authorDisplayName ?? ""),
+        replyAuthors: ((t.replies?.comments ?? []) as any[]).map((r) =>
+          String(r.snippet?.authorChannelId?.value ?? ""),
+        ),
       };
     });
+  }
+
+  /**
+   * Viewer comments YouTube is holding for the channel's review (commentThreads.list with moderationStatus, one
+   * quota unit; needs the comment scope of the factory's stored login). Read only: nothing here approves or rejects.
+   */
+  async heldForReview(channelId: string): Promise<
+    Array<{ id: string; videoId: string; text: string; publishedAt: string }>
+  > {
+    const q = new URLSearchParams({
+      part: "snippet",
+      allThreadsRelatedToChannelId: channelId,
+      moderationStatus: "heldForReview",
+      maxResults: "100",
+      textFormat: "plainText",
+    });
+    const res = await this.fetchFn(`${API}/commentThreads?${q}`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "commentThreads.list (held)");
+    return (((await res.json()) as any).items ?? []).map((t: any) => {
+      const c = t.snippet?.topLevelComment?.snippet ?? {};
+      return {
+        id: String(t.snippet?.topLevelComment?.id ?? t.id),
+        videoId: String(t.snippet?.videoId ?? ""),
+        text: String(c.textOriginal ?? ""),
+        publishedAt: String(c.publishedAt ?? ""),
+      };
+    });
+  }
+
+  /** Titles and descriptions of up to 50 videos (videos.list, one quota unit). */
+  async videoSnippets(
+    ids: string[],
+  ): Promise<Map<string, { title: string; description: string }>> {
+    const out = new Map<string, { title: string; description: string }>();
+    if (!ids.length) return out;
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet&id=${ids.slice(0, 50).map(encodeURIComponent).join(",")}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    for (const v of ((await res.json()) as any).items ?? [])
+      out.set(String(v.id), {
+        title: String(v.snippet?.title ?? ""),
+        description: String(v.snippet?.description ?? ""),
+      });
+    return out;
   }
 
   async listComments(videoId: string): Promise<

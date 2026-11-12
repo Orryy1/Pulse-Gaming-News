@@ -2,6 +2,7 @@
 // plus the in-process scheduler that ticks the pipeline.
 
 import { firstCommentCheckTick } from "./social/commentcheck.ts";
+import { communityTick } from "./youtube/viewers.ts";
 import { metaRepliesTick, type MetaPlatform } from "./social/metacomments.ts";
 import * as metaApi from "./social/platforms.ts";
 import { socialProblems } from "./social/scoreboard.ts";
@@ -1959,8 +1960,28 @@ async function main(): Promise<void> {
     setTimeout(() => void engage(), 90_000);
     setInterval(() => void engage(), 10 * 60_000);
   }
+  // The community engine (COMMUNITY_ENGINE): every real viewer comment answered once, hearts and pins planned for Studio.
+  // It takes the place of the reply passes below, so no comment is ever answered by both.
+  if (cfg.communityEngine && !cfg.dryRun) {
+    const pass = () =>
+      communityTick({
+        db,
+        youtube: services.youtube,
+        llm: services.llm,
+        headroom: () => quotaHeadroom(db, cfg, new Date()),
+        now: () => new Date(),
+        perDay: cfg.communityRepliesPerDay,
+        perPass: cfg.communityRepliesPerPass,
+      }).catch((err) =>
+        log("warn", "community engine pass failed", {
+          error: errorMessage(err),
+        }),
+      );
+    setTimeout(() => void pass(), 120_000);
+    setInterval(() => void pass(), 5 * 60_000);
+  }
   // A new video's fresh comments: the good ones get a reply while the video is young.
-  if (cfg.commentReplies && !cfg.dryRun) {
+  if (cfg.commentReplies && !cfg.communityEngine && !cfg.dryRun) {
     const deps = {
       db,
       youtube: services.youtube,

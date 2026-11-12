@@ -9,6 +9,7 @@
 
 import { CTR_FLOOR, abQueueView, ctrRows } from "./reach.ts";
 import { pinPlan } from "./social/commentcheck.ts";
+import { viewerPlan } from "./youtube/viewers.ts";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -137,6 +138,11 @@ export const DONE_KINDS = {
   poll: { file: ["admin", "poll_done.json"], valid: validDay },
   pinned: {
     file: ["admin", "comments_pinned.json"],
+    valid: (k: string) => VIDEO_ID.test(k),
+  },
+  // Videos whose best viewer comment the Studio routine has pinned (COMMUNITY_ENGINE).
+  viewerpin: {
+    file: ["admin", "viewer_pins.json"],
     valid: (k: string) => VIDEO_ID.test(k),
   },
 } as const;
@@ -501,6 +507,23 @@ export async function handleRoutine(
           Number(url.searchParams.get("max")) || 5,
         );
         json(res, 200, { count: items.length, items });
+        return true;
+      }
+      // The community engine's plan (COMMUNITY_ENGINE): viewer comments to heart, and one viewer comment per video to pin.
+      // Hearts are recorded under kind=hearted (the same "author|first 60 characters" keys), pins under kind=viewerpin.
+      case "/routine/viewers": {
+        if (!cfg.communityEngine) {
+          json(res, 200, { enabled: false, hearts: [], pins: [] });
+          return true;
+        }
+        const plan = await viewerPlan(
+          db,
+          now,
+          readList(doneFile(cfg, "hearted")),
+          readList(doneFile(cfg, "viewerpin")),
+          Math.min(30, Number(url.searchParams.get("max")) || 30),
+        );
+        json(res, 200, { enabled: true, ...plan });
         return true;
       }
       case "/routine/hearted": {

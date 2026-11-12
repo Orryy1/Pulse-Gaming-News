@@ -592,6 +592,15 @@ export interface Config {
   replyFollowups: boolean;
   /** Answers comments on our Instagram and Facebook reels (META_COMMENT_REPLIES, src/social/metacomments.ts). */
   metaCommentReplies: boolean;
+  /**
+   * The community engine (COMMUNITY_ENGINE, src/youtube/viewers.ts): every real viewer comment gets one friend-voice
+   * reply, and hearts and one viewer pin per video are planned for the Studio routine (/routine/viewers). While on, it
+   * replaces the older reply passes. Off by default.
+   */
+  communityEngine: boolean;
+  /** Replies the engine sends in a day (COMMUNITY_REPLIES_PER_DAY) and in one 15-minute pass (COMMUNITY_REPLIES_PER_PASS). */
+  communityRepliesPerDay: number;
+  communityRepliesPerPass: number;
   /** Per-platform lines in the Sunday growth report and what went quiet in the alert digest (SOCIAL_SCOREBOARD). */
   socialScoreboard: boolean;
   /** A community post that found no pictures tries again instead of leaving the day empty (ENGAGE_RETRY). */
@@ -1378,6 +1387,9 @@ export function loadConfig(): Config {
     replyStyle: bool("REPLY_STYLE", false),
     replyFollowups: bool("REPLY_FOLLOWUPS", false),
     metaCommentReplies: bool("META_COMMENT_REPLIES", false),
+    communityEngine: bool("COMMUNITY_ENGINE", false),
+    communityRepliesPerDay: int("COMMUNITY_REPLIES_PER_DAY", 20),
+    communityRepliesPerPass: int("COMMUNITY_REPLIES_PER_PASS", 4),
     socialScoreboard: bool("SOCIAL_SCOREBOARD", false),
     engageRetry: bool("ENGAGE_RETRY", false),
     requestsFromShorts: bool("REQUESTS_FROM_SHORTS", false),

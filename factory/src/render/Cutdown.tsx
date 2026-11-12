@@ -34,6 +34,8 @@ export type CutdownProps = {
   logoSrc: string;
   /** A taller picture band (cropped at the sides), for gameplay where the footage is the point; 608 shows the full 16:9. */
   videoHeight?: number;
+  /** How long the end card shows, in seconds (default 3.5); a funnel Short's link card takes the last 5 (src/funnel.ts). */
+  ctaSeconds?: number;
 };
 
 export const CUTDOWN_VIDEO_TOP = 560;
@@ -67,7 +69,7 @@ export const Cutdown: React.FC<CutdownProps> = (props) => {
     [props.emphasis],
   );
   const intro = spring({ frame, fps, config: { damping: 200, mass: 0.6 } });
-  const ctaFrom = durationInFrames - Math.round(3.5 * fps);
+  const ctaFrom = durationInFrames - Math.round((props.ctaSeconds ?? 3.5) * fps);
   const cta = spring({
     frame: frame - ctaFrom,
     fps,

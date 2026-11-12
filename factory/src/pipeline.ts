@@ -235,6 +235,18 @@ import {
   writeCutdownCopy,
 } from "./editorial/cutdown.ts";
 import { FFMPEG, FFPROBE } from "./lib/bin.ts";
+import {
+  FUNNEL_CTA,
+  FUNNEL_LINE,
+  FUNNEL_TAIL_SECONDS,
+  chapterBeats,
+  funnelArm,
+  funnelPicks,
+  funnelScript,
+  funnelWindow,
+  mixFunnelLine,
+  writeFunnelCopy,
+} from "./funnel.ts";
 import { cutPortrait } from "./assets/localvision.ts";
 import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
@@ -553,6 +565,7 @@ import {
   spareFits,
   sparesDue,
   whyRunEntry,
+  type RunDoc,
   type RunSpare,
   type RunFile,
   type RunWhy,
@@ -563,6 +576,13 @@ import {
   readEveryGamePlan,
   type EveryGameEntry,
 } from "./everygame.ts";
+import {
+  applyGuideFrame,
+  guideSourceText,
+  guideWeekDue,
+  isWeeklyGuide,
+  readGuidePlan,
+} from "./longguide.ts";
 import {
   auditEveryGameAssets,
   gatherEveryGameEntry,
@@ -1624,6 +1644,12 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   });
   if (cut) return cut;
+  // The funnel test's Shorts, cut from this week's guide (src/funnel.ts, FUNNEL_TEST); off: nothing.
+  const funnelCut = await maybeSelectFunnelCut(s).catch((err) => {
+    log("warn", "funnel cut selection failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (funnelCut) return funnelCut;
   const premade = await maybeSelectPremade(s).catch((err) => {
     log("warn", "pre-make selection failed", { error: errorMessage(err) });
     return undefined;
@@ -3510,6 +3536,9 @@ export async function maybeSelectDocumentary(
     await takenSlots(db),
     cfg.timezone,
   );
+  // The weekly guide (src/longguide.ts, GUIDE_WEEKLY): this week's guide, planned by date as a run's documentary is,
+  // so a guide built on our own tests goes through the same evidence check just below.
+  if (!plannedDoc && cfg.guideWeekly) plannedDoc = await weeklyGuideDue(s, now);
   // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
   // not run at all, once told, and the slot goes back to the usual lanes.
   if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
@@ -3674,6 +3703,35 @@ export async function maybeSelectDocumentary(
   return id;
 }
 
+/** This week's guide (src/longguide.ts) when its window is open; the guides it passed over are told once a day. */
+async function weeklyGuideDue(
+  s: Services,
+  now: Date,
+): Promise<{ at: Date; topic: DocTopic; entry: RunDoc } | undefined> {
+  const { db, cfg } = s;
+  const made = (
+    await db.query<{ key: string }>(
+      `SELECT factcheck_json->'topic'->'guide'->>'key' AS key FROM episodes WHERE lane = 'longform' AND factcheck_json->'topic'->'guide'->>'key' IS NOT NULL AND status NOT IN ('failed','rejected')`,
+    )
+  ).map((r) => r.key);
+  const { due, waiting } = guideWeekDue(
+    readGuidePlan(cfg.guideWeeklyFile),
+    cfg.guideWeekly,
+    now,
+    await takenSlots(db),
+    made,
+    cfg.timezone,
+  );
+  if (!due && waiting.length && !(await weeklyTried(db, `guide_wait:${dayKey(now, cfg.timezone)}`)))
+    await s.notify({
+      level: "info",
+      content: `This week's guide is waiting: ${waiting.join("; ").slice(0, 900)}.`,
+    });
+  if (!due) return undefined;
+  log("info", "weekly guide due", { key: due.entry.key, title: due.topic.title_idea, at: due.at.toISOString() });
+  return { at: due.at, topic: due.topic, entry: due.run };
+}
+
 /**
  * More to write from: the chapter's own article at greater length, the story's main article and the other articles
  * the outline names. A chapter short of evidence gets this rather than a tighter restriction.
@@ -3724,6 +3782,12 @@ async function stepScriptDocumentary(
   const rules = longRulesFor(s.cfg, "documentary", topic.format === "guide");
   // A planned entry's own sources, beside each chapter's article, so a verdict can name who said it.
   const runSources = await readRunSources(s, topic);
+  // A weekly guide also writes from the confirmed facts file and the owner's play notes (src/longguide.ts).
+  if (topic.guide && s.cfg.guideWeekly) {
+    const g = guideSourceText(topic.guide);
+    if (g.text) runSources.text = [g.text, runSources.text].filter(Boolean).join("\n\n");
+    runSources.missed.push(...g.missed);
+  }
   const withRunSources = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
     runSources.text ? { ...a, text: `${a.text}\n\n${runSources.text}` } : a;
   // A single story starts from its overview article; a franchise from the series article.
@@ -4151,6 +4215,8 @@ async function stepScriptDocumentary(
     script.youtube.title = topic.title_idea;
     script.youtube.title_variants = [];
   }
+  // A weekly guide keeps its fixed frame: one title shape and one set of thumbnail words for the strand.
+  if (topic.guide && s.cfg.guideWeekly) applyGuideFrame(script, topic.guide);
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];
   for (const u of runSources.urls)
@@ -4533,6 +4599,73 @@ export async function maybeSelectCutdown(
   return undefined;
 }
 
+/**
+ * The funnel test (src/funnel.ts): one Short a day in the cutdown slot, cut from a weekly guide's chapter while the
+ * guide is under FUNNEL_DAYS old, FUNNEL_SHORTS a guide. Its arm is fixed by its id and recorded.
+ */
+export async function maybeSelectFunnelCut(s: Services): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.funnelTest || cfg.funnelShorts <= 0) return undefined;
+  const now = s.now();
+  const due = evergreenDue(
+    now,
+    {
+      days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      slot: cfg.cutdownSlot,
+      leadMinutes: cfg.slotLeadMinutes,
+      graceMinutes: cfg.slotGraceMinutes,
+      timeZone: cfg.timezone,
+    },
+    await takenSlots(db),
+  );
+  if (!due) return undefined;
+  const parents = await db.query<Episode>(
+    `SELECT e.* FROM episodes e
+      WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
+        AND e.factcheck_json->'topic'->'guide'->>'key' IS NOT NULL
+        AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz
+        AND COALESCE(e.publish_at, e.updated_at) > $2::timestamptz - make_interval(days => $3)
+      ORDER BY COALESCE(e.publish_at, e.updated_at) DESC`,
+    [now, due, cfg.funnelDays],
+  );
+  for (const parent of parents) {
+    if (!parent.script_json?.beats?.length) continue;
+    if (!(await fs.stat(path.join(episodeDir(cfg, parent.id), "short.mp4")).catch(() => undefined))) continue;
+    const done = (
+      await db.query<{ beat: string }>(
+        `SELECT story_json->'cutdown'->>'beat' AS beat FROM episodes WHERE lane = 'cutdown' AND story_json->'cutdown'->>'parent' = $1`,
+        [parent.id],
+      )
+    ).map((r) => Number(r.beat));
+    const [beat] = funnelPicks(parent.script_json, cfg.funnelShorts, done);
+    if (beat === undefined) continue;
+    const rank = chapterBeats(parent.script_json).indexOf(beat) + 1;
+    const id = shortId();
+    const arm = funnelArm(unitHash(`funnel:${id}`), cfg.funnelShare);
+    const chapter = String(parent.script_json.beats[beat]?.visual?.primary ?? "");
+    const cluster: StoryCluster = {
+      hash: `cutdown:${parent.id}:beat${beat}`,
+      headline: `${parent.script_json.game_title}: ${chapter || `chapter ${rank}`}`,
+      items: [],
+      sources: ["Pulse Gaming"],
+      hasOfficial: true,
+      corroborated: true,
+      rumourSignals: false,
+      newestAt: now.toISOString(),
+      score: 0,
+      gameHint: parent.script_json.game_title,
+      cutdown: { parent: parent.id, rank, beat, funnel: arm },
+    };
+    if (!(await createEpisode(db, id, cluster, { lane: "cutdown", priority: LANE_PRIORITY.cutdown, slotAt: due })))
+      continue;
+    await logEvent(db, id, "selected", { lane: "cutdown", parent: parent.id, beat, slot_at: due.toISOString() });
+    await logEvent(db, id, "funnel_arm", { arm, parent: parent.id, parent_video: parent.youtube_video_id, beat });
+    log("info", "funnel cut selected", { id, parent: parent.id, beat, arm });
+    return id;
+  }
+  return undefined;
+}
+
 /** Cuts the entry's section from the long video (with a blurred fill for the background) and writes its packaging. */
 async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   const ref = ep.story_json.cutdown;
@@ -4541,24 +4674,30 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   const pScript = parent?.script_json;
   if (!parent?.youtube_video_id || !pScript?.entries?.length)
     throw new FatalError("the long video for this cutdown is gone");
-  const beatIndex = pScript.entries.findIndex((e) => e.rank === ref.rank);
+  // A funnel cut (src/funnel.ts) names its chapter's first beat; a ranking's cutdown names its rank.
+  const funnelCut = ref.beat !== undefined;
+  const beatIndex = funnelCut ? ref.beat! : pScript.entries.findIndex((e) => e.rank === ref.rank);
   if (beatIndex < 0)
     throw new FatalError(`the long video has no number ${ref.rank}`);
   const pAssets = parent.assets_json ?? {};
   const words = pAssets.words ?? [];
   const duration = (pAssets.durationSeconds ?? 300) + LONG_TAIL_SECONDS;
   const segments = buildSegments(segmentInputs(pScript), words, duration);
-  const win = cutdownWindow(segments, beatIndex, words);
+  const win = funnelCut
+    ? funnelWindow(segments, chapterBeats(pScript), beatIndex, words)
+    : cutdownWindow(segments, beatIndex, words);
   if (!win) throw new FatalError("the entry does not fit in a Short");
+  // A funnel cut keeps 5 seconds after its last word: the end card, and in the link arm the spoken link line.
+  const tailSeconds = funnelCut ? FUNNEL_TAIL_SECONDS : CUTDOWN_TAIL_SECONDS;
   const source = path.join(episodeDir(s.cfg, parent.id), "short.mp4");
   const dir = episodeDir(s.cfg, ep.id);
   await fs.mkdir(dir, { recursive: true });
   const len = win.end - win.start;
-  const total = len + CUTDOWN_TAIL_SECONDS;
+  const total = len + tailSeconds;
   const run = promisify(execFile);
   // The picture runs on under the end card; the narration fades out where the entry ends.
   // The section ends on its own last frame, held under the end card: running on would show the next entry (and give it away).
-  const hold = (CUTDOWN_TAIL_SECONDS + 0.1).toFixed(2);
+  const hold = (tailSeconds + 0.1).toFixed(2);
   const vLen = Math.min(len, win.videoEnd - win.start);
   const vHold = (total - vLen + 0.1).toFixed(2);
   await run(
@@ -4633,19 +4772,31 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
     { maxBuffer: 16 * 1024 * 1024 },
   );
   const narration = pScript.beats[beatIndex]?.narration ?? "";
-  const copy = await writeCutdownCopy(
+  const arm = ref.funnel ?? "none";
+  // The link arm says the link over the end card, in the long video's own voice (src/funnel.ts).
+  if (funnelCut && arm === "link") {
+    const lineFile = path.join(dir, "link_line.mp3");
+    const voice = pAssets.voice ? { id: pAssets.voice.id, name: pAssets.voice.name } : undefined;
+    await s.synthesise(FUNNEL_LINE, lineFile, voice);
+    await mixFunnelLine(FFMPEG, path.join(dir, "cut.mp4"), lineFile, len + 0.4);
+  }
+  const copy = funnelCut
+    ? await writeFunnelCopy(s.llm, {
+        game: pScript.game_title,
+        guideTitle: pScript.youtube.title,
+        chapterTitle: String(pScript.beats[beatIndex]?.visual?.primary ?? ""),
+        narration,
+      })
+    : await writeCutdownCopy(
     s.llm,
     pScript,
     pScript.entries[beatIndex]!,
     narration,
     pScript.entries.length,
   );
-  const script = cutdownScript(
-    pScript,
-    beatIndex,
-    copy,
-    parent.youtube_video_id,
-  );
+  const script = funnelCut
+    ? funnelScript(pScript, beatIndex, copy, parent.youtube_video_id, arm)
+    : cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);
   script.cutdown!.theme = pScript.game_title;
   // The footage credits travel with the clips seen in this section.
   const plan = pAssets.longPlan;
@@ -4778,8 +4929,18 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
         ? g.experiment_number
           ? `TEST #${g.experiment_number}`
           : "WE TESTED IT"
+        : script.cutdown?.funnel
+          ? `GUIDE ${script.cutdown.rank} OF ${script.cutdown.total}`
         : `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
-      cta: g ? g.result_line.toUpperCase() : "FULL RANKING ON THE CHANNEL",
+      // A funnel cut (src/funnel.ts): the link card for its last 5 seconds in the link arm, the chapter's name in the control.
+      cta: g
+        ? g.result_line.toUpperCase()
+        : script.cutdown?.funnel === "link"
+          ? FUNNEL_CTA
+          : script.cutdown?.funnel
+            ? (script.pulse_take.on_screen || script.headline).toUpperCase()
+            : "FULL RANKING ON THE CHANNEL",
+      ...(script.cutdown?.funnel ? { ctaSeconds: FUNNEL_TAIL_SECONDS } : {}),
       accent: "#FF6B1A",
       emphasis: g ? [] : emphasisWords(script),
       // Gameplay is the point: a band a quarter taller than the full 16:9 (cropped a little at the sides), still clear of the Shorts buttons.
@@ -7939,6 +8100,8 @@ export async function gatherMedia(
             images,
             clips,
               gatherBudget,
+              // A weekly guide is the owner's own play: his recordings are asked for every target (GUIDE_OWN_FIRST).
+              { ownFirst: s.cfg.guideOwnFirst && isWeeklyGuide(ep.factcheck_json) },
             ),
             undefined,
           );
@@ -8179,7 +8342,8 @@ export async function gatherMedia(
       fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
         targets: job.targets, maxClips: Math.min(24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
         maxSeconds: job.maxSeconds, publisher: job.publisher,
-        long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
+        // A weekly guide never shows late story, warning or not (src/longguide.ts).
+        long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
     });
     clips.push(...added.map((c) => ({ ...c, durationSeconds: c.durationSeconds ?? 4.8 })));
     // SCENE_MATCH: a stills-only publisher's game (Nintendo) plays no cutscene, so each named moment comes as a
@@ -8769,6 +8933,8 @@ export async function gatherChapterMedia(
   clips: NonNullable<EpisodeAssets["clips"]>,
   /** The gather's time budget: past it each remaining fetch block (footage, gameplay, photos, stock) is skipped. */
   budget?: GatherBudget,
+  /** ownFirst: the owner's recordings are asked for every footage target, not half (a weekly guide). */
+  opts?: { ownFirst?: boolean },
 ): Promise<void> {
   const franchise = script.game_title;
   const edir = path.join(dir, `entry_${beatIndex}`);
@@ -8954,7 +9120,7 @@ export async function gatherChapterMedia(
             franchise,
             edir,
             targets,
-            Math.ceil(targets.length / 2),
+            opts?.ownFirst ? targets.length : Math.ceil(targets.length / 2),
           )
           .catch(() => [] as VisualAsset[]);
         for (const c of own)
@@ -10613,7 +10779,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         words,
         durationSeconds: renderSeconds,
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
-        coldOpenLine: craft.coldOpen ? coldOpenLine(script.hook) : undefined,
+        // A weekly guide opens on its subject: no cold open with the mark (upgrade queue item 18).
+        coldOpenLine: craft.coldOpen && !isWeeklyGuide(ep.factcheck_json) ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
     codeScenes: s.cfg.codeScenes,
     titleDrop: craft.titleDrop,

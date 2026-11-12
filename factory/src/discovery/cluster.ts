@@ -21,7 +21,8 @@ export interface StoryCluster {
   /** What the story needs to be seen, from the editor: real_world_images sends it to the picture desk. */
     visualNeed?: "none" | "game_footage" | "real_world_images";
   /** A Short cut from a long ranking: the long video's episode and the entry's rank. */
-  cutdown?: { parent: string; rank: number };
+  /** beat and funnel: a Short cut from a weekly guide's chapter (src/funnel.ts), its first beat and test arm. */
+  cutdown?: { parent: string; rank: number; beat?: number; funnel?: "link" | "none" };
   /** A "Why" Short: the question it answers and the likely answer the writer tests against the sources. */
   why?: {
     question: string;

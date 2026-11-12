@@ -426,6 +426,8 @@ export function hashtags(script: Script): string[] {
 /** The first two lines of a description: the keyword stack YouTube indexes, written as a sentence. */
 export function keywordLead(script: Script): string {
   const n = script.entries?.length ?? 0;
+  if (script.cutdown?.guide)
+    return `${script.game_title} guide: ${script.pulse_take.on_screen || script.headline}. From "${script.cutdown.guide}", a ${script.game_title} guide from real play by Pulse Gaming News.`;
   if (script.cutdown) {
     const theme = script.cutdown.theme || script.game_title;
     return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
@@ -472,6 +474,10 @@ export function keywordLead(script: Script): string {
 export function pinnedComment(script: Script): string {
   if (script.gameplay)
     return `${script.gameplay.question} ${script.gameplay.result} What should we test next? The best ideas get tested in a future Short.`;
+  if (script.cutdown?.funnel)
+    return script.cutdown.funnel === "link"
+      ? `${script.cutdown.question.trim()} The full guide, every step from real play: https://youtu.be/${script.cutdown.parent_video}`
+      : script.cutdown.question.trim();
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen

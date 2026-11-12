@@ -308,6 +308,9 @@ export type Script = z.infer<typeof ScriptSchema> & {
     total: number;
     question: string;
     theme?: string;
+    /** A Short cut from a weekly guide (src/funnel.ts): the guide's title, and the test arm ("none": no pointer). */
+    guide?: string;
+    funnel?: "link" | "none";
   };
   /** A gameplay Short from the owner's own recordings: the test, its answer and the Leonida Intel page it belongs to. */
   gameplay?: {

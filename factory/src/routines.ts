@@ -23,6 +23,7 @@ import type { EvergreenCandidate } from "./editorial/evergreen.ts";
 import { logEvent } from "./episodes.ts";
 import { dayKey, weekday } from "./lanes.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
+import { planFunnel } from "./funnel.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { pollPlan, readPoll, recordPollResult } from "./social/poll.ts";
 import { recordTikTokStats, tiktokStatus } from "./social/metrics.ts";
@@ -129,6 +130,11 @@ export const DONE_KINDS = {
     file: ["admin", "related_done.json"],
     valid: (k: string) => VIDEO_ID.test(k),
   },
+  // Shorts whose related video was removed under the funnel test (src/funnel.ts, FUNNEL_TEST).
+  related_clear: {
+    file: ["admin", "related_cleared.json"],
+    valid: (k: string) => VIDEO_ID.test(k),
+  },
   abtest: {
     file: ["abtests", "done.json"],
     valid: (k: string) => VIDEO_ID.test(k),
@@ -202,7 +208,7 @@ export interface RelatedRow {
     headline?: string;
     runtime?: string;
     youtube?: { title?: string };
-    cutdown?: { parent_video?: string };
+    cutdown?: { parent_video?: string; funnel?: "link" | "none" };
   } | null;
 }
 export interface LongVideo {
@@ -547,7 +553,22 @@ export async function handleRoutine(
           Math.max(1, Number(url.searchParams.get("max")) || 15),
         );
         if (!relatedCache || now.getTime() - relatedCache.at > RELATED_TTL_MS) {
-          const plan = Promise.all([
+          // The funnel test (src/funnel.ts): only Shorts cut from a long video link, and earlier links elsewhere are cleared.
+          const plan = cfg.funnelTest
+            ? Promise.all([
+                recentPublished(db, 3),
+                (ctx.channelLongs ?? channelLongs)(),
+                cfg.funnelClearDays > 0 ? recentPublished(db, cfg.funnelClearDays) : Promise.resolve([]),
+              ]).then(([rows, longs, older]) =>
+                planFunnel(
+                  rows,
+                  longs,
+                  older,
+                  new Set(readList(doneFile(cfg, "related"))),
+                  new Set(readList(doneFile(cfg, "related_clear"))),
+                ),
+              )
+            : Promise.all([
             recentPublished(db, 3),
             (ctx.channelLongs ?? channelLongs)(),
           ]).then(([rows, longs]) => planRelated(rows, longs));
@@ -558,7 +579,13 @@ export async function handleRoutine(
         }
         const planned = await relatedCache.plan;
         const done = new Set(readList(doneFile(cfg, "related")));
-        const items = planned.filter((p) => !done.has(p.short)).slice(0, max);
+        const cleared = new Set(readList(doneFile(cfg, "related_clear")));
+        // A "clear" item (funnel test) is done when its Short is in the clear ledger; a "set" one when in the related one.
+        const items = planned
+          .filter((p) =>
+            "action" in p && p.action === "clear" ? !cleared.has(p.short) : !done.has(p.short),
+          )
+          .slice(0, max);
         json(res, 200, {
           planned_at: new Date(relatedCache.at).toISOString(),
           count: items.length,

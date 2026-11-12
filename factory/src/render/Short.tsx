@@ -59,6 +59,7 @@ import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.t
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
 import { QuoteMoment, inQuote } from "./components/QuoteMoment.tsx";
+import { musicDipAt } from "./gamebed.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -566,7 +567,13 @@ export const Short: React.FC<ShortProps> = (props) => {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     });
-    return fadeIn * (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) * (inQuote(quoteSpans, f) ? 0.45 : 1);
+    return (
+      fadeIn *
+      (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) *
+      (inQuote(quoteSpans, f) ? 0.45 : 1) *
+      // GAME_AUDIO_BED: the music steps back where the game itself is heard.
+      (props.gameBed ? musicDipAt(props.gameBed.spans, f, fps, props.gameBed.dip) : 1)
+    );
   };
 
   return (
@@ -892,6 +899,8 @@ export const Short: React.FC<ShortProps> = (props) => {
       ))}
 
       {props.audioSrc ? <Audio src={props.audioSrc} /> : null}
+      {/* GAME_AUDIO_BED: the footage's own sound, already ducked, cut and faded (src/assets/gameaudio.ts). */}
+      {props.gameBed ? <Audio src={props.gameBed.src} /> : null}
       {props.musicSrc ? (
         <Audio src={resolveSrc(props.musicSrc)!} volume={musicVolume} loop />
       ) : null}

@@ -625,3 +625,60 @@ test("the captions file carries the quote in the game's own words, named", async
   assert.ok(w[0]!.start === 10 && w.at(-1)!.end <= 12);
   assert.deepEqual(quoteCaptionWords("x", "Navi", 5, 5), []);
 });
+
+test("CHARACTER_QUOTES_SHORT=2: a second quote only from lines that fit the story, a beat away from the first", async () => {
+  const saved = process.env.CHARACTER_QUOTES_SHORT;
+  delete process.env.CHARACTER_QUOTES_SHORT;
+  try {
+    assert.equal(loadConfig().characterQuotesShort, 1);
+  } finally {
+    if (saved !== undefined) process.env.CHARACTER_QUOTES_SHORT = saved;
+  }
+  const dir = await tmpDir();
+  await saveSceneIndex(dir, ocarina());
+  const db = await testDb();
+  const script = goodScript({
+    ...quoteScript(),
+    beats: [
+      ...quoteScript().beats,
+      { narration: "The map itself is the same size as before.", visual: { kind: "title", primary: "Map", secondary: "" } },
+      { narration: "And Malon still keeps Epona at Lon Lon Ranch for you.", visual: { kind: "title", primary: "Epona", secondary: "" } },
+    ],
+  } as Partial<Script>);
+  const asked: Array<{ open: number[]; fits: boolean }> = [];
+  const malon = quoteCandidates(ocarina(), "Malon Epona ranch", { general: 0 }).find((c) => c.speaker === "Malon" && c.start < 1000)!;
+  const llm = {
+    structured: async (o: any) => {
+      const content = String(o.content);
+      const open = [...content.matchAll(/BEAT (\d+): (?!.*not for the quote)/g)].map((m) => Number(m[1]));
+      asked.push({ open, fits: !content.includes(navi().id) || asked.length === 0 });
+      return asked.length === 1
+        ? moment()
+        : {
+            use: true,
+            quote_id: malon.id,
+            beat: 3,
+            before_quote: "And Malon still keeps Epona at Lon Lon Ranch for you. She saw you coming:",
+            after_quote: "And she never misses a thing.",
+            why: "fits",
+          };
+    },
+  } as any;
+  const s = { cfg: testConfig(dir, { characterQuotes: true, characterQuotesShort: 2 }), db, llm, now: () => new Date("2026-11-12T12:00:00Z") };
+  const two = await quoteScriptStep(s, { id: "ep1" }, script, { footageCap: { key: "sandbox", seconds: 20 }, wordsMax: 200 });
+  assert.equal(two.character_quotes?.length, 2);
+  assert.deepEqual(two.character_quotes!.map((q) => q.beat), [1, 3]);
+  // The second call offered no beat next to the first quote, and only story lines.
+  assert.ok(!asked[1]!.open.includes(0) && !asked[1]!.open.includes(2) && asked[1]!.open.includes(3));
+  // The footage cap counts both: with room for one line only, the second is never asked for.
+  asked.length = 0;
+  const capped = await quoteScriptStep(s, { id: "ep1" }, script, { footageCap: { key: "sandbox", seconds: 3.5 }, wordsMax: 200 });
+  assert.equal(capped.character_quotes?.length, 1);
+  assert.equal(asked.length, 1);
+  // The default keeps a Short to one.
+  asked.length = 0;
+  const one = await quoteScriptStep({ ...s, cfg: testConfig(dir, { characterQuotes: true }) }, { id: "ep1" }, script, { footageCap: { key: "sandbox", seconds: 20 }, wordsMax: 200 });
+  assert.equal(one.character_quotes?.length, 1);
+  assert.equal(asked.length, 1);
+  await db.close();
+});

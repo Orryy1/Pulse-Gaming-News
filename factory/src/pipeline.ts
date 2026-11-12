@@ -2579,7 +2579,8 @@ export async function maybeSelectCommentReply(
     }))
   )
     return undefined;
-  // Counted as a spare, so the day's planned Shorts are all still made.
+  // Counted as a spare, so the day's planned Shorts are all still made (countSpareToday also knows it by its hash,
+  // since the fact check replaces this record).
   await db.query(`UPDATE episodes SET factcheck_json = $2 WHERE id = $1`, [
     id,
     JSON.stringify({ spare: true, reply: true }),
@@ -3043,7 +3044,7 @@ async function countSpareToday(db: Db, timeZone: string): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
     `SELECT count(*) AS n FROM episodes
       WHERE created_at >= date_trunc('day', now() AT TIME ZONE $1) AT TIME ZONE $1
-        AND status NOT IN ('failed','rejected') AND factcheck_json->>'spare' = 'true'`,
+        AND status NOT IN ('failed','rejected') AND (factcheck_json->>'spare' = 'true' OR story_hash LIKE 'reply:%')`,
     [timeZone],
   );
   return Number(row?.n ?? 0);

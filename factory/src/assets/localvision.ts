@@ -2,8 +2,9 @@
 // through Ollama), so only clean frames reach Claude. Each frame is checked
 // for the things that disqualify footage outright: words on screen, a
 // streamer's webcam or recording overlay, gore, letterboxing, darkness, blur.
-// When Ollama is not running every frame passes through unchanged, and the relay is marked down
-// (src/assets/visionrelay.ts): with VISION_PAID_FALLBACK off no picture then goes to the paid API.
+// When Ollama is not running, or the server on its port does not list LOCAL_VISION_MODEL, every frame passes
+// through unchanged and the relay is marked down (src/assets/visionrelay.ts): with VISION_PAID_FALLBACK off no
+// picture then goes to the paid API.
 
 import fs from "node:fs/promises";
 import { errorMessage, fetchWithTimeout } from "../lib/util.ts";
@@ -112,10 +113,91 @@ export function onVisionRelayAlert(fn: (text: string) => unknown): void {
   relayAlert = fn;
 }
 
-/** The relay answers at all: its model list, no model run. */
+/** The model names in an Ollama /api/tags answer (pure); anything unreadable is an empty list. */
+export function relayModels(body: unknown): string[] {
+  const models = (body as { models?: unknown } | null)?.models;
+  if (!Array.isArray(models)) return [];
+  return models.flatMap((m) =>
+    [m?.name, m?.model].filter((x): x is string => typeof x === "string" && x.length > 0),
+  );
+}
+
+/** Whether the list holds the model (pure). A name with no tag is Ollama's ":latest". */
+export function hasVisionModel(models: string[], want: string): boolean {
+  const norm = (n: string) => {
+    const t = n.trim().toLowerCase();
+    return t.includes(":") ? t : `${t}:latest`;
+  };
+  const w = norm(want);
+  return models.some((m) => norm(m) === w);
+}
+
+/** How long the relay's model list stands before it is asked again. */
+export const MODEL_CHECK_MS = 3 * 60_000;
+
+/**
+ * The relay's model check, failing closed (12 Nov 2026: a different Ollama answered on the relay's port with other
+ * models, and the factory would have screened frames with it). The answer is undefined when the relay lists the
+ * expected model, otherwise why not; a relay that does not answer, or answers with a list that lacks the model,
+ * counts exactly as down. Cached for `ttlMs` either way, so frame work does not ask before every call.
+ */
+export function createModelCheck(opts: {
+  fetchTags: () => Promise<{ ok: boolean; status?: number; json: () => Promise<unknown> }>;
+  model: string;
+  now?: () => number;
+  ttlMs?: number;
+}): () => Promise<string | undefined> {
+  const now = opts.now ?? Date.now;
+  const ttl = opts.ttlMs ?? MODEL_CHECK_MS;
+  let last: { at: number; problem: string | undefined } | undefined;
+  let asking: Promise<string | undefined> | undefined;
+  const ask = async (): Promise<string | undefined> => {
+    try {
+      const res = await opts.fetchTags();
+      if (!res.ok) return `the relay's model list answered ${res.status ?? "an error"}`;
+      const models = relayModels(await res.json());
+      if (hasVisionModel(models, opts.model)) return undefined;
+      return `the relay does not list ${opts.model} (it has ${models.slice(0, 6).join(", ") || "no models"}): another server may be on its port`;
+    } catch (err) {
+      return `the relay's model list did not answer: ${errorMessage(err)}`;
+    }
+  };
+  return async () => {
+    if (last && now() - last.at < ttl) return last.problem;
+    asking ??= ask()
+      .then((problem) => {
+        last = { at: now(), problem };
+        return problem;
+      })
+      .finally(() => {
+        asking = undefined;
+      });
+    return asking;
+  };
+}
+
+/** This process's model check against LOCAL_VISION_URL. */
+export const visionModelProblem = createModelCheck({
+  fetchTags: () => fetchWithTimeout(`${LOCAL_VISION_URL}/api/tags`, {}, 4_000),
+  model: LOCAL_VISION_MODEL,
+});
+
+/** The relay answers with the expected model in its list: no model run. A missing model is the relay down. */
 async function probeRelay(): Promise<boolean> {
-  const res = await fetchWithTimeout(`${LOCAL_VISION_URL}/api/tags`, {}, 4_000);
-  return res.ok;
+  return (await visionModelProblem()) === undefined;
+}
+
+/**
+ * Before any frame goes to the relay: undefined when the expected model is there, else the relay is marked down
+ * (the outage alert, and with VISION_PAID_FALLBACK off nothing goes to the paid API) and local work rests.
+ */
+async function relayNotReady(): Promise<string | undefined> {
+  const problem = await visionModelProblem();
+  if (problem) {
+    downUntil = Date.now() + 10 * 60_000;
+    visionRelay.report(false, problem);
+  }
+  return problem;
 }
 
 /** This process's view of the relay: one alert when it goes down, one when it is back. */
@@ -236,6 +318,8 @@ export async function screenFrames(
     Boolean(process.env.NODE_TEST_CONTEXT) // tests never reach the GPU
   )
     return out;
+  // A relay without the expected model is down: nothing is screened by another server's model.
+  if (await relayNotReady()) return out;
   let next = 0;
   let failures = 0;
   const worker = async () => {
@@ -366,6 +450,7 @@ export async function heroLook(file: string): Promise<HeroLook | undefined> {
     process.env.NODE_TEST_CONTEXT
   )
     return undefined;
+  if (await relayNotReady()) return undefined;
   try {
     const image = (await fs.readFile(file)).toString("base64");
     const res = await fetchWithTimeout(
@@ -432,6 +517,7 @@ export async function cutPortrait(
     Date.now() < downUntil
   )
     return false;
+  if (await relayNotReady()) return false;
   const { execFile } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const { FFMPEG, FFPROBE } = await import("../lib/bin.ts");
@@ -694,6 +780,7 @@ export async function lookFrames(
     Boolean(process.env.NODE_TEST_CONTEXT)
   )
     return out;
+  if (await relayNotReady()) return out;
   let next = 0;
   let failures = 0;
   const worker = async () => {

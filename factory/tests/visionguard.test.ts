@@ -14,7 +14,12 @@ import {
   whenVisionPaused,
   withVisionGuard,
 } from "../src/assets/visionrelay.ts";
-import { localVisionDown } from "../src/assets/localvision.ts";
+import {
+  createModelCheck,
+  hasVisionModel,
+  localVisionDown,
+  relayModels,
+} from "../src/assets/localvision.ts";
 import { createCodexLlm, type CodexRequest } from "../src/editorial/codex.ts";
 import type { Llm, LlmContent } from "../src/editorial/llm.ts";
 import { VISION_SKIPPED, visionQa } from "../src/qa/vision.ts";
@@ -391,4 +396,56 @@ test("relay: a probe that throws is a down relay, and an alert that throws stops
 
 test("the production relay check stays out of the way under test and with LOCAL_VISION off", async () => {
   assert.equal(await localVisionDown(), false);
+});
+
+test("the relay fails closed when its model list lacks LOCAL_VISION_MODEL: down, alerted once, no paid calls, cached", async () => {
+  assert.deepEqual(relayModels({ models: [{ name: "llama3:8b", model: "llama3:8b" }] }), ["llama3:8b", "llama3:8b"]);
+  assert.deepEqual(relayModels("nonsense"), []);
+  assert.equal(hasVisionModel(["qwen3-vl:8b"], "qwen3-vl:8b"), true);
+  assert.equal(hasVisionModel(["Qwen3-VL:8B"], "qwen3-vl:8b"), true);
+  assert.equal(hasVisionModel(["qwen3-vl"], "qwen3-vl:latest"), true);
+  assert.equal(hasVisionModel(["qwen3-vl:32b", "llava:7b"], "qwen3-vl:8b"), false);
+
+  // Last night's case: some other Ollama on the same port, answering with other models.
+  let clock = 0;
+  let listed = ["llama3.1:8b", "mistral:7b"];
+  let asked = 0;
+  const check = createModelCheck({
+    model: "qwen3-vl:8b",
+    now: () => clock,
+    ttlMs: 180_000,
+    fetchTags: async () => {
+      asked++;
+      return { ok: true, json: async () => ({ models: listed.map((name) => ({ name })) }) };
+    },
+  });
+  const alerts: string[] = [];
+  const relay = createVisionRelay({
+    probe: async () => (await check()) === undefined,
+    alert: (t) => alerts.push(t),
+    now: () => clock,
+    probeEveryMs: 60_000,
+  });
+  const claude = paidClaude();
+  const guarded = withVisionGuard(claude.llm, { paidFallback: false, relayDown: () => relay.down() });
+  await assert.rejects(guarded.structured({ system: "", content: picture, schema: Answer } as never), VisionPausedError);
+  assert.equal(claude.calls.length, 0, "nothing reaches the paid API");
+  assert.deepEqual(alerts, [PAUSED_ALERT], "the same outage alert as a dead relay");
+  assert.match((await check())!, /does not list qwen3-vl:8b/);
+  assert.equal(asked, 1, "the list is cached");
+
+  // The right model comes back: after the cache and the probe's minute, the relay is up and the alert says so.
+  listed = ["qwen3-vl:8b"];
+  clock += 120_000;
+  assert.equal(await relay.down(), true, "still cached as missing inside the few minutes");
+  clock += 120_000;
+  assert.equal(await relay.down(), false);
+  assert.equal(asked, 2);
+  assert.deepEqual(alerts, [PAUSED_ALERT, BACK_ALERT]);
+
+  // A relay that does not answer the list at all is down too.
+  const dead = createModelCheck({ model: "qwen3-vl:8b", fetchTags: async () => { throw new Error("ECONNREFUSED"); } });
+  assert.match((await dead())!, /did not answer: ECONNREFUSED/);
+  const refused = createModelCheck({ model: "qwen3-vl:8b", fetchTags: async () => ({ ok: false, status: 404, json: async () => ({}) }) });
+  assert.match((await refused())!, /answered 404/);
 });

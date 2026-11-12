@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   breakingAllowed,
+  floorBackFactor,
   isLateSlot,
   newsSlotsFor,
   onHomeShelf,
@@ -310,6 +311,19 @@ test("the next part is the run's next entry on the same arc, numbered and dated;
     nextPartFor(numbered, london("2026-11-30", "18:30"), "Europe/London")?.part,
     8,
   );
+});
+
+test("SHORT_MIN_SECONDS survives SHORT_SPEED: a sped-up take under the floor plays back slower, never below its voiced pace", () => {
+  // 12 Nov 2026: 87 words came out at 28.5 s at 1.1x; voiced, it ran 31.35 s.
+  const f = floorBackFactor(28.5, 30, 1.1);
+  assert.ok(f < 1 && f >= 1 / 1.1);
+  assert.ok(Math.abs(28.5 / f - 30.5) < 0.01, "back up to the floor and half a second");
+  // Far under: only as slow as the voice itself.
+  assert.equal(floorBackFactor(20, 30, 1.1), 1 / 1.1);
+  // Over the floor, no floor, or no speed-up: untouched.
+  assert.equal(floorBackFactor(31, 30, 1.1), 1);
+  assert.equal(floorBackFactor(25, 0, 1.1), 1);
+  assert.equal(floorBackFactor(25, 30, 1), 1);
 });
 
 test("the GTA File's next-part line reads its own run file, and spares in the launch run are never promised", () => {

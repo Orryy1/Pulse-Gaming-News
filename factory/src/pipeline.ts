@@ -291,7 +291,7 @@ import {
   affiliateCommentLine,
   type AffiliateTags,
 } from "./editorial/affiliate.ts";
-import { pickVoice } from "./voice/index.ts";
+import { pickVoice, speedUp } from "./voice/index.ts";
 import { withAlertScope } from "./alertlog.ts";
 import {
   turnDownBreaths,
@@ -496,6 +496,7 @@ import {
 import {
   FLOOR_LANES,
   breakingAllowed,
+  floorBackFactor,
   seriesTagFor,
   shortFloorProblems,
   shortFloorRule,
@@ -7072,6 +7073,20 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     narration.durationSeconds = tight.durationSeconds;
     await logEvent(s.db, ep.id, "pauses_tightened", {
       seconds: Math.round(tight.removedSeconds * 10) / 10,
+    });
+  }
+  // SHORT_MIN_SECONDS holds after SHORT_SPEED too (12 Nov 2026: an 87-word news Short came out at 28.5 s at 1.1x):
+  // a take the speed-up (or the pause tightening) left under the floor plays back slower, up to the pace it was voiced
+  // at and never slower. Still short after that, it goes out as it is: the writer's floor already held.
+  const floorSeconds = !twin && FLOOR_LANES.includes(ep.lane) ? s.cfg.shortMinSeconds : 0;
+  const back = floorBackFactor(narration.durationSeconds, floorSeconds, s.cfg.shortSpeed);
+  if (back < 1) {
+    await speedUp(path.join(dir, "voice.mp3"), back);
+    narration.words = narration.words.map((w) => ({ ...w, start: w.start / back, end: w.end / back }));
+    narration.durationSeconds = narration.durationSeconds / back;
+    await logEvent(s.db, ep.id, "short_floor_pace", {
+      factor: Math.round(back * 1000) / 1000,
+      seconds: Math.round(narration.durationSeconds * 10) / 10,
     });
   }
   // The narration check: what the voice says against its script, before anything is rendered on it.

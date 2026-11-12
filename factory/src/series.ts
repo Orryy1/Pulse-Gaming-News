@@ -178,5 +178,17 @@ export function shortFloorProblems(
   ];
 }
 
+/**
+ * The playback factor (pure) that brings a sped-up Short back up to the floor: below 1 slows it, 1 leaves it. Never
+ * slower than the take was voiced (1 / SHORT_SPEED), and nothing when there is no floor or no speed-up to undo. The
+ * floor keeps half a second spare for rounding in the render.
+ */
+export function floorBackFactor(seconds: number, minSeconds: number, speed: number): number {
+  if (minSeconds <= 0 || speed <= 1 || !Number.isFinite(seconds) || seconds <= 0) return 1;
+  const want = minSeconds + 0.5;
+  if (seconds >= want) return 1;
+  return Math.max(1 / speed, seconds / want);
+}
+
 /** The lanes the floor holds to: the news writer's Shorts (news, breaking, Why and the free lane). */
 export const FLOOR_LANES = ["news", "news_breaking", "free"];

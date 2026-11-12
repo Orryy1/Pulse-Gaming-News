@@ -64,6 +64,15 @@ export interface GameplayMeta {
   };
   /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
   sound?: { speech_share?: number };
+  /** VOD_MINER: the stream ask this moment answers and what the miner's local check made of it (src/streamasks/miner.ts). */
+  stream_ask?: {
+    question: string;
+    claim: string;
+    rumour: boolean;
+    verdict: "proved" | "disproved";
+    confidence: number;
+    reason: string;
+  };
 }
 
 export interface Experiment {
@@ -312,6 +321,11 @@ export async function reviewClip(
       `Stream title: ${meta.source.title || "(none)"}`,
       `Clip length: ${meta.clip.seconds} s; the finder's peak is at ${meta.clip.peak_in_clip ?? "?"} s`,
       `What Whisper heard: ${transcript.trim() || "(nothing, or it could not listen)"}`,
+      ...(meta.stream_ask
+        ? [
+            `Found for a stream ask: "${meta.stream_ask.question}"${meta.stream_ask.rumour ? " (a rumour: say so)" : ""}. The local check says ${meta.stream_ask.verdict} (${Math.round(meta.stream_ask.confidence * 100)}%): ${meta.stream_ask.reason}. Frame it as "Previews said X. I tested it." only if the frames agree; otherwise judge the clip on its own.`,
+          ]
+        : []),
       "",
       "The test list:",
       ...experiments.map((e) => `${e.number}. ${e.question}`),

@@ -43,6 +43,7 @@ import {
   QUOTA,
   publishHeld,
   quotaAdd,
+  quotaCall,
   quotaUsed,
   setPublishHold,
 } from "./lanes.ts";
@@ -106,6 +107,8 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
+import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
+import { asksKey } from "./streamasks/page.ts";
 import { gameFetchPass } from "./sceneindex/gamefetch.ts";
 import { releaseRadar, type RadarGame } from "./discovery/weekly.ts";
 import { currentStories } from "./bigstories.ts";
@@ -224,6 +227,31 @@ export function createApp(
       res
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify(macReservationsDoc(cfg, new Date()), null, 1));
+      return;
+    }
+
+    // STREAM_ASKS: the owner's private list of things to test on stream, at an unguessable, unlinked, noindex address.
+    if (
+      cfg.streamAsks.enabled &&
+      req.method === "GET" &&
+      (url.pathname === `/asks/${asksKey(cfg.appSecret)}` ||
+        url.pathname === `/asks/${asksKey(cfg.appSecret)}.md`)
+    ) {
+      const md = url.pathname.endsWith(".md");
+      const file = path.join(asksDir(cfg.dataDir), md ? "asks.md" : "asks.html");
+      const body = fs.existsSync(file)
+        ? fs.readFileSync(file, "utf8")
+        : md
+          ? "No list yet."
+          : "<p>No list yet.</p>";
+      res
+        .writeHead(200, {
+          "content-type": md ? "text/markdown; charset=utf-8" : "text/html; charset=utf-8",
+          "x-robots-tag": "noindex, nofollow",
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        })
+        .end(body);
       return;
     }
 
@@ -1758,6 +1786,24 @@ async function main(): Promise<void> {
       );
     setTimeout(pass, 2 * 60_000);
     setInterval(pass, 10 * 60_000);
+  }
+  // The living list of things to test on stream (STREAM_ASKS) and the VOD moment miner (VOD_MINER): src/streamasks.
+  if (cfg.streamAsks.enabled) {
+    const asksPass = () =>
+      void streamAsksTick(cfg, {
+        db,
+        llm: services.llm,
+        // Comments under the big videos: the factory's own login when YOUTUBE_API_KEY is unset or expired.
+        youtubeToken: () => accessToken(db, oauthConfig(cfg)),
+        onQuota: (kind, n) =>
+          kind === "search" ? quotaCall(db, new Date(), "search") : quotaAdd(db, new Date(), n),
+      });
+    setTimeout(asksPass, 3 * 60_000);
+    setInterval(asksPass, 15 * 60_000);
+  }
+  if (cfg.streamAsks.vodMiner) {
+    setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);
+    setInterval(() => void vodMinerTick(cfg), 10 * 60_000);
   }
   // The highlight finder and the TinoTV download on the Mac (MAC_GAMEPLAY).
   if (cfg.macGameplay) {

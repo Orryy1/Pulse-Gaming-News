@@ -172,6 +172,9 @@ export async function quoteScriptStep(
     const cap = o.footageCap ?? quoteFootageCap(game, o.publisherNames);
     if (cap.seconds <= 0) return skip(`${cap.key} allows no footage`);
     const now = s.now();
+    // Fail closed (12 Nov 2026): with the guard on, no quote until the spoiler windows have loaded.
+    if (s.cfg.spoilerGuard && !(o.windows ?? spoilerWindows()).length)
+      return skip("spoiler windows not loaded yet");
     const window = s.cfg.spoilerGuard
       ? windowFor(o.windows ?? spoilerWindows(), game, now)
       : undefined;
@@ -321,6 +324,7 @@ export async function quoteLongStep(
         const cap = o.footageCap ?? quoteFootageCap(ch.game);
         const left = cap.seconds - (used.get(cap.key) ?? 0);
         if (left <= 0) continue;
+        if (s.cfg.spoilerGuard && !(o.windows ?? spoilerWindows()).length) continue;
         const window = s.cfg.spoilerGuard
           ? windowFor(o.windows ?? spoilerWindows(), ch.game, now)
           : undefined;

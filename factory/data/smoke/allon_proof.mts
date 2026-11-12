@@ -24,6 +24,8 @@ Object.assign(process.env, {
   DRY_RUN: "true",
   CODEX_LLM: "true",
   CODEX_CALLS: "*",
+  // The final picture check is a paid Claude call while the PC relay is up; Codex looks instead (Claude's limit).
+  CODEX_VISION: "true",
   MAC_RENDER_SHORTS: "false",
   EVERGREEN_ENABLED: "false",
   LONGFORM_ENABLED: "false",

@@ -23,7 +23,7 @@ export interface PictureCapMedia {
     beatIndex?: number;
     moment?: number;
   }>;
-  clips: Array<{ file?: string; beatIndex?: number; durationSeconds: number }>;
+  clips: Array<{ file?: string; beatIndex?: number; durationSeconds: number; cutsceneMatch?: { targetKey?: string } }>;
   /** The real-world test (src/render/longplan.ts realWorldImage): those stay on their own sentence. */
   real: (k: number) => boolean;
   /** Which entry a shot's segment belongs to; undefined for the intro. */
@@ -117,6 +117,7 @@ export function capSamePicture(
     const clip = media.clips.findIndex(
       (c, k) =>
         (entry === undefined || c.beatIndex === entry) &&
+        !c.cutsceneMatch?.targetKey &&
         !played.has(k) &&
         c.durationSeconds * fps >= minPiece,
     );

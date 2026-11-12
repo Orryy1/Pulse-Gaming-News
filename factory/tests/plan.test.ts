@@ -205,6 +205,39 @@ test("quiet beats sit on framed stills and the plan is identical for identical i
   assert.deepEqual(buildPlan(input()), plan);
 });
 
+test("a scene located for a beat is preferred to unrelated footage for that beat", () => {
+  for (const footageFirst of [false, true]) {
+    const i = input({ footageFirst, clips: [
+      { durationSeconds: 4.8, motion: 1, beatIndex: 0 },
+      { durationSeconds: 4.8, motion: 0.1, beatIndex: 0, cutsceneMatch: { targetKey: "beat:0", how: "chapter" } },
+    ] });
+    const shots = buildPlan(i).shots.filter((shot) => shot.segment === 1 && shot.media.type === "clip");
+    assert.equal(shots[0]?.media.index, 1);
+  }
+});
+
+test("leftover footage never spends a scene reserved for another line", () => {
+  const i = input({ footageFirst: true, clips: [
+    { durationSeconds: 4.8, motion: 0.8, beatIndex: 99, cutsceneMatch: { targetKey: "beat:99", how: "caption" } },
+  ] });
+  assert.ok(buildPlan(i).shots.every((shot) => shot.media.type !== "clip"));
+});
+
+test("located verdict and closing scenes play only on their named lines", () => {
+  for (const footageFirst of [false, true]) {
+    const i = input({ footageFirst, clips: [
+      { durationSeconds: 4.8, motion: 0.4, cutsceneMatch: { targetKey: "take", how: "chapter" } },
+      { durationSeconds: 4.8, motion: 0.3, cutsceneMatch: { targetKey: "loop", how: "caption" } },
+    ] });
+    const shots = buildPlan(i).shots;
+    for (const [index, kind] of [[0, "take"], [1, "loop"]] as const) {
+      const own = shots.filter((shot) => shot.media.type === "clip" && shot.media.index === index);
+      assert.ok(own.length > 0);
+      assert.ok(own.every((shot) => i.segments[shot.segment]!.kind === kind));
+    }
+  }
+});
+
 test("no media at all produces brand-plate shots, not an empty frame", () => {
   const plan = buildPlan(input({ images: [], clips: [] }));
   assert.ok(plan.shots.length > 0);

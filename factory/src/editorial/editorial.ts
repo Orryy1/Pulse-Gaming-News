@@ -27,6 +27,7 @@ import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { skeletonRule, type Skeleton } from "./skeletons.ts";
 import { DROP_ANGLE_RULE } from "./dropangle.ts";
+import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import {
   parsePairs,
   parseMilestones,
@@ -215,6 +216,7 @@ export async function writeScript(
     dropAngle?: boolean;
     /** SHORT_LENGTHS: this Short's length lane; absent, the old 25-40 seconds and 70-100 words. */
     length?: ScriptLength;
+    availableQuotes?: readonly CutsceneQuote[];
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -251,7 +253,7 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -274,6 +276,12 @@ export async function writeScript(
       schema: ScriptSchema,
       effort: "medium",
     }));
+  const problems = quoteProblems([
+    { narration: script.hook }, ...script.beats,
+    ...(script.desk_question?.trim() ? [{ narration: script.desk_question }] : []),
+    { narration: script.pulse_take.narration }, { narration: script.loop_line },
+  ], opts.availableQuotes);
+  if (problems.length) throw new Error(`Invalid character quote: ${problems.join(" ")}`);
   return varyOpinion(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,

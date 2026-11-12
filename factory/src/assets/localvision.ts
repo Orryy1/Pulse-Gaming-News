@@ -97,6 +97,17 @@ export function visionAnswer(body: {
   return {};
 }
 
+export function frameFlagsFromAnswer(body: {
+  message?: { content?: string; thinking?: string };
+}): FrameFlags | undefined {
+  const parsed = visionAnswer(body);
+  const keys = ["text", "hud_only", "webcam", "gore", "letterbox", "dark", "blurry"];
+  if (!parsed || typeof parsed !== "object" || keys.some((key) => typeof parsed[key] !== "boolean")) return undefined;
+  const hud = parsed.text && parsed.hud_only;
+  return { hud, text: parsed.text && !hud, webcam: parsed.webcam, gore: parsed.gore,
+    letterbox: parsed.letterbox, dark: parsed.dark, blurry: parsed.blurry };
+}
+
 export const rejectReason = (f: FrameFlags): string | undefined =>
   f.webcam
     ? "webcam or overlay"
@@ -327,19 +338,7 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
     message?: { content?: string; thinking?: string };
   };
   // Some vision models put their whole answer in the thinking field even with thinking off.
-  const parsed = visionAnswer(body);
-  const yes = (k: string) => parsed[k] === true;
-  // Writing that is only the game's own small HUD does not count as text on screen.
-  const hud = yes("text") && yes("hud_only");
-  return {
-    hud,
-    text: yes("text") && !hud,
-    webcam: yes("webcam"),
-    gore: yes("gore"),
-    letterbox: yes("letterbox"),
-    dark: yes("dark"),
-    blurry: yes("blurry"),
-  };
+  return frameFlagsFromAnswer(body);
 }
 
 /**
@@ -850,5 +849,106 @@ export async function lookFrames(
   await Promise.all(
     Array.from({ length: Math.min(concurrency, files.length) }, worker),
   );
+  return out;
+}
+
+/** Whether a frame shows the moment a narration line names (src/assets/scenecheck.ts), from this PC's own model. */
+export interface SubjectLook {
+  /** The named subject (the character first, else the place or thing) is visibly on screen. */
+  shows: boolean;
+  /** 0 to 1, the model's own certainty that it does. */
+  confidence: number;
+  /** What the frame shows, in a few words, for the contact sheet and the log. */
+  seen: string;
+}
+
+/** The subject check's answer as a SubjectLook (pure); undefined when it says nothing usable. */
+export function subjectAnswer(parsed: any): SubjectLook | undefined {
+  if (typeof parsed?.shows !== "boolean") return undefined;
+  const c = Number(parsed.confidence);
+  return {
+    shows: parsed.shows,
+    confidence: Number.isFinite(c) ? Math.min(1, Math.max(0, c > 1 ? c / 100 : c)) : 0,
+    seen: typeof parsed.seen === "string" ? parsed.seen.slice(0, 160) : "",
+  };
+}
+
+/** The question for one frame (pure): the game, the line and the names it must show. */
+export function subjectPrompt(o: { game: string; line: string; names: string[] }): string {
+  const names = o.names.length ? o.names.join(", ") : "what the line describes";
+  return `This is one frame of a cutscene from the video game ${o.game}. A narration line will play over it: "${o.line}"
+Does this frame visibly show this moment: at least one of ${names}? It need not show all of them: one named character on screen in the scene the line describes is enough. A named character counts only when that character is on screen and recognisable by their known look in this game (not someone else, not an empty room, not a face you cannot identify). A named place or object counts when it is clearly visible. When the line names a character and a place, the character matters most.
+Answer shows (true or false), confidence from 0 to 1 that shows is right, and seen: what the frame shows in under 15 words.`;
+}
+
+async function subjectOne(file: string, prompt: string): Promise<SubjectLook | undefined> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const res = await fetchWithTimeout(
+    `${LOCAL_VISION_URL}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: LOCAL_VISION_MODEL,
+        stream: false,
+        think: false,
+        format: {
+          type: "object",
+          properties: {
+            shows: { type: "boolean" },
+            confidence: { type: "number" },
+            seen: { type: "string" },
+          },
+          required: ["shows", "confidence", "seen"],
+        },
+        keep_alive: "15m",
+        options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: NUM_CTX },
+        messages: [{ role: "user", content: prompt, images: [image] }],
+      }),
+    },
+    90_000,
+  );
+  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return subjectAnswer(visionAnswer((await res.json()) as { message?: { content?: string; thinking?: string } }));
+}
+
+/**
+ * For each frame, whether it shows what the line names, on this PC's GPU (free: never Claude, never a paid API).
+ * Undefined for a frame the model could not judge, and for all of them when the local model is down, off or
+ * under test: the caller then treats the moment as not confirmed.
+ */
+export async function subjectFrames(
+  files: string[],
+  ask: { game: string; line: string; names: string[] },
+  concurrency = 2,
+): Promise<Array<SubjectLook | undefined>> {
+  const out: Array<SubjectLook | undefined> = new Array(files.length).fill(undefined);
+  if (
+    !files.length ||
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
+  )
+    return out;
+  if (await relayNotReady()) return out;
+  const prompt = subjectPrompt(ask);
+  let next = 0;
+  let failures = 0;
+  const worker = async () => {
+    while (next < files.length && failures < 3) {
+      const i = next++;
+      try {
+        out[i] = await subjectOne(files[i]!, prompt);
+        visionRelay.report(true);
+      } catch (err) {
+        failures++;
+        if (failures === 3) {
+          downUntil = Date.now() + 10 * 60_000;
+          visionRelay.report(false, errorMessage(err));
+        }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
   return out;
 }

@@ -26,6 +26,9 @@ import {
   type FootageTarget,
 } from "../assets/clipscore.ts";
 import { clipBigText } from "../assets/cliptext.ts";
+import { checkClip, namedSubjects, SUBJECT_CONFIDENCE, type SubjectAsk } from "../assets/scenecheck.ts";
+import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
+import type { VisualAsset } from "../assets/steam.ts";
 import { findQuote, findShots } from "./lookup.ts";
 import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
@@ -48,6 +51,10 @@ export interface PlannedClip {
   label: string;
   /** Set when the line quotes dialogue and the clip is the moment the words are on screen or said. */
   quote?: string;
+  /** SCENE_MATCH: the names the line asks to see; the clip is used only once the picture check sees them. */
+  names?: string[];
+  /** SCENE_MATCH: the next best shots for the same line, tried in order when the picture check refuses this one. */
+  alternates?: PlannedClip[];
 }
 
 /**
@@ -75,6 +82,24 @@ export function clearStretch(
   return best;
 }
 
+/**
+ * SCENE_MATCH: a line that names a moment is offered shots from this confidence up. The words only point; the picture
+ * check decides, so the courtyard window (said "Take a look through this window") is not lost below the usual bar.
+ */
+export const NAMED_MIN_CONFIDENCE = 0.25;
+
+/** Every name the index knows (pure): its cast and places, the people it saw in shots and the speakers it heard. */
+export function knownNames(index: Pick<SceneIndex, "cast" | "places" | "shots" | "lines">): string[] {
+  return [
+    ...new Set([
+      ...index.cast,
+      ...index.places,
+      ...index.shots.flatMap((s) => s.who),
+      ...index.lines.flatMap((l) => (l.speaker && !l.speakerGuessed ? [l.speaker] : [])),
+    ]),
+  ].filter((n) => n && !/^narrator$/i.test(n));
+}
+
 /** Words in quotation marks in a narration line, four words or more: a line of the game's dialogue being quoted. */
 export function quotedWords(text: string): string[] {
   return [...text.matchAll(/["“]([^"”]{12,160})["”]/g)]
@@ -98,13 +123,20 @@ export function planIndexedClips(
     clipSeconds?: number;
     /** SPOILER_GUARD: whether a shot may be used for a line (src/sceneindex/spoilers.ts); unset: every shot. */
     allow?: (shot: SceneShot, key: string) => boolean;
+    /** SCENE_MATCH: for a line that names someone or somewhere, this many next-best shots ride along as alternates. */
+    alternates?: number;
+    gameTitle?: string;
   },
 ): PlannedClip[] {
   const clipSeconds = o.clipSeconds ?? CLIP_SECONDS;
   const out: PlannedClip[] = [];
   let total = 0;
   const free = (from: number) => out.every((c) => Math.abs(c.from - from) >= 3);
+  const known = o.alternates ? knownNames(index) : [];
   for (const t of targets) {
+    const names = o.alternates ? namedSubjects(t, known, o.gameTitle ?? index.game) : [];
+    const extra = names.length ? (o.alternates ?? 0) : 0;
+    let picked: PlannedClip | undefined;
     if (out.length >= o.maxClips || o.maxSeconds - total < MIN_CLIP_SECONDS)
       break;
     const candidates: Array<{
@@ -122,8 +154,8 @@ export function planIndexedClips(
         });
     }
     for (const h of findShots(index, t, {
-      max: 4,
-      minConfidence: o.minConfidence,
+      max: 4 + extra * 2,
+      minConfidence: extra ? Math.min(o.minConfidence, NAMED_MIN_CONFIDENCE) : o.minConfidence,
       minSeconds: MIN_CLIP_SECONDS + 0.3,
     }))
       candidates.push({ shot: h.shot, confidence: h.confidence });
@@ -142,17 +174,29 @@ export function planIndexedClips(
             30,
         ) / 30;
       if (seconds < MIN_CLIP_SECONDS || !free(from)) continue;
-      out.push({
+      const clip: PlannedClip = {
         key: t.key,
         shot: shot.id,
         from,
         seconds,
         confidence: c.confidence,
-        label: shot.desc.slice(0, 80),
+        label: (shot.desc || shot.who.join(", ") || shot.text).slice(0, 80),
         ...(c.quote ? { quote: c.quote } : {}),
-      });
-      total += seconds;
-      break;
+        ...(names.length ? { names } : {}),
+      };
+      if (!picked) {
+        picked = clip;
+        out.push(clip);
+        total += seconds;
+        if (!extra) break;
+        continue;
+      }
+      // An alternate replaces the pick, so it never runs longer than the seconds the pick was given.
+      if (picked.alternates?.some((a) => a.shot === clip.shot || Math.abs(a.from - clip.from) < 3) || clip.shot === picked.shot) continue;
+      const s = Math.min(clip.seconds, picked.seconds);
+      if (s < MIN_CLIP_SECONDS) continue;
+      (picked.alternates ??= []).push({ ...clip, seconds: s });
+      if (picked.alternates.length >= extra) break;
     }
   }
   return out;
@@ -174,6 +218,18 @@ export interface IndexedOptions {
   textCheck?: boolean;
   /** SPOILER_GUARD: whether a shot may be used for a line. */
   allow?: (shot: SceneShot, key: string) => boolean;
+  /**
+   * SCENE_MATCH: a line that names someone or somewhere gets its clip only once this picture check sees them in it
+   * (src/assets/scenecheck.ts checkClip on the local model); refused, the next best shot is tried, then the search.
+   */
+  check?: (file: string, seconds: number, ask: SubjectAsk) => Promise<boolean>;
+  /** SCENE_MATCH: how many next-best shots a named line may try after its first. */
+  alternates?: number;
+  /**
+   * SCENE_MATCH: a cheap first look at a shot on the index's own low-resolution proxy, before anything is downloaded;
+   * a shot it refuses is skipped (the clip itself is still checked after the cut). Unset: every shot is fetched.
+   */
+  precheck?: (from: number, seconds: number, ask: SubjectAsk) => Promise<boolean>;
   deps?: {
     /** Fetches [from, to) of the source at full quality into `file`. */
     download?: (
@@ -299,7 +355,11 @@ async function screen(
 export async function indexedCutsceneClips(
   o: IndexedOptions,
 ): Promise<CutsceneClip[]> {
-  const plan = planIndexedClips(o.index, o.targets, o);
+  const plan = planIndexedClips(o.index, o.targets, {
+    ...o,
+    alternates: o.check ? (o.alternates ?? 5) : undefined,
+    gameTitle: o.gameTitle,
+  });
   if (!plan.length) return [];
   const src = o.index.source;
   const url = `https://www.youtube.com/watch?v=${src.videoId}`;
@@ -308,47 +368,79 @@ export async function indexedCutsceneClips(
   const work = await fs.mkdtemp(path.join(o.episodeDir, "sceneindex_work_"));
   const out: CutsceneClip[] = [];
   try {
-    for (const [i, p] of plan.entries()) {
-      const section = path.join(work, `section_${i}.mp4`);
-      const lead = Math.min(2, p.from);
-      const rel = path.join(
-        "assets",
-        `sceneindex_${path.basename(work).slice(-6)}_${i}.mp4`,
-      );
-      const file = path.join(o.episodeDir, rel);
-      try {
-        await (
-          o.deps?.download ?? ((id, a, b, f) => download(id, a, b, f, o.ytdlp))
-        )(
-          src.videoId,
-          Math.round((p.from - lead) * 100) / 100,
-          Math.round(Math.min(src.duration, p.from + p.seconds + 2) * 100) / 100,
-          section,
+    let n = 0;
+    const lineOf = new Map(o.targets.map((t) => [t.key, t.text]));
+    for (const first of plan) {
+      let p: PlannedClip | undefined;
+      let rel = "";
+      let confirmed = false;
+      for (const c of [first, ...(first.alternates ?? [])]) {
+        const i = n++;
+        const section = path.join(work, `section_${i}.mp4`);
+        const lead = Math.min(2, c.from);
+        rel = path.join(
+          "assets",
+          `sceneindex_${path.basename(work).slice(-6)}_${i}.mp4`,
         );
-        await (o.deps?.cut ?? cut)(section, lead, p.seconds, file);
-        if (
-          !(await (
-            o.deps?.screen ?? ((f, s) => screen(f, s, o.textCheck !== false))
-          )(file, p.seconds))
-        ) {
-          await fs.rm(file, { force: true }).catch(() => undefined);
-          log("info", "scene index: clip screened out", {
-            game: o.gameTitle,
-            at: p.from,
-          });
+        const file = path.join(o.episodeDir, rel);
+        const ask = { game: o.gameTitle, line: lineOf.get(c.key) ?? c.label, names: c.names ?? [] };
+        if (o.check && o.precheck && c.names?.length && !(await o.precheck(c.from, c.seconds, ask).catch(() => true))) {
+          log("info", "scene index: named moment not on the proxy, next shot", { game: o.gameTitle, key: c.key, at: c.from });
           continue;
         }
-      } catch (err) {
-        log("warn", "scene index: clip not fetched", {
-          game: o.gameTitle,
-          at: p.from,
-          error: errorMessage(err),
-        });
-        await fs.rm(file, { force: true }).catch(() => undefined);
-        continue;
-      } finally {
-        await fs.rm(section, { force: true }).catch(() => undefined);
+        try {
+          await (
+            o.deps?.download ?? ((id, a, b, f) => download(id, a, b, f, o.ytdlp))
+          )(
+            src.videoId,
+            Math.round((c.from - lead) * 100) / 100,
+            Math.round(Math.min(src.duration, c.from + c.seconds + 2) * 100) / 100,
+            section,
+          );
+          await (o.deps?.cut ?? cut)(section, lead, c.seconds, file);
+          if (
+            !(await (
+              o.deps?.screen ?? ((f, s) => screen(f, s, o.textCheck !== false))
+            )(file, c.seconds))
+          ) {
+            await fs.rm(file, { force: true }).catch(() => undefined);
+            log("info", "scene index: clip screened out", {
+              game: o.gameTitle,
+              at: c.from,
+            });
+            continue;
+          }
+          // SCENE_MATCH: the named moment must be seen in the clip itself, or the next best shot is tried.
+          if (o.check && c.names?.length) {
+            const ok = await o.check(file, c.seconds, ask).catch(() => false);
+            if (!ok) {
+              await fs.rm(file, { force: true }).catch(() => undefined);
+              log("info", "scene index: named moment not seen, next shot", {
+                game: o.gameTitle,
+                key: c.key,
+                names: c.names,
+                at: c.from,
+              });
+              continue;
+            }
+            confirmed = true;
+          }
+        } catch (err) {
+          log("warn", "scene index: clip not fetched", {
+            game: o.gameTitle,
+            at: c.from,
+            error: errorMessage(err),
+          });
+          await fs.rm(file, { force: true }).catch(() => undefined);
+          continue;
+        } finally {
+          await fs.rm(section, { force: true }).catch(() => undefined);
+        }
+        p = c;
+        break;
       }
+      if (!p) continue;
+      const lead = Math.min(2, p.from);
       const shot = o.index.shots[p.shot]!;
       const beatIndex = p.key.startsWith("beat:")
         ? Number.parseInt(p.key.slice(5), 10)
@@ -366,7 +458,7 @@ export async function indexedCutsceneClips(
         motion: Math.min(1, shot.motion / 40),
         luma: shot.luma,
         label: p.label,
-        reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence})`,
+        reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence}${confirmed ? `, ${p.names!.join(", ")} seen by the picture check` : ""})`,
         provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted; chosen for ${p.key} by the scene index (${p.label})`,
         audio: false,
         credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
@@ -376,6 +468,8 @@ export async function indexedCutsceneClips(
           uploader: src.uploader,
         },
         span: { source: url, from: p.from, to: p.from + p.seconds },
+        // A confirmed named moment is that line's alone: the planner never lends it to another line.
+        ...(confirmed ? { cutsceneMatch: { targetKey: p.key, how: "index" as const } } : {}),
       });
     }
     return out;
@@ -479,6 +573,42 @@ async function findIndex(dataDir: string, game: string): Promise<SceneIndex | un
   }
 }
 
+/**
+ * SCENE_MATCH: the picture check run on the index's low-resolution proxy (when it is on this machine): the same three
+ * frames the clip would be judged on, cut from the proxy at the shot's time. Undefined when there is no proxy here.
+ */
+export async function proxyPrecheck(
+  dataDir: string,
+  index: SceneIndex,
+  workDir: string,
+): Promise<IndexedOptions["precheck"]> {
+  const proxy = path.join(dataDir, "sceneindex", index.slug || sceneSlug(index.game), index.proxy?.file || "proxy.mp4");
+  if (!(await fs.stat(proxy).then((s) => s.size > 0).catch(() => false))) return undefined;
+  return async (from, seconds, ask) => {
+    const dir = await fs.mkdtemp(path.join(workDir, "scenematch_"));
+    try {
+      const r = await checkClip(proxy, seconds, ask, {
+        // The frames go to this run's own folder, never beside the index.
+        grab: async (_f, times) => {
+          const out: string[] = [];
+          for (const [i, t] of times.entries()) {
+            const jpg = path.join(dir, `proxy_${i}.jpg`);
+            await runCapped(FFMPEG, ["-v", "error", "-y", "-ss", (from + t).toFixed(2), "-i", proxy, "-frames:v", "1", "-q:v", "3", jpg], {
+              timeout: 60_000,
+              maxBuffer: 1024 * 1024,
+            });
+            out.push(jpg);
+          }
+          return out;
+        },
+      });
+      return r.ok;
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  };
+}
+
 /** The key a cutscene clip was fetched for, as the targets name it ("hook", "beat:3"). */
 function clipKey(c: CutsceneClip): string {
   return c.role === "hook" ? "hook" : c.beatIndex === undefined ? "" : `beat:${c.beatIndex}`;
@@ -524,7 +654,7 @@ export async function indexFirstCutscenes<
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
-    Partial<Pick<Config, "spoilerGuard">>,
+    Partial<Pick<Config, "spoilerGuard" | "sceneMatch">>,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
   deps?: IndexedOptions["deps"],
@@ -572,6 +702,13 @@ export async function indexFirstCutscenes<
         minConfidence: cfg.sceneIndexMinConfidence,
         ytdlp: cfg.ytdlpPath,
         publisher: o.publisher,
+        // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
+        ...(cfg.sceneMatch
+          ? {
+              check: async (file: string, seconds: number, ask: SubjectAsk) => (await checkClip(file, seconds, ask)).ok,
+              precheck: await proxyPrecheck(cfg.dataDir, index, o.episodeDir),
+            }
+          : {}),
         ...(allow
           ? {
               allow: (shot: SceneShot, key: string) =>
@@ -582,5 +719,244 @@ export async function indexFirstCutscenes<
       });
     },
     searched,
+  );
+}
+/** SCENE_MATCH stills: a still is one frame, checked on its own (the frame on the word is the whole picture). */
+export function stillConfirmed(
+  look: SubjectLook | undefined,
+  flags: FrameFlags | undefined,
+): boolean {
+  if (!look?.shows || look.confidence < SUBJECT_CONFIDENCE) return false;
+  // The game's own small HUD is fine; anything else the screen rejects (text across it, dark, blurred) is not.
+  return !flags || !rejectReason(flags);
+}
+
+/** The earliest of a line's names as it is spoken (pure): the words a still is placed on. */
+export function firstSpoken(
+  text: string,
+  names: readonly string[],
+): string | undefined {
+  const low = ` ${text.toLowerCase().replace(/[^a-z0-9' ]+/g, " ")} `;
+  let best: { at: number; name: string } | undefined;
+  for (const n of names) {
+    const at = low.indexOf(
+      ` ${n
+        .toLowerCase()
+        .replace(/[^a-z0-9' ]+/g, " ")
+        .trim()} `,
+    );
+    if (at >= 0 && (!best || at < best.at)) best = { at, name: n };
+  }
+  return best?.name ?? names[0];
+}
+
+export interface SceneStillOptions {
+  gameTitle: string;
+  recentRelease?: boolean;
+  episodeDir: string;
+  targets: FootageTarget[];
+  /** At most this many stills. */
+  max: number;
+  long?: boolean;
+  spoilerWarned?: boolean;
+}
+
+/**
+ * SCENE_MATCH for a stills-only publisher (Nintendo: PUBLISHER_CHANNELS clipSeconds 0, so no cutscene clip may play):
+ * each line that names a moment gets one still of that exact scene from the game's index, placed on the name as it
+ * is said (forWords). The index proposes shots; the proxy (when on this machine) and then the full-quality frame
+ * must show the named subject to the free local vision model, cleanly. A line with no confirmed frame gets nothing
+ * here and keeps the ordinary art. Off (SCENE_INDEX or SCENE_MATCH), no index, or the wrong release: nothing.
+ */
+export async function indexedSceneStills(
+  cfg: Pick<
+    Config,
+    "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"
+  > &
+    Partial<Pick<Config, "spoilerGuard" | "sceneMatch">>,
+  o: SceneStillOptions,
+  deps: {
+    /** Fetches [from, to) of the source at full quality into `file`. */
+    download?: (
+      videoId: string,
+      from: number,
+      to: number,
+      file: string,
+    ) => Promise<void>;
+    /** One full-resolution frame `at` seconds into a downloaded section. */
+    grab?: (section: string, at: number, file: string) => Promise<void>;
+    look?: (file: string, ask: SubjectAsk) => Promise<SubjectLook | undefined>;
+    screen?: (file: string) => Promise<FrameFlags | undefined>;
+    /** null: no proxy look even when the proxy is here. */
+    precheck?: IndexedOptions["precheck"] | null;
+  } = {},
+  now = new Date(),
+  windows: readonly SpoilerWindow[] = spoilerWindows(),
+): Promise<VisualAsset[]> {
+  if (!cfg.sceneIndex || !cfg.sceneMatch || o.max <= 0 || !o.targets.length)
+    return [];
+  const index = await findIndex(cfg.dataDir, o.gameTitle);
+  if (!index) {
+    await requestSceneIndex(
+      cfg,
+      o.gameTitle,
+      "a video about it",
+      Boolean(o.recentRelease),
+    );
+    return [];
+  }
+  if (!indexFitsRelease(index, o.recentRelease)) return [];
+  const w = cfg.spoilerGuard ? windowFor(windows, o.gameTitle, now) : undefined;
+  const allow = w ? spoilerAllow(w, o, now) : undefined;
+  const plan = planIndexedClips(index, o.targets, {
+    maxClips: o.max,
+    maxSeconds: o.max * CLIP_SECONDS,
+    minConfidence: cfg.sceneIndexMinConfidence,
+    alternates: 5,
+    gameTitle: o.gameTitle,
+    ...(allow
+      ? {
+          allow: (shot: SceneShot, key: string) =>
+            allow(index, shot.start, key) &&
+            allow(index, Math.max(shot.start, shot.end - 0.05), key),
+        }
+      : {}),
+  }).filter((p) => p.names?.length);
+  if (!plan.length) return [];
+  const precheck =
+    deps.precheck === null
+      ? undefined
+      : (deps.precheck ??
+        (await proxyPrecheck(cfg.dataDir, index, o.episodeDir)));
+  const src = index.source;
+  const url = `https://www.youtube.com/watch?v=${src.videoId}`;
+  await fs.mkdir(path.join(o.episodeDir, "assets"), { recursive: true });
+  const work = await fs.mkdtemp(path.join(o.episodeDir, "scenestill_work_"));
+  const lineOf = new Map(o.targets.map((t) => [t.key, t.text]));
+  const out: VisualAsset[] = [];
+  let n = 0;
+  try {
+    for (const first of plan) {
+      for (const c of [first, ...(first.alternates ?? [])]) {
+        const ask = {
+          game: o.gameTitle,
+          line: lineOf.get(c.key) ?? c.label,
+          names: c.names ?? [],
+        };
+        if (
+          precheck &&
+          !(await precheck(c.from, c.seconds, ask).catch(() => true))
+        )
+          continue;
+        const i = n++;
+        const section = path.join(work, `section_${i}.mp4`);
+        const rel = path.join(
+          "assets",
+          `scenestill_${path.basename(work).slice(-6)}_${i}.jpg`,
+        );
+        const file = path.join(o.episodeDir, rel);
+        // The frame in the middle of the clear stretch: away from the cut either side.
+        const at =
+          Math.round((c.from + Math.min(c.seconds / 2, 1.5)) * 100) / 100;
+        const lead = Math.min(1, at);
+        try {
+          await (
+            deps.download ??
+            ((id, a, b, f) => download(id, a, b, f, cfg.ytdlpPath))
+          )(
+            src.videoId,
+            Math.round((at - lead) * 100) / 100,
+            Math.round(Math.min(src.duration, at + 1) * 100) / 100,
+            section,
+          );
+          await (deps.grab ?? grabStill)(section, lead, file);
+          const [look, flags] = await Promise.all([
+            (
+              deps.look ??
+              (async (f: string, a: SubjectAsk) =>
+                (await subjectFrames([f], a))[0])
+            )(file, ask),
+            (
+              deps.screen ?? (async (f: string) => (await screenFrames([f]))[0])
+            )(file),
+          ]);
+          if (!stillConfirmed(look, flags)) {
+            await fs.rm(file, { force: true }).catch(() => undefined);
+            log("info", "scene still: named moment not seen, next shot", {
+              game: o.gameTitle,
+              key: c.key,
+              at,
+              seen: look?.seen,
+            });
+            continue;
+          }
+          const forWords = firstSpoken(ask.line, ask.names);
+          const beatIndex = c.key.startsWith("beat:")
+            ? Number.parseInt(c.key.slice(5), 10)
+            : undefined;
+          const moment = c.key.match(/#m(\d+)$/)?.[1];
+          out.push({
+            kind: "screenshot",
+            file: rel,
+            sourceUrl: url,
+            provenance: `Cutscene still for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId} (${url}), source time: ${at.toFixed(2)}s; chosen for ${c.key} by the scene index, ${ask.names.join(", ")} seen by the picture check`,
+            youtubeSource: {
+              videoId: src.videoId,
+              title: src.title,
+              uploader: src.uploader,
+            },
+            beatIndex,
+            ...(moment === undefined ? {} : { moment: Number(moment) }),
+            ...(c.key === "hook" ? { role: "hook" as const } : {}),
+            ...(forWords ? { forWords } : {}),
+            label: look!.seen || c.label,
+            reason: `scene index still: ${ask.names.join(", ")} (confidence ${look!.confidence})`,
+            startSeconds: at,
+            luma: index.shots[c.shot]?.luma,
+          });
+          break;
+        } catch (err) {
+          log("warn", "scene still: not fetched", {
+            game: o.gameTitle,
+            at,
+            error: errorMessage(err),
+          });
+          await fs.rm(file, { force: true }).catch(() => undefined);
+        } finally {
+          await fs.rm(section, { force: true }).catch(() => undefined);
+        }
+      }
+      if (out.length >= o.max) break;
+    }
+    return out;
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+async function grabStill(
+  section: string,
+  at: number,
+  file: string,
+): Promise<void> {
+  await runCapped(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-y",
+      "-ss",
+      at.toFixed(2),
+      "-i",
+      section,
+      "-frames:v",
+      "1",
+      "-vf",
+      "scale=-2:'min(1080,ih)'",
+      "-q:v",
+      "2",
+      file,
+    ],
+    { timeout: 60_000, maxBuffer: 1024 * 1024 },
   );
 }

@@ -258,3 +258,7 @@ From the report, changes 16, 22 and 26. Rankings from week 2 or 3 of the plan; t
 ## 24. PC voice/ASR service: unload its model when idle (orchestrator, 12 Nov; after 22 Nov)
 
 A python child of pulse-service-host.exe (VoxCPM or ASR) keeps about 2.2 GB of RAM while idle, during Orryy renders. Add unload-when-idle or a keep-alive timeout (like Ollama's 0 s) so the PC gets the memory back between jobs. Measure RAM idle before and after.
+
+## 25. Game audio under the narration, and more character lines (owner, 12 Nov; build after the 18 Nov reset)
+
+Owner: "we want bits of game audio too, characters talking to or complementing the narration as much as possible". Live now: CHARACTER_QUOTES on, CHARACTER_QUOTES_LONG=12 (the code allows one a chapter). To build: (a) Shorts take up to 2 quotes when the story fits (code holds them to one); (b) a ducked game-audio bed (engines, crowds, gunfire-free ambience, music stripped where possible) under narration from the clip itself instead of audio:false, loudness-matched, with short "breaths" where the game sound comes up between lines; (c) measure average viewed on Shorts with and without, as a split.

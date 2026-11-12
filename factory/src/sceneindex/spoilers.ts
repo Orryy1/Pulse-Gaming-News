@@ -154,6 +154,9 @@ export function inOpening(
  * the opening. A name seen in the opening is not late; a name never seen is unknown and left out; the game's own
  * name never counts.
  */
+/** One-word names never treated as late-story spoilers: words of other games' titles and everyday words. */
+const COMMON_WORDS = new Set("breath wild kingdom tears world light dark shadow time ocean sword shield link master temple forest fire water spirit sky king queen princess lord dawn night".split(" "));
+
 export function lateTerms(index: SceneIndex, share: number): string[] {
   const cut = index.source.duration * share;
   const names = new Set<string>([...index.cast, ...index.places]);
@@ -162,10 +165,16 @@ export function lateTerms(index: SceneIndex, share: number): string[] {
     if (s.where) names.add(s.where);
   }
   const game = gameAliases(index.game).map((a) => a.toLowerCase());
+  // Ordinary words the index took for names ("Breath", "Wild" from Breath of the Wild): a one-word name the game's own
+  // dialogue also uses in lower case is a common word, not a late-story name (12 Nov 2026: they blocked an Ocarina Short).
+  const lower = new Set<string>();
+  for (const l of index.lines)
+    for (const w of l.text.match(/[a-z][a-z'-]+/g) ?? []) lower.add(w);
   const out: string[] = [];
   for (const name of names) {
     const n = name.trim();
     if (n.length < 3 || game.some((g) => g.includes(n.toLowerCase()))) continue;
+    if (!/s/.test(n) && (lower.has(n.toLowerCase()) || COMMON_WORDS.has(n.toLowerCase()))) continue;
     const re = wordRe(n);
     let first = Infinity;
     for (const s of index.shots) {

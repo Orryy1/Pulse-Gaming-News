@@ -278,7 +278,7 @@ export async function askLocalVerdict(
         stream: false,
         think: false,
         format: VERDICT_SCHEMA,
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           num_predict: 300 + THINK_ROOM,

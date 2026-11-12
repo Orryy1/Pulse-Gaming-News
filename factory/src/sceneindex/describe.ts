@@ -140,7 +140,7 @@ export async function lookAtShot(
         stream: false,
         ...(plain ? {} : { think: false }),
         format: SCHEMA,
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           num_predict: 260 + 2 * THINK_ROOM,

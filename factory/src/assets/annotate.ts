@@ -59,7 +59,7 @@ export async function locate(
           stream: false,
           think: false,
           format: SCHEMA,
-          keep_alive: "5m",
+          keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
           options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: 8192 },
           messages: [
             {

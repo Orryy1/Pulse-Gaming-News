@@ -319,7 +319,7 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
         stream: false,
         think: false,
         format: SCHEMA,
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           num_predict: 120 + THINK_ROOM,
@@ -414,7 +414,7 @@ async function faceBox(
         stream: false,
         think: false,
         format: FACE_SCHEMA,
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           num_predict: 80 + THINK_ROOM,
@@ -516,7 +516,7 @@ export async function heroLook(file: string): Promise<HeroLook | undefined> {
             },
             required: ["subject", "box", "real_photo"],
           },
-          keep_alive: "15m",
+          keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
           options: {
             temperature: 0,
             num_predict: 80 + THINK_ROOM,
@@ -668,7 +668,7 @@ async function clearFace(file: string): Promise<boolean> {
           properties: { clear_face: { type: "boolean" } },
           required: ["clear_face"],
         },
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           num_predict: 20 + THINK_ROOM,
@@ -781,7 +781,7 @@ async function lookOne(file: string): Promise<SegmentLook> {
         stream: false,
         think: false,
         format: LOOK_SCHEMA,
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
           // Room for the thinking a cut-off answer showed it needs: Ollama stops when the answer is done.
@@ -901,7 +901,7 @@ async function subjectOne(file: string, prompt: string): Promise<SubjectLook | u
           },
           required: ["shows", "confidence", "seen"],
         },
-        keep_alive: "15m",
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: NUM_CTX },
         messages: [{ role: "user", content: prompt, images: [image] }],
       }),

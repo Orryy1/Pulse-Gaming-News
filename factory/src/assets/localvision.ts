@@ -90,6 +90,17 @@ export function visionAnswer(body: {
   return {};
 }
 
+export function frameFlagsFromAnswer(body: {
+  message?: { content?: string; thinking?: string };
+}): FrameFlags | undefined {
+  const parsed = visionAnswer(body);
+  const keys = ["text", "hud_only", "webcam", "gore", "letterbox", "dark", "blurry"];
+  if (!parsed || typeof parsed !== "object" || keys.some((key) => typeof parsed[key] !== "boolean")) return undefined;
+  const hud = parsed.text && parsed.hud_only;
+  return { hud, text: parsed.text && !hud, webcam: parsed.webcam, gore: parsed.gore,
+    letterbox: parsed.letterbox, dark: parsed.dark, blurry: parsed.blurry };
+}
+
 export const rejectReason = (f: FrameFlags): string | undefined =>
   f.webcam
     ? "webcam or overlay"
@@ -283,19 +294,7 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
     message?: { content?: string; thinking?: string };
   };
   // Some vision models put their whole answer in the thinking field even with thinking off.
-  const parsed = visionAnswer(body);
-  const yes = (k: string) => parsed[k] === true;
-  // Writing that is only the game's own small HUD does not count as text on screen.
-  const hud = yes("text") && yes("hud_only");
-  return {
-    hud,
-    text: yes("text") && !hud,
-    webcam: yes("webcam"),
-    gore: yes("gore"),
-    letterbox: yes("letterbox"),
-    dark: yes("dark"),
-    blurry: yes("blurry"),
-  };
+  return frameFlagsFromAnswer(body);
 }
 
 /**

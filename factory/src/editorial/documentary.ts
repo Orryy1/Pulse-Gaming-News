@@ -21,6 +21,7 @@ import {
 } from "./voice.ts";
 import { z } from "zod";
 import { voiceTagsField } from "../voice/tags.ts";
+import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
@@ -504,6 +505,7 @@ Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_
 export const CALLOUT_KINDS = ["none", "quote", "stat", "date"] as const;
 
 export const DocParagraphSchema = z.object({
+  quote: z.string().optional().describe("ID of an available character quote, with its exact words alone in narration"),
   narration: z
     .string()
     .describe(
@@ -641,6 +643,7 @@ export async function writeChapter(
     rules?: LongRules;
     /** The only problems are the rules': edits that won't apply leave the draft as it is, never a whole new one. */
     keepDraft?: boolean;
+    availableQuotes?: readonly CutsceneQuote[];
   },
 ): Promise<DocChapter> {
   const rules = ctx.rules ?? NO_LONG_RULES;
@@ -669,7 +672,7 @@ export async function writeChapter(
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
   const loops = loopBrief(ctx.loops ?? [], ctx.index + 1);
-  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}`;
+  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${quoteBrief(ctx.availableQuotes)}${ctx.availableQuotes?.length ? " A quote paragraph may be shorter than the paragraph word limit." : ""}`;
   const edited =
     ctx.draft && ctx.feedback?.length
       ? await reviseByEdits(llm, {
@@ -683,8 +686,7 @@ export async function writeChapter(
           ...(longRulesOn(rules) ? { site: "doc.chapter" } : {}),
         })
       : undefined;
-  if (!edited && ctx.keepDraft && ctx.draft) return ctx.draft;
-  return (
+  const chapter = !edited && ctx.keepDraft && ctx.draft ? ctx.draft : await (
     edited ??
     llm.structured({
       site: "doc.chapter",
@@ -695,6 +697,9 @@ export async function writeChapter(
       maxTokens: 12000,
     })
   );
+  const problems = quoteProblems(chapter.paragraphs ?? [], ctx.availableQuotes);
+  if (problems.length) throw new Error(`Invalid character quote: ${problems.join(" ")}`);
+  return chapter;
 }
 
 export const DocCheckSchema = z.object({
@@ -1288,9 +1293,12 @@ export function validateChapter(
     /** The grounded open loops and this chapter's number (1 is the first): its plant and payoff must be there. */
     loops?: readonly OpenLoop[];
     chapter?: number;
+    availableQuotes?: readonly CutsceneQuote[];
   } = {},
 ): string[] {
   const p: string[] = [];
+  const characterQuoteProblems = quoteProblems(c.paragraphs, opts.availableQuotes);
+  p.push(...characterQuoteProblems);
   const text = chapterText(c);
   if (c.missing_evidence?.trim())
     p.push(
@@ -1348,6 +1356,7 @@ export function validateChapter(
       `The chapter is ${words} words; it must be ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX}.`,
     );
   for (const [i, x] of c.paragraphs.entries()) {
+    if (x.quote && !characterQuoteProblems.length) continue;
     const n = wordCount(x.narration);
     if (n < DOC_PARAGRAPH_WORDS_MIN - 10 || n > DOC_PARAGRAPH_WORDS_MAX + 20)
       p.push(
@@ -1598,6 +1607,7 @@ export function docToScript(d: DocDraft): Script {
   const beats = d.chapters.flatMap(({ plan, chapter }, ci) =>
     chapter.paragraphs.map((p, pi) => ({
       narration: p.narration,
+      ...(p.quote ? { quote: p.quote } : {}),
       footage: p.footage,
       visual: (pi === 0
         ? {

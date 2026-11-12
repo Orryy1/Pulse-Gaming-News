@@ -415,6 +415,8 @@ export function testConfig(
     clipRanking: "rule",
     officialTrailers: false,
     cutsceneFootage: false,
+    cutsceneScenes: overrides.cutsceneFootage ?? false,
+    cutsceneQuotes: false,
     cutsceneMaxSeconds: 20,
     sceneIndex: false,
     sceneIndexProxyHeight: 480,

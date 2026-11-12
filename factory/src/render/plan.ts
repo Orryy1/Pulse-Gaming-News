@@ -53,6 +53,7 @@ export interface PlanClip {
   motion?: number; // 0-1 if scored
   luma?: number;
   beatIndex?: number; // tagged for a beat by the clip ranking step
+  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
 
   role?: "hook"; // chosen for the opening line
 }
@@ -494,7 +495,14 @@ export function planShots(
   const clipLeft = (i: number) => clipFrames[i]! - clipPos[i]!;
   const clipOrder = clips
     .map((c, i) => i)
-    .sort((a, b) => (clips[b]!.motion ?? 0.5) - (clips[a]!.motion ?? 0.5)); // liveliest first
+    .sort((a, b) => Number(Boolean(clips[b]!.cutsceneMatch?.targetKey)) - Number(Boolean(clips[a]!.cutsceneMatch?.targetKey)) ||
+      (clips[b]!.motion ?? 0.5) - (clips[a]!.motion ?? 0.5));
+  const matchesTarget = (i: number, target: number | undefined | "hook" | "take" | "loop") => {
+    const key = clips[i]!.cutsceneMatch?.targetKey;
+    if (!key) return target === "hook" ? clips[i]!.role === "hook" :
+      typeof target === "number" ? clips[i]!.beatIndex === target : false;
+    return typeof target === "number" ? key === `beat:${target}` || key.startsWith(`beat:${target}#`) : key === target;
+  };
   let last: PlanMedia | undefined;
   const same = (a: PlanMedia | undefined, b: PlanMedia) =>
     !!a && a.type === b.type && a.index === b.index;
@@ -609,7 +617,7 @@ export function planShots(
   const takeClip = (
     n: number,
     c: { start: number; end: number; segment: number },
-    forBeat: number | undefined | "hook",
+    forBeat: number | undefined | "hook" | "take" | "loop",
     calm: boolean,
     ownOnly = false,
   ): PlanMedia | undefined => {
@@ -619,15 +627,10 @@ export function planShots(
       (i) => !clipUsed[i] && clipFrames[i]! >= Math.min(len, MIN_SHOT),
     );
     if (!fits.length) return undefined;
-    const tagged =
-      forBeat === "hook"
-        ? fits.find((i) => clips[i]!.role === "hook")
-        : forBeat === undefined
-          ? undefined
-          : fits.find((i) => clips[i]!.beatIndex === forBeat);
+    const tagged = forBeat === undefined ? undefined : fits.find((i) => matchesTarget(i, forBeat));
     // A moment chosen for another line is never borrowed; untagged clips are fair game.
     const free = fits.filter(
-      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined,
+      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined && !clips[i]!.cutsceneMatch?.targetKey,
     );
     const pick =
       tagged ?? (ownOnly ? undefined : calm ? free[free.length - 1] : free[0]);
@@ -677,28 +680,27 @@ export function planShots(
   const takeFootage = (
     n: number,
     c: { start: number; end: number; segment: number },
-    forBeat: number | undefined | "hook",
+    forBeat: number | undefined | "hook" | "take" | "loop",
     calm: boolean,
     ownOnly: boolean,
   ): PlanMedia | undefined => {
     const open = clipOrder.filter((i) => clipLeft(i) >= MIN_SHOT);
     if (!open.length) return undefined;
-    const fresh = (xs: number[]) =>
-      [...xs].sort((a, b) => clipPos[a]! - clipPos[b]!)[calm ? xs.length - 1 : 0];
-    const own = open.filter((i) =>
-      forBeat === "hook"
-        ? clips[i]!.role === "hook"
-        : forBeat !== undefined && clips[i]!.beatIndex === forBeat,
-    );
+    const fresh = (xs: number[]) => {
+      const located = xs.filter((i) => clips[i]!.cutsceneMatch?.targetKey);
+      const pool = located.length ? located : xs;
+      return [...pool].sort((a, b) => clipPos[a]! - clipPos[b]!)[calm ? pool.length - 1 : 0];
+    };
+    const own = open.filter((i) => forBeat !== undefined && matchesTarget(i, forBeat));
     const free = open.filter(
-      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined,
+      (i) => clips[i]!.beatIndex === undefined && clips[i]!.role === undefined && !clips[i]!.cutsceneMatch?.targetKey,
     );
     const beatsBefore = segments
       .slice(0, c.segment)
       .filter((s) => s.kind === "beat").length;
     const passed = open.filter((i) => {
       const cl = clips[i]!;
-      return (
+      return !cl.cutsceneMatch?.targetKey && (
         cl.role === "hook" ||
         (cl.beatIndex !== undefined && cl.beatIndex < beatsBefore)
       );
@@ -848,7 +850,7 @@ export function planShots(
       !isOpening &&
       (isClosing || firstTakeShot) &&
       !ranking &&
-      (media = takeClip(n, c, undefined, true))
+      (media = takeClip(n, c, seg.kind === "take" || seg.kind === "loop" ? seg.kind : undefined, true))
     ) {
       // The verdict and the last line stay on moving footage while there is any; the hero waits for when there is not.
     } else if ((isOpening || isClosing || firstTakeShot) && heroIndex >= 0) {
@@ -885,7 +887,7 @@ export function planShots(
         takeStill((i) => true, last, winnerBeat, true);
     } else if (seg.kind === "take" || seg.kind === "loop") {
       media =
-        takeClip(n, c, undefined, true) ??
+        takeClip(n, c, seg.kind, true) ??
         takeStill((i) => true, last) ??
         takeAnyStill(last);
     } else if (seg.kind === "desk") {
@@ -1018,6 +1020,10 @@ function spendLeftoverClips(
               (i) =>
                 clipLeft(i) >= MIN_SHOT &&
                 !(prev?.media.type === "clip" && prev.media.index === i) &&
+                (!clips[i]!.cutsceneMatch?.targetKey ||
+                  (beat !== undefined
+                    ? clips[i]!.cutsceneMatch!.targetKey === `beat:${beat}` || clips[i]!.cutsceneMatch!.targetKey!.startsWith(`beat:${beat}#`)
+                    : clips[i]!.cutsceneMatch!.targetKey === seg.kind)) &&
                 (ranking
                   ? beat !== undefined && clips[i]!.beatIndex === beat
                   : true) &&

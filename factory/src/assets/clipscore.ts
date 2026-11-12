@@ -12,7 +12,7 @@ import { z } from "zod";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
-import { screenFrames } from "./localvision.ts";
+import { screenFrames, type FrameFlags } from "./localvision.ts";
 import { isVisionPaused } from "./visionrelay.ts";
 import { clipBigText } from "./cliptext.ts";
 import type { Script } from "../editorial/schema.ts";
@@ -399,12 +399,19 @@ For every line, pick the keyframe whose moment best shows what the line names: t
 Reject any frame with readable words or letters anywhere in it: title cards, trailer taglines, objective or reward text, HUD and menus, rating boards, logos, captions, subtitles, dialogue text or watermarks. Also reject letterboxed black bars filling more than a third of the frame. Reject anything from a recording rather than the game itself: a streamer's webcam or facecam, picture-in-picture boxes, chat, alerts or recording overlays. Reject frames that are mostly dark or black, blurred, smeared or an unreadable close-up of a texture: a viewer must see at a glance what is happening. Reject gore and graphic violence too: blood sprays, wounds, bodies, executions; the channel must stay advertiser-friendly, so pick action without the injury. Be strict: an overlay will be printed on top of the chosen moment, and any text behind it is a failure. Never use the same keyframe, or one within 5 seconds of it in the same trailer, for two lines.
 Confidence under 0.5 means no frame truly fits; say so rather than forcing a match.`;
 
+/** The located-scene check: a text search pointed at this section, and the picture must prove it. */
+export const SCENE_PROMPT = `You check cutscene footage for a gaming news Short. The numbered keyframes all come from one short section of a cutscene upload that a text search (a chapter title, a caption or the upload's title) linked to the line of narration below. The search can be wrong, and most frames of a section show something else, so judge the pictures, not the search.
+Pick the one keyframe that visibly shows what the line names. A named character must be on screen and recognisable by their known appearance in this game; a named place, object or creature must be visible; when the line names a character and a place, the character matters most. A frame of someone else, of an empty room or of a face you cannot identify does not count. Each keyframe opens a clip that runs until the next camera cut, so judge the frame itself, not what may come next.
+Set has_text_or_logo for any readable words or letters anywhere in the frame: subtitles, dialogue boxes, captions, a channel's watermark or logo in a corner, HUD, menus or title cards. Never pick such a frame, even when it shows the moment. Also never pick a frame that is mostly black or blown out, blurred, letterboxed by more than a third, from a recording with a webcam or overlays, or showing gore.
+Confidence 0.8 or more only when you are sure the named subject is on screen. When no clean frame shows it, give your best candidate a confidence under 0.5 rather than forcing a match.`;
+
 /** One vision call: the keyframes, then the lines, back as labelled candidates and per-line picks. */
 export async function rankByModel(
   llm: Llm,
   targets: FootageTarget[],
   candidates: Candidate[],
   textFrames?: Set<number>,
+  system = RANK_PROMPT,
 ): Promise<Assignment[]> {
   const shown = candidates.slice(0, MAX_CANDIDATES_TO_MODEL);
   const content: LlmContent = [];
@@ -428,7 +435,7 @@ export async function rankByModel(
   });
   const r = await llm.structured({
     tier: "mid",
-    system: RANK_PROMPT,
+    system,
     content,
     schema: ClipRankingSchema,
     effort: "low",
@@ -626,9 +633,103 @@ export async function videoSeconds(file: string): Promise<number | undefined> {
 /** A trailer already on disk, ready for keyframe matching. */
 export interface TrailerFile {
   file: string;
+  sectionId?: string;
   name: string;
   url: string;
   total: number; // seconds
+  targetKey?: string;
+  anchor?: number;
+  sceneMethod?: "chapter" | "caption" | "scene upload";
+}
+
+/** Cutscenes are often night scenes: a located section keeps darker frames than a trailer's rule does (DARK_LUMA still drops a clip that goes black). */
+export const SCENE_MIN_LUMA = 28;
+/** At most this many of a located section's keyframes go to the scene check. */
+export const SCENE_REVIEW_FRAMES = 12;
+
+/**
+ * Keyframes inside a target's own located section(s) that could open its clip: lit, not blown out, and their own
+ * shot long enough to carry a line. A chapter's moment lies anywhere after its start and a caption's or an upload
+ * title's only near it, so the whole section is offered (8 Nov 2026: only frames at or before a chapter's first
+ * second qualified, and that one was a white flash, so "Ganondorf's introduction" never reached the check).
+ */
+export function sceneCandidates(
+  target: FootageTarget,
+  candidates: Candidate[],
+  trailers: TrailerFile[],
+  max = SCENE_REVIEW_FRAMES,
+): Candidate[] {
+  const own = candidates
+    .filter((candidate) => {
+      const trailer = trailers[candidate.movie];
+      return trailer?.targetKey === target.key && trailer.anchor !== undefined &&
+        candidate.luma >= SCENE_MIN_LUMA && candidate.luma <= 230 &&
+        candidate.time + MIN_CLIP_SECONDS <= trailer.total &&
+        ownShotSeconds(candidate) >= MIN_CLIP_SECONDS;
+    })
+    .sort((a, b) => a.movie - b.movie || a.time - b.time);
+  if (own.length <= max) return own;
+  // An even spread over the section, so a moment a few seconds from the search's guess is still seen.
+  return Array.from({ length: max }, (_, i) => own[Math.floor((i * own.length) / max)]!);
+}
+
+/** Without a picture check: the frame nearest the search's timestamp, either side of it. */
+export function preferredSceneAssignments(
+  targets: FootageTarget[],
+  candidates: Candidate[],
+  trailers: TrailerFile[],
+): Assignment[] {
+  return targets.flatMap((target) => {
+    const choices = sceneCandidates(target, candidates, trailers, Number.POSITIVE_INFINITY).sort((a, b) => {
+      const aa = Math.abs(trailers[a.movie]!.anchor! - a.time);
+      const bb = Math.abs(trailers[b.movie]!.anchor! - b.time);
+      return aa - bb || b.motion - a.motion;
+    });
+    const picked = choices[0];
+    return picked ? [{ key: target.key, candidate: picked.index, confidence: 1,
+      reason: `${trailers[picked.movie]!.sceneMethod ?? "scene"} timestamp` }] : [];
+  });
+}
+
+const cleanFlags = (f: FrameFlags | undefined) =>
+  !!f && !f.text && !f.hud && !f.webcam && !f.gore && !f.dark && !f.blurry && !f.letterbox;
+
+/**
+ * A located moment is used only once a picture check confirms it. With a reviewer (Claude), each target's section
+ * frames are shown with its line and the reviewer must pick one of them that shows the named subject, cleanly; a
+ * pick from another section, under 0.5 confidence or flagged with text is refused. Without one, or when the call
+ * fails, only the local screen's clean verdict on the frame nearest the timestamp lets it through; with neither
+ * (no reviewer, local vision down) nothing is accepted.
+ */
+export async function verifySceneAssignments(
+  targets: FootageTarget[],
+  candidates: Candidate[],
+  trailers: TrailerFile[],
+  flags: Map<number, FrameFlags | undefined>,
+  review?: (targets: FootageTarget[], candidates: Candidate[]) => Promise<Assignment[]>,
+): Promise<Assignment[]> {
+  // One call per line (its own section's frames only), the lines side by side.
+  const picks = await Promise.all(targets.map(async (target): Promise<Assignment[]> => {
+    const frames = sceneCandidates(target, candidates, trailers)
+      .filter((c) => { const f = flags.get(c.index); return !f || !(f.webcam || f.gore || f.dark); });
+    if (!frames.length) return [];
+    if (review) {
+      try {
+        const own = new Set(frames.map((c) => c.index));
+        const best = (await review([target], frames))
+          .filter((a) => a.key === target.key && own.has(a.candidate) && a.confidence >= 0.5)
+          .sort((a, b) => b.confidence - a.confidence)[0];
+        const movie = frames.find((c) => c.index === best?.candidate)?.movie;
+        if (best) return [{ ...best, reason: `${trailers[movie!]?.sceneMethod ?? "scene"} checked: ${best.reason}` }];
+        log("info", "located scene not confirmed by the picture check", { target: target.key, frames: frames.length });
+        return [];
+      } catch (err) {
+        log("warn", "scene frame review failed", { target: target.key, error: errorMessage(err) });
+      }
+    }
+    return preferredSceneAssignments([target], frames, trailers).filter((a) => cleanFlags(flags.get(a.candidate)));
+  }));
+  return picks.flat();
 }
 
 export interface MatchClipsOptions {
@@ -651,6 +752,7 @@ export interface MatchClipsOptions {
   fillSeconds?: number;
   /** Read each clip with the local OCR: big burned-in text is cut away, or the clip dropped (src/assets/cliptext.ts). */
   textCheck?: boolean;
+  preserveWork?: boolean;
 }
 
 /**
@@ -676,7 +778,9 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         const sized = o.continuous
           ? all.map((x) => ({ ...x, nextCut: undefined }))
           : all;
-        const usable = usableCandidates(sized, t.total, clipSeconds);
+        const usable = t.targetKey
+          ? sized.filter((c) => c.time >= 0 && c.time + MIN_CLIP_SECONDS <= t.total && c.luma >= SCENE_MIN_LUMA && c.luma <= 230)
+          : usableCandidates(sized, t.total, clipSeconds);
         candidates.push(...usable);
         if (o.fillSeconds) {
           const taken = new Set(usable.map((c) => c.index));
@@ -702,7 +806,9 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       xs.length > n
         ? xs.filter((_, i) => i % Math.ceil(xs.length / n) === 0)
         : xs;
-    const screened = spread(candidates, LOCAL_SCREEN_MAX);
+    const anchored = o.targets.flatMap((t) => sceneCandidates(t, candidates, o.trailers));
+    const screened = [...new Map([...anchored, ...spread(candidates, LOCAL_SCREEN_MAX)]
+      .map((candidate) => [candidate.index, candidate])).values()];
     const flags = await screenFrames(screened.map((c) => c.frame));
     let base = candidates;
     const wordyFrames = new Set<number>();
@@ -755,12 +861,15 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
             ].sort((a, b) => a.index - b.index);
     }
     // Even spread when there are more keyframes than the model can look at.
-    const pool = spread(base, MAX_CANDIDATES_TO_MODEL);
-    let assignments: Assignment[] = [];
+    const pool = spread(base.filter((c) => !o.trailers[c.movie]?.targetKey), MAX_CANDIDATES_TO_MODEL);
+    const flagByIndex = new Map(screened.map((candidate, i) => [candidate.index, flags[i]]));
+    let assignments: Assignment[] = await verifySceneAssignments(o.targets, base, o.trailers, flagByIndex,
+      o.llm ? (targets, frames) => rankByModel(o.llm!, targets, frames, textFrames, SCENE_PROMPT) : undefined);
+    const located = new Set(assignments.map((a) => a.key));
     let how = "rule";
-    if (o.llm) {
+    if (o.llm && pool.length) {
       try {
-        assignments = await rankByModel(o.llm, o.targets, pool, textFrames);
+        assignments.push(...await rankByModel(o.llm, o.targets.filter((t) => !located.has(t.key)), pool, textFrames));
         how = "model";
       } catch (err) {
         // The relay being down is said once per outage (src/assets/visionrelay.ts), not once a Short.
@@ -795,7 +904,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
       const file = path.join("assets", `${prefix}_${out.length}.mp4`);
       // The clip ends where its shot ends (rounded to a frame), or one trailer cut later when the shot alone
       // is short, and before any later keyframe in it that carries text (a title card appearing mid-shot).
-      let span = o.continuous ? clipSeconds : shotLength(c, clipSeconds);
+      // A checked scene stays inside the shot that was checked: the next cut may show someone else.
+      let span = o.continuous ? clipSeconds : located.has(t.key) ? ownShotSeconds(c, clipSeconds) : shotLength(c, clipSeconds);
       const textAt = candidates
         .filter(
           (x) =>
@@ -807,8 +917,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         .map((x) => x.time - c.time);
       if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
       if (span < MIN_CLIP_SECONDS) continue;
-      let seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
       let at = c.time;
+      let seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
       try {
         await cutClip(r.file, at, seconds, path.join(o.episodeDir, file));
       } catch (err) {
@@ -851,6 +961,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         kind: "clip",
         file,
         sourceUrl: r.url,
+        sourceSectionId: r.sectionId,
+        assignedTargetKey: ruled.has(t.key) ? undefined : t.key,
         durationSeconds:
           real !== undefined
             ? Math.min(seconds, Math.max(0, real - 0.05))
@@ -862,8 +974,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         motion: Math.min(1, c.motion / 40),
         luma: c.luma,
         label: a.label,
-        reason: `${how}: ${a.reason}`,
-        provenance: `${o.describe(r, seconds, c.time)}; chosen for ${t.key} by ${how} (${a.label ?? a.reason})`,
+        reason: `${located.has(t.key) ? "scene" : how}: ${a.reason}`,
+        provenance: `${o.describe(r, seconds, c.time)}; chosen for ${t.key} by ${located.has(t.key) ? "scene" : how} (${a.label ?? a.reason})`,
       });
     }
     if (o.fillSeconds) {
@@ -875,7 +987,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         const f = seen[i];
         return !f || !(f.webcam || f.gore || f.dark || f.text);
       });
-      await fillClips(o, [...base, ...fine], wordyFrames, textFrames, out, clipSeconds, prefix);
+      await fillClips(o, [...base, ...fine].filter((c) => !o.trailers[c.movie]?.targetKey), wordyFrames, textFrames, out, clipSeconds, prefix);
     }
     log("info", "beat-matched clips", {
       count: out.length,
@@ -885,7 +997,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     });
     return out;
   } finally {
-    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+    if (!o.preserveWork) await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
 }
 
@@ -1014,6 +1126,7 @@ async function fillClips(
       kind: "clip",
       file,
       sourceUrl: r.url,
+      sourceSectionId: r.sectionId,
       durationSeconds,
       startSeconds: at,
       motion: Math.min(1, c.motion / 40),

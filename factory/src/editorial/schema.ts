@@ -82,6 +82,7 @@ export const FootageSchema = z.object({
 
 export const BeatSchema = z.object({
   narration: z.string().describe("One or two short spoken sentences"),
+  quote: z.string().optional().describe("ID of an available character quote, with its exact words alone in narration"),
   footage: FootageSchema.optional(),
   visual: z.object({
     kind: z.enum(VISUAL_KINDS),

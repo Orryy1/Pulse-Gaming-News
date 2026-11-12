@@ -68,6 +68,7 @@ export interface LongClip {
   beatIndex?: number;
   role?: "hook";
   moment?: number;
+  cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" };
   /** Licensed stock, not the game: never on a chapter's card or a line naming a real person, never to fill a gap. */
   stock?: boolean;
   /** Where in its source video the clip was cut (seconds), when known: two clips overlapping there are one moment. */
@@ -400,7 +401,7 @@ export function previewShot(
     kind?: string;
     file?: string;
   }>,
-  clips: Array<{ beatIndex?: number; moment?: number }>,
+  clips: Array<{ beatIndex?: number; moment?: number; cutsceneMatch?: { targetKey?: string } }>,
   clipUsed: boolean[],
 ): LongMedia | undefined {
   const mine = previewWords(sentence);
@@ -422,7 +423,7 @@ export function previewShot(
     const k = best.k + d;
     if (k < 0 || (d !== 0 && taken.has(`${best.e}:${k}`))) continue;
     const clip = clips.findIndex(
-      (c, n) => c.beatIndex === best!.e && c.moment === k && !clipUsed[n],
+      (c, n) => c.beatIndex === best!.e && c.moment === k && !clipUsed[n] && !c.cutsceneMatch?.targetKey,
     );
     // A neighbour's photo is of its own person or place; only game footage and art carry over.
     const image = images.findIndex(
@@ -727,7 +728,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ? []
           : clips
               .map((_, k) => k)
-              .filter((k) => kin(clips[k]!.beatIndex) && !clips[k]!.stock);
+              .filter((k) => kin(clips[k]!.beatIndex) && !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
       const kinImages =
         group === undefined
           ? []
@@ -745,16 +746,14 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // An unplayed clip first: replaying one the chapter already showed repeats a moment (31 Oct 2026).
         const own = (): LongMedia => {
           const fresh = entryClips.find(
-            (k) => !clipUsed[k] && !stockBarred(k, current),
+            (k) => !clipUsed[k] && !stockBarred(k, current) && !clips[k]!.cutsceneMatch?.targetKey,
           );
           if (fresh !== undefined) return { type: "clip", index: fresh };
-          const game = entryClips.filter((k) => !clips[k]!.stock);
-          if (!input.noRepeats && entryClips.length)
+          const game = entryClips.filter((k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
+          if (!input.noRepeats && game.length)
             return {
               type: "clip",
-              index: (game.length ? game : entryClips)[
-                reuse++ % (game.length ? game : entryClips).length
-              ]!,
+              index: game[reuse++ % game.length]!,
             };
           // Out of its own: the same game's unseen footage from the film's other chapters, then its art.
           const borrowed = kinClips.find((k) => !clipUsed[k]);
@@ -834,7 +833,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             clips[k]!.moment === w.moment &&
             (!clipUsed[k] || previewed.has(k)) &&
             !stockBarred(k, w.moment),
-        );
+        ).sort((a, b) => Number(Boolean(clips[b]!.cutsceneMatch?.targetKey)) - Number(Boolean(clips[a]!.cutsceneMatch?.targetKey)));
         const mineStills = entryImages.filter(
           (k) => images[k]!.moment === w.moment,
         );
@@ -847,15 +846,17 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         const queue: LongMedia[] = [];
         // The entry opens on its art so the rank card lands over a picture; later sentences open on footage.
         // With no picture of its own for the first sentence it borrows the entry's art: a dark clip under the rank card reads as an empty frame.
-        if (w.moment === 0) {
+        const sceneFirst = mineClips.some((k) => clips[k]!.cutsceneMatch?.targetKey);
+        if (w.moment === 0 && !sceneFirst) {
           const borrowed =
             still === undefined && entryImages.length ? leastUsed() : undefined;
           const opener =
             still ?? (borrowed?.type === "image" ? borrowed.index : undefined);
           if (opener !== undefined)
             queue.push({ type: "image", index: opener });
-        } else for (const k of photos) queue.push({ type: "image", index: k });
+        } else if (!sceneFirst) for (const k of photos) queue.push({ type: "image", index: k });
         for (const k of mineClips) queue.push({ type: "clip", index: k });
+        if (sceneFirst) for (const k of photos) queue.push({ type: "image", index: k });
         if (w.moment !== 0)
           for (const k of stills) queue.push({ type: "image", index: k });
         // When the sentence's own media runs out, any unused footage of the entry comes before another still,
@@ -874,6 +875,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             .filter(
               (k) =>
                 !clipUsed[k] &&
+                !clips[k]!.cutsceneMatch?.targetKey &&
                 !stockBarred(k, w.moment) &&
                 (clips[k]!.moment === undefined
                   ? looseOk
@@ -922,6 +924,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       .map((c, k) => k)
       .filter(
         (k) =>
+          (!clips[k]!.cutsceneMatch?.targetKey ||
+            (seg.kind === "beat" && clips[k]!.cutsceneMatch?.targetKey === `beat:${entry}`)) &&
           (entry === undefined
             ? clips[k]!.beatIndex === undefined
             : clips[k]!.beatIndex === entry) &&

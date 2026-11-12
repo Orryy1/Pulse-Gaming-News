@@ -18,6 +18,10 @@ import {
 } from "./clipscore.ts";
 import type { VisualAsset } from "./steam.ts";
 import type { Llm } from "../editorial/llm.ts";
+import { safeCutsceneQuote, type CutsceneQuote } from "../editorial/quotes.ts";
+
+export interface CutsceneChapter { title: string; start: number; end?: number }
+export interface CutsceneCaption { text: string; start: number; end: number }
 
 export interface CutsceneUpload {
   videoId: string;
@@ -30,6 +34,89 @@ export interface CutsceneUpload {
   liveStatus?: string;
   /** YYYY-MM-DD, from an upload's own details (the launch fetcher refuses uploads older than the game). */
   uploadDate?: string;
+  chapters?: CutsceneChapter[];
+}
+
+const SCENE_STOP = new Set("a an and are as at be been but by for from game gameplay he her his in into is it its of on or our over scene scenes she that the their them there they this to was were what when where who with you your all new full cutscene cutscenes movie".split(" "));
+const sceneWords = (text: string) => titleWords(text.replace(/['’]s\b/gi, ""))
+  .split(" ").filter((word) => word.length >= 3 && !SCENE_STOP.has(word));
+
+export function sceneQueries(gameTitle: string, target: FootageTarget): string[] {
+  const game = gameTitle.trim();
+  if (!game) return [];
+  const gameWords = new Set(sceneWords(game));
+  const useful = (word: string) => {
+    const words = sceneWords(word);
+    return words.length > 0 && words.some((part) => !gameWords.has(part));
+  };
+  let names = [...new Set(target.keywords.map((word) => word.trim()).filter(useful))];
+  if (!names.length)
+    names = [...new Set((target.text.match(/\b[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+)*/g) ?? []).filter(useful))];
+  names = names.slice(0, 4);
+  return names.flatMap((name) => [`${game} ${name} scene`, `${game} all ${name} scenes`]);
+}
+
+export function findCutsceneMoment(
+  target: FootageTarget,
+  chapters: readonly CutsceneChapter[],
+  captions: readonly CutsceneCaption[],
+  gameTitle = "",
+): { how: "chapter" | "caption"; time: number } | undefined {
+  const gameWords = new Set(sceneWords(gameTitle));
+  const keywords = new Set(target.keywords.flatMap(sceneWords).filter((word) => !gameWords.has(word)));
+  const words = new Set(sceneWords(target.text).filter((word) => !gameWords.has(word)));
+  const best = <T extends { text: string; start: number }>(items: readonly T[]) => {
+    let found: { time: number; score: number } | undefined;
+    for (const item of items) {
+      if (!Number.isFinite(item.start) || item.start < 0) continue;
+      const present = new Set(sceneWords(item.text));
+      const keyMatches = [...keywords].filter((word) => present.has(word)).length;
+      const textMatches = [...words].filter((word) => present.has(word)).length;
+      if (keywords.size ? !keyMatches : textMatches < 2) continue;
+      const score = keyMatches * 3 + textMatches;
+      if (!found || score > found.score) found = { time: item.start, score };
+    }
+    return found;
+  };
+  const chapter = best(chapters.map((item) => ({ text: item.title, start: item.start })));
+  const caption = best(captions);
+  if (chapter && (!caption || chapter.score >= caption.score)) return { how: "chapter", time: chapter.time };
+  return caption ? { how: "caption", time: caption.time } : undefined;
+}
+
+function vttTime(value: string): number {
+  const parts = value.split(":").map(Number);
+  return parts.reduce((sum, part) => sum * 60 + part, 0);
+}
+
+export function parseCutsceneVtt(vtt: string): CutsceneCaption[] {
+  const out: CutsceneCaption[] = [];
+  for (const block of vtt.replace(/\r/g, "").split(/\n\s*\n/)) {
+    const lines = block.split("\n");
+    const i = lines.findIndex((line) => /^\s*(?:\d+:)?\d{2}:\d{2}\.\d+\s+-->/.test(line));
+    if (i < 0) continue;
+    const timing = lines[i]!.match(/^\s*((?:\d+:)?\d{2}:\d{2}\.\d+)\s+-->\s+((?:\d+:)?\d{2}:\d{2}\.\d+)/);
+    if (!timing) continue;
+    const start = vttTime(timing[1]!);
+    const end = vttTime(timing[2]!);
+    const text = lines.slice(i + 1).join(" ").replace(/<[^>]*>/g, "")
+      .replace(/&(?:amp|lt|gt|quot|#39|nbsp);/g, (entity) =>
+        ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " })[entity] ?? entity)
+      .replace(/\s+/g, " ").trim();
+    if (text && Number.isFinite(start) && end > start) out.push({ text, start, end });
+  }
+  return out;
+}
+
+export function extractCutsceneQuotes(captions: readonly CutsceneCaption[], videoId: string): CutsceneQuote[] {
+  const seen = new Set<string>();
+  return captions.flatMap(({ text, start, end }) => {
+    const quote = { id: `${videoId}:${start.toFixed(3)}-${end.toFixed(3)}`, videoId, text, start, end };
+    const key = text.toLowerCase();
+    if (seen.has(key) || !safeCutsceneQuote(quote)) return [];
+    seen.add(key);
+    return [quote];
+  });
 }
 
 export function cutsceneQueries(gameTitle: string): string[] {
@@ -80,7 +167,7 @@ const EDITIONS =
 export function pickCutsceneUpload(
   candidates: CutsceneUpload[],
   gameTitle: string,
-  opts: { recentRelease?: boolean } = {},
+  opts: { recentRelease?: boolean; sceneKeyword?: string } = {},
 ): CutsceneUpload | undefined {
   const game = titleWords(gameTitle);
   if (!game) return undefined;
@@ -104,8 +191,10 @@ export function pickCutsceneUpload(
       const title = titleWords(item.title);
       if (!names.some((name) => ` ${title} `.includes(` ${name} `)))
         return false;
-      if (!/\b(cut\s*scenes?|movies?|no\s+commentary)\b/i.test(title))
+      if (!/\b(cut\s*scenes?|movies?|no\s+commentary)\b/i.test(title) &&
+          !(opts.sceneKeyword && /\bscenes?\b/i.test(title)))
         return false;
+      if (opts.sceneKeyword && !` ${title} `.includes(` ${titleWords(opts.sceneKeyword)} `)) return false;
       if (DISTRACTIONS.test(title.replace(/\bno\s+commentary\b/g, "")))
         return false;
       if (EDITIONS.test(title) && !EDITIONS.test(game) && !opts.recentRelease)
@@ -441,7 +530,24 @@ async function uploadDetails(
     viewCount: Number(item.view_count) || undefined,
     isLive: item.is_live === true,
     liveStatus: item.live_status || undefined,
+    chapters: (Array.isArray(item.chapters) ? item.chapters : []).flatMap((chapter: { title?: unknown; start_time?: unknown; end_time?: unknown }) => {
+      const start = Number(chapter.start_time);
+      return typeof chapter.title === "string" && Number.isFinite(start) && start >= 0
+        ? [{ title: chapter.title, start, end: Number(chapter.end_time) || undefined }]
+        : [];
+    }),
   };
+}
+
+async function uploadCaptions(upload: CutsceneUpload, work: string, ytdlp: string): Promise<string> {
+  await runCapped(ytdlp, [
+    ...YTDLP_TEXT.args, "--no-warnings", "--no-playlist", "--write-subs", "--write-auto-subs",
+    "--sub-langs", "en.*,en", "--sub-format", "vtt", "--skip-download",
+    "-o", path.join(work, `captions_${upload.videoId}.%(ext)s`),
+    `https://www.youtube.com/watch?v=${upload.videoId}`,
+  ], { timeout: 90_000, maxBuffer: 4 * 1024 * 1024, env: YTDLP_TEXT.env });
+  const file = (await fs.readdir(work)).find((name) => name.startsWith(`captions_${upload.videoId}.en`) && name.endsWith(".vtt"));
+  return file ? fs.readFile(path.join(work, file), "utf8") : "";
 }
 
 export function cutsceneDownloadArgs(
@@ -540,6 +646,8 @@ async function screenSection(file: string, seconds: number): Promise<boolean> {
 
 export interface CutsceneOptions {
   enabled: boolean;
+  scenes?: boolean;
+  quotes?: boolean;
   gameTitle: string;
   recentRelease?: boolean;
   episodeDir: string;
@@ -563,6 +671,7 @@ export interface CutsceneOptions {
       ytdlp: string,
     ) => Promise<void>;
     screen?: (file: string, seconds: number) => Promise<boolean>;
+    captions?: (upload: CutsceneUpload, work: string, ytdlp: string) => Promise<string>;
     match?: (options: MatchClipsOptions) => Promise<VisualAsset[]>;
     lease?: (est: number) => Promise<() => void>;
   };
@@ -750,6 +859,9 @@ export async function gatherCutsceneSources(o: {
   return added;
 }
 
+/** Scene uploads ("All Ganondorf Scenes") tried per line before it falls back to spread footage. */
+export const SCENE_UPLOADS_PER_TARGET = 2;
+
 /** Searches metadata first and downloads only small, bounded sections of the chosen upload. */
 export async function cutsceneMedia(
   o: CutsceneOptions,
@@ -793,7 +905,7 @@ export async function cutsceneMedia(
     }
   }
   const upload = pickCutsceneUpload(detailed, o.gameTitle, { recentRelease: o.recentRelease });
-  if (!upload) return [];
+  if (!upload && !o.scenes) return [];
   let release: () => void;
   try {
     release = await (o.deps?.lease ?? cutsceneLease)(
@@ -806,104 +918,211 @@ export async function cutsceneMedia(
     });
     return [];
   }
-  const url = `https://www.youtube.com/watch?v=${upload.videoId}`;
   let work: string | undefined;
-  const offsets = new Map<string, number>();
+  const sections = new Map<string, { upload: CutsceneUpload; from: number; how: "chapter" | "caption" | "scene upload" | "spread"; targetKey?: string }>();
   const trailers: TrailerFile[] = [];
   try {
     await fs.mkdir(o.episodeDir, { recursive: true });
     work = await fs.mkdtemp(path.join(o.episodeDir, "cutscene_work_"));
-    const count = Math.min(
+    const workDir = work;
+    const count = upload ? Math.min(
       12,
       Math.max(2, Math.ceil(o.maxSeconds / 4.8) + 1),
       Math.max(1, Math.floor(upload.duration / 10)),
-    );
-    // 30-second sections: a cutscene cuts every few seconds, and the matcher needs whole shots of about 5 s inside
-    // a section (10-second sections left fewer than two usable shots in the 8 Nov Ocarina trial).
-    const length = Math.min(30, upload.duration);
-    for (let i = 0; i < count; i++) {
-      const from = Math.max(
-        0,
-        ((upload.duration - length) * (i + 1)) / (count + 1),
-      );
-      const file = path.join(work, `section_${i}.mp4`);
+    ) : 0;
+    let captions: CutsceneCaption[] = [];
+    if (upload && (o.scenes || o.quotes)) {
       try {
-        await (o.deps?.download ?? downloadSection)(
-          upload,
-          from,
-          Math.min(upload.duration, from + length),
-          file,
-          o.ytdlp,
-        );
-        if (!(await (o.deps?.screen ?? screenSection)(file, length))) {
-          await fs.rm(file, { force: true });
+        captions = parseCutsceneVtt(await (o.deps?.captions ?? uploadCaptions)(upload, workDir, o.ytdlp));
+      } catch (err) {
+        log("warn", "cutscene captions unavailable", { videoId: upload.videoId, error: errorMessage(err) });
+      }
+    }
+    if (o.quotes && upload) {
+      await fs.writeFile(path.join(o.episodeDir, "cutscene_quotes.json"), JSON.stringify({
+        gameTitle: o.gameTitle, source: { videoId: upload.videoId, title: upload.title, uploader: upload.uploader },
+        quotes: extractCutsceneQuotes(captions, upload.videoId),
+      }, null, 2), "utf8");
+    }
+    // chapterStart: the moment is a chapter, which begins at `time` and runs on from there.
+    type SectionPlan = { upload: CutsceneUpload; time: number; how: "chapter" | "caption" | "scene upload" | "spread"; targetKey?: string; chapterStart?: boolean };
+    // Scene uploads already tried per target, and targets with none left: a rejected upload (another channel's
+    // watermark on every frame, the wrong moment) gives way to the next one.
+    const triedScenes = new Map<string, Set<string>>();
+    const noMoreScenes = new Set<string>();
+    const scenePlan = async (target: FootageTarget): Promise<SectionPlan | undefined> => {
+      const tried = triedScenes.get(target.key) ?? new Set<string>();
+      triedScenes.set(target.key, tried);
+      if (noMoreScenes.has(target.key) || tried.size >= SCENE_UPLOADS_PER_TARGET) return undefined;
+      let scene: CutsceneUpload | undefined;
+      for (const query of sceneQueries(o.gameTitle, target)) {
+        const keyword = query.slice(o.gameTitle.trim().length + 1).replace(/^all /i, "").replace(/ scenes?$/i, "");
+        try {
+          const hits = (await (o.deps?.search?.(query) ?? searchCutscenes(query, o.ytdlp))).filter((hit) => !tried.has(hit.videoId));
+          const pick = pickCutsceneUpload(hits, o.gameTitle, { recentRelease: o.recentRelease, sceneKeyword: keyword });
+          if (!pick) continue;
+          const item = await (o.deps?.details ?? uploadDetails)(pick, o.ytdlp);
+          if (item && item.videoId === pick.videoId && pickCutsceneUpload([item], o.gameTitle, { recentRelease: o.recentRelease, sceneKeyword: keyword })) {
+            scene = item;
+            break;
+          }
+        } catch (err) {
+          log("warn", "cutscene scene search failed", { query, error: errorMessage(err) });
+        }
+      }
+      if (scene) {
+        tried.add(scene.videoId);
+        let time = scene.duration / 2;
+        let chapterStart = false;
+        try {
+          const sceneCaptions = parseCutsceneVtt(await (o.deps?.captions ?? uploadCaptions)(scene, workDir, o.ytdlp));
+          const precise = findCutsceneMoment(target, scene.chapters ?? [], sceneCaptions, o.gameTitle);
+          if (precise && precise.time < scene.duration) {
+            time = precise.time;
+            chapterStart = precise.how === "chapter";
+          }
+        } catch (err) {
+          log("warn", "scene-upload captions unavailable", { videoId: scene.videoId, error: errorMessage(err) });
+        }
+        return { upload: scene, time, how: "scene upload", targetKey: target.key, chapterStart };
+      }
+      noMoreScenes.add(target.key);
+      return undefined;
+    };
+    const clean: CutsceneClip[] = [];
+    let sectionNumber = 0;
+    let pass = 0;
+    const maxSections = Math.max(12, o.targets.length * 3);
+    const runPlans = async (plans: SectionPlan[], targets: FootageTarget[], fill = false) => {
+      const batch: TrailerFile[] = [];
+      const remaining = o.maxSeconds - clean.reduce((sum, clip) => sum + (clip.durationSeconds ?? 0), 0);
+      if (!plans.length || clean.length >= o.maxClips || remaining < 1.6) return;
+      for (const plan of plans) {
+        if (sectionNumber >= maxSections) break;
+        const length = Math.min(30, plan.upload.duration);
+        // A chapter's moment follows its start (a second earlier allows for a late timestamp); a caption's or a
+        // guess's sits in the middle of the section. Centring a chapter put half the section in the one before.
+        const lead = plan.chapterStart || plan.how === "chapter" ? 1 : length / 2;
+        const from = Math.max(0, Math.min(plan.upload.duration - length, plan.time - lead));
+        const file = path.join(workDir, `section_${sectionNumber++}.mp4`);
+        try {
+          await (o.deps?.download ?? downloadSection)(
+            plan.upload,
+            from,
+            Math.min(plan.upload.duration, from + length),
+            file,
+            o.ytdlp,
+          );
+          if (!(await (o.deps?.screen ?? screenSection)(file, length))) {
+            await fs.rm(file, { force: true });
+            continue;
+          }
+          sections.set(file, { upload: plan.upload, from, how: plan.how, targetKey: plan.targetKey });
+          batch.push({ file, sectionId: path.basename(file), name: plan.upload.title, url: `https://www.youtube.com/watch?v=${plan.upload.videoId}`, total: length,
+            ...(plan.targetKey ? { targetKey: plan.targetKey, anchor: plan.time - from, sceneMethod: plan.how as "chapter" | "caption" | "scene upload" } : {}) });
+        } catch (err) {
+          log("warn", "cutscene section rejected", {
+            videoId: plan.upload.videoId,
+            error: errorMessage(err),
+          });
+          await fs.rm(file, { force: true }).catch(() => undefined);
+        }
+      }
+      trailers.push(...batch);
+      if (!batch.length) return;
+      const clips = await (o.deps?.match ?? matchClips)({
+        trailers: batch,
+        episodeDir: o.episodeDir,
+        targets,
+        maxClips: o.maxClips - clean.length,
+        llm: o.llm,
+        prefix: `${path.basename(workDir)}_${pass++}`,
+        textCheck: true,
+        preserveWork: true,
+        fillSeconds: fill ? remaining : undefined,
+        describe: (t, seconds, at) => {
+          const section = sections.get(t.file)!;
+          const source = section.upload;
+          return `Cutscenes for "${provenanceLabel(o.gameTitle)}" from YouTube video "${provenanceLabel(source.title)}" by ${provenanceLabel(source.uploader)}, video ID: ${source.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${t.url}), ${seconds}s, section start: ${section.from.toFixed(2)}s, source time: ${(section.from + at).toFixed(2)}s, found by: ${section.how}${section.targetKey ? `, target: ${section.targetKey}` : ""}, muted`;
+        },
+      }).catch((err) => {
+        log("warn", "cutscene matching failed", { game: o.gameTitle, error: errorMessage(err) });
+        return [] as VisualAsset[];
+      });
+      for (const clip of clips) {
+        const file = path.join(o.episodeDir, clip.file);
+        if (!(await (o.deps?.screen ?? screenSection)(file, clip.durationSeconds ?? 4.8).catch(() => false))) {
+          await fs.rm(file, { force: true }).catch(() => undefined);
           continue;
         }
-        offsets.set(file, from);
-        trailers.push({ file, name: upload.title, url, total: length });
-      } catch (err) {
-        log("warn", "cutscene section rejected", {
-          videoId: upload.videoId,
-          error: errorMessage(err),
-        });
-        await fs.rm(file, { force: true }).catch(() => undefined);
-      }
-    }
-    log("info", "cutscene sections kept", { videoId: upload.videoId, kept: trailers.length, tried: count });
-    if (!trailers.length) return [];
-    const clips = await (o.deps?.match ?? matchClips)({
-      trailers,
-      episodeDir: o.episodeDir,
-      targets: o.targets,
-      maxClips: o.maxClips,
-      llm: o.llm,
-      prefix: path.basename(work),
-      textCheck: true,
-      fillSeconds: o.maxSeconds,
-      describe: (t, seconds, at) =>
-        `Cutscenes for "${provenanceLabel(o.gameTitle)}" from YouTube video "${provenanceLabel(upload.title)}" by ${provenanceLabel(upload.uploader)}, video ID: ${upload.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${seconds}s, section start: ${(offsets.get(t.file) ?? 0).toFixed(2)}s, source time: ${((offsets.get(t.file) ?? 0) + at).toFixed(2)}s, muted`,
-    });
-    const clean: CutsceneClip[] = [];
-    for (const clip of clips) {
-      const file = path.join(o.episodeDir, clip.file);
-      if (
-        !(await (o.deps?.screen ?? screenSection)(
-          file,
-          clip.durationSeconds ?? 4.8,
-        ).catch(() => false))
-      ) {
-        await fs.rm(file, { force: true }).catch(() => undefined);
-        continue;
-      }
-      const sectionStart = Number(
-        clip.provenance.match(/section start: ([\d.]+)s/)?.[1],
-      );
-      const from =
-        clip.startSeconds !== undefined && Number.isFinite(sectionStart)
-          ? Math.round((sectionStart + clip.startSeconds) * 100) / 100
+        const sectionStart = Number(clip.provenance.match(/section start: ([\d.]+)s/)?.[1]);
+        const matching = batch.filter((t) => t.url === clip.sourceUrl && Math.abs((sections.get(t.file)?.from ?? -1) - sectionStart) < 0.02);
+        const source = clip.sourceSectionId ? batch.find((t) => t.sectionId === clip.sourceSectionId && t.url === clip.sourceUrl)
+          : matching.length === 1 ? matching[0] : undefined;
+        const section = source && sections.get(source.file);
+        if (!source || !section) continue;
+        const from = clip.startSeconds !== undefined
+          ? Math.round((section.from + clip.startSeconds) * 100) / 100
           : Number(clip.provenance.match(/source time: ([\d.]+)s/)?.[1]);
-      if (!Number.isFinite(from)) continue;
-      // The fill pass can land on a moment the matched pass already took (two identical clips in the 8 Nov trial).
-      if (clean.some((c) => Math.abs(c.span.from - from) < 3)) {
-        await fs.rm(file, { force: true }).catch(() => undefined);
-        continue;
+        if (!Number.isFinite(from)) continue;
+        // The fill pass can land on a moment already taken.
+        if (clean.some((c) => c.span.source === source.url && Math.abs(c.span.from - from) < 3)) {
+          await fs.rm(file, { force: true }).catch(() => undefined);
+          continue;
+        }
+        clean.push({
+          ...clip,
+          provenance: clip.provenance.replace(/source time: [\d.]+s/, `source time: ${from.toFixed(2)}s`),
+          audio: false,
+          credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
+          youtubeSource: { videoId: section.upload.videoId, title: section.upload.title, uploader: section.upload.uploader },
+          cutsceneMatch: { targetKey: section.targetKey ?? clip.assignedTargetKey,
+            ...(section.targetKey ? {} : { requestedTarget: clip.assignedTargetKey ?? (targets.length === 1 ? targets[0]!.key : undefined) }), how: section.how },
+          span: { source: source.url, from, to: from + (clip.durationSeconds ?? 0) },
+        });
       }
-      clean.push({
-        ...clip,
-        provenance: clip.provenance.replace(
-          /source time: [\d.]+s/,
-          `source time: ${from.toFixed(2)}s`,
-        ),
-        audio: false,
-        credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
-        youtubeSource: {
-          videoId: upload.videoId,
-          title: upload.title,
-          uploader: upload.uploader,
-        },
-        span: { source: url, from, to: from + (clip.durationSeconds ?? 0) },
-      });
+    };
+    if (!o.scenes && upload) {
+      const length = Math.min(30, upload.duration);
+      await runPlans(Array.from({ length: count }, (_, i) => ({ upload, how: "spread" as const,
+        time: ((upload.duration - length) * (i + 1)) / (count + 1) + length / 2 })), o.targets, true);
+    } else {
+      const batchSize = Math.min(24, Math.max(1, Math.floor(o.maxClips)));
+      for (let first = 0; first < o.targets.length; first += batchSize) {
+        if (clean.length >= o.maxClips || o.maxSeconds - clean.reduce((sum, clip) => sum + (clip.durationSeconds ?? 0), 0) < 1.6) break;
+        const sceneTargets = o.targets.slice(first, first + batchSize);
+        const initial: SectionPlan[] = [];
+        for (const target of sceneTargets) {
+          const found = upload && findCutsceneMoment(target, upload.chapters ?? [], captions, o.gameTitle);
+          if (upload && found && found.time < upload.duration) initial.push({ upload, ...found, targetKey: target.key });
+          else {
+            const scene = await scenePlan(target);
+            if (scene) initial.push(scene);
+          }
+        }
+        await runPlans(initial, sceneTargets);
+        const remainingTargets = () => sceneTargets.filter((target) => !clean.some((clip) =>
+          (clip.cutsceneMatch?.targetKey ?? clip.cutsceneMatch?.requestedTarget) === target.key));
+        for (let round = 0; round < SCENE_UPLOADS_PER_TARGET; round++) {
+          const retries: SectionPlan[] = [];
+          for (const target of remainingTargets()) {
+            const scene = await scenePlan(target);
+            if (scene) retries.push(scene);
+          }
+          if (!retries.length) break;
+          await runPlans(retries, remainingTargets());
+        }
+        const missing = remainingTargets();
+        if (upload) {
+          const length = Math.min(30, upload.duration);
+          for (const [i, target] of missing.entries()) {
+            const time = ((upload.duration - length) * (i + 1)) / (missing.length + 1) + length / 2;
+            await runPlans([{ upload, time, how: "spread" }], [target]);
+          }
+        }
+      }
     }
+    log("info", "cutscene sections kept", { videoId: upload?.videoId, kept: trailers.length, tried: sectionNumber });
     return capFootage(clean, o.maxSeconds, 4.8, true);
   } finally {
     if (work)

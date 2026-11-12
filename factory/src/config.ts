@@ -691,6 +691,8 @@ export interface Config {
   clipRanking: "llm" | "rule"; // how trailer moments are matched to narration lines
   officialTrailers: boolean; // games not on Steam: the publisher's own YouTube trailer
   cutsceneFootage: boolean; // CUTSCENE_FOOTAGE: opt in to screened YouTube cutscene sections
+  cutsceneScenes: boolean; // CUTSCENE_SCENES: seek named scenes when cutscene footage is on
+  cutsceneQuotes: boolean; // CUTSCENE_QUOTES: collect caption quotes for future review
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   /** SCENE_INDEX: the per-game scene index (src/sceneindex): built in the background, looked up before cutscenes are searched. Off: nothing is built or read. */
   sceneIndex: boolean;
@@ -1457,6 +1459,8 @@ export function loadConfig(): Config {
       "llm" | "rule",
     officialTrailers: bool("OFFICIAL_TRAILERS", true),
     cutsceneFootage: bool("CUTSCENE_FOOTAGE", false),
+    cutsceneScenes: bool("CUTSCENE_SCENES", bool("CUTSCENE_FOOTAGE", false)),
+    cutsceneQuotes: bool("CUTSCENE_QUOTES", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
     sceneIndex: bool("SCENE_INDEX", false),
     sceneIndexProxyHeight: Math.min(1080, Math.max(240, int("SCENE_INDEX_PROXY_HEIGHT", 480))),

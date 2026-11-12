@@ -842,6 +842,14 @@ test("LONG_SAME_PICTURE_MAX_SECONDS: an unplayed clip comes first; a real photo 
   assert.deepEqual(r.thinEntries, [0]);
 });
 
+test("picture cap never spends a scene reserved for a later sentence", () => {
+  const m = media([{ file: "a.jpg", kind: "hero", beatIndex: 0 }],
+    [{ file: "scene.mp4", beatIndex: 0, durationSeconds: 6, cutsceneMatch: { targetKey: "beat:0#m7", how: "chapter" } }]);
+  const result = capSamePicture([shot(0, 40 * FPS, 0)], 12, FPS, m);
+  assert.ok(result.shots.every((item) => item.media.type !== "clip"));
+  assert.ok(result.unresolvedSeconds > 0);
+});
+
 test("LONG_SAME_PICTURE_MAX_SECONDS: an entry holding one picture counts as thin, so the top-up brings it more", () => {
   const segments = [
     { kind: "hook", start: 0, end: 10, text: "h" },

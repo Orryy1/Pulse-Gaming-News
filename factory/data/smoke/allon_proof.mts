@@ -93,9 +93,9 @@ if (!ep) {
   console.log("selected", at, id);
   if (!id) process.exit(2);
   ep = (await getEpisode(db, id))!;
-} else if (at) {
-  // Later phases keep the selection's clock, so the slot is still ahead.
-  const fixed = Date.parse(at);
+} else if (at || ep.slot_at) {
+  // Later phases keep the selection's clock, so the slot is still ahead (a news Short's: 70 minutes before its slot).
+  const fixed = at ? Date.parse(at) : Date.parse(ep.slot_at!) - 70 * 60_000;
   const start = Date.now();
   s.now = () => new Date(fixed + (Date.now() - start));
 }

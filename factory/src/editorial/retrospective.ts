@@ -360,15 +360,15 @@ export const RetroChapterSchema = z.object({
     .describe(
       "Story chapters only: the act of the story this chapter tells, from the act list; 0 for every other section",
     ),
+  // No item limits in the schema: an answer one item over a limit is a whole wasted call (Codex gave 16 tags on
+  // 12 Nov); the lists are cut to size when the outline is converted.
   moments: z
     .array(z.string())
-    .max(6)
     .describe(
-      "Best-moments and story chapters: the scenes, missions or lines to show, named as a player would say them; else empty",
+      "Best-moments and story chapters: up to 6 scenes, missions or lines to show, named as a player would say them; else empty",
     ),
   photo_searches: z
     .array(z.string())
-    .max(4)
     .describe(
       "1-4 searches for real photos a free archive like Wikimedia Commons would hold: the studio, its people, the real cities the game recreates, the launch. Never game screenshots",
     ),
@@ -389,7 +389,7 @@ export const RetroOutlineSchema = z.object({
       .describe(
         "3-5 sentences spoken to the viewer about the video itself: what it covers, that it spoils the whole story, and its angle. Never about this plan, its sources or what is missing from them. No hashtags, no timestamps",
       ),
-    tags: z.array(z.string()).max(15),
+    tags: z.array(z.string()).describe("Up to 15 search tags"),
   }),
 });
 export type RetroOutline = z.infer<typeof RetroOutlineSchema>;
@@ -575,13 +575,13 @@ export function retroDocOutline(
         title: frame.title,
         ...(frame.thumb ? { thumb_text: frame.thumb } : {}),
         description: outline.youtube.description,
-        tags: outline.youtube.tags,
+        tags: outline.youtube.tags.slice(0, 15),
       },
     },
     info: outline.chapters.map((c) => ({
       section: c.section,
       ...(c.section === "story" && c.act ? { act: c.act } : {}),
-      ...(c.moments.length ? { moments: c.moments } : {}),
+      ...(c.moments.length ? { moments: c.moments.slice(0, 6) } : {}),
     })),
   };
 }

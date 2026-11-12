@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
+import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import {
   defaultBackupDir,
@@ -276,6 +277,15 @@ export interface Config {
   macFootageGather: boolean; // the footage-first gather, all but the vision looks
   macStills: boolean; // long videos' thumbnails
   macGameplay: boolean; // the highlight finder and TinoTV VOD download (retire the PC tasks first)
+  /** MAC_VISION (Mac mini only, off until switched on): picture checks on the Mac's own vision model
+   * (mac/vision_server.py); "fallback" while the PC relay is down, "always" for every check (src/assets/macvision.ts). */
+  macVision: "off" | "fallback" | "always";
+  /** APPLE_AESTHETICS (Mac mini only, off until switched on): Apple Vision's aesthetics score ranks candidate frames for
+   * Short covers, thumbnails and first frames (src/assets/appleaesthetics.ts). */
+  appleAesthetics: boolean;
+  /** APPLE_SOUND_TAGS (Mac mini only, off until switched on): Apple Sound Analysis tags game audio (explosions,
+   * gunfire, laughter, speech...) for the highlight finder and flags spoken lines (src/assets/applesound.ts). */
+  appleSoundTags: boolean;
   /** The Mac addresses allowed the /routine pages over the LAN, on routineLanPort; empty: loopback only, as ever. */
   routineLanAllow: string[];
   routineLanPort: number;
@@ -1034,6 +1044,9 @@ export function loadConfig(): Config {
     macFootageGather: bool("MAC_FOOTAGE_GATHER", false),
     macStills: bool("MAC_STILLS", false),
     macGameplay: bool("MAC_GAMEPLAY", false),
+    macVision: macVisionMode(str("MAC_VISION", "off")),
+    appleAesthetics: bool("APPLE_AESTHETICS", false),
+    appleSoundTags: bool("APPLE_SOUND_TAGS", false),
     routineLanAllow: str("ROUTINE_LAN_ALLOW", "")
       .split(",")
       .map((x) => x.trim())

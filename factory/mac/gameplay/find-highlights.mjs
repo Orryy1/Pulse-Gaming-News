@@ -4,7 +4,11 @@
 //
 // Free and local: scores every second of a recording by sudden loudness
 // (crashes, explosions, gunfire, shouting) and on-screen action (scene
-// changes), then keeps the strongest non-overlapping windows.
+// changes), then keeps the strongest non-overlapping windows. With
+// APPLE_SOUND_TAGS on (the Mac mini only), Apple's Sound Analysis also names
+// what is heard (soundtags.mjs): explosions, gunfire, crashes, shouting and
+// laughter lift a second's score, and each clip's meta.json lists its sounds
+// and where someone is talking.
 //
 //   node find-highlights.mjs            process new recordings
 //   node find-highlights.mjs --dry      score only, cut nothing
@@ -17,6 +21,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import crypto from "node:crypto";
+import {
+  classifySound,
+  soundBonus,
+  soundTagsOn,
+  speechShare,
+  speechSpans,
+  tagsPerSecond,
+} from "./soundtags.mjs";
 
 const run = promisify(execFile);
 const HOME = os.homedir();
@@ -134,8 +146,8 @@ const median = (xs) => {
 
 // Per-second excitement: loudness above the local baseline (a rolling
 // two-minute median, so quiet and loud games are judged on their own terms)
-// plus on-screen action.
-function excitement(loud, motion) {
+// plus on-screen action, plus (APPLE_SOUND_TAGS) what Apple heard there.
+function excitement(loud, motion, bonus) {
   const n = Math.min(loud.length, motion.length);
   const score = new Array(n).fill(0);
   for (let i = 0; i < n; i++) {
@@ -144,7 +156,7 @@ function excitement(loud, motion) {
     const base = median(loud.slice(lo, hi));
     const spike = Math.max(0, loud[i] - base); // dB above baseline
     const silent = loud[i] < -55; // menus, pauses, loading screens
-    score[i] = silent ? 0 : spike * 0.12 + motion[i] * 3;
+    score[i] = silent ? 0 : spike * 0.12 + motion[i] * 3 + (bonus?.[i] ?? 0);
   }
   return score;
 }
@@ -172,6 +184,24 @@ function pickWindows(score, duration) {
     kept.push({ ...w, start, peakAt });
   }
   return kept.sort((a, b) => a.start - b.start);
+}
+
+// What a cut clip sounds like (APPLE_SOUND_TAGS): its tags by seconds heard, and its spoken lines, in clip time.
+function clipSound(windows, tags, w, duration) {
+  const from = w.start;
+  const seconds = w.whole ? Math.round(duration) : CLIP_SECONDS;
+  const heard = {};
+  for (const ts of tags.slice(from, from + seconds))
+    for (const t of ts) heard[t] = (heard[t] || 0) + 1;
+  const speech = speechSpans(windows)
+    .map((s) => ({ from: s.from - from, to: s.to - from }))
+    .filter((s) => s.to > 0 && s.from < seconds)
+    .map((s) => ({ from: Math.max(0, s.from), to: Math.min(seconds, s.to) }));
+  return {
+    tags: heard,
+    speech,
+    speech_share: Number(speechShare(speech, seconds).toFixed(2)),
+  };
 }
 
 // "2026-11-19 Testing: can you swim away from 5 stars [v123].mp4" -> title
@@ -318,6 +348,9 @@ async function main() {
     const title = recordingTitle(f.full);
     log(`scoring "${title}" (${Math.round(duration / 60)} min)`);
     let windows;
+    // APPLE_SOUND_TAGS (Mac only, off until switched on): Apple's sound windows for the whole recording.
+    const sound = soundTagsOn() ? await classifySound(f.full) : undefined;
+    const tags = sound ? tagsPerSecond(sound, Math.ceil(duration)) : undefined;
     if (duration <= 75) {
       windows = [{ start: 0, peakAt: 0, value: 1, whole: true }]; // a short Xbox clip is already the moment
     } else {
@@ -325,7 +358,10 @@ async function main() {
         loudnessPerSecond(f.full),
         motionPerSecond(f.full, duration),
       ]);
-      windows = pickWindows(excitement(loud, motion), duration);
+      windows = pickWindows(
+        excitement(loud, motion, tags && soundBonus(tags)),
+        duration,
+      );
     }
     log(`  ${windows.length} moment(s)`);
     for (const w of windows) {
@@ -374,6 +410,7 @@ async function main() {
           seconds: w.whole ? Math.round(duration) : CLIP_SECONDS,
         },
         score: Number(w.value.toFixed(3)),
+        ...(sound ? { sound: clipSound(sound, tags, w, duration) } : {}),
         frames: (await fs.readdir(path.join(dir, "frames"))).map(
           (n) => `frames/${n}`,
         ),

@@ -8,6 +8,13 @@
 import fs from "node:fs/promises";
 import { errorMessage, fetchWithTimeout } from "../lib/util.ts";
 import { createVisionRelay } from "./visionrelay.ts";
+import {
+  chooseVisionHost,
+  MAC_VISION_URL,
+  macVisionMode,
+  macVisionUp,
+  unloadMacVision,
+} from "./macvision.ts";
 
 export interface FrameFlags {
   hud: boolean; // only the game's own small HUD: fine on screen
@@ -128,6 +135,41 @@ export const visionRelay = createVisionRelay({
   },
 });
 
+/** Where one picture check goes: the PC relay, or the Mac's own model under MAC_VISION (src/assets/macvision.ts). */
+export interface VisionTarget {
+  url: string;
+  model: string;
+  mac: boolean;
+}
+
+let target: { at: number; value: VisionTarget } | undefined;
+
+/** The machine for picture checks now; decided at most every five seconds, so one frame's calls agree. */
+export async function visionTarget(): Promise<VisionTarget> {
+  const pc = { url: LOCAL_VISION_URL, model: LOCAL_VISION_MODEL, mac: false };
+  const mode = macVisionMode();
+  if (mode === "off" || process.platform !== "darwin") return pc;
+  if (target && Date.now() - target.at < 5_000) return target.value;
+  const macUp = await macVisionUp();
+  const pcDown =
+    mode === "fallback" && macUp ? await visionRelay.down() : false;
+  const host = chooseVisionHost({
+    mode,
+    platform: process.platform,
+    pcDown,
+    macUp,
+  });
+  const value =
+    host === "mac" ? { url: MAC_VISION_URL, model: "mac", mac: true } : pc;
+  target = { at: Date.now(), value };
+  return value;
+}
+
+/** The ten-minute rest after the PC relay failed: over at once when the Mac is answering instead. */
+async function pcPaused(): Promise<boolean> {
+  return Date.now() < downUntil && !(await visionTarget()).mac;
+}
+
 /**
  * The guard's question (src/services.ts withVisionGuard): is the relay down? Never while local vision is
  * switched off on purpose (LOCAL_VISION=off: pictures go to Claude as configured) or under test.
@@ -135,7 +177,8 @@ export const visionRelay = createVisionRelay({
 export function localVisionDown(): Promise<boolean> {
   if (process.env.LOCAL_VISION === "off" || process.env.NODE_TEST_CONTEXT)
     return Promise.resolve(false);
-  return visionRelay.down();
+  // MAC_VISION: the Mac's own model screens pictures while it answers, so nothing waits on the relay.
+  return visionTarget().then((t) => (t.mac ? false : visionRelay.down()));
 }
 
 // One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
@@ -158,6 +201,7 @@ export function visionIsLocal(url: string): boolean {
  * and it would throw out a model another job on the PC is using mid-run.
  */
 export async function unloadLocalVision(): Promise<void> {
+  await unloadMacVision(); // MAC_VISION: the Mac's own model makes way for the render too
   if (!visionIsLocal(LOCAL_VISION_URL)) return;
   await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/generate`,
@@ -173,12 +217,12 @@ export async function unloadLocalVision(): Promise<void> {
 async function checkOne(file: string): Promise<FrameFlags | undefined> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
-    `${LOCAL_VISION_URL}/api/chat`,
+    `${(await visionTarget()).url}/api/chat`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: LOCAL_VISION_MODEL,
+        model: (await visionTarget()).model,
         stream: false,
         think: false,
         format: SCHEMA,
@@ -231,7 +275,7 @@ export async function screenFrames(
   );
   if (
     !files.length ||
-    Date.now() < downUntil ||
+    (await pcPaused()) ||
     process.env.LOCAL_VISION === "off" ||
     Boolean(process.env.NODE_TEST_CONTEXT) // tests never reach the GPU
   )
@@ -242,11 +286,13 @@ export async function screenFrames(
     while (next < files.length && failures < 3) {
       const i = next++;
       try {
+        const mac = (await visionTarget()).mac;
         out[i] = await checkOne(files[i]!);
-        visionRelay.report(true);
+        if (!mac) visionRelay.report(true);
       } catch (err) {
         failures++;
-        if (failures === 3) {
+        // The Mac's own model failing says nothing about the PC relay: no pause, no relay alert.
+        if (failures === 3 && !(await visionTarget()).mac) {
           // Not running or broken: stop trying for a while. The relay says so once per outage, and with
           // VISION_PAID_FALLBACK off the frames do not go to Claude either (src/assets/visionrelay.ts).
           downUntil = Date.now() + 10 * 60_000;
@@ -276,12 +322,12 @@ async function faceBox(
 ): Promise<[number, number, number, number] | undefined> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
-    `${LOCAL_VISION_URL}/api/chat`,
+    `${(await visionTarget()).url}/api/chat`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: LOCAL_VISION_MODEL,
+        model: (await visionTarget()).model,
         stream: false,
         think: false,
         format: FACE_SCHEMA,
@@ -361,7 +407,7 @@ export function heroLookAnswer(parsed: any): HeroLook | undefined {
  */
 export async function heroLook(file: string): Promise<HeroLook | undefined> {
   if (
-    Date.now() < downUntil ||
+    (await pcPaused()) ||
     process.env.LOCAL_VISION === "off" ||
     process.env.NODE_TEST_CONTEXT
   )
@@ -369,12 +415,12 @@ export async function heroLook(file: string): Promise<HeroLook | undefined> {
   try {
     const image = (await fs.readFile(file)).toString("base64");
     const res = await fetchWithTimeout(
-      `${LOCAL_VISION_URL}/api/chat`,
+      `${(await visionTarget()).url}/api/chat`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          model: LOCAL_VISION_MODEL,
+          model: (await visionTarget()).model,
           stream: false,
           think: false,
           format: {
@@ -429,7 +475,7 @@ export async function cutPortrait(
   if (
     process.env.LOCAL_VISION === "off" ||
     process.env.NODE_TEST_CONTEXT ||
-    Date.now() < downUntil
+    (await pcPaused())
   )
     return false;
   const { execFile } = await import("node:child_process");
@@ -524,12 +570,12 @@ export async function cutPortrait(
 async function clearFace(file: string): Promise<boolean> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
-    `${LOCAL_VISION_URL}/api/chat`,
+    `${(await visionTarget()).url}/api/chat`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: LOCAL_VISION_MODEL,
+        model: (await visionTarget()).model,
         stream: false,
         think: false,
         format: {
@@ -641,12 +687,12 @@ export function lookAnswer(parsed: any): SegmentLook {
 async function lookOne(file: string): Promise<SegmentLook> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
-    `${LOCAL_VISION_URL}/api/chat`,
+    `${(await visionTarget()).url}/api/chat`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        model: LOCAL_VISION_MODEL,
+        model: (await visionTarget()).model,
         stream: false,
         think: false,
         format: LOOK_SCHEMA,
@@ -689,7 +735,7 @@ export async function lookFrames(
   );
   if (
     !files.length ||
-    Date.now() < downUntil ||
+    (await pcPaused()) ||
     process.env.LOCAL_VISION === "off" ||
     Boolean(process.env.NODE_TEST_CONTEXT)
   )
@@ -700,11 +746,13 @@ export async function lookFrames(
     while (next < files.length && failures < 3) {
       const i = next++;
       try {
+        const mac = (await visionTarget()).mac;
         out[i] = await lookOne(files[i]!);
-        visionRelay.report(true);
+        if (!mac) visionRelay.report(true);
       } catch (err) {
         failures++;
-        if (failures === 3) {
+        // The Mac's own model failing says nothing about the PC relay: no pause, no relay alert.
+        if (failures === 3 && !(await visionTarget()).mac) {
           // Footage segments are not looked at for a while; the relay logs and alerts once per outage.
           downUntil = Date.now() + 10 * 60_000;
           visionRelay.report(false, errorMessage(err));

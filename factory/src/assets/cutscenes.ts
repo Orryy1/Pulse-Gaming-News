@@ -8,6 +8,12 @@ import { runCapped } from "../lib/child.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { orchClientUrl } from "../platform.ts";
+import {
+  appleSoundReady,
+  appleSpeech,
+  overlapsSpeech,
+  type SpeechSpan,
+} from "./applesound.ts";
 import { capFootage, DEFAULT_FOOTAGE_SECONDS } from "./footage.ts";
 import { franchisePublisher, PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import {
@@ -442,17 +448,24 @@ async function uploadDetails(
   };
 }
 
+/** The download's formats: the picture only, or (APPLE_SOUND_TAGS, to hear the spoken lines) picture and sound. */
+export const CUTSCENE_VIDEO_FORMAT =
+  "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]";
+export const CUTSCENE_HEARD_FORMAT =
+  "bv*[height<=1080][ext=mp4][vcodec^=avc1]+ba[ext=m4a]/b[height<=1080][ext=mp4]/" + CUTSCENE_VIDEO_FORMAT;
+
 export function cutsceneDownloadArgs(
   upload: CutsceneUpload,
   from: number,
   to: number,
   file: string,
+  withSound = false,
 ): string[] {
   return [
     "--no-playlist",
     "--no-warnings",
     "-f",
-    "bv*[height<=1080][ext=mp4][vcodec^=avc1]/bv*[height<=1080][ext=mp4]/b[height<=1080][ext=mp4]",
+    withSound ? CUTSCENE_HEARD_FORMAT : CUTSCENE_VIDEO_FORMAT,
     "--download-sections",
     `*${from.toFixed(2)}-${to.toFixed(2)}`,
     "-o",
@@ -479,23 +492,36 @@ export function silentSectionArgs(source: string, file: string): string[] {
   ];
 }
 
+/**
+ * One section, muted. With `hear` (APPLE_SOUND_TAGS) it is fetched with its sound first and Apple's Sound Analysis
+ * finds its spoken lines (seconds within the section) before the sound is dropped; undefined when not heard.
+ */
 async function downloadSection(
   upload: CutsceneUpload,
   from: number,
   to: number,
   file: string,
   ytdlp: string,
-): Promise<void> {
+  hear = false,
+): Promise<SpeechSpan[] | undefined> {
   const downloaded = `${file}.download.mp4`;
   try {
-    await runCapped(ytdlp, cutsceneDownloadArgs(upload, from, to, downloaded), {
-      timeout: 300_000,
-      maxBuffer: 8 * 1024 * 1024,
-    });
+    await runCapped(
+      ytdlp,
+      cutsceneDownloadArgs(upload, from, to, downloaded, hear),
+      {
+        timeout: 300_000,
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+    const heard = hear
+      ? await appleSpeech(downloaded, { enabled: true }).catch(() => undefined)
+      : undefined;
     await runCapped(FFMPEG, silentSectionArgs(downloaded, file), {
       timeout: 60_000,
       maxBuffer: 1024 * 1024,
     });
+    return heard?.spans;
   } finally {
     await fs.rm(downloaded, { force: true }).catch(() => undefined);
   }
@@ -547,6 +573,8 @@ export interface CutsceneOptions {
   ytdlp: string;
   publisher?: string;
   llm?: Llm;
+  /** APPLE_SOUND_TAGS (Mac only): hear each section's spoken lines and flag the clips that cut into one. */
+  soundTags?: boolean;
   deps?: {
     search?: (query: string) => Promise<CutsceneUpload[]>;
     details?: (
@@ -559,7 +587,7 @@ export interface CutsceneOptions {
       to: number,
       file: string,
       ytdlp: string,
-    ) => Promise<void>;
+    ) => Promise<void | SpeechSpan[] | undefined>;
     screen?: (file: string, seconds: number) => Promise<boolean>;
     match?: (options: MatchClipsOptions) => Promise<VisualAsset[]>;
     lease?: (est: number) => Promise<() => void>;
@@ -569,6 +597,8 @@ export interface CutsceneOptions {
 export type CutsceneClip = VisualAsset & {
   credit: string;
   span: { source: string; from: number; to: number };
+  /** APPLE_SOUND_TAGS: a character speaks during this clip in the original (the clip itself stays muted). */
+  spokenLine?: boolean;
 };
 
 // Source text must not masquerade as the publisher field used by the existing cap.
@@ -808,6 +838,9 @@ export async function cutsceneMedia(
   let work: string | undefined;
   const offsets = new Map<string, number>();
   const trailers: TrailerFile[] = [];
+  // APPLE_SOUND_TAGS: each kept section's spoken lines, by the section's start in the source.
+  const spoken = new Map<string, SpeechSpan[]>();
+  const hear = Boolean(o.soundTags) && appleSoundReady(true);
   try {
     await fs.mkdir(o.episodeDir, { recursive: true });
     work = await fs.mkdtemp(path.join(o.episodeDir, "cutscene_work_"));
@@ -826,13 +859,15 @@ export async function cutsceneMedia(
       );
       const file = path.join(work, `section_${i}.mp4`);
       try {
-        await (o.deps?.download ?? downloadSection)(
+        const heard = await (o.deps?.download ??
+          ((u, f, t, out, y) => downloadSection(u, f, t, out, y, hear)))(
           upload,
           from,
           Math.min(upload.duration, from + length),
           file,
           o.ytdlp,
         );
+        if (Array.isArray(heard)) spoken.set(from.toFixed(2), heard);
         if (!(await (o.deps?.screen ?? screenSection)(file, length))) {
           await fs.rm(file, { force: true });
           continue;
@@ -886,8 +921,22 @@ export async function cutsceneMedia(
         await fs.rm(file, { force: true }).catch(() => undefined);
         continue;
       }
+      const lines = Number.isFinite(sectionStart)
+        ? spoken.get(sectionStart.toFixed(2))
+        : undefined;
+      const at = clip.startSeconds ?? 0;
+      const spokenLine = lines
+        ? overlapsSpeech(lines, at, at + (clip.durationSeconds ?? 4.8))
+        : undefined;
+      if (spokenLine)
+        log("info", "cutscene clip cuts into a spoken line", {
+          file: clip.file,
+          videoId: upload.videoId,
+          sourceTime: from,
+        });
       clean.push({
         ...clip,
+        ...(spokenLine !== undefined ? { spokenLine } : {}),
         provenance: clip.provenance.replace(
           /source time: [\d.]+s/,
           `source time: ${from.toFixed(2)}s`,

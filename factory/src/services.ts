@@ -431,6 +431,7 @@ export function createServices(db: Db, cfg: Config): Services {
       ...options,
       enabled: cfg.cutsceneFootage,
       ytdlp: cfg.ytdlpPath,
+      soundTags: cfg.appleSoundTags,
       llm: cfg.clipRanking === "llm" ? llm : undefined,
     }),
     fetchOfficialMedia: async (

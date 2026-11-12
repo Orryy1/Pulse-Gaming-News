@@ -365,3 +365,12 @@ test("Eleven v4: stability is sent as set, no style or speaker boost, and the la
   const v3 = requestBody("Hi.", { modelId: "eleven_v3" }).voice_settings as Record<string, unknown>;
   assert.equal(v3.style, 0, "v3 keeps its style setting");
 });
+
+test("gaming abbreviations are said as words", async () => {
+  const { speakable } = await import("../src/voice/speakable.ts");
+  const out = speakable("Resident Evil Requiem wins GOTY at TGA, a AAA hit.");
+  assert.match(out, /Game of the Year/);
+  assert.match(out, /The Game Awards/);
+  assert.match(out, /triple-A/);
+  assert.doesNotMatch(out, /\bGOTY\b|\bAAA\b/);
+});

@@ -152,6 +152,11 @@ async function main(): Promise<void> {
       const t0 = Date.now();
       try {
         const had = await loadSceneIndex(dataDir, g.game);
+        if (had && had.tier !== "light") {
+          // A full index (or one being upgraded) is never replaced by a light one.
+          console.log(JSON.stringify({ rank: g.rank, game: g.game, outcome: "full-kept", videoId: had.source.videoId }));
+          continue;
+        }
         const source =
           had?.source ??
           picks.find((p) => p.game === g.game)?.pick ??

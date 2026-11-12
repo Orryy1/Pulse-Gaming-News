@@ -262,3 +262,14 @@ A python child of pulse-service-host.exe (VoxCPM or ASR) keeps about 2.2 GB of R
 ## 25. Game audio under the narration, and more character lines (owner, 12 Nov; build after the 18 Nov reset)
 
 Owner: "we want bits of game audio too, characters talking to or complementing the narration as much as possible". Live now: CHARACTER_QUOTES on, CHARACTER_QUOTES_LONG=12 (the code allows one a chapter). To build: (a) Shorts take up to 2 quotes when the story fits (code holds them to one); (b) a ducked game-audio bed (engines, crowds, gunfire-free ambience, music stripped where possible) under narration from the clip itself instead of audio:false, loudness-matched, with short "breaths" where the game sound comes up between lines; (c) measure average viewed on Shorts with and without, as a split.
+
+## 26. Full retrospectives: history, making-of, innovations, story with full spoilers, reviews, best moments (owner, 12 Nov)
+
+Owner: massive retrospectives with full game histories, the making of, innovations, best features, story beats, reviews, best moments, full spoilers, plenty of footage, game audio and quotes. Long form, 40 to 90 minutes, chapters every few minutes, a spoiler warning up front and in the title where it spoils.
+
+- Built from what exists: the scene index (every shot and line), character quotes (CHARACTER_QUOTES_LONG, one a chapter), the game sound bed, the documentary lane (fact check, friend pass), GAME_FETCH full movies, and the "Story of Every GTA Game" branch (claude/everygame).
+- Allowed only after a game's spoiler window ends (Ocarina remake from 4 Dec, GTA VI from 18 Dec). Older games have no window, so they can go now: GTA V and San Andreas are already filed.
+- Structure: development and studio history, the making of, what it changed, the full story told beat by beat with real scenes and lines, the best moments, reception and reviews (quoted fairly, with sources), legacy.
+- Footage: owner's play first, then full movies; narration over everything; game sound under it; publisher caps from PUBLISHER_FOOTAGE_SECONDS, scaled up for long form.
+- First candidates: GTA San Andreas (the channel's best Short was a San Andreas "why"), then GTA V, then the Ocarina remake on 4 Dec, then GTA VI around late December.
+- Measure: watch hours per video against the 8,000-hour goal, and the 5 Dec long-video verdict.

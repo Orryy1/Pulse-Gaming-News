@@ -44,6 +44,8 @@ export interface Episode {
 }
 
 export interface EpisodeAssets {
+  /** GRAPHICS_FRAME_CHECK faulted these cards ("card3") on a render: the next plan's audit leaves them out. */
+  gfxMuted?: string[];
   /** Media was gathered a second time, richer, after a red media rubric. */
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */

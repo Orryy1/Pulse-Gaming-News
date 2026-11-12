@@ -146,6 +146,7 @@ import {
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
+import { graphicsDigest } from "./gfxauditstep.ts";
 import {
   alertDigestDue,
   markAlertDigestSent,
@@ -2366,7 +2367,9 @@ async function main(): Promise<void> {
       const key = await alertDigestDue(db, cfg, new Date());
       if (!key) return;
       await markAlertDigestSent(db, key);
-      const post = await writeAlertDigest(cfg, new Date());
+      // The graphics audit's day (GRAPHICS_AUDIT, src/gfxauditstep.ts): one line, when it ran.
+      const gfxLine = await graphicsDigest(db, new Date()).catch(() => undefined);
+      const post = await writeAlertDigest(cfg, new Date(), gfxLine ? [gfxLine] : []);
       if (post) await services.notify(post);
       // Platforms gone quiet are said once a morning, and only on a morning there are some (SOCIAL_SCOREBOARD).
       if (cfg.socialScoreboard) {

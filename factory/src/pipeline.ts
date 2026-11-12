@@ -449,6 +449,8 @@ import {
 } from "./editorial/why.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
+import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } from "./gfxauditstep.ts";
+import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
 import {
   cardRequirement,
@@ -873,7 +875,7 @@ export interface Services {
     ctx: {
       headline: string;
       gameTitle: string;
-      format?: "short" | "long" | "graphics" | "thumbs";
+      format?: "short" | "long" | "graphics" | "thumbs" | "shortgraphics";
       heroRule?: boolean;
       narration?: string;
       cardTexts?: string[];
@@ -10866,6 +10868,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     soundCraft,
     voiceFxFiles,
   });
+  // GRAPHICS_AUDIT on the sentence graphics (src/gfxauditstep.ts): in fix mode a graphic gone in under half its
+  // reading time, or with a wrong figure, is muted like a faulted one (assets.quietMoments).
+  if (s.cfg.graphicsAudit !== "off" && hasMoments) {
+    const lm = longMoments(script, assets, segmentInputs);
+    const mute = await graphicsGateLong(s, ep.id, [lm.moments, lm.narration, lm.sources, lm.spoken]);
+    if (mute.length) assets.quietMoments = [...new Set([...(assets.quietMoments ?? []), ...mute])];
+  }
   // The graphics check before the render (src/qa/graphicscheck.ts): every graphic and breather as a still
   // from the same composition and props, faulted ones muted, so the full render runs once instead of again
   // per fault. Once per episode; a check that cannot run (no stills service, a browser fault) never stops
@@ -11871,6 +11880,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   ];
   // The series strip on the opening poster and the search thumbnail (SERIES_COVER_STYLE, src/seriescover.ts).
   const seriesCover = await seriesCoverOf(s.db, s.cfg, ep, script);
+  // GRAPHICS_AUDIT (src/qa/gfxaudit.ts, src/gfxauditstep.ts): every overlay measured as it will be drawn; in fix mode
+  // cards are moved onto their words, held, trimmed or dropped, repeats and unreadable strips go, and a wrong graphic
+  // that cannot be dropped fails the render. What it returns is what renders.
+  const gfxIn = () =>
+    gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean });
+  const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
+  if (gated) {
+    segments.splice(0, segments.length, ...gated.segments);
+    shownStamps.splice(0, shownStamps.length, ...(gated.stamps as typeof shownStamps));
+    plan.shelf = gated.shelf;
+    plan.craft = gated.craft;
+  }
   const entrySpans = overlaySpans({
     segments,
     words,
@@ -12030,6 +12051,27 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ),
     });
   }
+  // GRAPHICS_FRAME_CHECK: each card at its settled frame, for text cut off, overlapping or unreadable. A faulted card
+  // is remembered (assets.gfxMuted) so the retry's audit leaves it out.
+  const frameProblems: string[] = [];
+  if (tech.ok && s.cfg.visionQa && s.cfg.graphicsFrameCheck) {
+    const checked = cardCheckTimes(gfxIn());
+    if (checked.length) {
+      const gfxFrames = await s.extractFrames(final, path.join(dir, "qa", "gfx"), checked.map((c) => c.t));
+      const look = await s.visionQa(gfxFrames, {
+        headline: script.headline,
+        gameTitle: script.game_title,
+        format: "shortgraphics",
+        narration: narrationOf(script),
+      });
+      if (look.verdict === "fail") {
+        const keys = faultedCards(look.problems, checked);
+        assets.gfxMuted = [...new Set([...(assets.gfxMuted ?? []), ...keys])];
+        frameProblems.push(...look.problems.map((p) => `graphics: ${p}`));
+        await logEvent(s.db, ep.id, "graphics_frame_check", { problems: look.problems, muted: keys });
+      }
+    }
+  }
   // Every rank card must stay up for its whole entry, in text the card can show (src/render/rankcard.ts).
   const entryCards = entryHolds(
     segments,
@@ -12052,7 +12094,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? vision.problems
         : [`vision QA failed: ${vision.notes || "no reason given"}`]
       : [];
-  const problems = [...tech.problems, ...visionProblems, ...entryProblems];
+  const problems = [...tech.problems, ...visionProblems, ...entryProblems, ...frameProblems];
   // The check was skipped (the relay went down mid-render): held, the render kept on disk, checked again when back.
   if (
     s.cfg.visionHold &&

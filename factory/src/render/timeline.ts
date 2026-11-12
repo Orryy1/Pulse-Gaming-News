@@ -33,6 +33,11 @@ export interface Visual {
   region?: string;
   value_a?: number;
   items?: string[];
+  /**
+   * GRAPHICS_AUDIT (src/qa/gfxaudit.ts): where the card is drawn, seconds [from, to), when the audit moved it onto
+   * its word or held it long enough to read. Absent, the card's window is worked out as always.
+   */
+  span?: [number, number];
 }
 
 export interface Segment {

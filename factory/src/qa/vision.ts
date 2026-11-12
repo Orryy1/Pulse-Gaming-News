@@ -72,6 +72,14 @@ Also intended, never a fault: grey placeholder bars standing in for body text on
 Judge the graphic, not what is behind it: words that belong to the game footage or artwork (an in-game caption, a HUD, a logo in the picture) are not the graphic's text. The video's corner marks (the PULSE logo, chapter numbers, a year counter that shows the chapter's year, a footage credit) are fixed furniture; fault them only when they cover the graphic's own text.
 Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
 
+/** GRAPHICS_FRAME_CHECK: one frame per card of a finished Short, each at the moment its card has settled. */
+export const SHORT_GRAPHICS_PROMPT = `You check the on-screen cards of a vertical (9:16) gaming news Short after it has rendered.
+Each frame shows one card (a figure, a quote, a list, a ranked entry, a verdict) over footage, with word-by-word captions lower down.
+Fail a frame only for a fault in the card a viewer would notice: its text cut off at a frame edge or by another element, its text overlapping
+the captions or other text, text too small or too faint to read on a phone, garbled or misspelt words, or a card that is clearly half drawn
+or empty. The captions, the small PULSE mark, a footage credit and words in the game footage itself are not the card.
+Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
+
 /** The thumbnail check: the designs that will go to YouTube. */
 export const THUMB_VISION_PROMPT = `You check YouTube thumbnails for a gaming channel before they are used. Each frame is one 1280x720 thumbnail.
 Fail a thumbnail only for a real fault: words cut off or overlapping, words unreadable at phone size, garbled or misspelt words, a broken or missing picture, a large empty area, an awkward crop that cuts the main subject's face in half, a character with part of the face or body missing (a hole, blur or glow where a mouth, chin or limb should be, the mark of a bad cut-out), or anything advertiser-unfriendly.
@@ -111,7 +119,7 @@ export async function visionQa(
   context: {
     headline: string;
     gameTitle: string;
-    format?: "short" | "long" | "graphics" | "thumbs";
+    format?: "short" | "long" | "graphics" | "thumbs" | "shortgraphics";
     /** Thumbnails under the hero rule: the check also looks for the wrong game, no hero and cryptic words. */
     heroRule?: boolean;
     /** What the narrator says: captions repeat these words, so a word found here is not a misspelling. */
@@ -150,6 +158,8 @@ export async function visionQa(
       ? LONG_VISION_PROMPT
       : context.format === "graphics"
         ? GRAPHICS_VISION_PROMPT
+        : context.format === "shortgraphics"
+          ? SHORT_GRAPHICS_PROMPT
         : context.format === "thumbs"
           ? context.heroRule
             ? `${THUMB_VISION_PROMPT}\n${THUMB_HERO_PROMPT}`

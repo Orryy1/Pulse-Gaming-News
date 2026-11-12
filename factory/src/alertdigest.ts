@@ -223,12 +223,18 @@ const ledgerFile = (cfg: Pick<Config, "dataDir">) =>
 export async function writeAlertDigest(
   cfg: Pick<Config, "dataDir">,
   now: Date,
+  /** Summary lines from elsewhere (the graphics audit's day, src/gfxauditstep.ts graphicsDigest): on the page, and on a post the day already earns. */
+  extra: string[] = [],
 ): Promise<DiscordMessage | undefined> {
   const records = await readAlerts(ledgerFile(cfg));
   const file = path.join(cfg.dataDir, "logs", "alert_digest.md");
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, digestMarkdown(records, now), "utf8");
-  return digestPost(records, now);
+  const page = digestMarkdown(records, now);
+  await fs.writeFile(file, extra.length ? `${page}\n${extra.map((x) => `- ${x}`).join("\n")}\n` : page, "utf8");
+  const post = digestPost(records, now);
+  return post && extra.length
+    ? { ...post, content: `${post.content}\n${extra.join("\n")}`.slice(0, 1900) }
+    : post;
 }
 
 /** Today's key once the digest is due: from 09:00 local, once a day, only with the setting on. */

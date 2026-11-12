@@ -182,6 +182,8 @@ export function cardWindow(
   // A rank card is what the viewer came to read: it stays from the start of its entry to the start of the next.
   if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
   const v = s.visual;
+  // GRAPHICS_AUDIT moved or held the card (src/qa/gfxaudit.ts): drawn exactly there.
+  if (v?.span) return spanWindow(v.span, fps, totalFrames);
   const hold = Math.round(HOLD_SECONDS(s) * fps);
   let at = start;
   if (v && s.kind !== "take") {
@@ -202,6 +204,12 @@ export function cardWindow(
     }
   }
   return { from: at, len: Math.max(1, Math.min(end - at, hold)) };
+}
+
+/** A card's window from the audit's span (seconds), inside the Short. */
+export function spanWindow(span: [number, number], fps: number, totalFrames: number): { from: number; len: number } {
+  const from = Math.max(0, Math.min(totalFrames - 1, Math.round(span[0] * fps)));
+  return { from, len: Math.max(1, Math.min(totalFrames - from, Math.round((span[1] - span[0]) * fps))) };
 }
 
 /** A delay beat's two dates as the departures board's rows ("2027-03: Now March"), as the Short draws them. */

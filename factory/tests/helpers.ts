@@ -404,6 +404,8 @@ export function testConfig(
     graphicsPrepass: true,
     graphicsFit: true,
     graphicsSecondLook: false,
+    graphicsAudit: "off",
+    graphicsFrameCheck: false,
     graphicsPrepassMax: 200,
     graphicsRerenderPasses: 1,
     graphicsPostcheckMax: 32,

@@ -30,6 +30,18 @@ import { parseHomeFranchises } from "./editorial/why.ts";
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
 if (fs.existsSync(ENV_FILE)) process.loadEnvFile(ENV_FILE);
 
+/** GRAPHICS_AUDIT: off, measure and log only, or measure, fix and fail on a wrong graphic (src/qa/gfxaudit.ts). */
+export type GraphicsAuditMode = "off" | "report" | "fix";
+
+export function graphicsAuditMode(raw: string | undefined): GraphicsAuditMode {
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v === "fix" || v === "true" || v === "on" || v === "1") return "fix";
+  if (v === "report" || v === "log") return "report";
+  return "off";
+}
+
 function str(name: string, fallback = ""): string {
   const v = process.env[name];
   return v === undefined || v === "" ? fallback : v;
@@ -749,6 +761,14 @@ export interface Config {
   graphicsFit: boolean;
   /** The pre-pass looks again at a faulted graphic and mutes it only if faulted twice (src/qa/graphicscheck.ts). Off: one look mutes. */
   graphicsSecondLook: boolean;
+  /**
+   * GRAPHICS_AUDIT (src/qa/gfxaudit.ts), at the plan stage of every Short and long video: "off"; "report" measures
+   * reading time, clashes, fit, figures, alignment and meaning and logs them; "fix" also repairs what it can (holds,
+   * moves, trims and drops) and fails a render only for a wrong graphic it cannot drop.
+   */
+  graphicsAudit: GraphicsAuditMode;
+  /** GRAPHICS_FRAME_CHECK: after a Short renders, each card's settled frame is checked for clipped or overlapping text. */
+  graphicsFrameCheck: boolean;
   graphicsPrepassMax: number; // graphics checked as stills before the render, at most
   /** Full re-renders the post-render graphics check may ask for; past that it accepts the video with the faults muted. */
   graphicsRerenderPasses: number;
@@ -1590,6 +1610,8 @@ export function loadConfig(): Config {
     graphicsPrepass: bool("GRAPHICS_PREPASS", true),
     graphicsFit: bool("GRAPHICS_FIT", true),
     graphicsSecondLook: bool("GRAPHICS_SECOND_LOOK", false),
+    graphicsAudit: graphicsAuditMode(process.env.GRAPHICS_AUDIT),
+    graphicsFrameCheck: bool("GRAPHICS_FRAME_CHECK", false),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),
     graphicsPostcheckMax: int("GRAPHICS_POSTCHECK_MAX", 32),

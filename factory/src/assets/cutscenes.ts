@@ -28,6 +28,8 @@ export interface CutsceneUpload {
   viewCount?: number;
   isLive?: boolean;
   liveStatus?: string;
+  /** YYYY-MM-DD, from an upload's own details (the launch fetcher refuses uploads older than the game). */
+  uploadDate?: string;
 }
 
 export function cutsceneQueries(gameTitle: string): string[] {

@@ -28,6 +28,45 @@ export interface QueuedGame {
   tries?: number;
   /** "building": more turns to come; "waiting": the vision model or a turn was not available; "no-source": no clean upload yet; "done". */
   state?: "building" | "waiting" | "no-source" | "done";
+  /** GAME_FETCH (src/sceneindex/gamefetch.ts): the launch fetcher's plan for a big release. */
+  fetch?: FetchPlan;
+}
+
+/** How the launch fetcher looks for a big release's uploads (GAME_FETCH). */
+export interface FetchPlan {
+  /** ISO: nothing is searched before the game is out. */
+  notBefore?: string;
+  /** Hours between searches while no clean upload is found. */
+  searchEveryHours: number;
+  /** Hours between looks for a longer or better upload once one is indexed, until `recheckUntil`. */
+  recheckEveryHours: number;
+  recheckUntil: string;
+  /** Higher goes first: the owner's titles, then the calendar, the big stories, the videos, the radar. */
+  priority: number;
+}
+
+/** The queue with the launch fetcher's plan for a game: added when missing, the plan and recent-release flag set when present. */
+export function planGame(
+  queue: SceneQueue,
+  game: string,
+  plan: FetchPlan,
+  reason: string,
+  now: Date,
+): SceneQueue {
+  const slug = sceneSlug(game);
+  if (!slug) return queue;
+  const has = queue.games.find((g) => sceneSlug(g.game) === slug);
+  if (has && JSON.stringify(has.fetch) === JSON.stringify(plan) && has.recentRelease) return queue;
+  if (!has)
+    return {
+      games: [
+        ...queue.games,
+        { game: game.trim(), reason, requestedAt: now.toISOString(), recentRelease: true, fetch: plan },
+      ],
+    };
+  return {
+    games: queue.games.map((g) => (sceneSlug(g.game) === slug ? { ...g, recentRelease: true, fetch: plan } : g)),
+  };
 }
 
 export interface SceneQueue {
@@ -160,14 +199,19 @@ const HOUR = 3_600_000;
  * model or for a turn rests half an hour.
  */
 export function nextJob(queue: SceneQueue, now: Date): QueuedGame | undefined {
-  return queue.games.find((g) => {
+  // A launch plan (GAME_FETCH) waits for release, searches every few hours and goes in its priority's order.
+  const ready = queue.games.filter((g) => {
+    if (g.fetch?.notBefore && now.getTime() < Date.parse(g.fetch.notBefore)) return false;
     if (g.state === "done") return sourceRecheckDue(g, now);
     const since = g.lastTry ? now.getTime() - Date.parse(g.lastTry) : Infinity;
     if (g.state === "no-source")
-      return (g.tries ?? 0) < 28 && since >= 12 * HOUR;
+      return g.fetch
+        ? now.getTime() <= Date.parse(g.fetch.recheckUntil) && since >= g.fetch.searchEveryHours * HOUR
+        : (g.tries ?? 0) < 28 && since >= 12 * HOUR;
     if (g.state === "waiting") return since >= HOUR / 2;
     return true;
   });
+  return ready.sort((a, b) => (b.fetch?.priority ?? 0) - (a.fetch?.priority ?? 0))[0];
 }
 
 /** A finished index is checked for a better source once a week for this long after it was asked for. */
@@ -180,6 +224,12 @@ export const RECHECK_DAYS = 45;
  */
 export function sourceRecheckDue(g: QueuedGame, now: Date): boolean {
   if (g.state !== "done" || !g.lastTry) return false;
+  // A launch plan looks daily (GAME_FETCH_RECHECK_HOURS) for a longer or better upload while people finish the game.
+  if (g.fetch)
+    return (
+      now.getTime() - Date.parse(g.lastTry) >= g.fetch.recheckEveryHours * HOUR &&
+      now.getTime() <= Date.parse(g.fetch.recheckUntil)
+    );
   const day = 86_400_000;
   return (
     now.getTime() - Date.parse(g.lastTry) >= 7 * day &&
@@ -274,7 +324,7 @@ export async function readQueue(dataDir: string): Promise<SceneQueue> {
   }
 }
 
-async function writeQueue(dataDir: string, queue: SceneQueue): Promise<void> {
+export async function writeQueue(dataDir: string, queue: SceneQueue): Promise<void> {
   const file = queueFile(dataDir);
   await fsp.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.tmp`;
@@ -379,6 +429,7 @@ export async function sceneIndexTick(
         `--steps=${cfg.sceneIndexTurnSteps}`,
         ...(job.recentRelease ? ["--recent"] : []),
         ...(job.state === "done" ? ["--refresh"] : []),
+        ...(job.fetch ? ["--complete", ...(job.fetch.notBefore ? [`--released=${job.fetch.notBefore.slice(0, 10)}`] : [])] : []),
       ],
     );
     const env = {

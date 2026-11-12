@@ -10,6 +10,7 @@ import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
 import { dayKey, weekday } from "./lanes.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
+import { filedLines, readFiled } from "./sceneindex/gamefetch.ts";
 
 export type GrowthFormat =
   | "news"
@@ -198,7 +199,7 @@ export async function growthRows(db: Db): Promise<GrowthRow[]> {
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir">>,
   now: Date,
 ): Promise<DiscordMessage> {
   return {
@@ -211,6 +212,8 @@ export async function growthReport(
           ...(cfg.socialScoreboard
             ? scoreboardLines(await socialBoard(db, now))
             : []),
+          // GAME_FETCH: what the footage library has filed (src/sceneindex/gamefetch.ts).
+          ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
         ]
           .join("\n")
           .slice(0, 3900),

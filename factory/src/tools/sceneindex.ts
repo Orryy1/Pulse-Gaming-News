@@ -1,7 +1,8 @@
 // The scene index by hand: build a game's index piece by piece, look moments and quotes up in it, and draw a
 // contact sheet of what a lookup found. The factory's own job (src/sceneindex/job.ts) runs the same "build".
-//   node --import tsx src/tools/sceneindex.ts build "<game>" [--recent] [--steps=N] [--from=s --to=s] [--no-describe]
+//   node --import tsx src/tools/sceneindex.ts build "<game>" [--recent] [--complete] [--released=YYYY-MM-DD] [--steps=N] [--from=s --to=s] [--no-describe]
 //                                              [--no-voice] [--ocr-ssh=<host>] [--hear-ssh=<host>] [--source=<video id>]
+//   node --import tsx src/tools/sceneindex.ts search "<game>" [--recent] [--details] [--released=YYYY-MM-DD]   (the launch fetcher's search, dry)
 //   node --import tsx src/tools/sceneindex.ts voice "<game>" [--from=s --to=s] [--hear-ssh=<host>]   listen to an indexed stretch
 //   node --import tsx src/tools/sceneindex.ts tidy "<game>"      names "<game>" (cast and places again from Wikipedia)
 //   node --import tsx src/tools/sceneindex.ts describe "<game>" [--limit=N] [--from=s --to=s]
@@ -31,6 +32,10 @@ import {
   describeShots,
   hearInto,
   indexStretch,
+  judgeUploads,
+  launchCandidates,
+  launchDetails,
+  pickComplete,
   sceneIndexReady,
   stripArgs,
   undescribed,
@@ -357,6 +362,36 @@ async function main(): Promise<void> {
     );
     return;
   }
+  if (command === "search") {
+    // The launch fetcher's search, dry: what it would find for a game and why each upload is or is not taken.
+    // Nothing is downloaded. --details looks up the heights of the clean ones (one yt-dlp call each).
+    const found = await launchCandidates(game, s.ytdlp);
+    const verdicts = judgeUploads(found, game, {
+      recentRelease: Boolean(flag("recent")),
+      maxHours: s.maxHours,
+      releasedOn: flag("released"),
+    });
+    if (flag("details"))
+      for (const v of verdicts.filter((x) => x.ok)) {
+        const d = await launchDetails(v.upload, s.ytdlp).catch(() => undefined);
+        if (d)
+          Object.assign(
+            v,
+            judgeUploads([d], game, { recentRelease: Boolean(flag("recent")), maxHours: s.maxHours, releasedOn: flag("released") })[0],
+          );
+      }
+    for (const v of verdicts.sort((a, b) => Number(b.ok) - Number(a.ok)))
+      console.log(
+        `${v.ok ? "TAKE" : "skip"}  ${v.upload.videoId}  ${Math.round(v.upload.duration / 60)} min  ${v.upload.height ?? "?"}p  ${v.upload.title.slice(0, 90)} | ${v.upload.uploader} | ${v.reason}`,
+      );
+    const pick = pickComplete(
+      flag("details") ? verdicts.filter((v) => v.ok && (v.upload.height ?? 0) >= 1080).map((v) => v.upload) : found,
+      game,
+      { recentRelease: Boolean(flag("recent")), maxHours: s.maxHours, releasedOn: flag("released") },
+    );
+    console.log(pick ? `pick ${pick.videoId} ${pick.kind} "${pick.title}"` : "pick none");
+    return;
+  }
   if (command === "build") {
     const from = flag("from");
     const to = flag("to");
@@ -423,6 +458,8 @@ async function main(): Promise<void> {
           {
             recentRelease: Boolean(flag("recent")),
             refreshSource: i === 0 && Boolean(flag("refresh")),
+            complete: Boolean(flag("complete")),
+            releasedOn: flag("released"),
             describeBatch: flag("no-describe") ? 0 : 300,
           },
           deps,

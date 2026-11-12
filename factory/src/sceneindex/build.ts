@@ -102,6 +102,38 @@ export function sourceKind(title: string): SceneSource["kind"] {
     : "playthrough";
 }
 
+/** The launch fetcher's searches: full movies and all cutscenes, then no-commentary full playthroughs. */
+export function launchQueries(game: string): string[] {
+  const g = game.trim();
+  return g
+    ? [
+        `${g} full movie all cutscenes`,
+        `${g} all cutscenes no commentary`,
+        `${g} full game movie 4K`,
+        `${g} no commentary full playthrough`,
+        `${g} full game walkthrough no commentary 4K`,
+        `${g} longplay no commentary`,
+      ]
+    : [];
+}
+
+/** Every launch search's results, one entry per upload (the fetcher's dry run prints its verdicts on them). */
+export async function launchCandidates(
+  game: string,
+  ytdlp: string,
+  search?: (query: string) => Promise<CutsceneUpload[]>,
+): Promise<CutsceneUpload[]> {
+  const hits: CutsceneUpload[] = [];
+  for (const query of launchQueries(game))
+    hits.push(...(await (search?.(query) ?? searchUploads(query, ytdlp)).catch(() => [] as CutsceneUpload[])));
+  return [...new Map(hits.map((h) => [h.videoId, h])).values()];
+}
+
+/** One upload's full details (height from its formats), for the dry run. */
+export function launchDetails(upload: CutsceneUpload, ytdlp: string): Promise<CutsceneUpload | undefined> {
+  return uploadDetails(upload, ytdlp);
+}
+
 export function sourceQueries(game: string): string[] {
   const g = game.trim();
   return g
@@ -121,8 +153,9 @@ export function sourceQueries(game: string): string[] {
 export function pickSource(
   candidates: CutsceneUpload[],
   game: string,
-  o: { recentRelease?: boolean; maxHours?: number } = {},
+  o: { recentRelease?: boolean; maxHours?: number; complete?: boolean; releasedOn?: string } = {},
 ): (CutsceneUpload & { kind: SceneSource["kind"] }) | undefined {
+  if (o.complete) return pickComplete(candidates, game, o);
   const max = (o.maxHours ?? 12) * 3600;
   const fits = candidates.filter((c) => c.duration <= max);
   const movie = pickCutsceneUpload(
@@ -139,6 +172,158 @@ export function pickSource(
     o,
   );
   return play ? { ...play, kind: "playthrough" } : undefined;
+}
+
+// ---------------------------------------------------------------- launch fetching (GAME_FETCH)
+
+/** Part of a series, not the whole game: early launch uploads are "Part 1" while the uploader is still playing. */
+const PARTIAL =
+  /\b(?:part|pt|ep(?:isode)?|chapter|mission|act|day)\s*#?\s*\d+\b|\b(?:first|opening)\s+\d+\s+(?:hours?|minutes?|missions?)\b/i;
+/** Burned-in subtitles, captions, translations or a channel's own extras over the picture. */
+const SUBTITLED =
+  /\b(?:subtitles?|subtitled|subbed|eng(?:lish)?\s*subs?|with\s+subs|cc|captions?|dubbed|dublado|doblado|legendado|subtitulado|sous[-\s]titres?|untertitel\w*|sottotitoli|napisy|altyaz\w*|espanol|latino|deutsch|italiano|portugues|pt[-\s]?br)\b|(?:türkçe|español|français|português|русск|日本語|中文|한국어)/i;
+/** "No subtitles" is what a clean upload says about itself: never read as subtitles. */
+const NO_SUBTITLES = /\b(?:no|without|w\/o|sin)\s+(?:subtitles?|subs|captions?|hud)\b/gi;
+/** Not footage of the game itself, or not the released game: marketing, previews, leaks, fan work. */
+const NOT_THE_GAME =
+  /\b(?:trailers?|teasers?|leaks?|leaked|concept|fan[-\s]?made|predictions?|everything\s+we\s+know|recreat\w*|remade\s+in|unreal\s+engine\s*5?|ue5|ai\s+generated|parody|speedrun|any%|reshade|graphics\s+mod|comparison|vs\.?|extended\s+look|premiere|reveal\w*|showcase|preview|first\s+look|netflix|beta|demo)\b/i;
+/** One character's scenes, not the whole story. */
+const ONE_CHARACTER =
+  /\ball\s+(?!cut\s*scenes\b|scenes\b)[\p{L}'’]+(?:\s+[\p{L}'’]+)?\s+(?:cut\s*scenes?|scenes)\b/iu;
+/** One ending, unless the title says the whole game is there too. */
+const ONE_ENDING = /\b(?:full|good|bad|true|secret)\s+ending\b/i;
+const WHOLE_GAME = /\ball\s+cut\s*scenes\b|\bfull\s+(?:game\s+)?movie\b|\bfull\s+game\b|\bfull\s+playthrough\b|\bcomplete\s+story\b/i;
+/** Languages other than English: a dub or burned-in subtitles in another language. */
+const OTHER_LANGUAGE =
+  /\b(?:german|french|spanish|russian|italian|portuguese|japanese|korean|chinese|polish|turkish|arabic|hindi|brazilian|castellano|vietnamese|thai|indonesian)\b/i;
+/** A cutscene compilation, not a playthrough with the uploader's play in it. */
+const CUTSCENE_WORDS = /\bcut\s*scenes?\b/i;
+
+export interface UploadVerdict {
+  upload: CutsceneUpload;
+  ok: boolean;
+  kind: SceneSource["kind"];
+  reason: string;
+}
+
+/**
+ * Every candidate with the reason it is or is not a launch source (pure), for the fetcher and its dry run. The
+ * cutscene picker's clean-upload rules first (the game's name, cutscenes or no commentary, no commentary, reaction,
+ * face cam, mods or live streams, the remake's upload for a recent release), then launch rules: the whole game, not
+ * a part; no burned-in subtitles; the game itself, not trailers, leaks or fan remakes; 1080p or better once the
+ * height is known; a movie of 20 minutes or more, a playthrough of an hour or more; nothing over `maxHours`.
+ * A face cam, a corner logo or subtitles the title does not admit are caught later on each clip by the clean-frame
+ * screen, as for every cutscene clip.
+ */
+export function judgeUploads(
+  candidates: CutsceneUpload[],
+  game: string,
+  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string } = {},
+): UploadVerdict[] {
+  const max = (o.maxHours ?? 12) * 3600;
+  // Uploaded at least the day before the release day: anything older is marketing, not the released game.
+  const earliest = o.releasedOn ? Date.parse(`${o.releasedOn.slice(0, 10)}T00:00:00Z`) - 86_400_000 : NaN;
+  return candidates.map((upload) => {
+    // "Full Game Movie | Cinematic Gameplay" is a playthrough, whatever it calls itself.
+    const kind = /\bgameplay\b/i.test(upload.title) ? "playthrough" : sourceKind(upload.title);
+    const no = (reason: string): UploadVerdict => ({
+      upload,
+      ok: false,
+      kind,
+      reason,
+    });
+    if (
+      upload.isLive ||
+      (upload.liveStatus && upload.liveStatus !== "not_live")
+    )
+      return no("a live stream");
+    if (!pickCutsceneUpload([upload], game, o)) {
+      const t = upload.title.toLowerCase();
+      if (
+        /commentar|reaction|react|face\s*cam|web\s*cam|let'?s\s+play|stream/.test(
+          t.replace(/no\s+commentary/g, ""),
+        )
+      )
+        return no("commentary, reaction, face cam or stream");
+      if (!/(cut\s*scenes?|movies?|no\s+commentary)/.test(t))
+        return no("neither cutscenes nor no commentary");
+      if (/remaster|remake|reimagined|definitive/.test(t))
+        return no("another edition");
+      return no("not this game, or mods, reviews, lore or rankings");
+    }
+    if (NOT_THE_GAME.test(upload.title))
+      return no("not the game itself (trailers, leaks, fan remakes)");
+    if (SUBTITLED.test(upload.title.replace(NO_SUBTITLES, " "))) return no("burned-in subtitles, a dub or another language");
+    if (OTHER_LANGUAGE.test(upload.title)) return no("another language");
+    if (ONE_CHARACTER.test(upload.title)) return no("one character's scenes, not the whole story");
+    if (ONE_ENDING.test(upload.title) && !WHOLE_GAME.test(upload.title)) return no("one ending, not the whole story");
+    if (upload.uploadDate && Number.isFinite(earliest) && Date.parse(`${upload.uploadDate}T00:00:00Z`) < earliest)
+      return no(`uploaded ${upload.uploadDate}, before the game came out`);
+    if (PARTIAL.test(upload.title))
+      return no("part of a series, not the whole game");
+    if (upload.duration > max)
+      return no(`longer than ${o.maxHours ?? 12} hours`);
+    if (kind === "movie" && upload.duration < 1200)
+      return no("a movie under 20 minutes");
+    if (kind === "playthrough" && upload.duration < 3600)
+      return no("a playthrough under an hour");
+    if (
+      upload.height !== undefined &&
+      upload.height > 0 &&
+      upload.height < 1080
+    )
+      return no(`${upload.height}p, under 1080p`);
+    return {
+      upload,
+      ok: true,
+      kind,
+      reason:
+        kind === "movie"
+          ? "clean full movie"
+          : "clean no-commentary playthrough",
+    };
+  });
+}
+
+/**
+ * The most complete clean upload (pure): a movie before a playthrough, one that calls itself cutscenes before
+ * any other, then the longest (people finish the game over days: the longest clean upload covers the most of the
+ * story), then 1080p or better, then views.
+ */
+export function pickComplete(
+  candidates: CutsceneUpload[],
+  game: string,
+  o: { recentRelease?: boolean; maxHours?: number; releasedOn?: string } = {},
+): (CutsceneUpload & { kind: SceneSource["kind"] }) | undefined {
+  const best = judgeUploads(candidates, game, o)
+    .filter((v) => v.ok)
+    .sort(
+      (a, b) =>
+        Number(b.kind === "movie") - Number(a.kind === "movie") ||
+        Number(CUTSCENE_WORDS.test(b.upload.title)) - Number(CUTSCENE_WORDS.test(a.upload.title)) ||
+        b.upload.duration - a.upload.duration ||
+        Number((b.upload.height ?? 0) >= 1080) -
+          Number((a.upload.height ?? 0) >= 1080) ||
+        (b.upload.viewCount ?? 0) - (a.upload.viewCount ?? 0),
+    )[0];
+  return best ? { ...best.upload, kind: best.kind } : undefined;
+}
+
+/**
+ * Whether a launch upload replaces the one an index was built from (pure): betterSource's rules, and also a clean
+ * upload of the same kind at least 15% longer (a finished movie after a part-way one), never a shorter one.
+ */
+export function moreCompleteSource(
+  current: Pick<SceneSource, "videoId" | "kind" | "height" | "duration">,
+  candidate: Pick<SceneSource, "videoId" | "kind" | "height" | "duration">,
+): boolean {
+  if (candidate.videoId === current.videoId) return false;
+  if (candidate.kind !== current.kind) return candidate.kind === "movie";
+  if (candidate.duration >= current.duration * 1.15) return true;
+  return (
+    betterSource(current, candidate) &&
+    candidate.duration >= current.duration * 0.9
+  );
 }
 
 async function searchUploads(
@@ -212,6 +397,9 @@ async function uploadDetails(
     viewCount: Number(item.view_count) || undefined,
     isLive: false,
     liveStatus: "not_live",
+    ...(/^\d{8}$/.test(String(item.upload_date ?? ""))
+      ? { uploadDate: `${item.upload_date.slice(0, 4)}-${item.upload_date.slice(4, 6)}-${item.upload_date.slice(6, 8)}` }
+      : {}),
   };
 }
 
@@ -219,11 +407,11 @@ async function uploadDetails(
 export async function chooseSource(
   game: string,
   s: Pick<BuildSettings, "ytdlp" | "maxHours">,
-  o: { recentRelease?: boolean } = {},
+  o: { recentRelease?: boolean; complete?: boolean; releasedOn?: string } = {},
   deps: BuildDeps = {},
 ): Promise<SceneSource | undefined> {
   const hits: CutsceneUpload[] = [];
-  for (const query of sourceQueries(game)) {
+  for (const query of o.complete ? launchQueries(game) : sourceQueries(game)) {
     try {
       hits.push(
         ...(await (deps.search?.(query) ?? searchUploads(query, s.ytdlp))),
@@ -254,7 +442,12 @@ export async function chooseSource(
       });
     }
   }
-  const pick = pickSource(detailed, game, { ...o, maxHours: s.maxHours });
+  // A launch source must prove its 1080p once its details are in: a flat search result rarely says.
+  const pick = pickSource(
+    o.complete ? detailed.filter((d) => (d.height ?? 0) >= 1080) : detailed,
+    game,
+    { ...o, maxHours: s.maxHours },
+  );
   if (!pick) return undefined;
   return {
     videoId: pick.videoId,
@@ -749,6 +942,10 @@ export async function buildStep(
     recentRelease?: boolean;
     describeBatch?: number;
     refreshSource?: boolean;
+    /** GAME_FETCH: the most complete clean upload, replaced by a clearly longer one on a later search. */
+    complete?: boolean;
+    /** GAME_FETCH: the release day; uploads from before it are marketing, not the game. */
+    releasedOn?: string;
   } = {},
   deps: BuildDeps = {},
 ): Promise<BuildResult> {
@@ -756,7 +953,8 @@ export async function buildStep(
   if (!index || o.refreshSource) {
     const source = await chooseSource(game, s, o, deps);
     if (!source && !index) return { did: "no-source" };
-    if (source && (!index || betterSource(index.source, source))) {
+    const better = o.complete ? moreCompleteSource : betterSource;
+    if (source && (!index || better(index.source, source))) {
       if (index) {
         log("info", "scene index: a better source replaces the old one", {
           game,

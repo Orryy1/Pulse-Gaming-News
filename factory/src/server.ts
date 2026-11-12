@@ -105,6 +105,9 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
+import { gameFetchPass } from "./sceneindex/gamefetch.ts";
+import { releaseRadar, type RadarGame } from "./discovery/weekly.ts";
+import { currentStories } from "./bigstories.ts";
 import { readLaunches as sceneLaunches } from "./discovery/launches.ts";
 import { readCalendar as sceneCalendar } from "./calendar.ts";
 import { alert, postDiscord } from "./approval/discord.ts";
@@ -1706,6 +1709,40 @@ async function main(): Promise<void> {
   }
   // The per-game scene index (SCENE_INDEX): one bounded turn at a time, behind the Mac's turn-taker, for games a
   // video asked for and for the launch calendar's releases from their launch day (src/sceneindex/job.ts).
+  // GAME_FETCH and SPOILER_GUARD (src/sceneindex/gamefetch.ts): the big releases' footage plans go into the scene
+  // index queue (the tick below fetches, one game at a time), the filed games' record is kept, and the spoiler
+  // windows the writers and footage pickers read are made. At once on start (the writers need the windows), then
+  // every half hour; the release radar is asked at most twice a day.
+  if (cfg.gameFetch || cfg.spoilerGuard) {
+    let radarAt = 0;
+    let radar: RadarGame[] = [];
+    const footagePass = () =>
+      void gameFetchPass(cfg, {
+        launches: sceneLaunches(cfg.launchCalendarFile),
+        radar: async () => {
+          if (Date.now() - radarAt > 12 * 3_600_000) {
+            radar = await releaseRadar(new Date(), 21, 10);
+            radarAt = Date.now();
+          }
+          return radar;
+        },
+        stories: async () =>
+          (await currentStories(db, cfg, new Date())).map((st) => ({
+            name: st.name,
+            event: st.event,
+            size: st.size,
+            firstAt: st.firstAt,
+          })),
+        videoGames: async () =>
+          (
+            await db.query<{ game: string | null; at: string | Date }>(
+              `SELECT COALESCE(NULLIF(script_json->>'game_title', ''), story_json->>'gameHint') AS game, created_at AS at FROM episodes WHERE created_at > now() - interval '7 days'`,
+            )
+          ).flatMap((r) => (r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [])),
+      });
+    footagePass();
+    setInterval(footagePass, 30 * 60_000);
+  }
   if (cfg.sceneIndex) {
     const pass = () =>
       void sceneIndexTick(

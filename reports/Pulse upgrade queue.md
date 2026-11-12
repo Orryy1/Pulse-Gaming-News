@@ -254,3 +254,7 @@ From the report, changes 16, 22 and 26. Rankings from week 2 or 3 of the plan; t
 **Why:** the posting-time test report (12 Nov 00:01) gave Facebook a median of 0 views across 101 posts, both inside and outside the evening window, while Instagram had 143 to 150 and TikTok 715 to 760. No Facebook insight errors in the 10 to 12 Nov logs, so either the read is wrong (the public `views` field on the video and fb_reels_total_plays / blue_reels_play_count both coming back 0 or empty) or the Page's Reels really get no distribution.
 **Build:** check a few recent Facebook reels by hand against Meta Business Suite; if the numbers differ, fix the field read in src/social/metrics.ts (around line 640) and src/analyticsloop.ts (line 1195); if they match, the Page is not being distributed and Facebook posting should drop to the best one a day until it recovers.
 **Also seen:** "PS5 Passes 100 Million Shipped" was dropped at QA for too little media (36% empty panel, 0% matched shots). Hardware and sales-milestone stories keep running short of pictures; worth a stock set of console and sales visuals if it repeats.
+
+## 24. PC voice/ASR service: unload its model when idle (orchestrator, 12 Nov; after 22 Nov)
+
+A python child of pulse-service-host.exe (VoxCPM or ASR) keeps about 2.2 GB of RAM while idle, during Orryy renders. Add unload-when-idle or a keep-alive timeout (like Ollama's 0 s) so the PC gets the memory back between jobs. Measure RAM idle before and after.

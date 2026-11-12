@@ -12,6 +12,7 @@ import { dayKey, weekday } from "./lanes.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { filedLines, readFiled } from "./sceneindex/gamefetch.ts";
 import { shortStats, type ShortStat } from "./experiments.ts";
+import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 
 export type GrowthFormat =
   | "news"
@@ -256,6 +257,8 @@ export async function growthReport(
   db: Db,
   cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed">>,
   now: Date,
+  /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
+  retention?: RetentionStudy,
 ): Promise<DiscordMessage> {
   return {
     embeds: [
@@ -271,6 +274,8 @@ export async function growthReport(
           ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
           // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
           ...(cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : []),
+          // RETENTION_LEARN: where viewers left this week's curves, the top three causes (src/retentionlearn.ts).
+          ...(retention ? retentionLines(retention) : []),
         ]
           .join("\n")
           .slice(0, 3900),
@@ -278,6 +283,12 @@ export async function growthReport(
       },
     ],
   };
+}
+
+/** The growth report's retention lines (pure): the summary and the top three causes, kept short for Discord. */
+export function retentionLines(st: RetentionStudy): string[] {
+  const [head, ...rest] = retentionSection(st, 3);
+  return head ? [`📉 **${head.replace(/^Retention curves: /, "Retention curves:** ")}`, ...rest.map((l) => l.slice(0, 300))] : [];
 }
 
 const REPORT_HOUR = 10;

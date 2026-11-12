@@ -363,6 +363,31 @@ import {
   loopWeights,
   storyWeight,
 } from "./loopfeedback.ts";
+import { retentionLearnTick } from "./retentionlearn.ts";
+import {
+  REPLY_LIMITS,
+  factsText as replyFacts,
+  filedQuestions,
+  hookForRepetition,
+  pickQuestion,
+  replyCluster,
+  replyDescriptionLine,
+  replyProblems,
+  repliesToday,
+  usedComments,
+} from "./commentreply.ts";
+import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
+
+/** The stored login's settings for RETENTION_LEARN's scope check: no .env fallback, so the env token is never judged. */
+function learnOauth(cfg: Config) {
+  return {
+    clientId: cfg.googleClientId,
+    clientSecret: cfg.googleClientSecret,
+    redirectUri: cfg.oauthRedirectUri || `${cfg.publicUrl}/oauth/callback`,
+    appSecret: cfg.appSecret,
+    envRefreshToken: "",
+  };
+}
 import {
   deskShareNow,
   experimentVerdicts,
@@ -1678,6 +1703,12 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   });
   if (premade) return premade;
+  // COMMENT_REPLY_SHORTS: the day's video reply to a viewer's question, near its own slot (src/commentreply.ts).
+  const replied = await maybeSelectCommentReply(s).catch((err) => {
+    log("warn", "reply Short selection failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (replied) return replied;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts. Nor does a big story, and a long
   // video is not a Short at all (4 Nov 2026: a documentary and a ranking used up the 22:00 slot's turn, silently).
   const total =
@@ -2500,6 +2531,74 @@ export async function maybeSelectPremade(
     if (id) return id;
   }
   return undefined;
+}
+
+/**
+ * COMMENT_REPLY_SHORTS (src/commentreply.ts): once a day, from SLOT_LEAD_MINUTES + 90 before COMMENT_REPLY_SLOT, the
+ * best viewer question the community engine filed this week becomes a Short in that slot, made by the news pipeline
+ * from the original video's sources. An extra, like a spare: it never takes one of the day's planned Shorts. Nothing
+ * suitable, a slot already taken or the slot passed: nothing today.
+ */
+export async function maybeSelectCommentReply(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.commentReplyShorts || !/^\d{1,2}:\d{2}$/.test(cfg.commentReplySlot)) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const slot = localTime(today, cfg.commentReplySlot, cfg.timezone);
+  const ahead = slot.getTime() - now.getTime();
+  if (ahead <= 0 || ahead > (cfg.slotLeadMinutes + 90) * 60_000) return undefined;
+  if ((await repliesToday(db, cfg.timezone)) >= REPLY_LIMITS.perDay) return undefined;
+  if ((await takenSlots(db)).some((t) => t.getTime() === slot.getTime())) return undefined;
+  const filed = await filedQuestions(db, now);
+  const eps = new Map<string, Episode>();
+  for (const id of new Set(filed.map((c) => c.episodeId))) {
+    const ep = await getEpisode(db, id);
+    if (ep?.script_json) eps.set(id, ep);
+  }
+  const pick = pickQuestion(
+    filed,
+    (id) => (eps.get(id) ? replyFacts(eps.get(id)!) : undefined),
+    await usedComments(db),
+  );
+  if (!pick) {
+    // The pick reads only the database, so it is tried every tick of the window; said once a day.
+    if (!(await weeklyTried(db, `reply-none:${today}`)))
+      log("info", "no viewer question to answer with a Short yet today", { filed: filed.length });
+    return undefined;
+  }
+  const original = eps.get(pick.episodeId)!;
+  const cluster = replyCluster(original, pick);
+  const id = shortId();
+  if (
+    !(await createEpisode(db, id, cluster, {
+      lane: "news",
+      priority: LANE_PRIORITY.news - 10,
+      slotAt: slot,
+    }))
+  )
+    return undefined;
+  // Counted as a spare, so the day's planned Shorts are all still made.
+  await db.query(`UPDATE episodes SET factcheck_json = $2 WHERE id = $1`, [
+    id,
+    JSON.stringify({ spare: true, reply: true }),
+  ]);
+  await logEvent(db, id, "selected", {
+    headline: cluster.headline,
+    lane: "reply",
+    comment: pick.commentId,
+    video: pick.videoId,
+    handle: cluster.reply!.handle,
+    overlap: pick.overlap,
+    slot_at: slot.toISOString(),
+  });
+  log("info", "viewer question selected for a reply Short", {
+    id,
+    question: cluster.reply!.card,
+    slot: slot.toISOString(),
+  });
+  return id;
 }
 
 /**
@@ -6537,7 +6636,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
   // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
   // A planned run topic's angle sets its opener, so it stays out of the opening-line test.
-  const test = await (cluster.run
+  const test = await (cluster.run || cluster.reply
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
@@ -6550,11 +6649,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (argument)
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
   // DROP_ANGLE (src/editorial/dropangle.ts): an official drop is written as one reframing idea, never a detail list.
-  const drop = s.cfg.dropAngle && !cluster.why && isOfficialDrop(cluster);
+  const drop = s.cfg.dropAngle && !cluster.why && !cluster.reply && isOfficialDrop(cluster);
   // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
   // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
   const skeleton =
-    s.cfg.shortSkeletons && !cluster.why && !cluster.run
+    s.cfg.shortSkeletons && !cluster.why && !cluster.run && !cluster.reply
       ? pickSkeleton(cluster.hash, recent?.skeletons ?? [], {
           questionEndings: !s.cfg.shortEndPayoff,
           argument,
@@ -6648,13 +6747,16 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(sc, test, testDefaults));
+    // A video reply to a viewer's question opens "You asked" and never says the handle (src/commentreply.ts).
+    if (cluster.reply) problems.push(...replyProblems(sc, cluster.reply));
     // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why
     // Short also opens unlike the last two weeks' and gives its reason to follow (src/editorial/why.ts).
     problems.push(
       ...repetitionProblems(
         {
           title: sc.youtube.title,
-          hook: sc.hook,
+          // Every reply Short opens "You asked": the question after it is what must not repeat.
+          hook: cluster.reply ? hookForRepetition(sc.hook) : sc.hook,
           game: runRepeatGame(sc.game_title, cluster.run),
         },
         recentTexts,
@@ -6691,6 +6793,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      // A reply Short's writing is its own step, so CODEX_CALLS=reply.write can send it to Codex.
+      ...(cluster.reply ? { site: "reply.write" } : {}),
       desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
@@ -11994,6 +12098,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       heroCutFile: assets.heroCut,
       ...(seriesCover ? { seriesCover } : {}),
       renderDate: s.now().toISOString().slice(0, 10),
+      // COMMENT_REPLY_SHORTS: the viewer's comment as a card over the opening (src/render/components/CommentCard.tsx).
+      ...(ep.story_json.reply
+        ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
+        : {}),
       quoteFiles: quoteRenderFiles(assets),
       ...(gameBed
         ? {
@@ -12728,6 +12836,8 @@ export function videoMetadata(
       nextLine(ep.assets_json?.nextDoc ?? undefined),
       "",
       body,
+      // A video reply to a viewer's question: who asked, and the video they asked under (src/commentreply.ts).
+      ep.story_json.reply ? `\n${replyDescriptionLine(ep.story_json.reply)}` : "",
       leonida ? `\n${leonida}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
@@ -13828,6 +13938,21 @@ export async function tick(
     if (!s.cfg.dryRun)
       await captureCurves(s.db, s.youtube(), s.now()).catch((err) =>
         log("warn", "retention curve capture failed", {
+          error: errorMessage(err),
+        }),
+      );
+    // RETENTION_LEARN (src/retentionlearn.ts): every video's curve again at 48 hours, for the drop-cause lessons.
+    if (!s.cfg.dryRun && s.cfg.retentionLearn)
+      await retentionLearnTick({
+        db: s.db,
+        now: s.now(),
+        yt: s.youtube(),
+        storedToken: async () =>
+          (await storedRefreshToken(s.db, learnOauth(s.cfg)))
+            ? accessToken(s.db, learnOauth(s.cfg))
+            : undefined,
+      }).catch((err) =>
+        log("warn", "48-hour retention curves failed", {
           error: errorMessage(err),
         }),
       );

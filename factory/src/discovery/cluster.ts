@@ -52,6 +52,8 @@ export interface StoryCluster {
   twin?: { parent: string; language: string; account: string };
   /** A part of The GTA File (src/gtafile.ts): its number, the callback to the last part, its facts and whether it opens on the owner's footage. */
   gtaFile?: import("../gtafile.ts").GtaFileStory;
+  /** A video reply to a viewer's question (COMMENT_REPLY_SHORTS, src/commentreply.ts): the comment, its handle and video. */
+  reply?: import("../commentreply.ts").CommentReplyStory;
 }
 
 const STOPWORDS = new Set(

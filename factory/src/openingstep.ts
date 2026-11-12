@@ -408,6 +408,8 @@ export async function chooseOpening(
         file: c.file,
         problem: "the vision model could not judge it",
       });
+      // Nothing judged yet and nothing now: the relay is down, and every other clip would go the same way.
+      if (tried.every((t) => t.problem === "the vision model could not judge it")) break;
       continue;
     }
     const moments = times

@@ -161,6 +161,8 @@ export function testConfig(
     macGameplay: false,
     routineLanAllow: [],
     routineLanPort: 8081,
+    routineFilesTo: "mac",
+    routinePcDir: "C:\\PulseFactory\\routine-files",
     commentReplies: false,
     openOnMotion: false,
     sprintExtra: 3,

@@ -1686,7 +1686,8 @@ async function main(): Promise<void> {
     .listen(cfg.port, process.env.HOST || "127.0.0.1", () =>
       log("info", "listening", { port: cfg.port }),
     );
-  // The Mac's Brave routines (ROUTINE_LAN_ALLOW): a second listener, /routine/ only, listed addresses only.
+  // The other machine's Brave routines (ROUTINE_LAN_ALLOW): a second listener, /routine/ only, listed addresses only.
+  // Its pictures: copied to the Mac over ssh, or fetched by the PC's puller (ROUTINE_FILES_TO, src/routines.ts).
   if (cfg.routineLanAllow.length) {
     allowRoutineLan(cfg.routineLanPort, cfg.routineLanAllow);
     http

@@ -13,6 +13,7 @@ import { viewerPlan } from "./youtube/viewers.ts";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
@@ -41,9 +42,10 @@ const PROXY_HEADERS = [
   "x-real-ip",
 ];
 
-// The Mac mini's Brave (ROUTINE_LAN_ALLOW, 1 Nov 2026). The LAN gets its own listener on its own port, which
-// answers only /routine/ and only from the listed addresses: the main listener stays on loopback, and the
-// Cloudflare tunnel, which points at the main port, has no way to reach this one. No header can prove more than
+// The other machine's Brave (ROUTINE_LAN_ALLOW, 1 Nov 2026: the Mac's while the factory ran on the PC; from 12 Nov the
+// PC's, with the factory on the Mac and the pictures fetched by the PC's puller: ROUTINE_FILES_TO below). The LAN gets
+// its own listener on its own port, which answers only /routine/ and only from the listed addresses: the main
+// listener stays on loopback, and the Cloudflare tunnel, which points at the main port, has no way to reach this one. No header can prove more than
 // the address does here: a browser navigation cannot send a token.
 let lanPort = 0;
 let lanAllow = new Set<string>();
@@ -345,6 +347,121 @@ export function pollOptions(
   return options;
 }
 
+// ------------------------------------------------------------------ files for the PC's browser
+
+// The factory on the Mac, the browser on the PC (ROUTINE_FILES_TO=pc, 12 Nov 2026): the Mac cannot reach the PC's
+// disk (no ssh server or share there), so the PC's puller (windows/pull-routine-files.mjs, every few minutes) asks
+// /routine/pc-files which pictures the routines need and fetches each from /routine/pc-file into ROUTINE_PC_DIR.
+// The pages show those PC paths, and say which the puller has not fetched yet. LAN requests only.
+
+/** Where the puller puts a factory file: a folder named after the file's last two folders, then its name. */
+export function pcRoutinePath(
+  cfg: Pick<Config, "routinePcDir">,
+  file: string,
+): { id: string; rel: string; pc: string } {
+  const key = path
+    .dirname(file)
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .slice(-2)
+    .join("_")
+    .replace(/[^\w.-]+/g, "_")
+    .replace(/^\.+/, "_")
+    .slice(-60);
+  const name = path.basename(file).replace(/[^\w.-]+/g, "_");
+  return {
+    id: createHash("sha1").update(file).digest("hex").slice(0, 16),
+    rel: `${key}/${name}`,
+    pc: `${cfg.routinePcDir.replace(/[\\/]+$/, "")}\\${key}\\${name}`,
+  };
+}
+
+const pcLedgerFile = (cfg: Config) =>
+  path.join(cfg.dataDir, "admin", "routine_pc_files.json");
+
+/** What the puller has fetched: id -> "size:mtime" of the file as it was then. */
+function readPcLedger(cfg: Config): Record<string, string> {
+  try {
+    const v = JSON.parse(fs.readFileSync(pcLedgerFile(cfg), "utf8"));
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+}
+
+const stamp = (st: fs.Stats) => `${st.size}:${Math.round(st.mtimeMs)}`;
+
+function notePcCopy(cfg: Config, id: string, st: fs.Stats): void {
+  const ledger = readPcLedger(cfg);
+  ledger[id] = stamp(st);
+  const file = pcLedgerFile(cfg);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(ledger, null, 2), "utf8");
+  fs.renameSync(`${file}.tmp`, file);
+}
+
+/** Whether the puller has this file, as it is now, on the PC. */
+function onPc(cfg: Config, ledger: Record<string, string>, file: string) {
+  try {
+    return ledger[pcRoutinePath(cfg, file).id] === stamp(fs.statSync(file));
+  } catch {
+    return false;
+  }
+}
+
+const LATEST_COMMUNITY_POST = `SELECT id, created_at, detail FROM events WHERE kind = 'engage_post' AND detail ? 'question' AND NOT detail ? 'skipped' ORDER BY id DESC LIMIT 1`;
+
+type PendingTest = { videoId: string; publishAt?: string | null };
+
+function pendingTests(cfg: Config): PendingTest[] {
+  const file = path.join(cfg.dataDir, "abtests", "pending.json");
+  return fs.existsSync(file)
+    ? (JSON.parse(fs.readFileSync(file, "utf8")) as PendingTest[])
+    : [];
+}
+
+const thumbsOf = (t: unknown) =>
+  ((t as { thumbs?: string[] }).thumbs ?? []) as string[];
+
+/** Every file a routine may attach soon: the waiting tests' thumbnails and the newest community picture. */
+export async function routineFilesForPc(
+  db: Db,
+  cfg: Config,
+): Promise<string[]> {
+  const done = new Set(readList(doneFile(cfg, "abtest")));
+  const files = pendingTests(cfg)
+    .filter((t) => !done.has(t.videoId))
+    .flatMap(thumbsOf);
+  const [row] = await db.query<{ detail: any }>(LATEST_COMMUNITY_POST);
+  if (typeof row?.detail?.image === "string") files.push(row.detail.image);
+  return [...new Set(files)].filter(
+    (f) => path.isAbsolute(f) && fs.existsSync(f),
+  );
+}
+
+/**
+ * Where the browser that asked finds these files: undefined for this machine's own browser (paths unchanged);
+ * for a LAN browser, copied to the Mac (ROUTINE_FILES_TO=mac) or the PC paths the puller fills (=pc), with the
+ * ones not yet on the PC in `missing`.
+ */
+async function filesForBrowser(
+  req: Pick<http.IncomingMessage, "headers" | "socket">,
+  ctx: RoutineContext,
+  files: string[],
+): Promise<{ paths: Map<string, string>; missing: Set<string> } | undefined> {
+  if (!lanRoutineRequest(req)) return undefined;
+  if (ctx.cfg.routineFilesTo === "pc") {
+    const ledger = readPcLedger(ctx.cfg);
+    return {
+      paths: new Map(files.map((f) => [f, pcRoutinePath(ctx.cfg, f).pc])),
+      missing: new Set(files.filter((f) => !onPc(ctx.cfg, ledger, f))),
+    };
+  }
+  if (!ctx.macFiles) return undefined;
+  return { paths: await ctx.macFiles(files), missing: new Set() };
+}
+
 // ------------------------------------------------------------------ the pages
 
 export interface RoutineContext {
@@ -352,7 +469,7 @@ export interface RoutineContext {
   cfg: Config;
   /** This week's ranking candidates, for the poll's options. */
   pollCandidates: () => Promise<EvergreenCandidate[]>;
-  /** Copies files to the Mac for its Brave, returning each one's path there (the LAN path only). */
+  /** Copies files to the Mac for its Brave, returning each one's path there (the LAN path, ROUTINE_FILES_TO=mac). */
   macFiles?: (files: string[]) => Promise<Map<string, string>>;
   /** Long videos on the channel (tests pass a fake; the default reads the channel page). */
   channelLongs?: () => Promise<LongVideo[]>;
@@ -405,19 +522,21 @@ export async function handleRoutine(
           id: number;
           created_at: string;
           detail: any;
-        }>(
-          `SELECT id, created_at, detail FROM events WHERE kind = 'engage_post' AND detail ? 'question' AND NOT detail ? 'skipped' ORDER BY id DESC LIMIT 1`,
-        );
+        }>(LATEST_COMMUNITY_POST);
         const posted = readList(doneFile(cfg, "community"));
-        // The Mac's Brave attaches the picture from the Mac's own disk.
+        // A LAN browser attaches the picture from its own machine's disk.
         const image = row?.detail?.image as string | undefined;
-        if (row && image && lanRoutineRequest(req) && ctx.macFiles)
-          row.detail.image =
-            (await ctx.macFiles([image])).get(image) ?? image;
+        const there =
+          row && image ? await filesForBrowser(req, ctx, [image]) : undefined;
+        if (row && image && there)
+          row.detail.image = there.paths.get(image) ?? image;
         json(res, 200, {
           today,
           post: row ?? null,
           done: Boolean(row && posted.includes(String(row.detail?.day))),
+          ...(there && cfg.routineFilesTo === "pc"
+            ? { image_on_pc: !there.missing.has(image!) }
+            : {}),
         });
         return true;
       }
@@ -449,13 +568,7 @@ export async function handleRoutine(
       }
       // Long videos waiting for Test & compare; "ready" once the video is public.
       case "/routine/abtest": {
-        const file = path.join(cfg.dataDir, "abtests", "pending.json");
-        const pending = fs.existsSync(file)
-          ? (JSON.parse(fs.readFileSync(file, "utf8")) as Array<{
-              videoId: string;
-              publishAt?: string | null;
-            }>)
-          : [];
+        const pending = pendingTests(cfg);
         const done = new Set(readList(doneFile(cfg, "abtest")));
         let waiting = pending.filter((t) => !done.has(t.videoId));
         // Replaced uploads out, and the most clicks lost first (src/reach.ts).
@@ -476,25 +589,32 @@ export async function handleRoutine(
             lost,
           );
         }
-        // Only the ones a run can act on travel to the Mac.
+        // Only the ones a run can act on travel to the Mac (the PC's puller has them all already).
         const ready = (t: { publishAt?: string | null }) =>
           Boolean(t.publishAt) &&
           new Date(t.publishAt!).getTime() <= now.getTime();
-        const thumbsOf = (t: unknown) =>
-          ((t as { thumbs?: string[] }).thumbs ?? []) as string[];
-        const onMac =
-          lanRoutineRequest(req) && ctx.macFiles
-            ? await ctx.macFiles(waiting.filter(ready).flatMap(thumbsOf))
-            : undefined;
+        const there = await filesForBrowser(
+          req,
+          ctx,
+          (cfg.routineFilesTo === "pc" ? waiting : waiting.filter(ready))
+            .flatMap(thumbsOf),
+        );
         json(res, 200, {
           now: now.toISOString(),
-          tests: waiting.map((t) => ({
-            ...t,
-            ...(onMac
-              ? { thumbs: thumbsOf(t).map((f) => onMac.get(f) ?? f) }
-              : {}),
-            ready: ready(t),
-          })),
+          tests: waiting.map((t) => {
+            // A test whose pictures the PC's puller has not fetched yet waits for the next run.
+            const fetching = Boolean(
+              there && thumbsOf(t).some((f) => there.missing.has(f)),
+            );
+            return {
+              ...t,
+              ...(there
+                ? { thumbs: thumbsOf(t).map((f) => there.paths.get(f) ?? f) }
+                : {}),
+              ready: ready(t) && !fetching,
+              ...(fetching ? { waiting_for_pc_copy: true } : {}),
+            };
+          }),
         });
         return true;
       }
@@ -524,6 +644,51 @@ export async function handleRoutine(
           Math.min(30, Number(url.searchParams.get("max")) || 30),
         );
         json(res, 200, { enabled: true, ...plan });
+        return true;
+      }
+      // The PC's puller (ROUTINE_FILES_TO=pc, LAN only): which files to fetch, then each file by id.
+      case "/routine/pc-files": {
+        if (cfg.routineFilesTo !== "pc" || !lanRoutineRequest(req))
+          return false;
+        const ledger = readPcLedger(cfg);
+        const files = (await routineFilesForPc(db, cfg)).map((f) => {
+          const st = fs.statSync(f);
+          return {
+            ...pcRoutinePath(cfg, f),
+            size: st.size,
+            mtimeMs: Math.round(st.mtimeMs),
+            fetched: onPc(cfg, ledger, f),
+          };
+        });
+        json(res, 200, { dir: cfg.routinePcDir, count: files.length, files });
+        return true;
+      }
+      case "/routine/pc-file": {
+        if (cfg.routineFilesTo !== "pc" || !lanRoutineRequest(req))
+          return false;
+        const id = url.searchParams.get("id") ?? "";
+        const file = (await routineFilesForPc(db, cfg)).find(
+          (f) => pcRoutinePath(cfg, f).id === id,
+        );
+        if (!file) {
+          json(res, 404, { ok: false, error: "not a routine file" });
+          return true;
+        }
+        const st = fs.statSync(file);
+        res.writeHead(200, {
+          "content-type": "application/octet-stream",
+          "content-length": String(st.size),
+          "cache-control": "no-store",
+        });
+        await new Promise<void>((resolve, reject) => {
+          const stream = fs.createReadStream(file);
+          stream.on("error", reject);
+          res.on("finish", resolve);
+          res.on("close", resolve);
+          stream.pipe(res);
+        });
+        // Counted as on the PC once it has all gone out (the puller renames its copy only when complete).
+        if (res.writableFinished) notePcCopy(cfg, id, st);
         return true;
       }
       case "/routine/hearted": {

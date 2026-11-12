@@ -80,6 +80,13 @@ export function friendPassFrom(raw: string | undefined): FriendPassFormat[] {
   return FRIEND_PASS_FORMATS.filter((f) => named.includes(f));
 }
 
+/** ROUTINE_FILES_TO: "mac" or "pc" as set; otherwise the factory on a Mac serves the PC's browser, elsewhere the Mac's. */
+export function routineFilesTo(raw: string, platform: string): "mac" | "pc" {
+  const v = raw.trim().toLowerCase();
+  if (v === "mac" || v === "pc") return v;
+  return platform === "darwin" ? "pc" : "mac";
+}
+
 /** VOICE_TAGS on its own: the writers' prompts are built when their modules load, before any Config exists. */
 export function voiceTagsSetting(): boolean {
   return bool("VOICE_TAGS", true);
@@ -295,6 +302,14 @@ export interface Config {
   /** The Mac addresses allowed the /routine pages over the LAN, on routineLanPort; empty: loopback only, as ever. */
   routineLanAllow: string[];
   routineLanPort: number;
+  /**
+   * Where a LAN routine's files (thumbnails, community pictures) must be for the browser that asked: "mac" copies
+   * them over ssh (the factory on the PC, the Mac's Brave), "pc" lists them for the PC's puller (the factory on the
+   * Mac, the PC's Brave; windows/pull-routine-files.mjs). ROUTINE_FILES_TO; empty picks by this machine.
+   */
+  routineFilesTo: "mac" | "pc";
+  /** The PC folder the puller fills, as the PC's browser sees it (ROUTINE_PC_DIR). */
+  routinePcDir: string;
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
   elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
   elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
@@ -1125,6 +1140,8 @@ export function loadConfig(): Config {
       .map((x) => x.trim())
       .filter(Boolean),
     routineLanPort: int("ROUTINE_LAN_PORT", 8081),
+    routineFilesTo: routineFilesTo(str("ROUTINE_FILES_TO", ""), process.platform),
+    routinePcDir: str("ROUTINE_PC_DIR", "C:\\PulseFactory\\routine-files"),
     elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
     elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
     // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov

@@ -11,15 +11,18 @@ import { clusterItems } from "../src/discovery/cluster.ts";
 import { readPoll } from "../src/social/poll.ts";
 import type { Services } from "../src/pipeline.ts";
 import {
+  allowRoutineLan,
   braveFrontDue,
   clearRelatedCache,
   handleRoutine,
+  pcRoutinePath,
   planRelated,
   pollOptions,
   routineAllowed,
   validDoneKey,
 } from "../src/routines.ts";
 import { testDb, tmpDir, testConfig, item } from "./helpers.ts";
+import { routineFilesTo } from "../src/config.ts";
 
 const req = (remoteAddress: string, headers: Record<string, string> = {}) =>
   ({
@@ -446,6 +449,172 @@ test("routine pages through the server: data, done records, poll result, and a 4
     const expTunnel = await fetch(`${app}/routine/export?days=7`, { headers: { "cf-ray": "abc" } });
     assert.equal(expTunnel.status, 404);
   } finally {
+    server.close();
+  }
+});
+
+test("routine files for the PC: the factory on the Mac picks pc, the PC picks mac, a setting wins", () => {
+  assert.equal(routineFilesTo("", "darwin"), "pc");
+  assert.equal(routineFilesTo("", "win32"), "mac");
+  assert.equal(routineFilesTo(" PC ", "win32"), "pc");
+  assert.equal(routineFilesTo("mac", "darwin"), "mac");
+  assert.equal(routineFilesTo("nonsense", "darwin"), "pc");
+  const a = pcRoutinePath(
+    { routinePcDir: "C:\\PulseFactory\\routine-files\\" },
+    "/Users/MORR/PulseFactory/factory/data/abtests/thumbs/m62Cbr2WXcM/thumb_ab_b.jpg",
+  );
+  assert.match(a.id, /^[0-9a-f]{16}$/);
+  assert.match(a.rel, /^[\w.-]+\/thumb_ab_b\.jpg$/);
+  assert.equal(a.rel, "thumbs_m62Cbr2WXcM/thumb_ab_b.jpg");
+  assert.equal(
+    a.pc,
+    `C:\\PulseFactory\\routine-files\\${a.rel.replace("/", "\\")}`,
+  );
+  // Two videos' thumb_current.jpg never share a PC path.
+  const b = pcRoutinePath(
+    { routinePcDir: "C:\\x" },
+    "/Users/MORR/PulseFactory/factory/data/abtests/thumbs/OTHER000001/thumb_current.jpg",
+  );
+  const c = pcRoutinePath(
+    { routinePcDir: "C:\\x" },
+    "/Users/MORR/PulseFactory/factory/data/abtests/thumbs/m62Cbr2WXcM/thumb_current.jpg",
+  );
+  assert.notEqual(b.pc, c.pc);
+  assert.notEqual(b.id, c.id);
+});
+
+test("routine files for the PC: LAN pages name PC paths, the puller fetches them, loopback is unchanged", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const cfg = testConfig(dir, {
+    routineFilesTo: "pc",
+    routinePcDir: "C:\\PulseFactory\\routine-files",
+  });
+  const thumbs = path.join(dir, "abtests", "thumbs", "LONG0000001");
+  fs.mkdirSync(thumbs, { recursive: true });
+  const files = ["thumb_current.jpg", "thumb_ab_b.jpg"].map((n, i) => {
+    const f = path.join(thumbs, n);
+    fs.writeFileSync(f, Buffer.alloc(1000 + i, i + 1));
+    return f;
+  });
+  const picture = path.join(dir, "engage", "post.jpg");
+  fs.mkdirSync(path.dirname(picture), { recursive: true });
+  fs.writeFileSync(picture, Buffer.from("jpeg bytes"));
+  await logEvent(db, null, "engage_post", {
+    day: "2026-10-29",
+    format: "question",
+    question: "Best map?",
+    caption: "Tell us",
+    image: picture,
+  });
+  fs.writeFileSync(
+    path.join(dir, "abtests", "pending.json"),
+    JSON.stringify([
+      {
+        videoId: "LONG0000001",
+        titles: ["A", "B"],
+        thumbs: files,
+        publishAt: "2026-10-24T16:00:00Z",
+      },
+    ]),
+  );
+  const ctx = {
+    db,
+    cfg,
+    pollCandidates: async () => [],
+    channelLongs: async () => [{ id: "LONG0000001", title: "A" }],
+    macFiles: async () => {
+      throw new Error("never ssh in pc mode");
+    },
+    now: () => new Date("2026-10-29T16:40:00Z"),
+  };
+  const server = http.createServer(async (rq, rs) => {
+    if (!(await handleRoutine(rq, rs, new URL(rq.url!, "http://local"), ctx)))
+      rs.writeHead(404).end("Not found");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as AddressInfo).port;
+  // This listener plays the LAN port, and 127.0.0.1 plays the PC.
+  allowRoutineLan(port, ["127.0.0.1"]);
+  const get = (p: string, host = `pulse-mac.local:${port}`) =>
+    new Promise<{ status: number; body: Buffer }>((resolve, reject) => {
+      http
+        .get({ host: "127.0.0.1", port, path: p, headers: { host } }, (r) => {
+          const chunks: Buffer[] = [];
+          r.on("data", (c: Buffer) => chunks.push(c));
+          r.on("end", () =>
+            resolve({ status: r.statusCode ?? 0, body: Buffer.concat(chunks) }),
+          );
+        })
+        .on("error", reject);
+    });
+  const getJson = async (p: string, host?: string) =>
+    JSON.parse((await get(p, host)).body.toString("utf8"));
+  try {
+    // Before the puller has run: PC paths, and the test waits for its pictures.
+    let ab = await getJson("/routine/abtest");
+    const pcPaths = files.map((f) => pcRoutinePath(cfg, f).pc);
+    assert.deepEqual(ab.tests[0].thumbs, pcPaths);
+    assert.ok(
+      pcPaths.every((p: string) =>
+        p.startsWith("C:\\PulseFactory\\routine-files\\"),
+      ),
+    );
+    assert.equal(ab.tests[0].ready, false);
+    assert.equal(ab.tests[0].waiting_for_pc_copy, true);
+    let com = await getJson("/routine/community");
+    assert.equal(com.post.detail.image, pcRoutinePath(cfg, picture).pc);
+    assert.equal(com.image_on_pc, false);
+
+    // The puller's list, then each file.
+    const list = await getJson("/routine/pc-files");
+    assert.equal(list.dir, "C:\\PulseFactory\\routine-files");
+    assert.equal(list.count, 3);
+    assert.ok(list.files.every((f: { fetched: boolean }) => !f.fetched));
+    for (const f of list.files) {
+      const r = await get(`/routine/pc-file?id=${f.id}`);
+      assert.equal(r.status, 200);
+      assert.equal(r.body.length, f.size);
+    }
+    const one = await get(
+      `/routine/pc-file?id=${pcRoutinePath(cfg, files[1]!).id}`,
+    );
+    assert.deepEqual(one.body, fs.readFileSync(files[1]!));
+    assert.equal(
+      (await get("/routine/pc-file?id=0000000000000000")).status,
+      404,
+    );
+    assert.ok(
+      (await getJson("/routine/pc-files")).files.every(
+        (f: { fetched: boolean }) => f.fetched,
+      ),
+    );
+
+    ab = await getJson("/routine/abtest");
+    assert.equal(ab.tests[0].ready, true);
+    assert.equal(ab.tests[0].waiting_for_pc_copy, undefined);
+    com = await getJson("/routine/community");
+    assert.equal(com.image_on_pc, true);
+
+    // A changed picture is fetched again before a run may use it.
+    fs.writeFileSync(files[0]!, Buffer.alloc(2000, 9));
+    assert.equal((await getJson("/routine/abtest")).tests[0].ready, false);
+
+    // This machine's own browser: the factory's own paths, and no puller pages.
+    const local = `127.0.0.1:${port}`;
+    assert.equal((await get("/routine/pc-files", local)).status, 404);
+    ab = await getJson("/routine/abtest", local);
+    assert.deepEqual(ab.tests[0].thumbs, files);
+    assert.equal(ab.tests[0].ready, true);
+    com = await getJson("/routine/community", local);
+    assert.equal(com.post.detail.image, picture);
+    assert.equal(com.image_on_pc, undefined);
+
+    // The factory on the PC (mac mode) has no puller pages either.
+    cfg.routineFilesTo = "mac";
+    assert.equal((await get("/routine/pc-files")).status, 404);
+  } finally {
+    allowRoutineLan(0, []);
     server.close();
   }
 });

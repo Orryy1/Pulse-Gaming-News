@@ -6,7 +6,7 @@ import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
 import type { renderShortThumb } from "./render/render.ts";
-import { firstComment } from "./social/firstcomment.ts";
+import { firstComment, shortComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
@@ -12407,6 +12407,18 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     // Comment links are clickable on long videos (not on Shorts): the long video's pin carries its top pick.
     // A documentary's comment points at one chapter with its timestamp (DOC_PIN_MOMENT, src/youtube/pinned.ts).
     const script = ep.script_json!;
+    // A Short gets the channel's comment only when it ends on its own real question (src/social/firstcomment.ts).
+    if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
+      const q = shortComment(script);
+      if (!q) {
+        await logEvent(s.db, ep.id, "comment_skipped", { why: "no question of its own" });
+        return;
+      }
+      const id = await s.youtube(accountOf(ep)).insertComment(ep.youtube_video_id!, q);
+      await quotaAdd(s.db, s.now(), QUOTA.comment);
+      await logEvent(s.db, ep.id, "comment_posted", { id, text: q });
+      return;
+    }
     const text =
       (script.twin?.pinned ||
         (script.evergreen_format === "documentary" && s.cfg.docPinMoment

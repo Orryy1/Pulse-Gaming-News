@@ -833,3 +833,12 @@ test("a documentary chapter's friend pass carries at most three delivery tags", 
     /4 delivery tags; 3 at most/,
   );
 });
+
+test("a Short's channel comment is only its own question, never the stock line", async () => {
+  const { shortComment } = await import("../src/social/firstcomment.ts");
+  const { goodScript } = await import("./helpers.ts");
+  const asks = goodScript({ loop_line: "Would you pay $80 for GTA 6 on day one, or wait for a sale?" });
+  assert.equal(shortComment(asks), "Would you pay $80 for GTA 6 on day one, or wait for a sale?");
+  const flat = goodScript({ loop_line: "That's the GTA 6 price story." });
+  assert.equal(shortComment(flat), "");
+});

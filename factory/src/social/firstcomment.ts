@@ -30,6 +30,16 @@ function isStoryShort(s: Script): boolean {
   );
 }
 
+/**
+ * The channel's comment under a Short, only when the Short ends on a real question of its own, and nothing else
+ * (owner's viewer, 12 Nov 2026: "Your comment seems to be shadow banned"). The same-shaped comment under every
+ * Short ("What do you make of it? Bottom line: ... Sources are in the description.") was hidden from viewers on
+ * 33 of 33 videos, which is what a spam filter does with repeated text. Empty means: post nothing.
+ */
+export function shortComment(script: Script): string {
+  return arguableQuestion(script);
+}
+
 export function firstComment(script: Script): string {
   let text = pinnedComment(script);
   // "Our verdict: STEADY: a name, no date yet" reads as a machine's label, whichever words lead it.

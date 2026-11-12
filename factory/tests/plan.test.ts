@@ -1056,3 +1056,18 @@ test("title numbers said as words for the voice, and 10 to 99, are figures in ca
     "that's everyone's favourite",
   );
 });
+
+test("GAME_AUDIO_BED: a clip whose sound can be heard is preferred a little where the choice is free, never over a much livelier one", async () => {
+  const { HEARD_BONUS } = await import("../src/render/plan.ts");
+  const firstClip = (clips: PlanInput["clips"], footageFirst = false) =>
+    buildPlan(input({ clips, footageFirst })).shots.find((s) => s.media.type === "clip")?.media.index;
+  for (const ff of [false, true]) {
+    assert.equal(firstClip([{ durationSeconds: 4.8, motion: 0.6 }, { durationSeconds: 4.8, motion: 0.5 }], ff), 0);
+    assert.equal(firstClip([{ durationSeconds: 4.8, motion: 0.6 }, { durationSeconds: 4.8, motion: 0.5, heard: true }], ff), 1);
+    // Mild: a clip livelier by more than the bonus still goes first.
+    assert.equal(firstClip([{ durationSeconds: 4.8, motion: 0.5 + HEARD_BONUS + 0.1 }, { durationSeconds: 4.8, motion: 0.5, heard: true }], ff), 0);
+  }
+  // A moment chosen for a line keeps its line whatever can be heard.
+  const tagged = buildPlan(input({ clips: [{ durationSeconds: 4.8, motion: 0.3, beatIndex: 0 }, { durationSeconds: 4.8, motion: 0.9, heard: true }] }));
+  assert.ok(tagged.shots.some((s) => s.media.type === "clip" && s.media.index === 0));
+});

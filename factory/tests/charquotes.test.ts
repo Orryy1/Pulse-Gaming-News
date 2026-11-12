@@ -259,9 +259,10 @@ const moment = (o: Partial<QuoteMoment> = {}): QuoteMoment => ({
   quote_id: navi().id,
   beat: 1,
   before_quote:
-    "You won't be stuck rolling, though. Here's Navi to get you moving.",
+    "You won't be stuck rolling, though. And your fairy has strong views on rolling alone:",
   after_quote:
-    "That's what the sprint button's for. Epona still waits at Lon Lon Ranch, too.",
+    "Together, sure, but there's a sprint button now. Epona still waits at Lon Lon Ranch, too.",
+  answers: "together",
   why: "Navi urges you on",
   ...o,
 });
@@ -275,7 +276,7 @@ test("a clean quote moment passes and is written into its beat", () => {
   const next = applyQuoteMoment(script, moment(), navi());
   assert.match(
     next.beats[1]!.narration,
-    /Here's Navi to get you moving\. That's what the sprint button's for\./,
+    /strong views on rolling alone: Together, sure, but there's a sprint button now\./,
   );
   assert.equal(
     next.character_quotes?.[0]?.text,
@@ -304,7 +305,7 @@ test("a quote moment goes back when it repeats the line, drops a fact, adds one 
     /repeats the quote/,
   );
   assert.match(
-    p({ after_quote: "That's what the sprint button's for." }).join(" "),
+    p({ after_quote: "Together, sure, but there's a sprint button now." }).join(" "),
     /drops the name/,
   );
   assert.match(p({ before_quote: "Here's Navi" }).join(" "), /full stop/);
@@ -390,15 +391,15 @@ test("the silence goes in after the setup's last word and every later word moves
     .split(/\s+/)
     .map((t, i) => ({ text: t, start: i * 0.4, end: i * 0.4 + 0.3 }));
   const k = quoteBoundary(words, script, script.character_quotes![0]!);
-  assert.equal(words[k]!.text, "moving.");
-  assert.equal(words[k + 1]!.text, "That's");
+  assert.equal(words[k]!.text, "alone:");
+  assert.equal(words[k + 1]!.text, "Together,");
   const plan = planQuoteGaps(words, script, [{ id: navi().id, seconds: 2.5 }]);
   assert.equal(plan.missing.length, 0);
   assert.equal(plan.gaps.length, 1);
   assert.ok(
     plan.gaps[0]!.at > words[k]!.end && plan.gaps[0]!.at < words[k + 1]!.start,
   );
-  assert.equal(plan.slots[0]!.end - plan.slots[0]!.start, 2.5);
+  assert.ok(Math.abs(plan.slots[0]!.end - plan.slots[0]!.start - 2.5) < 1e-9);
   // A voice that said something else: the quote's place is missing and it is reported, not guessed.
   const other = words.map((w) => ({ ...w, text: "word" }));
   assert.deepEqual(
@@ -599,8 +600,9 @@ test("a long video takes a few quotes, one a chapter, never in its first minute"
             use: true,
             quote_id: quoteCandidates(ocarina(), "Epona ranch").find((c) => c.speaker === "Malon")!.id,
             beat: 2,
-            before_quote: "In the remake, Malon keeps Epona at Lon Lon Ranch for you. And she knows exactly why you came.",
-            after_quote: "Subtle, Malon.",
+            before_quote: "In the remake, Malon keeps Epona at Lon Lon Ranch for you. And she always spots you at the ranch:",
+            after_quote: "Knew it, sure, because she never leaves the ranch.",
+            answers: "knew",
             why: "fits",
           };
     },
@@ -658,8 +660,9 @@ test("CHARACTER_QUOTES_SHORT=2: a second quote only from lines that fit the stor
             use: true,
             quote_id: malon.id,
             beat: 3,
-            before_quote: "And Malon still keeps Epona at Lon Lon Ranch for you. She saw you coming:",
-            after_quote: "And she never misses a thing.",
+            before_quote: "And Malon still keeps Epona at Lon Lon Ranch for you. She clearly expected you back at the ranch:",
+            after_quote: "Knew it, sure, because she never leaves the ranch.",
+            answers: "knew",
             why: "fits",
           };
     },
@@ -680,5 +683,89 @@ test("CHARACTER_QUOTES_SHORT=2: a second quote only from lines that fit the stor
   const one = await quoteScriptStep({ ...s, cfg: testConfig(dir, { characterQuotes: true }) }, { id: "ep1" }, script, { footageCap: { key: "sandbox", seconds: 20 }, wordsMax: 200 });
   assert.equal(one.character_quotes?.length, 1);
   assert.equal(asked.length, 1);
+  await db.close();
+});
+
+test("a quote is an exchange: no bare introduction, and the reaction answers the line's own words", async () => {
+  const { exchangeProblems, BARE_SETUPS } = await import("../src/editorial/charquote.ts");
+  const nabooru = { text: "Run away! Get outta here! Go!", speaker: "Nabooru" };
+  const zelda = { text: "Quickly, Link! Find us a way out-fast!", speaker: "Zelda" };
+  const beat = "Producer Eiji Aonuma requested warps, then had the team remove them.";
+  const names = ["Link", "Zelda", "Nabooru", "Epona", "Hyrule"];
+  // The 12 Nov proof's lines: introductions and reactions that would fit any quote.
+  const weak1 = exchangeProblems("Here's Nabooru.", "Warps won't help.", nabooru, { beat, names });
+  assert.match(weak1.join(" "), /only introduces Nabooru/);
+  assert.match(weak1.join(" "), /does not answer the line/);
+  const weak2 = exchangeProblems("Zelda has a request.", "You can stop rolling, there's a sprint button.", zelda, { beat: "You can stop rolling.", names });
+  assert.match(weak2.join(" "), /only introduces Zelda/);
+  assert.match(weak2.join(" "), /does not answer the line/);
+  for (const bare of ["Here's how Navi puts it.", "And here is Navi.", "Listen to Navi.", "Meet Saria.", "Navi has something to say.", "Navi's got a quick message:", "Take it away, Navi."])
+    assert.ok(BARE_SETUPS.some((r) => r.test(bare)), bare);
+  // A setup that leads into the line and a reaction that talks back at it pass.
+  assert.deepEqual(
+    exchangeProblems("And the remake really doesn't want you to warp out:", "Run away? Fine, but on foot, apparently.", nabooru, { beat, names }),
+    [],
+  );
+  assert.deepEqual(
+    exchangeProblems("Even Zelda wants a faster way out of here:", "Quickly is doing a lot of work in a game with no warps.", zelda, { beat, names, answers: "Quickly" }),
+    [],
+  );
+  // The player's own name in the line is no exchange on its own; answers must come from the line.
+  assert.match(exchangeProblems("Even Zelda wants a faster way out of here:", "Link would agree, I think.", zelda, { beat, names }).join(" "), /does not answer/);
+  assert.match(exchangeProblems("Even Zelda wants a faster way out of here:", "Quickly, sure.", zelda, { beat, names, answers: "hurry up" }).join(" "), /copied from the line/);
+  // A setup tied to nothing is sent back too; a question in the line may be answered with a plain no.
+  assert.match(exchangeProblems("Something is coming.", "Run, sure.", nabooru, { beat, names }).join(" "), /tied to neither/);
+  assert.deepEqual(
+    exchangeProblems("So, would you give up the warps for this?", "No, and I'd keep the sprint button.", { text: "Will you help us, Link?", speaker: "Zelda" }, { beat, names }),
+    [],
+  );
+  // The writer is told all of it, and that declining is a good answer.
+  const { QUOTE_MOMENT_RULES } = await import("../src/editorial/charquote.ts");
+  assert.match(QUOTE_MOMENT_RULES, /exchange/);
+  assert.match(QUOTE_MOMENT_RULES, /Here's Navi\./);
+  assert.match(QUOTE_MOMENT_RULES, /set use to false/);
+});
+
+test("inside a spoiler window a line past the opening share is never offered or placed, and none is placed before the windows load", async () => {
+  const dir = await tmpDir();
+  await saveSceneIndex(dir, ocarina());
+  const db = await testDb();
+  const now = new Date("2026-11-12T12:00:00Z");
+  // Malon's line at 9000 s of a 10,000 s story is at 90%; the window's opening is the first 10%.
+  const late = quoteCandidates(ocarina(), "Malon Epona ranch carry end", { general: 0 }).find((c) => c.start > 1000)!;
+  assert.ok(late, "the late line is quotable when no window is open");
+  const window = spoilerWindow(GAME, "2026-11-05", { days: 28, openingShare: 0.1 })!;
+  const briefs: string[] = [];
+  const forcing = {
+    structured: async (o: any) => {
+      briefs.push(String(o.content));
+      return {
+        use: true,
+        quote_id: late.id,
+        beat: 1,
+        before_quote: "You won't be stuck rolling, though. And Malon has plans for your horse at the ranch:",
+        after_quote: "Carry me, sure, but there's a sprint button. Epona still waits at Lon Lon Ranch.",
+        answers: "carry",
+        why: "forced",
+      };
+    },
+  } as any;
+  const s = { cfg: testConfig(dir, { characterQuotes: true, spoilerGuard: true }), db, llm: forcing, now: () => now };
+  const o = { footageCap: { key: "sandbox", seconds: 20 }, wordsMax: 200, story: "Malon keeps Epona at the ranch to carry you to the end" };
+  const script = quoteScript();
+  const guarded = await quoteScriptStep(s, { id: "ep1" }, script, { ...o, windows: [window] });
+  assert.equal(guarded.character_quotes, undefined, "the late line is never placed");
+  assert.ok(briefs.length > 0 && briefs.every((b) => !b.includes(`- ${late.id}:`)), "nor offered to the writer");
+  assert.ok(briefs.every((b) => [...b.matchAll(/^- q(\d+):/gm)].every((m) => Number(m[1]) / 10 <= 1000)));
+  // Fail closed: with the guard on and no windows loaded yet, no quote and no model call.
+  briefs.length = 0;
+  const unloaded = await quoteScriptStep(s, { id: "ep1" }, script, { ...o, windows: [] });
+  assert.equal(unloaded, script);
+  assert.equal(briefs.length, 0);
+  // A game outside every window (the windows are loaded, none is this game's): the whole story may be quoted.
+  const other = spoilerWindow("Grand Theft Auto VI", "2026-11-18", { days: 28, openingShare: 0.1 })!;
+  const free = await quoteScriptStep(s, { id: "ep1" }, script, { ...o, windows: [other] });
+  assert.equal(free.character_quotes?.[0]?.id, late.id);
+  await fs.rm(path.join(dir, "sceneindex"), { recursive: true, force: true });
   await db.close();
 });

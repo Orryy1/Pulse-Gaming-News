@@ -683,6 +683,7 @@ import {
 import {
   buildShortBed,
   clipSoundKind,
+  heardInBed,
   longSoundClips,
 } from "./assets/gameaudio.ts";
 
@@ -11530,6 +11531,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: c.beatIndex,
       role: c.role,
       cutsceneMatch: c.cutsceneMatch,
+      // GAME_AUDIO_BED: a mild preference for footage whose own sound the bed can carry (trailers stay silent).
+      ...(gameAudioOn(s.cfg, ep.id) && heardInBed(c, s.cfg.gameAudioTrailers) ? { heard: true } : {}),
     })),
     storyType: script.is_rumour ? "rumour" : script.story_type,
     isRumour: script.is_rumour,

@@ -298,3 +298,14 @@ test("the weekly report's game audio line compares like with like, and says when
   );
   assert.match(line, /without 3 Shorts, 53\.7% viewed, 467 views a day/);
 });
+
+test("the plan's heard clips: cutscenes, the owner's capture and vetted gameplay, never a trailer unless asked", async () => {
+  const { heardInBed } = await import("../src/assets/gameaudio.ts");
+  assert.equal(heardInBed({ provenance: 'Cutscenes for "GTA San Andreas" from YouTube video "x"' }), true);
+  assert.equal(heardInBed({ provenance: "Pulse's own gameplay capture of GTA V", audio: true }), true);
+  assert.equal(heardInBed({ provenance: "Pulse's own gameplay capture of GTA V" }), false);
+  assert.equal(heardInBed({ provenance: "Gameplay from the library", audio: true }), true);
+  assert.equal(heardInBed({ provenance: 'Official trailer "Launch Trailer" from the Nintendo channel' }), false);
+  assert.equal(heardInBed({ provenance: 'Official trailer "Launch Trailer" from the Nintendo channel' }, true), true);
+  assert.equal(heardInBed({ provenance: 'Cutscenes for "X"', stock: true }), false);
+});

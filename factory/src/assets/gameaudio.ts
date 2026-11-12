@@ -58,6 +58,18 @@ export function clipSoundKind(
   return c.audio ? "gameplay" : "none";
 }
 
+/**
+ * Whether the bed can carry a clip's sound (pure): cutscenes, the owner's capture and talk-free gameplay; trailers
+ * only with GAME_AUDIO_TRAILERS. The render plan prefers these a little where its choice is free.
+ */
+export function heardInBed(
+  c: Pick<SoundClip, "provenance" | "audio" | "stock">,
+  trailers = false,
+): boolean {
+  const kind = clipSoundKind(c);
+  return kind === "trailer" ? trailers : kind !== "none";
+}
+
 /** A cutscene clip's upload and where in it the clip starts (pure), from its span or its provenance. */
 export function cutsceneSource(
   c: SoundClip,

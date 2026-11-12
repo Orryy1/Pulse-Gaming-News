@@ -57,7 +57,16 @@ export interface PlanClip {
   cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
 
   role?: "hook"; // chosen for the opening line
+  /** GAME_AUDIO_BED on: the clip's own sound can be heard (a cutscene, the owner's capture, talk-free gameplay). */
+  heard?: boolean;
 }
+
+/**
+ * How much a clip whose sound can be heard is preferred where the choice is free (GAME_AUDIO_BED): worth a quarter
+ * of the motion score, so a clearly livelier silent clip still wins and a moment chosen for a line always does.
+ */
+export const HEARD_BONUS = 0.25;
+const heardScore = (c: PlanClip) => (c.motion ?? 0.5) + (c.heard ? HEARD_BONUS : 0);
 
 export interface PlanSteam {
   currentPlayers?: number;
@@ -502,10 +511,11 @@ export function planShots(
   // Frames of each clip already shown: under footage first a clip is spent by the frame, not by the shot.
   const clipPos = clips.map(() => 0);
   const clipLeft = (i: number) => clipFrames[i]! - clipPos[i]!;
+  // Located moments first, then the liveliest; with the game sound on, a clip that can be heard counts a little more.
   const clipOrder = clips
     .map((c, i) => i)
     .sort((a, b) => Number(Boolean(clips[b]!.cutsceneMatch?.targetKey)) - Number(Boolean(clips[a]!.cutsceneMatch?.targetKey)) ||
-      (clips[b]!.motion ?? 0.5) - (clips[a]!.motion ?? 0.5));
+      heardScore(clips[b]!) - heardScore(clips[a]!));
   const matchesTarget = (i: number, target: number | undefined | "hook" | "take" | "loop") => {
     const key = clips[i]!.cutsceneMatch?.targetKey;
     if (!key) return target === "hook" ? clips[i]!.role === "hook" :
@@ -1040,7 +1050,10 @@ function spendLeftoverClips(
                   len - clipLeft(i) >= MIN_SHOT),
             )
             .sort(
-              (a, b) => clipPos[a]! - clipPos[b]! || clipLeft(b) - clipLeft(a),
+              (a, b) =>
+                clipPos[a]! - clipPos[b]! ||
+                Number(!!clips[b]!.heard) - Number(!!clips[a]!.heard) ||
+                clipLeft(b) - clipLeft(a),
             )[0]
         : undefined;
     if (pick === undefined) {

@@ -13,6 +13,7 @@ import {
   wordsFromAlignment,
   requestBody,
   stabilityFor,
+  detectsLanguage,
 } from "../src/voice/elevenlabs.ts";
 import { chunkTakes } from "../src/voice/elevenlabsLong.ts";
 import { sparingSoundTags } from "../src/voice/breaths.ts";
@@ -350,4 +351,17 @@ test("human touches are allowances: two self-corrections in a Short are sent bac
     PULSE_VOICE.includes(SIGN_OFF),
     "the sign-off is the existing line, unchanged",
   );
+});
+
+test("Eleven v4: stability is sent as set, no style or speaker boost, and the language is the model's to find", () => {
+  const body = requestBody("Hi.", { modelId: "eleven_v4", settings: { stability: 0.35 } });
+  const vs = body.voice_settings as Record<string, unknown>;
+  assert.equal(vs.stability, 0.35, "v4 takes any stability");
+  assert.equal("style" in vs, false);
+  assert.equal("use_speaker_boost" in vs, false);
+  assert.equal(body.language_code, undefined);
+  assert.equal(detectsLanguage("eleven_v4"), true);
+  assert.equal(detectsLanguage("eleven_turbo_v2_5"), false);
+  const v3 = requestBody("Hi.", { modelId: "eleven_v3" }).voice_settings as Record<string, unknown>;
+  assert.equal(v3.style, 0, "v3 keeps its style setting");
 });

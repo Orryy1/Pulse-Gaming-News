@@ -66,6 +66,19 @@ export interface VoiceSettings {
 // audibly, which the breath softener handles. Style 0 with it; the pace stays at 1.05. VOICE_STABILITY sets it.
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = { stability: 0.5, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true, speed: 1.05 };
 
+/**
+ * Models that find the language themselves (multilingual v2, v3 and v4): no language_code is sent, so the
+ * twin channel's Spanish is never read as English. Eleven v4 (28 Sep 2026) speaks 90+ languages.
+ */
+export function detectsLanguage(modelId: string): boolean {
+  return modelId.includes("multilingual") || modelId.startsWith("eleven_v3") || modelId.startsWith("eleven_v4");
+}
+
+/** Eleven v4 has no style or speaker boost (the models API: can_use_style and can_use_speaker_boost false, 12 Nov 2026). */
+export function takesStyle(modelId: string): boolean {
+  return !modelId.startsWith("eleven_v4");
+}
+
 /** eleven_v3 takes only three stabilities (Creative 0, Natural 0.5, Robust 1): any other is sent as the nearest. */
 export function stabilityFor(modelId: string, stability: number): number {
   return modelId.startsWith("eleven_v3") ? Math.round(Math.min(1, Math.max(0, stability)) * 2) / 2 : stability;
@@ -104,11 +117,15 @@ export function requestBody(text: string, opts: Pick<SynthOptions, "modelId" | "
     text,
     model_id: opts.modelId,
     // Multilingual models (v2 multilingual, v3) detect the language themselves: the twin channel speaks Spanish.
-    language_code: opts.modelId.includes("multilingual") || opts.modelId.startsWith("eleven_v3") ? undefined : "en",
+    language_code: detectsLanguage(opts.modelId) ? undefined : "en",
     voice_settings: { ...DEFAULT_VOICE_SETTINGS, ...(opts.settings ?? {}) },
   };
-  const vs = body.voice_settings as VoiceSettings;
-  vs.stability = stabilityFor(opts.modelId, vs.stability);
+  const vs = body.voice_settings as Partial<VoiceSettings>;
+  vs.stability = stabilityFor(opts.modelId, vs.stability ?? DEFAULT_VOICE_SETTINGS.stability);
+  if (!takesStyle(opts.modelId)) {
+    delete vs.style;
+    delete vs.use_speaker_boost;
+  }
   const c = opts.context;
   if (c) {
     const put = (field: string, value: unknown) => {

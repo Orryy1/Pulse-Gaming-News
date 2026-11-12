@@ -39,6 +39,14 @@ import {
   filedStatus,
   gameFetchPass,
   mergeFiled,
+  canonicalGame,
+  isAddOn,
+  isHardware,
+  isSeriesName,
+  pruneFiled,
+  resolveSeries,
+  unplanDropped,
+  type FiledGame,
   parseFetchTitles,
   parseSignals,
   readFiled,
@@ -709,7 +717,10 @@ test("the fetcher picks games from every signal and plans them from release", ()
       { game: GTA, match: "GTA", launch: "2026-11-19" },
       { game: "Old Game", match: "x", launch: "2025-01-01" },
     ],
-    radar: [{ name: "Indie Thing", appId: 1, date: "2026-11-20" }],
+    radar: [
+      { name: "Indie Thing", appId: 1, date: "2026-11-20" },
+      { name: "Big Sequel", appId: 2, date: "2026-11-13" },
+    ],
     stories: [
       {
         name: "Big Sequel",
@@ -744,7 +755,7 @@ test("the fetcher picks games from every signal and plans them from release", ()
     [
       [GTA, "owner"],
       [GTA, "calendar"],
-      ["Indie Thing", "radar"],
+      ["Big Sequel", "radar"],
       ["Big Sequel", "bigstory"],
       ["Halo 3", "videos"],
     ],
@@ -1022,5 +1033,547 @@ test("windows: only open ones count", () => {
     spoilerHits("GTA 6: the ending", [w], new Date("2026-11-10T00:00:00Z"))
       .length,
     0,
+  );
+});
+// ---------------------------------------------------------------- the picker (12 Nov 2026 live pass fixtures)
+
+/** The live filed.json of 12 Nov 2026, as the first pass left it. */
+function liveBook(): { games: FiledGame[] } {
+  const at = "2026-11-12T04:43:55.782Z";
+  const rec = (
+    game: string,
+    signals: FiledGame["signals"],
+    why: string[],
+    extra: Partial<FiledGame> = {},
+  ): FiledGame => ({
+    game,
+    slug: game
+      .toLowerCase()
+      .replace(/['’]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, ""),
+    signals,
+    why,
+    firstSeen: at,
+    status: "searching",
+    updatedAt: at,
+    ...extra,
+  });
+  const radar = (game: string, date: string) =>
+    rec(game, ["radar"], [`release radar ${date}`], { release: date });
+  return {
+    games: [
+      rec(
+        GTA,
+        ["owner", "calendar", "videos"],
+        [
+          "GAME_FETCH_TITLES",
+          "launch calendar 2026-11-19",
+          "14 Pulse videos in 7 days",
+        ],
+        {
+          status: "before-release",
+          release: "2026-11-18T11:00Z",
+          until: "2026-12-17",
+        },
+      ),
+      rec(
+        "The Legend of Zelda: Ocarina of Time",
+        ["calendar", "videos"],
+        ["launch calendar 2026-11-05", "4 Pulse videos in 7 days"],
+        {
+          status: "indexing",
+          release: "2026-11-05",
+          indexed: 0.65,
+          described: 0,
+          source: {
+            videoId: "L45cq1H2d1s",
+            title:
+              "ZELDA: OCARINA OF TIME REMAKE All Cutscenes (Full Game Movie) 4K 60FPS Ultra HD",
+            uploader: "Gamer's Little Playground",
+            minutes: 325,
+            height: 2160,
+            kind: "movie",
+          },
+        },
+      ),
+      radar("Euro Truck Simulator 2 - Coaches", "2026-11-12"),
+      radar("One More Lawn", "2026-11-12"),
+      radar("Main Sequence", "2026-11-12"),
+      radar("SONIC PICO PARK", "2026-11-12"),
+      radar("Drawquarium", "2026-11-13"),
+      radar("Warota: I Live Next to The Demon King's Castle LOL", "2026-11-13"),
+      radar("Dice Hoarder", "2026-11-13"),
+      radar("DERELIKT", "2026-11-13"),
+      radar("Dungeonbound", "2026-11-15"),
+      radar("Trafficity", "2026-11-16"),
+      rec("GTA", ["bigstory"], ["big story (release, size 89)"], {
+        release: "2026-11-10",
+      }),
+      rec("Nintendo Switch 2", ["videos"], ["2 Pulse videos in 7 days"]),
+      rec("Grand Theft Auto 6", ["videos"], ["4 Pulse videos in 7 days"]),
+      rec("Fallout", ["videos"], ["2 Pulse videos in 7 days"]),
+      rec(
+        "Grand Theft Auto: San Andreas",
+        ["videos"],
+        ["2 Pulse videos in 7 days"],
+      ),
+      rec("Grand Theft Auto V", ["videos"], ["3 Pulse videos in 7 days"]),
+      rec("Warhammer Survivors", ["videos"], ["2 Pulse videos in 7 days"]),
+    ],
+  };
+}
+
+const LIVE_LAUNCHES = [
+  {
+    game: "The Legend of Zelda: Ocarina of Time",
+    match: "ocarina of time",
+    launch: "2026-11-05",
+  },
+  {
+    game: GTA,
+    match: "gta (6|vi)\\b|grand theft auto (6|vi)\\b",
+    launch: "2026-11-19",
+  },
+  {
+    game: "Monster Hunter Wilds on Switch 2",
+    match: "monster hunter wilds",
+    launch: "2026-12-04",
+  },
+  { game: "Path of Exile 2", match: "path of exile 2", launch: "2026-12-11" },
+];
+const LIVE_NOW = new Date("2026-11-12T12:00:00Z");
+const LIVE_RADAR = [
+  {
+    name: "Euro Truck Simulator 2 - Coaches",
+    appId: 1,
+    date: "2026-11-12",
+    developer: "SCS Software",
+    type: "dlc",
+  },
+  {
+    name: "One More Lawn",
+    appId: 2,
+    date: "2026-11-12",
+    developer: "Some Small Studio",
+  },
+  {
+    name: "SONIC PICO PARK",
+    appId: 3,
+    date: "2026-11-12",
+    developer: "TECOPARK",
+  },
+  { name: "Main Sequence", appId: 4, date: "2026-11-12" },
+  {
+    name: "Trafficity",
+    appId: 5,
+    date: "2026-11-16",
+    developer: "Trafficity Team",
+  },
+];
+
+test("canonical names: numerals, short forms and punctuation make one game", () => {
+  const six = canonicalGame(GTA);
+  for (const n of [
+    "GTA",
+    "GTA 6",
+    "GTA VI",
+    "gta6",
+    "GTAVI",
+    "Grand Theft Auto 6",
+    "GRAND THEFT AUTO VI",
+  ].slice(1))
+    assert.equal(canonicalGame(n), six, n);
+  assert.equal(canonicalGame("GTA"), canonicalGame("Grand Theft Auto"));
+  assert.equal(
+    canonicalGame("Grand Theft Auto: San Andreas"),
+    canonicalGame("GTA San Andreas"),
+  );
+  assert.notEqual(canonicalGame("Grand Theft Auto V"), six, "V is not VI");
+  assert.equal(canonicalGame("Grand Theft Auto V"), canonicalGame("GTA 5"));
+  assert.equal(
+    canonicalGame("Final Fantasy VII Rebirth"),
+    canonicalGame("FF7 Rebirth"),
+  );
+  assert.equal(
+    canonicalGame("Call of Duty: Black Ops III"),
+    canonicalGame("COD Black Ops 3"),
+  );
+  assert.equal(
+    canonicalGame("The Legend of Zelda: Ocarina of Time"),
+    canonicalGame("Legend of Zelda Ocarina of Time"),
+  );
+  assert.equal(
+    canonicalGame("Path of Exile II"),
+    canonicalGame("Path of Exile 2"),
+  );
+  // Words that only look like numerals stay words.
+  assert.equal(
+    canonicalGame("Warota: I Live Next to The Demon King's Castle LOL"),
+    "warota i live next to the demon kings castle lol",
+  );
+  assert.equal(canonicalGame("Mega Man X"), "mega man x");
+  assert.equal(canonicalGame("DERELIKT"), "derelikt");
+});
+
+test("hardware, add-ons and series names are not games", () => {
+  for (const n of [
+    "Nintendo Switch 2",
+    "PS5 Pro",
+    "PlayStation 5",
+    "Xbox Series X",
+    "Steam Deck OLED",
+    "Steam hardware",
+    "Switch 2",
+    "PlayStation Portal",
+    "Xbox Game Pass",
+  ])
+    assert.ok(isHardware(n), n);
+  for (const n of [
+    "Monster Hunter Wilds on Switch 2",
+    "Portal 2",
+    "Nintendo Switch Sports",
+    GTA,
+    "Mario Kart World",
+  ])
+    assert.ok(!isHardware(n), n);
+  assert.ok(isAddOn("Euro Truck Simulator 2 - Coaches", "dlc"));
+  assert.ok(isAddOn("Cyberpunk 2077 Soundtrack"));
+  assert.ok(isAddOn("Some Game Season Pass"));
+  assert.ok(!isAddOn("One More Lawn", "game"));
+  for (const n of ["GTA", "Fallout", "Zelda", "Grand Theft Auto"])
+    assert.ok(isSeriesName(n), n);
+  for (const n of [
+    GTA,
+    "Fallout 4",
+    "Grand Theft Auto V",
+    "The Legend of Zelda: Ocarina of Time",
+    "Minecraft",
+  ])
+    assert.ok(!isSeriesName(n), n);
+});
+
+test("a series name resolves to the one game the story or the calendar makes clear, else nothing", () => {
+  const known = [
+    { game: GTA, release: "2026-11-18T11:00Z", match: "gta (6|vi)\\b" },
+    { game: "Grand Theft Auto V" },
+    { game: "Grand Theft Auto: San Andreas" },
+  ];
+  const story = new Date("2026-11-10T08:00:00Z");
+  assert.equal(
+    resolveSeries("GTA", known, story),
+    GTA,
+    "the one released near the story",
+  );
+  assert.equal(
+    resolveSeries("GTA", known, story, "GTA 6 preloads go live"),
+    GTA,
+  );
+  assert.equal(
+    resolveSeries("GTA", known, story, "GTA San Andreas gets a surprise patch"),
+    "Grand Theft Auto: San Andreas",
+    "the headline names the game",
+  );
+  assert.equal(
+    resolveSeries("GTA", known, new Date("2027-06-01T00:00:00Z")),
+    undefined,
+    "nothing near, nothing named",
+  );
+  assert.equal(
+    resolveSeries("Fallout", known, story),
+    undefined,
+    "no Fallout game known",
+  );
+  assert.equal(
+    resolveSeries(
+      "Fallout",
+      [
+        { game: "Fallout 3 Remastered", release: "2026-11-20" },
+        { game: "Fallout 5", release: "2026-11-25" },
+      ],
+      story,
+    ),
+    undefined,
+    "two near: ambiguous",
+  );
+});
+
+test("the release radar alone never picks a game; DLC never counts", () => {
+  const c = fetchCandidates({
+    titles: parseFetchTitles(
+      "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17",
+    ),
+    launches: LIVE_LAUNCHES,
+    radar: [
+      ...LIVE_RADAR,
+      {
+        name: "Big Studio Game",
+        appId: 9,
+        date: "2026-11-20",
+        developer: "FromSoftware Inc.",
+      },
+      {
+        name: "Big Studio Game: Soundtrack",
+        appId: 10,
+        date: "2026-11-20",
+        developer: "FromSoftware Inc.",
+      },
+      {
+        name: "Covered Indie",
+        appId: 11,
+        date: "2026-11-14",
+        developer: "Two People",
+      },
+    ],
+    stories: [],
+    videoGames: [
+      { game: "Covered Indie", at: "2026-11-11T00:00:00Z" },
+      { game: "Covered Indie", at: "2026-11-12T00:00:00Z" },
+    ],
+    bigSize: 70,
+    now: LIVE_NOW,
+    signals: parseSignals(""),
+  });
+  const radar = c.filter((x) => x.signal === "radar").map((x) => x.game);
+  assert.deepEqual(
+    radar,
+    ["Big Studio Game", "Covered Indie"],
+    "a major studio, or another signal, and never the DLC",
+  );
+  for (const small of [
+    "Euro Truck Simulator 2 - Coaches",
+    "One More Lawn",
+    "SONIC PICO PARK",
+    "Main Sequence",
+    "Trafficity",
+  ])
+    assert.ok(!c.some((x) => x.game === small), small);
+  assert.match(c.find((x) => x.signal === "radar")!.why, /FromSoftware/);
+});
+
+test("big stories and videos: aliases land on one game, hardware and bare series are skipped", () => {
+  const c = fetchCandidates({
+    titles: parseFetchTitles(
+      "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17",
+    ),
+    launches: LIVE_LAUNCHES,
+    radar: [],
+    stories: [
+      {
+        name: "GTA",
+        event: "release",
+        size: 89,
+        firstAt: "2026-11-10T09:00:00Z",
+        headline: "GTA 6 preload date confirmed",
+      },
+      {
+        name: "Nintendo Switch 2",
+        event: "release",
+        size: 95,
+        firstAt: "2026-11-10T09:00:00Z",
+      },
+      {
+        name: "Fallout",
+        event: "release",
+        size: 80,
+        firstAt: "2026-11-10T09:00:00Z",
+      },
+    ],
+    videoGames: [
+      ...["Grand Theft Auto 6", "GTA 6", "Grand Theft Auto 6", "GTA VI"].map(
+        (game) => ({ game, at: "2026-11-11T00:00:00Z" }),
+      ),
+      ...["Nintendo Switch 2", "Nintendo Switch 2", "Fallout", "Fallout"].map(
+        (game) => ({ game, at: "2026-11-11T00:00:00Z" }),
+      ),
+      ...[
+        "Grand Theft Auto V",
+        "GTA 5",
+        "Grand Theft Auto: San Andreas",
+        "GTA San Andreas",
+      ].map((game) => ({ game, at: "2026-11-11T00:00:00Z" })),
+    ],
+    bigSize: 70,
+    now: LIVE_NOW,
+    signals: parseSignals(""),
+  });
+  assert.deepEqual(
+    c.map((x) => [x.game, x.signal]),
+    [
+      [GTA, "owner"],
+      ["The Legend of Zelda: Ocarina of Time", "calendar"],
+      [GTA, "calendar"],
+      [GTA, "bigstory"],
+      [GTA, "videos"],
+      ["Grand Theft Auto V", "videos"],
+      ["Grand Theft Auto: San Andreas", "videos"],
+    ],
+  );
+  assert.equal(
+    c.find((x) => x.signal === "videos" && x.game === GTA)!.why,
+    "4 Pulse videos in 7 days",
+  );
+  assert.equal(
+    c.find((x) => x.signal === "bigstory")!.release,
+    "2026-11-19",
+    "the calendar dates the resolved game",
+  );
+  const book = mergeFiled({ games: [] }, c, LIVE_NOW, SETTINGS);
+  assert.deepEqual(
+    book.games.map((g) => g.game),
+    [
+      GTA,
+      "The Legend of Zelda: Ocarina of Time",
+      "Grand Theft Auto V",
+      "Grand Theft Auto: San Andreas",
+    ],
+  );
+  assert.deepEqual(book.games[0]!.signals, [
+    "owner",
+    "calendar",
+    "bigstory",
+    "videos",
+  ]);
+});
+
+test("on load the live book's records that no longer qualify are dropped with a reason, footage untouched", () => {
+  const before = liveBook();
+  const book = pruneFiled(before, {
+    now: LIVE_NOW,
+    titles: parseFetchTitles(
+      "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17",
+    ),
+    launches: LIVE_LAUNCHES,
+  });
+  const live = book.games
+    .filter((g) => g.status !== "dropped")
+    .map((g) => g.game);
+  assert.deepEqual(live, [
+    GTA,
+    "The Legend of Zelda: Ocarina of Time",
+    "Grand Theft Auto: San Andreas",
+    "Grand Theft Auto V",
+    "Warhammer Survivors",
+  ]);
+  const why = (game: string) =>
+    book.games.find((g) => g.game === game)!.dropped;
+  assert.equal(
+    why("Euro Truck Simulator 2 - Coaches"),
+    "picked by the release radar alone, not a big release",
+  );
+  assert.equal(
+    why("SONIC PICO PARK"),
+    "picked by the release radar alone, not a big release",
+  );
+  assert.equal(why("Nintendo Switch 2"), "hardware or a platform, not a game");
+  assert.equal(why("Fallout"), "a series name, not one game");
+  assert.equal(why("GTA"), `a series name; its signals moved to ${GTA}`);
+  assert.equal(why("Grand Theft Auto 6"), `the same game as ${GTA}`);
+  const gta = book.games.find((g) => g.game === GTA)!;
+  assert.deepEqual(gta.signals, ["owner", "calendar", "videos", "bigstory"]);
+  assert.ok(gta.why.includes("big story (release, size 89)"));
+  assert.equal(gta.release, "2026-11-18T11:00Z", "the owner's release stays");
+  // The Ocarina record that is indexing is exactly as it was.
+  assert.deepEqual(book.games[1], before.games[1]);
+  // Nothing is deleted: every record is still there.
+  assert.equal(book.games.length, before.games.length);
+  // Dropped records are never planned, keep their status and leave the weekly report.
+  const dropped = book.games.find((g) => g.game === "One More Lawn")!;
+  assert.equal(
+    fetchPlan(dropped, LIVE_NOW, {
+      hours: 3,
+      recheckHours: 24,
+      recheckDays: 28,
+      ...SETTINGS,
+    }),
+    undefined,
+  );
+  assert.equal(
+    filedStatus(dropped, undefined, undefined, LIVE_NOW).status,
+    "dropped",
+  );
+  assert.doesNotMatch(
+    filedLines(book, LIVE_NOW).join("\n"),
+    /One More Lawn|Nintendo Switch 2|\*\*GTA\*\*/,
+  );
+  // A second prune changes nothing.
+  assert.deepEqual(
+    pruneFiled(book, { now: LIVE_NOW, launches: LIVE_LAUNCHES }),
+    book,
+  );
+});
+
+test("a dropped radar game comes back when a real signal names it; the queue loses dropped plans only", () => {
+  const book = pruneFiled(liveBook(), {
+    now: LIVE_NOW,
+    launches: LIVE_LAUNCHES,
+  });
+  const back = mergeFiled(
+    book,
+    [
+      {
+        game: "Dungeonbound",
+        signal: "bigstory",
+        why: "big story (release, size 75)",
+        release: "2026-11-15",
+      },
+    ],
+    LIVE_NOW,
+    SETTINGS,
+  );
+  const d = back.games.find((g) => g.game === "Dungeonbound")!;
+  assert.equal(d.status, "searching");
+  assert.equal(d.dropped, undefined);
+  assert.deepEqual(d.signals, ["bigstory"]);
+  const plan = {
+    searchEveryHours: 3,
+    recheckEveryHours: 24,
+    recheckUntil: "2026-12-11T00:00:00.000Z",
+    priority: 10,
+  };
+  const queue: SceneQueue = {
+    games: [
+      {
+        game: "One More Lawn",
+        reason: "footage: release radar 2026-11-12",
+        requestedAt: "",
+        fetch: plan,
+      },
+      {
+        game: "Nintendo Switch 2",
+        reason: "footage: 2 Pulse videos in 7 days",
+        requestedAt: "",
+        fetch: plan,
+        state: "building",
+      },
+      {
+        game: "Fallout",
+        reason: "script: Fallout 4 next-gen",
+        requestedAt: "",
+      },
+      {
+        game: "The Legend of Zelda: Ocarina of Time",
+        reason: "footage: launch calendar 2026-11-05",
+        requestedAt: "",
+        fetch: plan,
+        state: "building",
+      },
+      {
+        game: "Dungeonbound",
+        reason: "footage: release radar 2026-11-15",
+        requestedAt: "",
+        fetch: plan,
+      },
+    ],
+  };
+  assert.deepEqual(
+    unplanDropped(queue, back).games.map((g) => g.game),
+    [
+      "Nintendo Switch 2",
+      "Fallout",
+      "The Legend of Zelda: Ocarina of Time",
+      "Dungeonbound",
+    ],
+    "a started index and another lane's request stay; a revived game stays",
   );
 });

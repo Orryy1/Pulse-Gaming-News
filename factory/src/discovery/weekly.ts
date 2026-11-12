@@ -11,6 +11,8 @@ export interface RadarGame {
   date: string; // ISO YYYY-MM-DD
   price?: string;
   developer?: string;
+  /** Steam's kind of app: "game", "dlc", "demo", "music"... (GAME_FETCH files only games). */
+  type?: string;
 }
 
 export interface FreeGame {
@@ -106,6 +108,7 @@ export async function releaseRadar(
         date,
         price: data?.price_overview?.final_formatted,
         developer: data?.developers?.[0],
+        ...(typeof data?.type === "string" ? { type: data.type } : {}),
       });
       if (out.length >= max) break;
     }

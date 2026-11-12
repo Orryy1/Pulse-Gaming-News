@@ -11,6 +11,14 @@
 // A record per game (filed.json beside the indexes) says what is filed: title, release, source upload, index
 // status and spoiler window end, for the weekly report. The spoiler windows (src/sceneindex/spoilers.ts) are made
 // here too, for every game with a known release, and registered for the writers and the footage pickers.
+// The picker (12 Nov 2026, after the first live pass filed ten small Steam releases, "GTA", "Grand Theft Auto 6",
+// "Nintendo Switch 2" and "Fallout"): one record a game however it is written (canonicalGame: "GTA 6", "GTA VI"
+// and "Grand Theft Auto 6" are "Grand Theft Auto VI"); hardware, DLC and bare series names are never games (a
+// series name is resolved to the one game the story or the calendar makes clear, else skipped); the release
+// radar (Steam's popular upcoming list, which carries no wishlist or follower counts) never picks a game alone:
+// it dates a game another signal picked, or picks one made by a major studio. Records that no longer qualify are
+// marked "dropped" with a reason on every pass and taken out of the job's queue; a record with footage, or the
+// owner's, is never dropped and nothing on disk is deleted.
 
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -117,12 +125,280 @@ export interface FetchCandidate {
 export const BIG_STORY_EVENTS = new Set(["release", "acclaim"]);
 export const VIDEO_DAYS = 7;
 export const VIDEOS_NEEDED = 2;
+/** How near a known release must be to a series story for the story to name that game. */
+export const SERIES_RESOLVE_DAYS = 45;
+
+// ---------------------------------------------------------------- what counts as one game
+
+/** Fans' short forms, written out: "GTA6" and "GTA 6" are "grand theft auto 6". */
+const SHORT_FORMS: Record<string, string> = {
+  gta: "grand theft auto",
+  cod: "call of duty",
+  rdr: "red dead redemption",
+  tlou: "the last of us",
+  ff: "final fantasy",
+  mgs: "metal gear solid",
+  totk: "the legend of zelda tears of the kingdom",
+  botw: "the legend of zelda breath of the wild",
+};
+
+const ONES: Record<string, number> = {
+  "": 0,
+  i: 1,
+  ii: 2,
+  iii: 3,
+  iv: 4,
+  v: 5,
+  vi: 6,
+  vii: 7,
+  viii: 8,
+  ix: 9,
+};
+
+/** A Roman numeral's value, II to XXXIX; "I" and "X" alone stay words ("I Am Bread", "Mega Man X"). */
+function romanNumber(w: string): number | undefined {
+  if (!w || w === "i" || w === "x") return undefined;
+  const m = /^(x{0,3})(ix|iv|v?i{0,3})$/.exec(w);
+  if (!m) return undefined;
+  const n = m[1]!.length * 10 + (ONES[m[2]!] ?? 0);
+  return n >= 2 ? n : undefined;
+}
 
 /**
- * The games the signals name (pure). The owner's titles always; the launch calendar's games from two weeks before
- * launch to four after; the release radar's games; a story about a release or its reviews at the big-story size;
- * a game with two or more Pulse videos in seven days. A release date found in the calendar or the radar is used
- * for any signal naming the same game.
+ * The key one game has however it is written (pure): case, accents, punctuation, a leading "The", the fans' short
+ * forms and Roman numerals all set aside. "GTA VI", "GTA 6", "gta6", "Grand Theft Auto 6" and "Grand Theft Auto
+ * VI" are all "grand theft auto 6"; "Grand Theft Auto: San Andreas" and "GTA San Andreas" are one key.
+ */
+export function canonicalGame(name: string): string {
+  const words = name
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[®™©]/g, "")
+    .replace(/['’]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((w) => {
+      const m = /^([a-z]+?)(\d+|[ivx]+)?$/.exec(w);
+      const short = m ? SHORT_FORMS[m[1]!] : undefined;
+      if (
+        short &&
+        (m![2] === undefined ||
+          /^\d+$/.test(m![2]) ||
+          romanNumber(m![2]) !== undefined)
+      )
+        return [...short.split(" "), ...(m![2] ? [m![2]] : [])];
+      return [w];
+    })
+    .map((w) => {
+      const n = romanNumber(w);
+      return n === undefined ? w : String(n);
+    });
+  if (words[0] === "the" && words.length > 1) words.shift();
+  return words.join(" ");
+}
+
+/** Consoles, handhelds, headsets and their services: never a game, whatever the videos say. */
+const HARDWARE_ANCHOR =
+  /\b(nintendo switch|switch (2|oled|lite)|playstation|ps[1-6]|psp|ps vita|psvr2?|xbox|wii|game ?boy|nintendo (ds|3ds|64)|gamecube|steam hardware|steam (deck|machine|frame|controller)|rog ally|legion go|meta quest|quest [1-3]|vision pro|dualsense)\b/gi;
+const HARDWARE_WORDS = new Set(
+  "the new next gen pro slim oled lite portal console consoles handheld controller controllers digital edition one series x s 360 u 2 3 5 plus online game pass ultimate hardware price bundle model headset dock edge elite vr".split(
+    " ",
+  ),
+);
+
+/** True when a name is a console, handheld or platform service rather than a game (pure): "Nintendo Switch 2", "PS5 Pro". */
+export function isHardware(name: string): boolean {
+  const n = name.toLowerCase().replace(/[®™©]/g, "");
+  if (!new RegExp(HARDWARE_ANCHOR.source, "i").test(n)) return false;
+  return n
+    .replace(HARDWARE_ANCHOR, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((w) => HARDWARE_WORDS.has(w));
+}
+
+/** True for downloadable content, add-ons, soundtracks, demos and the like (pure); Steam's own type decides when known. */
+export function isAddOn(name: string, steamType?: string): boolean {
+  if (steamType && steamType.toLowerCase() !== "game") return true;
+  return /\b(dlc|soundtrack|ost|season pass|expansion pass|add-?on|upgrade pack|cosmetics?|costume pack|skin pack|character pack|artbook|art book|demo|playtest|supporter pack)\b/i.test(
+    name,
+  );
+}
+
+/**
+ * Series and franchise names that are not one game: a story or a video "about GTA" names a series. Names that
+ * are also one current game (Doom, Minecraft, Fortnite, Hades, Starfield, Hollow Knight) are not here.
+ */
+const SERIES_NAMES = [
+  "GTA",
+  "Grand Theft Auto",
+  "Zelda",
+  "The Legend of Zelda",
+  "Mario",
+  "Super Mario",
+  "Pokemon",
+  "God of War",
+  "The Elder Scrolls",
+  "Red Dead",
+  "Fallout",
+  "The Witcher",
+  "Cyberpunk",
+  "Resident Evil",
+  "Final Fantasy",
+  "Assassin's Creed",
+  "Halo",
+  "Gears of War",
+  "Spider-Man",
+  "Battlefield",
+  "Mass Effect",
+  "Monster Hunter",
+  "Street Fighter",
+  "Metal Gear",
+  "Metal Gear Solid",
+  "Silent Hill",
+  "Horizon",
+  "Diablo",
+  "Warcraft",
+  "Persona",
+  "Kingdom Hearts",
+  "Destiny",
+  "Call of Duty",
+  "Forza",
+  "Borderlands",
+  "Half-Life",
+  "Star Wars",
+  "Sonic",
+  "Sonic the Hedgehog",
+  "Metroid",
+  "Kirby",
+  "Donkey Kong",
+  "Mortal Kombat",
+  "Tekken",
+  "Tomb Raider",
+  "Far Cry",
+  "Need for Speed",
+  "The Sims",
+  "Batman",
+  "Dark Souls",
+  "Uncharted",
+  "Crash Bandicoot",
+  "Dragon Quest",
+  "Yakuza",
+  "Like a Dragon",
+];
+const SERIES_KEYS = new Set(SERIES_NAMES.map(canonicalGame));
+
+/** True when a name is a series rather than one game (pure): "GTA", "Fallout", "Zelda". */
+export function isSeriesName(name: string): boolean {
+  return SERIES_KEYS.has(canonicalGame(name));
+}
+
+const hasWords = (hay: string, needle: string) =>
+  needle !== "" && ` ${hay} `.includes(` ${needle} `);
+
+const releaseTime = (r?: string) =>
+  r ? Date.parse(r.length === 10 ? `${r}T00:00:00Z` : r) : NaN;
+
+/**
+ * The one game a series name stands for (pure), or undefined: among the known games of the series (the owner's
+ * titles, the launch calendar, games already filed), the one the story's headline names (in full, or by the
+ * calendar's match pattern); else the one released within SERIES_RESOLVE_DAYS of `at`. Two or none is undefined.
+ */
+export function resolveSeries(
+  name: string,
+  known: Array<{ game: string; release?: string; match?: string }>,
+  at: Date,
+  headline?: string,
+): string | undefined {
+  const series = canonicalGame(name);
+  const byKey = new Map<
+    string,
+    { game: string; release?: string; matches: string[] }
+  >();
+  for (const k of known) {
+    const key = canonicalGame(k.game);
+    if (
+      key === series ||
+      !hasWords(key, series) ||
+      isSeriesName(k.game) ||
+      isHardware(k.game)
+    )
+      continue;
+    const had = byKey.get(key);
+    byKey.set(key, {
+      game: had?.game ?? k.game.trim(),
+      release: had?.release ?? k.release,
+      matches: [...(had?.matches ?? []), ...(k.match ? [k.match] : [])],
+    });
+  }
+  const games = [...byKey.entries()];
+  if (!games.length) return undefined;
+  if (headline?.trim()) {
+    const h = canonicalGame(headline);
+    const named = games.filter(
+      ([key, k]) =>
+        hasWords(h, key) ||
+        k.matches.some((m) => {
+          try {
+            return new RegExp(m, "i").test(headline);
+          } catch {
+            return false;
+          }
+        }),
+    );
+    if (named.length === 1) return named[0]![1].game;
+    if (named.length > 1) return undefined;
+  }
+  const near = games.filter(([, k]) => {
+    const t = releaseTime(k.release);
+    return (
+      Number.isFinite(t) &&
+      Math.abs(t - at.getTime()) <= SERIES_RESOLVE_DAYS * 86_400_000
+    );
+  });
+  return near.length === 1 ? near[0]![1].game : undefined;
+}
+
+/**
+ * Studios whose release is a big one on its own, matched against the radar's developer. Steam's developer is the
+ * maker: a big publisher's name is on plenty of small games (SEGA publishes SONIC PICO PARK), so publishers alone
+ * do not count.
+ */
+const MAJOR_STUDIOS =
+  /\b(rockstar|nintendo|fromsoftware|naughty dog|santa monica studio|insomniac|guerrilla|sucker punch|bend studio|housemarque|nixxes|cd projekt|bethesda game studios|id software|arkane|machinegames|larian|capcom|square enix|ubisoft|blizzard|bungie|remedy entertainment|bioware|respawn|infinity ward|treyarch|sledgehammer|raven software|ea dice|dice stockholm|^dice$|criterion games|motive studio|kojima productions|playground games|turn 10|the coalition|halo studios|343 industries|obsidian entertainment|firaxis|gearbox|sonic team|atlus|ryu ga gotoku|team ninja|koei tecmo|bandai namco|konami|valve|epic games|rocksteady|netherrealm|wb games|avalanche software|io interactive|crystal dynamics|eidos|hoyoverse|mihoyo|game freak|intelligent systems|retro studios|monolith soft|hal laboratory|polyphony|platinumgames|level-5|grinding gear|hello games|supergiant|team cherry|mojang|bluepoint|warhorse|massive entertainment|techland|4a games|asobo|creative assembly)\b/i;
+
+/** True when the radar's developer is a major studio (pure). */
+export function majorStudio(developer?: string): boolean {
+  return !!developer && MAJOR_STUDIOS.test(developer);
+}
+
+/** Why a name is not a game to file (hardware, an add-on, a bare series), or undefined when it is one (pure). */
+export function notAGame(
+  name: string,
+  o: { steamType?: string; seriesAllowed?: boolean } = {},
+): string | undefined {
+  if (isHardware(name)) return "hardware or a platform, not a game";
+  if (isAddOn(name, o.steamType)) return "DLC or an add-on, not a game";
+  if (!o.seriesAllowed && isSeriesName(name))
+    return "a series name, not one game";
+  return undefined;
+}
+
+/**
+ * The games the signals name (pure). The owner's titles always, as written; the launch calendar's games from two
+ * weeks before launch to four after; a story about a release or its reviews at the big-story size; a game with
+ * two or more Pulse videos in seven days; a release radar game only when another signal names it too or a major
+ * studio makes it (the radar is Steam's popular upcoming list: no wishlist or follower counts, and mostly small
+ * games). Hardware, DLC and add-ons never count; a series name counts only as the one game the story or the
+ * calendar makes clear (resolveSeries). Every name is written the way the owner, the calendar or the filed record
+ * writes the same game, so "GTA 6" from the videos lands on "Grand Theft Auto VI". A release date found in the
+ * calendar or the radar is used for any signal naming the same game.
  */
 export function fetchCandidates(input: {
   titles: FetchTitle[];
@@ -133,88 +409,152 @@ export function fetchCandidates(input: {
     event: string;
     size: number;
     firstAt: string;
+    headline?: string;
   }>;
   videoGames: Array<{ game: string; at: string }>;
   bigSize: number;
   now: Date;
   signals: Set<FetchSignal>;
+  /** The games already filed, for spellings and for naming a series' game. */
+  filed?: FiledGame[];
 }): FetchCandidate[] {
   const day = 86_400_000;
   const now = input.now.getTime();
+  const live = (input.filed ?? []).filter((g) => g.status !== "dropped");
+  // The spelling a game is filed under: the owner's, then the calendar's, then the filed record's.
+  const spelling = new Map<string, string>();
+  const spell = (game: string) => {
+    const key = canonicalGame(game);
+    if (key && !spelling.has(key)) spelling.set(key, game.trim());
+  };
+  input.titles.forEach((t) => spell(t.game));
+  input.launches.forEach((l) => spell(l.game));
+  live.forEach((g) => spell(g.game));
   const known = new Map<string, string>();
-  for (const l of input.launches) known.set(sceneSlug(l.game), l.launch);
+  for (const l of input.launches) known.set(canonicalGame(l.game), l.launch);
   for (const r of input.radar)
-    if (!known.has(sceneSlug(r.name))) known.set(sceneSlug(r.name), r.date);
-  const out: FetchCandidate[] = [];
-  const add = (c: FetchCandidate) =>
-    out.push({
-      ...c,
-      ...(c.release
-        ? {}
-        : known.has(sceneSlug(c.game))
-          ? { release: known.get(sceneSlug(c.game)) }
-          : {}),
-    });
+    if (!known.has(canonicalGame(r.name)))
+      known.set(canonicalGame(r.name), r.date);
+  const anchors = [
+    ...input.titles.map((t) => ({ game: t.game, release: t.release })),
+    ...input.launches.map((l) => ({
+      game: l.game,
+      release: l.launch,
+      match: l.match,
+    })),
+    ...live.map((g) => ({ game: g.game, release: g.release })),
+  ];
+  const finish = (c: FetchCandidate): FetchCandidate => {
+    const game = spelling.get(canonicalGame(c.game)) ?? c.game.trim();
+    const release = c.release ?? known.get(canonicalGame(game));
+    return { ...c, game, ...(release ? { release } : {}) };
+  };
+  /** A story's or a video's name as the one game it is, or undefined to skip it. */
+  const asGame = (
+    name: string,
+    at: Date,
+    headline?: string,
+  ): string | undefined => {
+    const n = name.trim();
+    if (!n || notAGame(n, { seriesAllowed: true })) return undefined;
+    return isSeriesName(n) ? resolveSeries(n, anchors, at, headline) : n;
+  };
+  const owner: FetchCandidate[] = [];
+  const calendar: FetchCandidate[] = [];
+  const big: FetchCandidate[] = [];
+  const videos: FetchCandidate[] = [];
+  const radar: FetchCandidate[] = [];
   if (input.signals.has("owner"))
     for (const t of input.titles)
-      add({
-        game: t.game,
-        signal: "owner",
-        release: t.release,
-        until: t.until,
-        why: "GAME_FETCH_TITLES",
-      });
+      owner.push(
+        finish({
+          game: t.game,
+          signal: "owner",
+          release: t.release,
+          until: t.until,
+          why: "GAME_FETCH_TITLES",
+        }),
+      );
   if (input.signals.has("calendar"))
     for (const l of input.launches) {
       const at = Date.parse(`${l.launch}T00:00:00Z`);
-      if (Number.isFinite(at) && now >= at - 14 * day && now <= at + 28 * day)
-        add({
-          game: l.game,
-          signal: "calendar",
-          release: l.launch,
-          why: `launch calendar ${l.launch}`,
-        });
-    }
-  if (input.signals.has("radar"))
-    for (const r of input.radar)
-      add({
-        game: r.name,
-        signal: "radar",
-        release: r.date,
-        why: `release radar ${r.date}`,
-      });
-  if (input.signals.has("bigstory"))
-    for (const s of input.stories)
       if (
-        s.size >= input.bigSize &&
-        BIG_STORY_EVENTS.has(s.event) &&
-        s.name.trim()
+        Number.isFinite(at) &&
+        now >= at - 14 * day &&
+        now <= at + 28 * day &&
+        !notAGame(l.game, { seriesAllowed: true })
       )
-        add({
-          game: s.name.trim(),
+        calendar.push(
+          finish({
+            game: l.game,
+            signal: "calendar",
+            release: l.launch,
+            why: `launch calendar ${l.launch}`,
+          }),
+        );
+    }
+  if (input.signals.has("bigstory"))
+    for (const s of input.stories) {
+      if (s.size < input.bigSize || !BIG_STORY_EVENTS.has(s.event)) continue;
+      const game = asGame(s.name, new Date(s.firstAt), s.headline);
+      if (!game) continue;
+      big.push(
+        finish({
+          game,
           signal: "bigstory",
           why: `big story (${s.event}, size ${Math.round(s.size)})`,
-          release: known.get(sceneSlug(s.name)) ?? s.firstAt.slice(0, 10),
-        });
+          release: known.get(canonicalGame(game)) ?? s.firstAt.slice(0, 10),
+        }),
+      );
+    }
   if (input.signals.has("videos")) {
     const counts = new Map<string, { game: string; n: number }>();
     for (const v of input.videoGames) {
       if (!v.game?.trim() || now - Date.parse(v.at) > VIDEO_DAYS * day)
         continue;
-      const slug = sceneSlug(v.game);
-      const c = counts.get(slug) ?? { game: v.game.trim(), n: 0 };
+      const game = asGame(v.game, input.now);
+      if (!game) continue;
+      const key = canonicalGame(game);
+      const c = counts.get(key) ?? { game, n: 0 };
       c.n++;
-      counts.set(slug, c);
+      counts.set(key, c);
     }
     for (const c of counts.values())
       if (c.n >= VIDEOS_NEEDED)
-        add({
-          game: c.game,
-          signal: "videos",
-          why: `${c.n} Pulse videos in ${VIDEO_DAYS} days`,
-        });
+        videos.push(
+          finish({
+            game: c.game,
+            signal: "videos",
+            why: `${c.n} Pulse videos in ${VIDEO_DAYS} days`,
+          }),
+        );
   }
-  return out;
+  if (input.signals.has("radar")) {
+    const picked = new Set([
+      ...[...owner, ...calendar, ...big, ...videos].map((c) =>
+        canonicalGame(c.game),
+      ),
+      ...live
+        .filter((g) => g.signals.some((s) => s !== "radar"))
+        .map((g) => canonicalGame(g.game)),
+    ]);
+    for (const r of input.radar) {
+      if (notAGame(r.name, { steamType: r.type })) continue;
+      const major = majorStudio(r.developer);
+      if (!major && !picked.has(canonicalGame(r.name))) continue;
+      radar.push(
+        finish({
+          game: r.name,
+          signal: "radar",
+          release: r.date,
+          why: major
+            ? `release radar ${r.date} (${r.developer})`
+            : `release radar ${r.date}`,
+        }),
+      );
+    }
+  }
+  return [...owner, ...calendar, ...radar, ...big, ...videos];
 }
 
 export type FiledStatus =
@@ -224,7 +564,8 @@ export type FiledStatus =
   | "indexing"
   | "describing"
   | "filed"
-  | "stopped";
+  | "stopped"
+  | "dropped";
 
 export interface FiledGame {
   game: string;
@@ -250,6 +591,8 @@ export interface FiledGame {
   indexed?: number;
   described?: number;
   updatedAt: string;
+  /** Why a record no longer qualifies (status "dropped"): kept for the record, never planned. */
+  dropped?: string;
 }
 
 export interface FiledBook {
@@ -269,10 +612,44 @@ export function parseFiled(raw: unknown): FiledBook {
   };
 }
 
+/** A record's release and spoiler window after a signal's release (pure): the owner's wins, else the earliest. */
+function takeRelease(
+  rec: FiledGame,
+  c: Pick<FetchCandidate, "signal" | "release" | "until">,
+  o: { days: number; openingShare: number },
+): void {
+  if (c.signal === "owner") {
+    if (c.release) rec.release = c.release;
+    if (c.until) rec.until = c.until;
+  } else if (c.release && !(rec.signals.includes("owner") && rec.release)) {
+    if (!rec.release || Date.parse(c.release) < Date.parse(rec.release))
+      rec.release = c.release;
+  }
+  if (rec.release)
+    rec.spoilerUntil = spoilerWindow(rec.game, rec.release, {
+      days: o.days,
+      openingShare: o.openingShare,
+      until: rec.until,
+    })?.until;
+}
+
+/** The live record for a game however it is written, else a dropped one to bring back (pure). */
+function findRecord(games: FiledGame[], game: string): FiledGame | undefined {
+  const key = canonicalGame(game);
+  const slug = sceneSlug(game);
+  const same = (g: FiledGame) =>
+    g.slug === slug || canonicalGame(g.game) === key;
+  return (
+    games.find((g) => g.status !== "dropped" && same(g)) ??
+    games.find((g) => g.status === "dropped" && same(g))
+  );
+}
+
 /**
- * The book with today's candidates merged in (pure): one record a game however it is spelt, signals added up, the
- * owner's release and window end winning, otherwise the earliest release any signal knows. A game whose window and
- * daily looks are long over is kept (the weekly report lists what is filed) but no longer planned.
+ * The book with today's candidates merged in (pure): one record a game however it is written (canonicalGame),
+ * signals added up, the owner's release and window end winning, otherwise the earliest release any signal knows.
+ * A dropped record a qualifying candidate names again is brought back with only what qualifies it now. A game
+ * whose window and daily looks are long over is kept (the weekly report lists what is filed) but no longer planned.
  */
 export function mergeFiled(
   book: FiledBook,
@@ -288,7 +665,7 @@ export function mergeFiled(
   for (const c of candidates) {
     const slug = sceneSlug(c.game);
     if (!slug) continue;
-    let rec = games.find((g) => g.slug === slug);
+    let rec = findRecord(games, c.game);
     if (!rec) {
       rec = {
         game: c.game,
@@ -301,30 +678,141 @@ export function mergeFiled(
       };
       games.push(rec);
     }
+    if (rec.status === "dropped") {
+      delete rec.dropped;
+      rec.status = "searching";
+      rec.signals = [];
+      rec.why = [];
+    }
     if (!rec.signals.includes(c.signal)) rec.signals.push(c.signal);
     if (!rec.why.includes(c.why)) rec.why = [...rec.why, c.why].slice(-6);
-    if (c.signal === "owner") {
-      rec.game = c.game;
-      if (c.release) rec.release = c.release;
-      if (c.until) rec.until = c.until;
-    } else if (c.release && !(rec.signals.includes("owner") && rec.release)) {
-      if (!rec.release || Date.parse(c.release) < Date.parse(rec.release))
-        rec.release = c.release;
+    if (c.signal === "owner") rec.game = c.game;
+    takeRelease(rec, c, o);
+  }
+  return { games };
+}
+
+/** A record that is never dropped: the owner's, or one with footage found or indexed. */
+export function keepsRecord(rec: FiledGame): boolean {
+  return (
+    rec.signals.includes("owner") ||
+    !!rec.source ||
+    rec.status === "indexing" ||
+    rec.status === "describing" ||
+    rec.status === "filed"
+  );
+}
+
+/**
+ * The book with records that no longer qualify marked "dropped" with a reason (pure), run on every pass before
+ * today's candidates are merged in. Hardware and add-ons go; a series name goes, its signals moving to the one
+ * game it resolves to when it does; a second record for a game already filed under another spelling hands over
+ * its signals and goes; a game the release radar alone picked goes (the day's candidates bring it back if a
+ * major studio makes it). The owner's records and any record with footage are never touched, and nothing is
+ * deleted: the record stays, marked.
+ */
+export function pruneFiled(
+  book: FiledBook,
+  o: {
+    now: Date;
+    titles?: FetchTitle[];
+    launches?: LaunchEntry[];
+  },
+): FiledBook {
+  const games = book.games.map((g) => ({
+    ...g,
+    signals: [...g.signals],
+    why: [...g.why],
+  }));
+  const at = o.now.toISOString();
+  const drop = (g: FiledGame, why: string) => {
+    g.status = "dropped";
+    g.dropped = why;
+    g.updatedAt = at;
+  };
+  const handOver = (from: FiledGame, to: FiledGame) => {
+    for (const s of from.signals)
+      if (!to.signals.includes(s)) to.signals.push(s);
+    for (const w of from.why)
+      if (!to.why.includes(w)) to.why = [...to.why, w].slice(-6);
+    to.updatedAt = at;
+  };
+  const live = () => games.filter((g) => g.status !== "dropped");
+  const anchors = () => [
+    ...(o.titles ?? []).map((t) => ({ game: t.game, release: t.release })),
+    ...(o.launches ?? []).map((l) => ({
+      game: l.game,
+      release: l.launch,
+      match: l.match,
+    })),
+    ...live().map((g) => ({ game: g.game, release: g.release })),
+  ];
+  // The record a game's other spellings fold into: the owner's, then one with footage, then the first filed.
+  const rank = (g: FiledGame) =>
+    (g.signals.includes("owner") ? 4 : 0) + (keepsRecord(g) ? 2 : 0);
+  for (const g of games) {
+    if (g.status === "dropped" || keepsRecord(g)) continue;
+    const not = notAGame(g.game, { seriesAllowed: true });
+    if (not) {
+      drop(g, not);
+      continue;
     }
-    if (rec.release)
-      rec.spoilerUntil = spoilerWindow(rec.game, rec.release, {
-        days: o.days,
-        openingShare: o.openingShare,
-        until: rec.until,
-      })?.until;
+    if (isSeriesName(g.game)) {
+      const when = g.release ? releaseTime(g.release) : Date.parse(g.firstSeen);
+      const target = resolveSeries(g.game, anchors(), new Date(when));
+      const rec = target ? findRecord(live(), target) : undefined;
+      if (rec && rec !== g && rec.status !== "dropped") {
+        handOver(g, rec);
+        drop(g, `a series name; its signals moved to ${rec.game}`);
+      } else drop(g, "a series name, not one game");
+      continue;
+    }
+    const key = canonicalGame(g.game);
+    const twin = live()
+      .filter((x) => x !== g && canonicalGame(x.game) === key)
+      .sort((a, b) => rank(b) - rank(a))[0];
+    if (twin) {
+      handOver(g, twin);
+      drop(g, `the same game as ${twin.game}`);
+      continue;
+    }
+    if (g.signals.length && g.signals.every((s) => s === "radar"))
+      drop(g, "picked by the release radar alone, not a big release");
   }
   return { games };
 }
 
 /**
+ * The job's queue without the footage plans of dropped records (pure): only entries the fetcher put there
+ * ("footage: ..." reasons) that have not started indexing go; downloaded media and other requests stay.
+ */
+export function unplanDropped(queue: SceneQueue, book: FiledBook): SceneQueue {
+  const live = new Set(
+    book.games.filter((g) => g.status !== "dropped").map((g) => g.slug),
+  );
+  const dropped = new Set(
+    book.games
+      .filter((g) => g.status === "dropped" && !live.has(g.slug))
+      .map((g) => g.slug),
+  );
+  if (!dropped.size) return queue;
+  const games = queue.games.filter(
+    (q) =>
+      !(
+        dropped.has(sceneSlug(q.game)) &&
+        q.reason.startsWith("footage:") &&
+        q.state !== "building" &&
+        q.state !== "done"
+      ),
+  );
+  return games.length === queue.games.length ? queue : { games };
+}
+
+/**
  * The job's launch plan for a record (pure), or undefined when its time is over: searched every `hours` from its
  * release (a game with no known release is taken as out, searched three times less often), looked at again every
- * `recheckHours` until the later of its spoiler window's end and `recheckDays` after release.
+ * `recheckHours` until the later of its spoiler window's end and `recheckDays` after release. A dropped record is
+ * never planned.
  */
 export function fetchPlan(
   rec: FiledGame,
@@ -337,6 +825,7 @@ export function fetchPlan(
     openingShare: number;
   },
 ): FetchPlan | undefined {
+  if (rec.status === "dropped") return undefined;
   const day = 86_400_000;
   const priority = Math.max(
     ...rec.signals.map((s) => SIGNAL_PRIORITY[s] ?? 0),
@@ -371,6 +860,7 @@ export function filedStatus(
   queued: QueuedGame | undefined,
   now: Date,
 ): FiledGame {
+  if (rec.status === "dropped") return rec;
   const out: FiledGame = { ...rec, updatedAt: now.toISOString() };
   if (index) {
     const s = index.source;
@@ -414,9 +904,10 @@ export function filedStatus(
 
 /** The weekly report's lines on the footage library (pure): one a game, newest release first. */
 export function filedLines(book: FiledBook, now: Date): string[] {
-  if (!book.games.length) return [];
+  const games = book.games.filter((g) => g.status !== "dropped");
+  if (!games.length) return [];
   const when = (iso?: string) => (iso ? iso.slice(0, 10) : "?");
-  const rows = [...book.games]
+  const rows = [...games]
     .sort(
       (a, b) =>
         (Date.parse(b.release ?? b.firstSeen) || 0) -
@@ -538,7 +1029,13 @@ export async function gameFetchPass(
     launches?: LaunchEntry[];
     radar?: () => Promise<RadarGame[]>;
     stories?: () => Promise<
-      Array<{ name: string; event: string; size: number; firstAt: string }>
+      Array<{
+        name: string;
+        event: string;
+        size: number;
+        firstAt: string;
+        headline?: string;
+      }>
     >;
     videoGames?: () => Promise<Array<{ game: string; at: string }>>;
   } = {},
@@ -553,6 +1050,8 @@ export async function gameFetchPass(
   let book = await readFiled(cfg.dataDir);
   try {
     if (cfg.gameFetch && cfg.sceneIndex) {
+      // What no longer qualifies is marked first, so today's candidates can bring a game back.
+      book = pruneFiled(book, { now, titles, launches });
       const signals = parseSignals(cfg.gameFetchSignals);
       const safe = async <T>(
         f: (() => Promise<T[]>) | undefined,
@@ -582,10 +1081,11 @@ export async function gameFetchPass(
         bigSize: cfg.bigStorySize,
         now,
         signals,
+        filed: book.games,
       });
       book = mergeFiled(book, candidates, now, settings);
       const queue = await readQueue(cfg.dataDir);
-      const next = plannedQueue(queue, book, now, {
+      const next = plannedQueue(unplanDropped(queue, book), book, now, {
         hours: cfg.gameFetchHours,
         recheckHours: cfg.gameFetchRecheckHours,
         recheckDays: cfg.gameFetchRecheckDays,
@@ -621,7 +1121,9 @@ export async function gameFetchPass(
       ? windowsFrom(
           [
             ...titles,
-            ...book.games.map((g) => ({
+            ...book.games
+              .filter((g) => g.status !== "dropped")
+              .map((g) => ({
               game: g.game,
               release: g.release,
               until: g.until,

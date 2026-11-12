@@ -1732,6 +1732,7 @@ async function main(): Promise<void> {
             event: st.event,
             size: st.size,
             firstAt: st.firstAt,
+            headline: st.headline,
           })),
         videoGames: async () =>
           (

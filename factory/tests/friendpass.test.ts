@@ -291,8 +291,7 @@ test("a chapter's pass keeps the paragraphs, callouts and footage and is guarded
         edits: [
           {
             find: "The studio bet everything on it.",
-            replace:
-              "Honestly, the studio bet it all. {chuckles} Bold.",
+            replace: "Honestly, the studio bet it all. {chuckles} Bold.",
           },
         ],
       };
@@ -434,6 +433,17 @@ test("the Pulse Check reads as a friend's verdict and keeps its four readings", 
   assert.equal(
     pulseCheckReading("You can wait. Pulse check: weak, if you buy day one."),
     "weak",
+  );
+  assert.equal(
+    pulseCheckReading(
+      "Check your space. My Pulse check is weak, because the box still leaves you downloading.",
+    ),
+    "weak",
+    "said plainly, the same verdict",
+  );
+  assert.equal(
+    pulseCheckReading("Fine by me. Pulse check's steady, nothing changes."),
+    "steady",
   );
   assert.equal(
     pulseCheckReading("You can wait. My Pulse check? Great."),

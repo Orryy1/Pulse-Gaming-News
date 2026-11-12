@@ -26,8 +26,9 @@ const MAX_WORDS = 12;
 const LEAD = String.raw`(?:(?:so|okay|right|look|and|honestly),?\s+)?(?:my |our |the )?pulse check(?: on (?:this|that)(?: one)?| here)?`;
 /** The lead-in alone, asked as a question ("My Pulse check?"): the segment's own beat, never a mid-take question. */
 export const PULSE_CHECK_ASK = new RegExp(`^${LEAD}\\?$`, "i");
+// "My Pulse check is weak, because ..." is the same verdict said plainly (12 Nov 2026: a GTA File part was dropped for it).
 const PULSE_CHECK_END = new RegExp(
-  `(?:^|[.!?"”]\\s+)${LEAD}\\s*[:?,.]?\\s*(strong|steady|weak|faint)\\b[^.!?]*[.!?]["”]?$`,
+  `(?:^|[.!?"”]\\s+)${LEAD}(?:\\s+(?:is|reads|says)|['’]s)?\\s*[:?,.]?\\s*(strong|steady|weak|faint)\\b[^.!?]*[.!?]["”]?$`,
   "i",
 );
 

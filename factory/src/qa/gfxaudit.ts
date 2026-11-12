@@ -834,7 +834,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         check: "meaning",
         level: "fix",
         t: Math.round((st.from / fps) * 10) / 10,
-        detail: `word moment "${st.text}" only repeats the card it lands on ("${over.text.slice(0, 50)}")`,
+        detail: `word moment "${st.text}" lands on a card and only repeats a card's words ("${over.text.slice(0, 50)}")`,
         action: "drop",
       });
   }

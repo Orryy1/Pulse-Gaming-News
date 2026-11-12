@@ -5,6 +5,7 @@
 // material (GTA VI) stays on a shorter leash, about ten seconds a Short, since Take-Two enforces hardest.
 
 import type { SteamApp } from "./steam.ts";
+import { publisherFootageOverride } from "./officialTrailer.ts";
 
 export const DEFAULT_FOOTAGE_SECONDS = 34; // seven 4.8 s clips: the hook, each beat, the take and the loop
 export const ROCKSTAR_FOOTAGE_SECONDS = 10;
@@ -16,7 +17,9 @@ function names(app: SteamApp): string[] {
 
 /** Seconds of trailer footage allowed for this game's publisher. */
 export function footageBudgetSeconds(app: SteamApp): number {
-  return names(app).some((n) => n.includes("rockstar")) ? ROCKSTAR_FOOTAGE_SECONDS : DEFAULT_FOOTAGE_SECONDS;
+  return names(app).some((n) => n.includes("rockstar"))
+    ? (publisherFootageOverride("Rockstar Games") ?? ROCKSTAR_FOOTAGE_SECONDS)
+    : DEFAULT_FOOTAGE_SECONDS;
 }
 
 /** Keeps clips in order while their total stays within the budget. */

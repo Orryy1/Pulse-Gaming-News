@@ -132,6 +132,25 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
   },
 ];
 
+/**
+ * PUBLISHER_FOOTAGE_SECONDS (12 Nov 2026, owner: "way too cautious"): per-publisher footage caps that override the
+ * table above, e.g. "Rockstar Games=20,Nintendo=20". Read on every use, after the .env has loaded; unset keeps the table.
+ */
+export function publisherFootageOverride(name: string): number | undefined {
+  for (const part of (process.env.PUBLISHER_FOOTAGE_SECONDS ?? "").split(",")) {
+    const [k, v] = part.split("=").map((x) => x.trim());
+    if (k && v !== undefined && k.toLowerCase() === name.toLowerCase() && Number.isFinite(Number(v))) return Math.max(0, Number(v));
+  }
+  return undefined;
+}
+for (const rule of PUBLISHER_CHANNELS) {
+  const base = rule.clipSeconds;
+  Object.defineProperty(rule, "clipSeconds", {
+    get: () => publisherFootageOverride(rule.name) ?? base,
+    enumerable: true,
+  });
+}
+
 /** Who owns the footage, by franchise: a PlayStation upload of a Rockstar trailer is still Rockstar footage. */
 export const FRANCHISE_PUBLISHERS: Array<{ match: RegExp; name: string }> = [
   {

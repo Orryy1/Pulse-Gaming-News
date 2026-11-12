@@ -405,7 +405,20 @@ export async function mineVod(
         .then((t) => JSON.parse(t) as MinedMoment)
         .catch(() => undefined);
       if (prior) {
+        // Judged before: its verdict is put back (a refresh may have rewritten the list since), never asked again.
+        if (prior.decision.result !== "unclear")
+          list = applyVerdict(list, ask.id, {
+            result: prior.decision.result,
+            confidence: prior.decision.confidence,
+            vodId: vod.vodId,
+            recordedOn: vod.recordedOn,
+            at: prior.candidate.peak,
+            reason: prior.decision.why,
+            moment: rel,
+            decidedAt: now.toISOString(),
+          });
         moments.push(prior);
+        if (prior.decision.result !== "unclear") break;
         continue;
       }
       await fs.mkdir(path.join(dir, "frames"), { recursive: true });

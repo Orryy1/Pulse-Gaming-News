@@ -773,7 +773,7 @@ test("mineVod: a confident moment proves the ask, lands in the lane's inbox and 
   assert.equal(tested[0].question, "Can your car really run out of fuel?");
   // The same moment is never judged twice.
   let asked = 0;
-  await mineVod(fakeVod(), [fuelAsk()], s, {
+  const again = await mineVod(fakeVod(), [fuelAsk()], s, {
     ...deps,
     verdict: async () => (
       asked++,
@@ -781,6 +781,7 @@ test("mineVod: a confident moment proves the ask, lands in the lane's inbox and 
     ),
   });
   assert.equal(asked, 0);
+  assert.equal(again.asks[0]!.status, "proved", "a list rewritten meanwhile gets the verdict back");
 
   const dir2 = await tmpDir();
   const u = await mineVod(

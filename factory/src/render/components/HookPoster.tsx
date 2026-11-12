@@ -11,6 +11,8 @@ import { COLOUR } from "../brand.ts";
 import { DISPLAY } from "./fonts.ts";
 import { CONTENT_WIDTH, SAFE } from "../layout.ts";
 import { ease, exitProgress } from "../motion.ts";
+import { SeriesStrip } from "./SeriesStrip.tsx";
+import { STRIP_HEIGHT, STRIP_TOP, type SeriesCover } from "../seriesstrip.ts";
 
 /** The biggest size at which the words wrap into at most three lines across the content width. */
 function posterSize(words: string[]): number {
@@ -46,7 +48,9 @@ export const HookPoster: React.FC<{
   /** SHORT_VIVID: the art stays bright under the headline. */
   vivid?: boolean;
   heroPosition?: string;
-}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, cutX, durationInFrames, vivid, heroPosition }) => {
+  /** A series Short's cover strip (SERIES_COVER_STYLE=strip): the series name, its part and a verdict's price. */
+  series?: SeriesCover;
+}> = ({ headline, accent, gameTitle, heroSrc, cutSrc, cutX, durationInFrames, vivid, heroPosition, series }) => {
   const frame = useCurrentFrame();
   const words = headline.toUpperCase().split(/\s+/).filter(Boolean);
   const gameWords = new Set(
@@ -146,6 +150,15 @@ export const HookPoster: React.FC<{
           </span>
         ))}
       </div>
+      {series ? (
+        <SeriesStrip
+          cover={series}
+          left={SAFE.left}
+          width={CONTENT_WIDTH}
+          top={STRIP_TOP}
+          height={STRIP_HEIGHT}
+        />
+      ) : null}
     </AbsoluteFill>
   );
 };

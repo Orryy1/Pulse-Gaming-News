@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { appleSpeech, talkVerdict } from "./applesound.ts";
 
 const run = promisify(execFile);
 const ASR_URL = process.env.ASR_URL || "http://127.0.0.1:8877";
@@ -109,6 +110,13 @@ export async function stripAudio(file: string): Promise<void> {
 /** Keeps a clip's game sound only when it has sound and nobody is talking over it. Returns whether it kept it. */
 export async function keepGameSound(file: string): Promise<boolean> {
   if (!(await hasAudio(file))) return false;
+  // APPLE_SOUND_TAGS (Mac only, off until switched on): Apple's hearing settles the plain cases in about a second.
+  const verdict = talkVerdict(await appleSpeech(file).catch(() => undefined));
+  if (verdict === "clean") return true;
+  if (verdict === "talk") {
+    await stripAudio(file).catch(() => undefined);
+    return false;
+  }
   const wps = await wordsPerSecond(file);
   if (wps !== undefined && wps < TALK_WORDS_PER_SECOND) return true;
   await stripAudio(file).catch(() => undefined);

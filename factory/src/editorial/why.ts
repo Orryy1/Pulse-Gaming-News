@@ -402,3 +402,128 @@ export async function recentWhyHooks(
   );
   return rows.map((r) => r.hook ?? "").filter(Boolean);
 }
+
+// ------------------------------------------------------------------------------------------- The Why as a serial
+// Format redesign plan (11 Nov 2026, section 4.1, build item 3): the Why converted at 1.26 subscribers per 1,000 views
+// against 0.20 for news, and Shorts of 60 s and over did best. So with WHY_SERIAL_ENABLED a Why Short is numbered
+// ("THE WHY #24" on the cover, src/render HookPoster, item 5), runs WHY_TARGET_SECONDS (45-60, src/shortlengths.ts
+// withWhyTarget), opens on a claim Pulse will defend and is titled "Why [game] [claim]". WHY_HOME_SHARE of the slots
+// pick only from the home shelf (WHY_HOME_FRANCHISES: GTA first, Resident Evil second; a third is chosen on 12 Dec).
+// Off, the Why lane is exactly as before.
+
+/** The home shelf's well-loved games per franchise, for the home slots. The first two are the plan's shelf. */
+export const HOME_SHELF: Record<string, string[]> = {
+  "Grand Theft Auto": [
+    "Grand Theft Auto: San Andreas",
+    "Grand Theft Auto: Vice City",
+    "Grand Theft Auto IV",
+    "Grand Theft Auto V",
+    "Grand Theft Auto III",
+    "Grand Theft Auto: Chinatown Wars",
+    "Grand Theft Auto: Liberty City Stories",
+    "Grand Theft Auto Online",
+  ],
+  "Resident Evil": [
+    "Resident Evil 4",
+    "Resident Evil 2",
+    "Resident Evil",
+    "Resident Evil 7: Biohazard",
+    "Resident Evil Village",
+    "Resident Evil 3: Nemesis",
+    "Resident Evil 5",
+    "Resident Evil 6",
+  ],
+  // Candidates for the third shelf game (12 Dec): listed so the choice is one setting.
+  "Silent Hill": ["Silent Hill 2", "Silent Hill", "Silent Hill 3", "Silent Hill f"],
+  Cyberpunk: ["Cyberpunk 2077", "Cyberpunk 2077: Phantom Liberty"],
+  Fallout: ["Fallout: New Vegas", "Fallout 3", "Fallout 4", "Fallout 76"],
+};
+
+/** WHY_HOME_FRANCHISES: "Grand Theft Auto|Resident Evil"; names not on the shelf are dropped. */
+export function parseHomeFranchises(raw: string): string[] {
+  return raw
+    .split("|")
+    .map((f) => f.trim())
+    .filter((f) => HOME_SHELF[f]);
+}
+
+/** A stable 0-1 number for a key (FNV-1a), so a slot is a home slot or not however often it is asked. */
+function unit(key: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < key.length; i++)
+    h = Math.imul(h ^ key.charCodeAt(i), 0x01000193);
+  return (h >>> 0) / 0x100000000;
+}
+
+/** Whether a Why slot picks from the home shelf: WHY_HOME_SHARE of slots, decided by the day and the slot. */
+export function isHomeSlot(share: number, dayKey: string, slot: string): boolean {
+  if (share <= 0) return false;
+  if (share >= 1) return true;
+  return unit(`why-home|${dayKey}|${slot}`) < share;
+}
+
+/** The home slot's candidates: the shelf's games, the franchises taking turns by the day, rotated by the day. */
+export function homeCandidates(
+  franchises: string[],
+  dayKey: string,
+): EvergreenCandidate[] {
+  const day = Number(dayKey.replace(/-/g, ""));
+  const lists = franchises.map((f) => HOME_SHELF[f] ?? []).filter((l) => l.length);
+  if (!lists.length) return [];
+  const start = day % lists.length;
+  const order = [...lists.slice(start), ...lists.slice(0, start)];
+  const out: EvergreenCandidate[] = [];
+  const longest = Math.max(...order.map((l) => l.length));
+  for (let i = 0; i < longest; i++)
+    for (const l of order) {
+      const g = l[(i + day) % l.length];
+      if (g && !out.some((o) => o.name === g))
+        out.push({ name: g, source: "home shelf", note: "a game Pulse covers every week" });
+    }
+  return out;
+}
+
+/** The writer's brief for a numbered Why, after the Why brief: where they differ, this one wins. */
+export function whySerialBrief(o: {
+  number: number;
+  seconds?: { min: number; max: number };
+}): string {
+  const s = o.seconds ?? { min: 45, max: 60 };
+  return `This is The Why #${o.number}, Pulse's numbered daily series: one question you have wondered about a game you love, answered properly. It runs ${s.min} to ${s.max} seconds, and where this brief and the one above differ, this one wins.
+- hook: the claim Pulse will defend, with the game named, not a question ("GTA San Andreas still feels bigger than GTA V."). The number is on the cover, so never say it.
+- first beat: why you should care, in one line. Then two pieces of evidence, each with a hard specific from the sources.
+- then the counterpoint: the best case against the claim, in your own words.
+- pulse_take: the verdict, with one owned "I" line and no more.
+- loop_line: hands back to the claim so the end runs into the start.
+- The YouTube title is "Why [game] [claim]": it starts with "Why", names the game and makes the claim as a statement, never a question, under 70 characters ("Why Resident Evil 4 Changed Every Shooter After It").`;
+}
+
+/** House rules for a numbered Why: the title pattern and a claim, not a question, in the hook. */
+export function whySerialProblems(
+  script: { hook: string; youtube: { title: string } },
+): string[] {
+  const out: string[] = [];
+  const t = script.youtube.title.trim();
+  if (!/^why\b/i.test(t) || /\?\s*$/.test(t))
+    out.push(
+      `The Why's title is "Why [game] [claim]", a statement that starts with "Why", never a question; "${t}" is not.`,
+    );
+  if (/\?\s*$/.test(script.hook.trim()))
+    out.push(
+      "The Why's hook is the claim Pulse will defend, a statement with the game named, not a question.",
+    );
+  return out;
+}
+
+/**
+ * The next Why number: one past the highest numbered Why still standing, or past every Why made so far when none is
+ * numbered yet (the series continues the back catalogue). A number whose Short was dropped is used again.
+ */
+export async function nextWhyNumber(db: import("../db.ts").Db): Promise<number> {
+  const [row] = await db.query<{ top: number | string | null; made: number | string }>(
+    `SELECT max((story_json->'why'->'serial'->>'number')::int) AS top, count(*) AS made FROM episodes
+      WHERE story_hash LIKE 'why:%' AND status NOT IN ('failed','rejected')`,
+  );
+  const top = row?.top == null ? undefined : Number(row.top);
+  return (top ?? Number(row?.made ?? 0)) + 1;
+}

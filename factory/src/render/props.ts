@@ -58,6 +58,7 @@ export type ShortProps = {
   mascot?: boolean; // Pip the mascot test: the amber mascot in the brand band, beside the logo
   chrono?: boolean; // a series in release order (src/editorial/everygame.ts): rank cards show the year in the badge
   heroCut?: { fg: string; x?: number }; // the new-look opening: the hero art's subject cut out (src/render/parallax.ts)
+  seriesCover?: import("./seriesstrip.ts").SeriesCover; // SERIES_COVER_STYLE=strip: the series strip on the opening poster
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;

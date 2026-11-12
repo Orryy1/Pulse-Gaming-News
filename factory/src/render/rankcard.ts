@@ -159,3 +159,56 @@ export function entryCardProblems(
   }
   return p;
 }
+
+// ------------------------------------------------------------- Buy, Wait or Skip's two-column card
+// (format plan item 7): who should buy on the left in the accent, who should pass on the right, each in readable
+// type from a ladder with the same floor as the rank card. The writer's card lines are 3-7 words; a longer one is
+// cut at a word with a mark, never shrunk below the floor.
+
+/** The gap between the two columns and each column's inner padding (px on the 1080-wide Short). */
+export const BUY_PASS_GAP = 28;
+export const BUY_PASS_PAD = 26;
+export const BUY_PASS_SIZES = [56, 52, 48, 44, 40, ENTRY_TEXT_FLOOR];
+export const BUY_PASS_MAX_LINES = 4;
+/** Each column's text width. */
+export const buyPassWidth = () =>
+  Math.floor((CARD_WIDTH - BUY_PASS_GAP) / 2) - 2 * BUY_PASS_PAD;
+
+export interface BuyPassColumn {
+  label: string;
+  text: string;
+  size: number;
+  lines: string[];
+}
+
+/**
+ * The card's columns (pure) when a versus card's rows are "Buy if" and "Pass if" (or skip/wait if), as
+ * src/editorial/verdict.ts writes them; undefined for any other versus card, which keeps the VS layout.
+ */
+export function buyPassColumns(
+  items: string[] | undefined,
+): { buy: BuyPassColumn; pass: BuyPassColumn } | undefined {
+  const rows = (items ?? [])
+    .map((raw) => {
+      const i = raw.indexOf(":");
+      return i < 0
+        ? undefined
+        : { label: raw.slice(0, i).replace(/^\*/, "").trim(), text: raw.slice(i + 1).trim() };
+    })
+    .filter((r): r is { label: string; text: string } => Boolean(r?.label && r.text));
+  const buy = rows.find((r) => /^buy\b/i.test(r.label));
+  const pass = rows.find((r) => /^(pass|skip|wait)\b/i.test(r.label));
+  if (!buy || !pass || rows.length !== 2) return undefined;
+  const column = (r: { label: string; text: string }): BuyPassColumn => {
+    const width = buyPassWidth();
+    let text = r.text;
+    let fit = fitBlock(text, "inter", { maxWidth: width, sizes: BUY_PASS_SIZES, maxLines: BUY_PASS_MAX_LINES, lineHeight: 1.12 });
+    const words = r.text.split(/\s+/);
+    for (let n = words.length - 1; !fit.fits && n >= 1; n--) {
+      text = `${words.slice(0, n).join(" ").replace(/[,;:.]$/, "")}...`;
+      fit = fitBlock(text, "inter", { maxWidth: width, sizes: BUY_PASS_SIZES, maxLines: BUY_PASS_MAX_LINES, lineHeight: 1.12 });
+    }
+    return { label: r.label.toUpperCase(), text, size: fit.size, lines: fit.lines };
+  };
+  return { buy: column(buy), pass: column(pass) };
+}

@@ -4,6 +4,7 @@
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
+import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
 import type { renderShortThumb } from "./render/render.ts";
 import { firstComment, shortComment } from "./social/firstcomment.ts";
@@ -176,6 +177,13 @@ import {
   selectExplainedEpisode,
   stepScriptExplained,
 } from "./explainedstep.ts";
+import { seriesCoverOf, seriesTagOf } from "./seriescover.ts";
+import {
+  recentVerdicts,
+  stepScriptVerdict,
+  verdictCluster,
+  verdictSelection,
+} from "./verdictstep.ts";
 import type { ExplainedStory } from "./editorial/explained.ts";
 import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
 import {
@@ -256,7 +264,12 @@ import {
   friendCheckVerdict,
   shortSettledText,
 } from "./editorial/friendpass.ts";
-import { narrationOf, tidyLoopLine, type Script } from "./editorial/schema.ts";
+import {
+  narrationOf,
+  tidyLoopLine,
+  wordCount,
+  type Script,
+} from "./editorial/schema.ts";
 import { translateMetadata } from "./editorial/localize.ts";
 import { hotBlock, readHotTopic, watchHits } from "./hits.ts";
 import type { Deal } from "./discovery/deals.ts";
@@ -278,7 +291,7 @@ import {
   affiliateCommentLine,
   type AffiliateTags,
 } from "./editorial/affiliate.ts";
-import { pickVoice } from "./voice/index.ts";
+import { pickVoice, speedUp } from "./voice/index.ts";
 import { withAlertScope } from "./alertlog.ts";
 import {
   turnDownBreaths,
@@ -309,6 +322,8 @@ import {
   lineNamesLaterVersion,
   sourceTag,
   endingProblems,
+  nextLineProblems,
+  nextLineRule,
   evergreenRuleNote,
   shortRuleNote,
   thinProblems,
@@ -342,6 +357,7 @@ import {
   mascotShareNow,
   primeTimeVerdict,
   rumoursPerDayNow,
+  nextLineArm,
 } from "./experiments.ts";
 import {
   growthAssign,
@@ -375,20 +391,25 @@ import {
   whySlotsAhead,
 } from "./storymix.ts";
 import {
-  isStrandSlot,
+  franchiseClip,
+  GTA_FILE_ALIASES,
+  GTA_FILE_GAME,
+  gtaFileEntry,
+  gtaFileFrom,
+  gtaFileProblems,
+  gtaFileRunProblems,
+  gtaFileSeries,
+  gtaFileTitle,
+  isGtaFileSlot,
   openOnOwnClip,
-  rankForStrand,
-  strandClip,
-  strandEditorNote,
-  strandFrom,
-  strandProblems,
-  strandSeries,
-  type Strand,
-} from "./strand.ts";
+  type GtaFile,
+} from "./gtafile.ts";
 import {
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
+  withWhyTarget,
+  type ShortLengths,
 } from "./shortlengths.ts";
 import { inboxFiles } from "./assets/library.ts";
 import {
@@ -405,7 +426,14 @@ import {
   type Demand,
 } from "./discovery/searchdemand.ts";
 import { slotLabel } from "./cadence.ts";
-import { recentWhyHooks, sameGame } from "./editorial/why.ts";
+import {
+  homeCandidates,
+  isHomeSlot,
+  nextWhyNumber,
+  recentWhyHooks,
+  sameGame,
+  whySerialProblems,
+} from "./editorial/why.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
@@ -460,7 +488,20 @@ import {
   HYPE_END_LINE,
   hypeAllowed,
 } from "./youtube/hype.ts";
-import { pulseCheckProblems } from "./editorial/newssegment.ts";
+import {
+  pulseCheckFor,
+  pulseCheckProblems,
+  seriesPulseCheckNote,
+} from "./editorial/newssegment.ts";
+import {
+  FLOOR_LANES,
+  breakingAllowed,
+  floorBackFactor,
+  seriesTagFor,
+  shortFloorProblems,
+  shortFloorRule,
+} from "./series.ts";
+import { gtaFileParts, nextPartFor } from "./nextpart.ts";
 import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
@@ -512,6 +553,7 @@ import {
   sparesDue,
   whyRunEntry,
   type RunSpare,
+  type RunFile,
   type RunWhy,
 } from "./shortrun.ts";
 import {
@@ -734,6 +776,10 @@ export interface Services {
   steamClimbers(now: Date): Promise<import("./discovery/charts.ts").Climber[]>;
   /** Today's best Steam deals, skipping games featured recently. */
   steamDeals(exclude: string[]): Promise<import("./discovery/deals.ts").Deal[]>;
+  /** Buy, Wait or Skip candidates confirmed on Steam (src/discovery/verdicts.ts); absent in tests. */
+  verdictCandidates?(
+    exclude: string[],
+  ): Promise<import("./editorial/verdict.ts").VerdictData[]>;
   /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
   trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
   /** One YouTube search page's videos with their views, read without the API (src/discovery/searchdemand.ts); absent in tests. */
@@ -922,7 +968,11 @@ export function uploadsLeftToday(cfg: Config, now: Date): number {
   for (const d of [today, addDays(today, 1)]) {
     const day = weekday(localTime(d, "12:00", cfg.timezone), cfg.timezone);
     const slots = [...cfg.newsSlots, cfg.weeklySlot];
-    if (cfg.dealsDays.includes(day)) slots.push(cfg.dealsSlot);
+    if (
+      cfg.dealsDays.includes(day) ||
+      (cfg.seriesVerdictEnabled && cfg.seriesVerdictDays.includes(day))
+    )
+      slots.push(cfg.dealsSlot);
     if (cfg.longformEnabled && cfg.longformDays.includes(day))
       slots.push(cfg.longformSlot);
     if (cfg.whyEnabled && cfg.whyDays.includes(day))
@@ -1106,7 +1156,30 @@ const SERIES = {
     description:
       "Fast gaming news, checked and explained. New Shorts every day.",
   },
+  // The two new series shelves (format plan, 11 Nov 2026, item 8), filed only with SERIES_PLAYLISTS on.
+  gtaFile: {
+    title: "The GTA File",
+    description:
+      "The one GTA VI thing worth knowing today and what it means for you as a player. Confirmed facts only, a new numbered part every day.",
+  },
+  verdict: {
+    title: "Buy, Wait or Skip",
+    description:
+      "Before you spend: one game, one price and one straight verdict. Prices from Steam, scores from Steam reviews. Tuesday, Thursday and Saturday.",
+  },
 };
+
+/** The new series shelves' titles, in the channel page's order (src/channelpage.ts). */
+export const SERIES_SHELF_TITLES = {
+  gtaFile: SERIES.gtaFile.title,
+  why: SERIES.why.title,
+  verdict: SERIES.verdict.title,
+  docs: SERIES.docs.title,
+  rankedLong: SERIES.rankedLong.title,
+} as const;
+export const SERIES_SHELF_DESCRIPTIONS: Record<string, string> = Object.fromEntries(
+  Object.values(SERIES).map((x) => [x.title, x.description]),
+);
 
 /** The playlists a published video belongs to. */
 export function seriesFor(
@@ -1117,27 +1190,33 @@ export function seriesFor(
   const sc = ep.script_json;
   if (!sc) return [];
   const out: Array<{ title: string; description: string }> = [];
+  // The series build's tag (src/seriescover.ts): with SERIES_PLAYLISTS on, a GTA File part and a verdict file on
+  // their own shelves, and only there.
+  const tag = cfg.seriesPlaylists ? seriesTagOf(sc, ep.story_hash) : undefined;
+  if (tag === "gta_file") out.push(SERIES.gtaFile);
+  else if (tag === "verdict") out.push(SERIES.verdict);
   // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
-  if (sc.recap || sc.explained) out.push(SERIES.weekly);
+  else if (sc.recap || sc.explained) out.push(SERIES.weekly);
   else if (sc.runtime === "long")
     out.push(
       sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong,
     );
   else if (ep.story_hash?.startsWith("why:")) out.push(SERIES.why);
+  // A GTA File part (src/gtafile.ts) is a serial, not news: it goes on its own shelf only.
+  else if (ep.story_json?.gtaFile)
+    out.push(gtaFileSeries(ep.story_json.gtaFile.name));
   else if (
     ep.lane === "cutdown" ||
     (ep.lane === "evergreen" &&
       sc.entries?.length &&
       // A deals list or a release list has entries but ranks nothing: it stays off the rankings shelf.
-      !["steam_deals", "release_radar", "steam_climbers", "weekly_recap"].includes(
+      !["steam_deals", "release_radar", "steam_climbers", "weekly_recap", "buy_wait_skip"].includes(
         sc.evergreen_format ?? "",
       ))
   )
     out.push(SERIES.rankedShort);
   else if (ep.lane === "news" || ep.lane === "news_breaking")
     out.push(SERIES.news);
-  // A strand Short also joins the strand's own shelf, named as the strand (src/strand.ts).
-  if (ep.story_json?.strand) out.push(strandSeries(ep.story_json.strand));
   const focusOn =
     cfg.focusPlaylist &&
     (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
@@ -1292,8 +1371,6 @@ async function createFromChoice(
     /** Our own dropped attempts at this story: never published, so not "already covered". */
     notCovered: string[];
   },
-  /** A word for the editor about this slot (the strand's, src/strand.ts). */
-  note?: string,
 ): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
@@ -1303,7 +1380,6 @@ async function createFromChoice(
     (await recentHeadlines(db)).filter((h) => !big?.notCovered.includes(h)),
     [
       big?.note ?? "",
-      note ?? "",
       focusBlock(s.cfg, s.now()),
       hotBlock(await readHotTopic(db, s.now()).catch(() => undefined)),
       calendarFor(s.cfg, s.now(), "news", 3),
@@ -1601,8 +1677,17 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
         )
       ).map((r) => r.franchise),
     );
+    // BREAKING_HOME_ONLY (format redesign plan item 2): only home-shelf games, or a story the desk rates major.
+    const major = cfg.breakingHomeOnly
+      ? new Set(
+          (await currentStories(db, cfg, now).catch(() => []))
+            .filter((st) => st.size >= cfg.bigStorySize)
+            .flatMap((st) => st.hashes),
+        )
+      : new Set<string>();
     const qualified = eligible.filter(
       (x) =>
+        breakingAllowed(cfg, storyText(x.cluster), major.has(x.cluster.hash)) &&
         (isBreaking(x.cluster, x.sighting, now, rule) ||
           (sprint &&
             (SHOWCASE.test(storyText(x.cluster)) ||
@@ -1710,34 +1795,6 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectWhy(s)) ??
       (await maybeSelectSpare(s))
     );
-  // The named strand (STRAND_NAME, src/strand.ts): its slot is one of the news slots, so it adds none. The slot takes the
-  // franchise's stories only, player-facing first and company numbers last; with none, it stays an ordinary news slot.
-  const strand = strandFrom(cfg);
-  if (strand && isStrandSlot(strand, slot, cfg.timezone)) {
-    const ranked = rankForStrand(
-      strand,
-      eligible.map((x) => x.cluster),
-      storyText,
-    ).slice(0, 12);
-    if (ranked.length) {
-      const ownFootage = await strandOwnFootage(cfg, strand).catch(() => false);
-      return createFromChoice(
-        s,
-        ranked.map((c) => ({
-          ...c,
-          strand: { name: strand.name, franchise: strand.franchise, ownFootage },
-        })),
-        { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
-        `strand "${strand.name}" ${slot.toISOString()}`,
-        undefined,
-        strandEditorNote(strand),
-      );
-    }
-    log("info", "no story for the strand; an ordinary news slot", {
-      strand: strand.name,
-      slot: slot.toISOString(),
-    });
-  }
   // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
   // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
   // Breaking news above never passes through it: speed matters more than format.
@@ -1771,13 +1828,124 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   );
 }
 
-/** Whether the gameplay inbox holds a clip of the strand's franchise, so the strand Short can open on the owner's footage. */
-export async function strandOwnFootage(
+/** Whether the gameplay inbox holds a clip of the franchise, so a GTA File part can open on the owner's footage. */
+export async function franchiseOwnFootage(
   cfg: Pick<Config, "footage" | "gameplayRoot">,
-  strand: Pick<Strand, "aliases">,
+  file: Pick<GtaFile, "aliases">,
 ): Promise<boolean> {
   if (!cfg.footage || !cfg.gameplayRoot) return false;
-  return Boolean(strandClip(strand, await inboxFiles(cfg.gameplayRoot)));
+  return Boolean(franchiseClip(file, await inboxFiles(cfg.gameplayRoot)));
+}
+
+/** The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS). */
+export function lengthsFor(
+  cfg: Pick<Config, "shortLengths" | "whySerialEnabled" | "whyTargetSeconds">,
+): ShortLengths {
+  return withWhyTarget(
+    cfg.shortLengths,
+    cfg.whySerialEnabled,
+    cfg.whyTargetSeconds,
+  );
+}
+
+/** A Why's place in the numbered series (WHY_SERIAL_ENABLED); undefined when the serial is off. */
+async function whySerialFor(
+  s: Services,
+  home: boolean,
+): Promise<{ number: number; home: boolean } | undefined> {
+  if (!s.cfg.whySerialEnabled) return undefined;
+  return { number: await nextWhyNumber(s.db), home };
+}
+
+/**
+ * A part of The GTA File (src/gtafile.ts) from its run file: like a planned Why, its sources are read and its angle
+ * set by hand, so the editor, the freshness rule and the demand check stay out of it. The callback quotes what the
+ * last part said when it went out; the hook opens on the owner's GTA VI footage when the inbox has a clip.
+ */
+export async function selectGtaFilePart(
+  s: Services,
+  file: GtaFile,
+  e: RunFile,
+  due: Date,
+): Promise<string | undefined> {
+  const now = s.now();
+  const read = await Promise.all(
+    e.sources.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
+  );
+  const items = e.sources
+    .map((u, i) => ({ u, a: read[i] }))
+    .filter((x) => x.a)
+    .map(({ u, a }) => ({
+      title: a!.title,
+      url: u.url,
+      summary: "",
+      publishedAt: now.toISOString(),
+      source: u.source,
+      sourceKind: u.official ? ("official" as const) : ("outlet" as const),
+    }));
+  // Confirmed facts only: with no official source readable, the part waits rather than run on outlets alone.
+  if (!items.some((i) => i.sourceKind === "official")) {
+    log("warn", "GTA File part has no readable official source", {
+      part: e.part,
+    });
+    return undefined;
+  }
+  const [prev] = await s.db.query<{
+    title: string | null;
+    take: string | null;
+  }>(
+    `SELECT script_json->'youtube'->>'title' AS title, script_json->'pulse_take'->>'narration' AS take FROM episodes
+      WHERE story_hash = $1 AND status NOT IN ('failed','rejected') AND script_json IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1`,
+    [`gtafile:${e.part - 1}`],
+  );
+  const ownFootage = await franchiseOwnFootage(s.cfg, file).catch(() => false);
+  const cluster: StoryCluster = {
+    hash: `gtafile:${e.part}`,
+    headline: gtaFileTitle(e.part, e.title),
+    items,
+    sources: [...new Set(items.map((i) => i.source))],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: e.game ?? GTA_FILE_GAME,
+    visualNeed: "game_footage",
+    run: true,
+    why: { question: e.question, angle: e.angle, follow: { kind: "series" } },
+    gtaFile: {
+      name: file.name,
+      franchise: file.franchise,
+      part: e.part,
+      recap: e.recap,
+      ...(prev?.title
+        ? {
+            previous: `"${prev.title}"${prev.take ? `, verdict: "${prev.take}"` : ""}`,
+          }
+        : {}),
+      facts: e.facts,
+      ownFootage,
+    },
+  };
+  const id = shortId();
+  if (
+    !(await createEpisode(s.db, id, cluster, {
+      lane: "news",
+      priority: LANE_PRIORITY.news,
+      slotAt: due,
+    }))
+  )
+    return undefined;
+  await logEvent(s.db, id, "selected", {
+    headline: cluster.headline,
+    lane: "gta_file",
+    part: e.part,
+    own_footage: ownFootage,
+    slot_at: due.toISOString(),
+  });
+  log("info", "GTA File part selected", { id, part: e.part });
+  return id;
 }
 
 /**
@@ -2150,6 +2318,7 @@ export async function selectRunWhy(
   const follow = await followFor(s.db, e.game, now).catch(() => ({
     kind: "series" as const,
   }));
+  const serial = await whySerialFor(s, false);
   const cluster: StoryCluster = {
     hash: `why:${whySlug(e.question)}`,
     headline: e.title,
@@ -2169,6 +2338,7 @@ export async function selectRunWhy(
       arc: e.arc,
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
+      ...(serial ? { serial } : {}),
     },
     ...(how.premade ? { premade: true } : {}),
     ...(how.spare && e.kind === "spare"
@@ -2451,6 +2621,35 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     )
   )
     return undefined;
+  // The GTA File (src/gtafile.ts) owns its slot: the part planned for today, else the slot goes to the Why editor.
+  const file = gtaFileFrom(cfg);
+  if (file && isGtaFileSlot(file, due, cfg.timezone)) {
+    const run = readRun(file.runFile);
+    const part = gtaFileEntry(run, due, file, cfg.timezone);
+    const planProblems = gtaFileRunProblems(run);
+    if (planProblems.length)
+      log("warn", "GTA File run file has problems", { problems: planProblems });
+    if (part) {
+      const made = await selectGtaFilePart(s, file, part, due).catch((err) => {
+        log("warn", "GTA File part failed", {
+          part: part.part,
+          error: errorMessage(err),
+        });
+        return undefined;
+      });
+      if (made) return made;
+    }
+    log("info", "no GTA File part for the slot; the Why editor picks", {
+      slot: due.toISOString(),
+      part: part?.part ?? null,
+    });
+    await s
+      .notify({
+        level: "info",
+        content: `The GTA File has ${part ? `part ${part.part} planned, but it could not be made (no official source readable, or it was made and dropped before)` : "no part planned"} for ${slotLabel(due, cfg.timezone)}; that slot gets an ordinary Why Short instead.`,
+      })
+      .catch(() => undefined);
+  }
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
   let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
   // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
@@ -2496,10 +2695,19 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     slugs: fresh.map((r) => r.hash.replace(/^why:/, "")),
   };
   recent.games.push(...dropped.map((r) => r.game ?? "").filter(Boolean));
-  // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out.
-  const base = whyCandidates(
-    await s.discoverEvergreen(),
-    dayKey(now, cfg.timezone),
+  // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out. A home slot
+  // of the numbered serial (WHY_HOME_SHARE) offers only the home shelf's games (src/editorial/why.ts HOME_SHELF).
+  const today = dayKey(now, cfg.timezone);
+  const homeList =
+    cfg.whySerialEnabled &&
+    isHomeSlot(cfg.whyHomeShare, today, slotLabel(due, cfg.timezone))
+      ? homeCandidates(cfg.whyHomeFranchises, today).filter(
+          (c) => !recent.games.some((g) => sameGame(g, c.name)),
+        )
+      : [];
+  const home = homeList.length > 0;
+  const base = (
+    home ? homeList : whyCandidates(await s.discoverEvergreen(), today)
   ).filter((c) => !recent.games.some((g) => sameGame(g, c.name)));
   const { candidates, demand, skipped } = await demandRanked(s, base);
   if (!candidates.length) return undefined;
@@ -2553,6 +2761,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const follow = await followFor(db, topic.game, now).catch(() => ({
     kind: "series" as const,
   }));
+  const serial = await whySerialFor(s, home);
   const cluster: StoryCluster = {
     hash: `why:${slug}`,
     headline: topic.title,
@@ -2579,6 +2788,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
       angle: topic.angle,
       arc: topic.arc,
       follow,
+      ...(serial ? { serial } : {}),
     },
   };
   const id = shortId();
@@ -2599,6 +2809,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     game: topic.game,
     arc: topic.arc,
     follow,
+    ...(serial ? { serial: serial.number, home } : {}),
     reason: topic.reason,
     demand: pickedDemand ?? null,
     demand_skipped: skipped.map((c) => c.name),
@@ -3007,6 +3218,36 @@ export async function maybeSelectWeekly(
     log("info", "achievement hunt skipped: not enough achievement data", {
       games: games.length,
     });
+  }
+
+  // Buy, Wait or Skip (SERIES_VERDICT_ENABLED, src/verdictstep.ts): one game, one price, one verdict, in the deals slot
+  // on its days. It takes the slot ahead of the deals list, and is judged by the series test, not the format trials.
+  const verdictDue = cfg.seriesVerdictEnabled
+    ? evergreenDue(
+        now,
+        { ...plan(cfg.seriesVerdictDays), slot: cfg.dealsSlot },
+        taken,
+      )
+    : undefined;
+  if (
+    verdictDue &&
+    s.verdictCandidates &&
+    !(await weeklyTried(db, `verdict:${today}`))
+  ) {
+    const recent = await recentVerdicts(db, now);
+    const pick = verdictSelection(
+      await s.verdictCandidates(recent.games),
+      recent.verdicts,
+    );
+    if (pick)
+      return make(
+        "verdict",
+        verdictCluster(today, pick, now),
+        verdictDue,
+        pick as unknown as Record<string, unknown>,
+        "evergreen",
+      );
+    log("info", "buy, wait or skip skipped: no game confirmed on Steam", {});
   }
 
   // Steam deals: their own daily slot, only when at least four strong deals are new to the channel.
@@ -5861,6 +6102,11 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   // Weekly formats carry the week's data for the writer.
   const brief = (ep.factcheck_json as { brief?: string } | null)?.brief ?? "";
   if (!topic) throw new FatalError("evergreen episode has no topic");
+  // Buy, Wait or Skip has its own writer and the data's own verdict (src/verdictstep.ts).
+  if ((topic.format as string) === "buy_wait_skip")
+    return stepScriptVerdict(s, ep, (script, attempt, data) =>
+      adjudicateRanking(s, ep, script, [], attempt, data),
+    );
   let facts: Array<{ title: string; facts: SteamFacts }> = [];
   let feedback: string[] = [];
   let draft: import("./editorial/evergreen.ts").EvergreenScript | undefined;
@@ -6017,6 +6263,12 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 
 // --------------------------------------------------------------------- steps
 
+/** The run the next-part line reads: The GTA File's own run file for its parts, else the launch run (SHORT_RUN_FILE). */
+function nextPartRun(cfg: Config, series: string | undefined) {
+  const file = series === "gta_file" ? gtaFileFrom(cfg) : undefined;
+  return file ? gtaFileParts(readRun(file.runFile), file.slot) : readRun(cfg.shortRunFile);
+}
+
 async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "cutdown") return stepScriptCutdown(s, ep);
   if (ep.lane === "gameplay") return stepScriptGameplay(s, ep);
@@ -6116,7 +6368,35 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
   if (s.cfg.voiceTestShare > 0)
     await logEvent(s.db, ep.id, "voice_test", { personal }).catch(() => undefined);
-  const variantNote = [growthNotes(test, testDefaults), shortRuleNote(s.cfg, ep), personal ? PERSONAL_VOICE : ""]
+  // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
+  const series = seriesTagFor(ep);
+  // The Pulse Check is the news desk's own segment; with NEWS_SEGMENT_SERIES every series Short ends on it too.
+  const pulseCheck = pulseCheckFor(s.cfg, {
+    lane: ep.lane,
+    why: !!cluster.why,
+    argument,
+    series,
+  });
+  // The next-part line test (SERIES_NEXT_LINE, plan item 9): The Why and The GTA File, on alternate days, and only
+  // when the run has the next part planned and dated (src/nextpart.ts). No plan, no line.
+  const lineArm =
+    s.cfg.seriesNextLine && (series === "why" || series === "gta_file") && ep.slot_at
+      ? nextLineArm(dayKey(new Date(ep.slot_at), s.cfg.timezone))
+      : undefined;
+  const nextPart =
+    lineArm === "line" && ep.slot_at
+      ? nextPartFor(nextPartRun(s.cfg, series), new Date(ep.slot_at), s.cfg.timezone)
+      : undefined;
+  // SHORT_MIN_SECONDS (plan item 2): the news writer's Shorts reach the floor.
+  const floor = FLOOR_LANES.includes(ep.lane) ? s.cfg.shortMinSeconds : 0;
+  const variantNote = [
+    growthNotes(test, testDefaults),
+    shortRuleNote(s.cfg, ep),
+    personal ? PERSONAL_VOICE : "",
+    shortFloorRule(floor, s.cfg.shortSpeed),
+    pulseCheck && s.cfg.newsSegmentSeries ? seriesPulseCheckNote(series) : "",
+    nextPart ? nextLineRule(nextPart) : "",
+  ]
     .filter(Boolean)
     .join("\n\n");
   const recentTexts = await recentShortTexts(s.db, ep.id, s.now()).catch(
@@ -6127,19 +6407,16 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         () => [],
       )
     : [];
-  // The Pulse Check is the news desk's own segment: a Why Short has its question and its reason to follow instead.
-  const pulseCheck =
-    s.cfg.newsSegment &&
-    !argument &&
-    !cluster.why &&
-    (ep.lane === "news" || ep.lane === "news_breaking");
   // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
-  const length = shortTarget(s.cfg.shortLengths, lengthFormatOf(ep));
+  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
     const problems = validateScript(sc, recent, length);
-    // A strand Short (src/strand.ts) never reads as an announcement.
-    if (cluster.strand) problems.push(...strandProblems(sc));
+    // A GTA File part (src/gtafile.ts) never reads as an announcement and says its part number first; a numbered
+    // Why is titled "Why [game] [claim]" and opens on a claim (src/editorial/why.ts).
+    if (cluster.gtaFile)
+      problems.push(...gtaFileProblems(sc, cluster.gtaFile.part));
+    else if (cluster.why?.serial) problems.push(...whySerialProblems(sc));
     const thin = s.cfg.shortRefuseThin
       ? thinProblems(narrationOf(sc), sc.thin_reason)
       : [];
@@ -6158,7 +6435,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(sc.beats));
     // GTA VI's release date in public copy: from November 18 in New Zealand, not just November 19 (src/launchprep.ts).
     problems.push(...releaseDateProblems(publicText(sc)));
-    if (s.cfg.shortEndPayoff) problems.push(...endingProblems(sc.loop_line));
+    if (s.cfg.shortEndPayoff)
+      problems.push(...endingProblems(sc.loop_line, nextPart));
+    if (lineArm) problems.push(...nextLineProblems(sc.loop_line, nextPart));
+    // Under SHORT_MIN_SECONDS after the rewrite, a Short stops like a thin one: a big story still goes out.
+    const short = shortFloorProblems(wordCount(narrationOf(sc)), floor, s.cfg.shortSpeed);
+    problems.push(...short);
+    thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
     if (drop) problems.push(...detailListProblems(sc));
@@ -6179,13 +6462,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         s.cfg.repeatMax,
       ),
     );
+    // A GTA File part opens "GTA File, part N" every day and ends on its own question: the Why's opening and
+    // follow rules would refuse both, so it answers only to the plea guard.
     if (cluster.why)
       problems.push(
-        ...whyHookProblems(sc.hook, whyHooks),
+        ...(cluster.gtaFile ? [] : whyHookProblems(sc.hook, whyHooks)),
         ...whyFollowProblems(
           sc.loop_line,
           cluster.why.follow,
-          s.cfg.shortEndPayoff,
+          s.cfg.shortEndPayoff || !!cluster.gtaFile,
         ),
         ...whyAnswerProblems(narrationOf(sc)),
       );
@@ -6231,6 +6516,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       dropAngle: drop,
       length,
     });
+    // A GTA File part's title follows the plan's pattern whatever the writer gave: "GTA VI File #7: [claim]".
+    if (cluster.gtaFile)
+      script = {
+        ...script,
+        youtube: {
+          ...script.youtube,
+          title: gtaFileTitle(cluster.gtaFile.part, script.youtube.title),
+        },
+      };
     const { problems, thin } = houseProblems(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues
@@ -6376,7 +6670,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ...(friend.kept ? { tags: (script.voice_tags ?? []).length } : {}),
     }).catch(() => undefined);
   }
-  if ((script.is_rumour || mustLabelRumour) && !s.cfg.includeRumours) {
+  // RUMOUR_SHARE=0 (format redesign plan item 2) stops rumour Shorts the same way.
+  if (
+    (script.is_rumour || mustLabelRumour) &&
+    (!s.cfg.includeRumours || s.cfg.rumourShare <= 0)
+  ) {
     log("info", "story dropped: a rumour, and rumours are off", {
       episode: ep.id,
       headline: cluster.headline,
@@ -6395,6 +6693,18 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
+  const tag = seriesTagFor(ep, script);
+  if (tag) script = { ...script, series: tag };
+  if (lineArm)
+    script = {
+      ...script,
+      next_line: {
+        arm: lineArm,
+        said: !!nextPart && !nextLineProblems(script.loop_line, nextPart).length,
+        ...(nextPart ? { part: nextPart.part, day: nextPart.day } : {}),
+      },
+    };
   await guardScript(s, ep, script, "after writing");
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
   if (skeleton) script = { ...script, skeleton: skeleton.key };
@@ -6770,6 +7080,20 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       seconds: Math.round(tight.removedSeconds * 10) / 10,
     });
   }
+  // SHORT_MIN_SECONDS holds after SHORT_SPEED too (12 Nov 2026: an 87-word news Short came out at 28.5 s at 1.1x):
+  // a take the speed-up (or the pause tightening) left under the floor plays back slower, up to the pace it was voiced
+  // at and never slower. Still short after that, it goes out as it is: the writer's floor already held.
+  const floorSeconds = !twin && FLOOR_LANES.includes(ep.lane) ? s.cfg.shortMinSeconds : 0;
+  const back = floorBackFactor(narration.durationSeconds, floorSeconds, s.cfg.shortSpeed);
+  if (back < 1) {
+    await speedUp(path.join(dir, "voice.mp3"), back);
+    narration.words = narration.words.map((w) => ({ ...w, start: w.start / back, end: w.end / back }));
+    narration.durationSeconds = narration.durationSeconds / back;
+    await logEvent(s.db, ep.id, "short_floor_pace", {
+      factor: Math.round(back * 1000) / 1000,
+      seconds: Math.round(narration.durationSeconds * 10) / 10,
+    });
+  }
   // The narration check: what the voice says against its script, before anything is rendered on it.
   // A fault re-voices once; a second one is reported and the episode goes on (a misheard line should
   // not cost a week's long video). Caught the GTA ranking's "Sayus" and drifting timings (23 Oct 2026).
@@ -6884,8 +7208,8 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         ? ep.script_json?.evergreen_format === "documentary"
           ? s.cfg.docMaxSeconds
           : s.cfg.longformMaxSeconds
-        : // SHORT_LENGTHS: the strand's 60-75 s lane needs room past the minute; every other Short keeps 58 s.
-          (shortTarget(s.cfg.shortLengths, lengthFormatOf(ep))?.capSeconds ??
+        : // SHORT_LENGTHS and WHY_TARGET_SECONDS: a lane past the minute needs room; every other Short keeps 58 s.
+          (shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep))?.capSeconds ??
           SHORT_NARRATION_CAP_SECONDS);
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(
@@ -7207,9 +7531,9 @@ export async function gatherMedia(
     startSeconds: c.startSeconds,
     stock: c.stock,
   }));
-  // A strand Short (src/strand.ts) opens on the owner's own gameplay when the inbox holds a clip of the franchise.
-  const strand = ep.story_json.strand;
-  if (strand?.ownFootage && s.cfg.footage) {
+  // A GTA File part (src/gtafile.ts) opens on the owner's own gameplay when the inbox holds a clip of the game.
+  const gtaPart = ep.story_json.gtaFile;
+  if (gtaPart?.ownFootage && s.cfg.footage) {
     const hook = targetsFor(script).find((t) => t.key === "hook") ?? {
       key: "hook",
       text: script.hook,
@@ -7219,15 +7543,15 @@ export async function gatherMedia(
     };
     // The game as the inbox's reviewer named it, so the library finds the same clip the selection saw.
     const clipGame = s.cfg.gameplayRoot
-      ? strandClip(
-          strandFrom(s.cfg) ?? { aliases: [strand.franchise] },
+      ? franchiseClip(
+          { aliases: GTA_FILE_ALIASES },
           await inboxFiles(s.cfg.gameplayRoot).catch(() => []),
         )?.game
       : undefined;
     const [own] = await s
       .ownClips(
-        clipGame || script.game_title || strand.franchise,
-        strand.franchise,
+        clipGame || script.game_title || gtaPart.franchise,
+        gtaPart.franchise,
         dir,
         [hook],
         1,
@@ -7250,14 +7574,14 @@ export async function gatherMedia(
           audio: own.audio,
         }),
       );
-      await logEvent(s.db, ep.id, "strand_own_footage", {
-        strand: strand.name,
+      await logEvent(s.db, ep.id, "gta_file_own_footage", {
+        part: gtaPart.part,
         clip: own.provenance,
       });
     } else
-      log("info", "strand Short has no own clip to open on", {
+      log("info", "GTA File part has no own clip to open on", {
         episode: ep.id,
-        strand: strand.name,
+        part: gtaPart.part,
       });
   }
   // Licensed stock for the real-world lines of a picture story that has no publisher video of it.
@@ -10878,6 +11202,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "stamp_dropped", { stamp: script.stamp.text, tag });
     script.stamp = undefined;
   }
+  // APPLE_AESTHETICS (Mac only, off until switched on): Apple's aesthetics score for each still, once, so the most
+  // striking clean picture opens the Short and leads its search tile (src/assets/appleaesthetics.ts).
+  if (s.cfg.appleAesthetics) {
+    const todo = (assets.images ?? []).filter((i) => i.aesthetic === undefined);
+    const scores = await scoreAesthetics(
+      true,
+      todo.map((i) => path.join(dir, i.file)),
+    );
+    for (const i of todo) {
+      const a = coverWorth(scores.get(path.join(dir, i.file)));
+      if (a !== undefined) i.aesthetic = a;
+    }
+  }
   const planInput = {
     segments,
     words,
@@ -10888,6 +11225,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: i.beatIndex,
       wordy: i.wordy,
       luma: i.luma,
+      aesthetic: i.aesthetic,
       frame: i.frame,
       then: i.then,
       forWords: i.forWords,
@@ -11221,6 +11559,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       stampColour("neutral"),
     ),
   ];
+  // The series strip on the opening poster and the search thumbnail (SERIES_COVER_STYLE, src/seriescover.ts).
+  const seriesCover = await seriesCoverOf(s.db, s.cfg, ep, script);
   const entrySpans = overlaySpans({
     segments,
     words,
@@ -11290,12 +11630,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       clean: shortClean,
       mascot: assets.mascot,
       heroCutFile: assets.heroCut,
+      ...(seriesCover ? { seriesCover } : {}),
       renderDate: s.now().toISOString().slice(0, 10),
     },
   });
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
-  await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex);
+  await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex, seriesCover);
 
   const tech = await s.technicalQa(
     final,
@@ -12561,6 +12902,7 @@ export async function designShortThumb(
   script: Script,
   assets: NonNullable<Episode["assets_json"]>,
   heroIndex: number | undefined,
+  series?: import("./render/seriesstrip.ts").SeriesCover,
 ): Promise<void> {
   const share = s.cfg.shortSearchThumbShare;
   if (share <= 0 || !s.renderShortThumb) return;
@@ -12579,6 +12921,7 @@ export async function designShortThumb(
       imageFile: image.file,
       words,
       label: script.is_rumour ? "REPORTED" : undefined,
+      ...(series ? { series } : {}),
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
     });

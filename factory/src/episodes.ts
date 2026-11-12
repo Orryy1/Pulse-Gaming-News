@@ -120,6 +120,7 @@ export interface EpisodeAssets {
     label?: string;
     wordy?: boolean;
     luma?: number; // mean brightness, measured under SHORT_BRIGHT
+    aesthetic?: number; // APPLE_AESTHETICS: Apple Vision's aesthetics score, -1 to 1 (src/assets/appleaesthetics.ts)
     frame?: boolean; // a trailer frame, a last-resort still
     bigText?: boolean; // the local OCR found big lettering in what the vertical crop keeps
     then?: boolean;

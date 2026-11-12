@@ -462,5 +462,7 @@ export function staleAfterHours(
   if (lane === "news") return 18;
   if (lane === "free") return 48;
   if (lane === "evergreen" && evergreenFormat === "steam_deals") return 20;
+  // A verdict is about today's price: a day late, the price on screen may be wrong.
+  if (lane === "evergreen" && evergreenFormat === "buy_wait_skip") return 20;
   return undefined;
 }

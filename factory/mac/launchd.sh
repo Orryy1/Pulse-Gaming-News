@@ -1,6 +1,8 @@
 #!/bin/bash
 # Writes and loads the Mac's three background services (run on the Mac; idempotent):
 #   com.pulse.asr      the speech check (mac/asr_server.py) on 127.0.0.1:8877
+#   com.pulse.vision   picture checks on the Mac (mac/vision_server.py) on 127.0.0.1:8878, once migrate.sh prepare
+#                      has made its venv; a few MB until a picture arrives (MAC_VISION decides whether one does)
 #   com.pulse.tunnel   Cloudflare tunnel for pulse.orryy.com and pulsegmg.com
 #   com.pulse.factory  the factory (mac/run.sh), only when called with "factory" (the cutover)
 #   com.pulse.discord  the community Discord bot (src/discord/bot.ts), also from the cutover
@@ -35,6 +37,9 @@ plist() { # label, program and args...
   fi
 }
 plist com.pulse.asr "$HOME/PulseFactory/asr/bin/python" "$HOME/PulseFactory/factory/mac/asr_server.py"
+if [ -x "$HOME/PulseFactory/macvision/venv/bin/python" ]; then
+  plist com.pulse.vision "$HOME/PulseFactory/macvision/venv/bin/python" "$HOME/PulseFactory/factory/mac/vision_server.py"
+fi
 if [ "$1" = "factory" ]; then
   plist com.pulse.tunnel /opt/homebrew/bin/cloudflared tunnel --config "$HOME/PulseFactory/cloudflared-pulse.yml" --no-autoupdate run
   plist com.pulse.factory /bin/bash "$HOME/PulseFactory/factory/mac/run.sh"

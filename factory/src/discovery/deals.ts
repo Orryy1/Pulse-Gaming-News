@@ -20,16 +20,16 @@ export interface Deal {
 
 const UA = { "user-agent": "PulseGamingNews/1.0 (+https://pulsegmg.com)" };
 
-async function getJson(url: string): Promise<any> {
+export async function getJson(url: string): Promise<any> {
   const res = await fetchWithTimeout(url, { headers: UA }, 15_000);
   return res.ok ? res.json() : undefined;
 }
 
-const money = (cents: number, symbol: string) =>
+export const money = (cents: number, symbol: string) =>
   `${symbol}${(cents / 100).toFixed(2)}`;
 
 /** Steam's live price in one country, or undefined when the store has none. */
-async function steamPrice(
+export async function steamPrice(
   appId: number,
   cc: string,
 ): Promise<

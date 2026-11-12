@@ -132,6 +132,7 @@ export function verdict(s: FormatScore, newsMedian: number): Verdict {
 const NAMES: Record<string, string> = {
   news: "News",
   steam_deals: "Steam deals",
+  buy_wait_skip: "Buy, Wait or Skip",
   release_radar: "Release Radar",
   steam_climbers: "Steam climbers",
   achievements: "Achievement hunts",

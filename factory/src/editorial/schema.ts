@@ -244,6 +244,11 @@ export const ScriptSchema = z.object({
   ),
 });
 export type Script = z.infer<typeof ScriptSchema> & {
+  /** The series the Short belongs to (format redesign plan, src/series.ts): "why", "gta_file", "verdict" or
+   * "news_control". Set by the pipeline, never by the writer; the weekly report sums subscribers by it. */
+  series?: import("../series.ts").SeriesTag;
+  /** The next-part line test (SERIES_NEXT_LINE): the day's arm, whether the line was said, and the part it named. */
+  next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
   /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
   voice_tags?: VoiceTagMark[];
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
@@ -272,7 +277,9 @@ export type Script = z.infer<typeof ScriptSchema> & {
     | "documentary"
     | "steam_climbers"
     | "steam_deals"
-    | "every_game";
+    | "every_game"
+    /** Buy, Wait or Skip (src/editorial/verdict.ts): one game, one price, one verdict. */
+    | "buy_wait_skip";
   /** "The Story of Every [series] Game" (src/editorial/everygame.ts): each beat's game, year, hardware and year stamp. */
   every_game?: import("./everygame.ts").EveryGameMeta;
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */

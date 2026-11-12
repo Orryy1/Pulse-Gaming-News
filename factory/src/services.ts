@@ -72,6 +72,7 @@ import { fetchAchievements } from "./discovery/achievements.ts";
 import { researchGame } from "./discovery/wikipedia.ts";
 import { steamClimbers } from "./discovery/charts.ts";
 import { steamDeals } from "./discovery/deals.ts";
+import { verdictCandidates } from "./discovery/verdicts.ts";
 import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
@@ -365,6 +366,7 @@ export function createServices(db: Db, cfg: Config): Services {
     achievements: (appId) => fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
+    verdictCandidates: (exclude) => verdictCandidates(exclude),
     footageFirstDeps: () => {
       const local = footageFirstDeps({
         ytdlp: cfg.ytdlpPath,
@@ -442,6 +444,7 @@ export function createServices(db: Db, cfg: Config): Services {
           ...o,
           enabled: cfg.cutsceneFootage,
           ytdlp: cfg.ytdlpPath,
+      soundTags: cfg.appleSoundTags,
           llm: cfg.clipRanking === "llm" ? llm : undefined,
         }),
       ),

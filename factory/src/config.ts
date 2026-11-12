@@ -5,6 +5,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
+import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
+import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import {
   defaultBackupDir,
@@ -14,12 +16,15 @@ import {
   usablePath,
 } from "./platform.ts";
 import {
+  parseBand,
   parseShortLengths,
   shortLengthsSummary,
+  type LengthBand,
   type ShortLengths,
 } from "./shortlengths.ts";
-import { strandSummary } from "./strand.ts";
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
+import { gtaFileSummary } from "./gtafile.ts";
+import { parseHomeFranchises } from "./editorial/why.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -235,13 +240,21 @@ export interface Config {
   whySlots: string[];
   /** Days a Why Short's game, topic and opening shape stay off limits for the next one (src/editorial/why.ts). */
   whyFreshDays: number;
-  /** The named daily Shorts strand (src/strand.ts): its name; empty = off (STRAND_NAME). */
-  strandName: string;
-  /** The strand's slot, local "HH:MM": it must already be one of NEWS_SLOTS (the plan's verdict slot), so no slot is added (STRAND_SLOT). */
-  strandSlot: string;
-  /** The strand's franchise and the other names it goes by, "|" between them, the on-screen name first, e.g. "GTA VI|GTA 6|Grand Theft Auto VI" (STRAND_FRANCHISE). */
-  strandFranchise: string;
-  /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,strand=60-75"; empty = the old 25-40 s for every Short. */
+  /** The Why as a numbered serial (src/editorial/why.ts, format redesign plan item 3): numbered, longer, home shelf (WHY_SERIAL_ENABLED). */
+  whySerialEnabled: boolean;
+  /** The serial Why's seconds (WHY_TARGET_SECONDS, "45-60"); applies only with WHY_SERIAL_ENABLED; undefined = unusable. */
+  whyTargetSeconds: LengthBand | undefined;
+  /** Share of Why slots, 0-1, that pick only from the home shelf (WHY_HOME_SHARE; serial only); 0 = off. */
+  whyHomeShare: number;
+  /** The home shelf's franchises (WHY_HOME_FRANCHISES, "|" between them; names from HOME_SHELF). */
+  whyHomeFranchises: string[];
+  /** The GTA File (src/gtafile.ts, plan item 4): the numbered daily GTA VI serial after launch (SERIES_GTA_FILE_ENABLED). */
+  seriesGtaFileEnabled: boolean;
+  /** Its slot, local "HH:MM": one of WHY_SLOTS, so no slot is added (SERIES_GTA_FILE_SLOT). */
+  seriesGtaFileSlot: string;
+  /** Its planned parts, a src/shortrun.ts file of "file" entries (SERIES_GTA_FILE_RUN_FILE). */
+  seriesGtaFileRunFile: string;
+  /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,gta_file=45-55"; empty = the old 25-40 s for every Short. */
   shortLengths: ShortLengths;
   /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
   instagramMaxSeconds: number;
@@ -300,6 +313,15 @@ export interface Config {
   macFootageGather: boolean; // the footage-first gather, all but the vision looks
   macStills: boolean; // long videos' thumbnails
   macGameplay: boolean; // the highlight finder and TinoTV VOD download (retire the PC tasks first)
+  /** MAC_VISION (Mac mini only, off until switched on): picture checks on the Mac's own vision model
+   * (mac/vision_server.py); "fallback" while the PC relay is down, "always" for every check (src/assets/macvision.ts). */
+  macVision: "off" | "fallback" | "always";
+  /** APPLE_AESTHETICS (Mac mini only, off until switched on): Apple Vision's aesthetics score ranks candidate frames for
+   * Short covers, thumbnails and first frames (src/assets/appleaesthetics.ts). */
+  appleAesthetics: boolean;
+  /** APPLE_SOUND_TAGS (Mac mini only, off until switched on): Apple Sound Analysis tags game audio (explosions,
+   * gunfire, laughter, speech...) for the highlight finder and flags spoken lines (src/assets/applesound.ts). */
+  appleSoundTags: boolean;
   /** The Mac addresses allowed the /routine pages over the LAN, on routineLanPort; empty: loopback only, as ever. */
   routineLanAllow: string[];
   routineLanPort: number;
@@ -490,6 +512,45 @@ export interface Config {
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
+  /** The Pulse Check on every series Short too (format redesign plan item 6, src/series.ts): The Why and The GTA File
+   * end their take on it, and Buy, Wait or Skip can ask for it (seriesPulseCheck). Kept apart from NEWS_SEGMENT, which is
+   * already on for news, so nothing changes before 22 Nov: NEWS_SEGMENT_SERIES, default off. */
+  newsSegmentSeries: boolean;
+  /** The next-part line test (plan item 9, src/editorial/shortrules.ts nextLineRule): on The Why and The GTA File, one
+   * spoken line naming the next part and its day, only when the launch run has that part planned and dated, on
+   * alternate days (src/experiments.ts nextLineArm): SERIES_NEXT_LINE, default off. */
+  seriesNextLine: boolean;
+  /** Plan item 2: the day's rumour allowance scaled by this share; 0 stops rumour Shorts: RUMOUR_SHARE, default 1 (unchanged). */
+  rumourShare: number;
+  /** Plan item 2: the news writer's Shorts must reach this many seconds of narration (words at the narrator's pace); 0 is
+   * off: SHORT_MIN_SECONDS, default 0. */
+  shortMinSeconds: number;
+  /** Plan item 2: false drops the late news slot (21:00 or later) from NEWS_SLOTS: NEWS_LATE_SLOT_ENABLED, default true. */
+  newsLateSlotEnabled: boolean;
+  /** Plan item 2: breaking news only on a HOME_SHELF game, or when the story desk rates it major: BREAKING_HOME_ONLY, default off. */
+  breakingHomeOnly: boolean;
+  /** The home shelf, "|"-separated names a headline would use: HOME_SHELF, default GTA and Resident Evil. */
+  homeShelf: string[];
+  /** The series cover strip (src/render/components/SeriesStrip.tsx, format plan item 5): an amber strip at the top of
+   * a series Short's opening poster and search thumbnail naming its series ("THE WHY", "THE GTA FILE", "BUY, WAIT OR
+   * SKIP"), always in the same place. "strip" draws it, "off" leaves covers as they are: SERIES_COVER_STYLE, default off. */
+  seriesCoverStyle: "off" | "strip";
+  /** The part number in the strip ("THE WHY #24"), counted from the series' earlier Shorts: SERIES_EPISODE_NUMBERS,
+   * default off. Only drawn when the strip is on. */
+  seriesEpisodeNumbers: boolean;
+  /** Buy, Wait or Skip (src/editorial/verdict.ts, format plan item 7): one game, one price, one verdict, in the deals
+   * slot on its days. Prices from Steam (dollars first, pounds and euros beside), scores from Steam reviews and the
+   * store's Metacritic figure, the lowest price from CheapShark: SERIES_VERDICT_ENABLED, default off. */
+  seriesVerdictEnabled: boolean;
+  /** Its days (SERIES_VERDICT_DAYS, default "tue,thu,sat"); the slot is DEALS_SLOT. */
+  seriesVerdictDays: string[];
+  /** The series channel page (src/channelpage.ts, format plan item 8): banner, description, featured Short and shelf
+   * order, applied once through the YouTube API by src/tools/channel-page.ts --apply. Off, the tool only prints what
+   * it would change: SERIES_CHANNEL_PAGE, default off. */
+  seriesChannelPage: boolean;
+  /** The Short a new visitor sees first on the channel page (a YouTube video id), when the page is applied:
+   * SERIES_FEATURED_VIDEO, default empty (the featured Short is left as it is). */
+  seriesFeaturedVideo: string;
   /** The Hype ask (src/youtube/hype.ts, plan item 11): a short line in a documentary's end card and pinned comment. YouTube
    * offers Hype only to Partner Programme channels of 500-500,000 subscribers, so leave this off until Pulse has joined;
    * with it on, the subscriber count is still checked before each ask: HYPE_ASK, default off. */
@@ -1010,11 +1071,14 @@ export function loadConfig(): Config {
 
     dailyTarget: int("SHORTS_PER_DAY", int("DAILY_TARGET", 3)),
     timezone: str("TIMEZONE", "Europe/London"),
-    newsSlots: str("NEWS_SLOTS", "13:00,17:00,22:00")
+    newsSlots: newsSlotsFor(
+      str("NEWS_SLOTS", "13:00,17:00,22:00")
       .split(",")
       .map((t) => t.trim())
       .filter((t) => /^\d\d:\d\d$/.test(t))
       .sort(),
+      bool("NEWS_LATE_SLOT_ENABLED", true),
+    ),
     slotLeadMinutes: int("SLOT_LEAD_MINUTES", 75),
     slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
     maxProducing: int("MAX_PRODUCING", 2),
@@ -1082,9 +1146,15 @@ export function loadConfig(): Config {
     whySlot: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT"))[0]!,
     whySlots: whySlotsFrom(str("WHY_SLOTS"), str("WHY_SLOT")),
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
-    strandName: str("STRAND_NAME", ""),
-    strandSlot: str("STRAND_SLOT", ""),
-    strandFranchise: str("STRAND_FRANCHISE", ""),
+    whySerialEnabled: bool("WHY_SERIAL_ENABLED", false),
+    whyTargetSeconds: parseBand(str("WHY_TARGET_SECONDS", "45-60")),
+    whyHomeShare: Math.min(1, Math.max(0, Number(str("WHY_HOME_SHARE", "0")) || 0)),
+    whyHomeFranchises: parseHomeFranchises(
+      str("WHY_HOME_FRANCHISES", "Grand Theft Auto|Resident Evil"),
+    ),
+    seriesGtaFileEnabled: bool("SERIES_GTA_FILE_ENABLED", false),
+    seriesGtaFileSlot: str("SERIES_GTA_FILE_SLOT", "18:30"),
+    seriesGtaFileRunFile: str("SERIES_GTA_FILE_RUN_FILE", ""),
     shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
     instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
@@ -1138,6 +1208,9 @@ export function loadConfig(): Config {
     macFootageGather: bool("MAC_FOOTAGE_GATHER", false),
     macStills: bool("MAC_STILLS", false),
     macGameplay: bool("MAC_GAMEPLAY", false),
+    macVision: macVisionMode(str("MAC_VISION", "off")),
+    appleAesthetics: bool("APPLE_AESTHETICS", false),
+    appleSoundTags: bool("APPLE_SOUND_TAGS", false),
     routineLanAllow: str("ROUTINE_LAN_ALLOW", "")
       .split(",")
       .map((x) => x.trim())
@@ -1334,6 +1407,23 @@ export function loadConfig(): Config {
     seriesPlaylists: bool("SERIES_PLAYLISTS", false),
     sequelWinners: bool("SEQUEL_WINNERS", false),
     newsSegment: bool("NEWS_SEGMENT", false),
+    newsSegmentSeries: bool("NEWS_SEGMENT_SERIES", false),
+    seriesNextLine: bool("SERIES_NEXT_LINE", false),
+    rumourShare: rumourShareFrom(str("RUMOUR_SHARE", "1")),
+    shortMinSeconds: Math.max(0, int("SHORT_MIN_SECONDS", 0)),
+    newsLateSlotEnabled: bool("NEWS_LATE_SLOT_ENABLED", true),
+    breakingHomeOnly: bool("BREAKING_HOME_ONLY", false),
+    homeShelf: parseHomeShelf(str("HOME_SHELF", "GTA|Grand Theft Auto|Resident Evil")),
+    seriesCoverStyle: str("SERIES_COVER_STYLE", "off").toLowerCase() === "strip" ? "strip" : "off",
+    seriesEpisodeNumbers: bool("SERIES_EPISODE_NUMBERS", false),
+    seriesVerdictEnabled: bool("SERIES_VERDICT_ENABLED", false),
+    seriesVerdictDays: str("SERIES_VERDICT_DAYS", "tue,thu,sat")
+      .toLowerCase()
+      .split(",")
+      .map((d) => d.trim().slice(0, 3))
+      .filter(Boolean),
+    seriesChannelPage: bool("SERIES_CHANNEL_PAGE", false),
+    seriesFeaturedVideo: str("SERIES_FEATURED_VIDEO", "").trim(),
     friendPass: friendPassFrom(process.env.FRIEND_PASS),
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     hypeAsk: bool("HYPE_ASK", false),
@@ -1717,8 +1807,11 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       ? "off"
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
-    strand: strandSummary(c),
     streamAsks: streamAsksSummary(c.streamAsks),
+    whySerial: c.whySerialEnabled
+      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
+      : "off",
+    gtaFile: gtaFileSummary(c),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

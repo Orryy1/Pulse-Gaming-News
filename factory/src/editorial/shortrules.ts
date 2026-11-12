@@ -100,8 +100,81 @@ export const ENDING_RULE_FOLLOW = `If this Short has a documentary or ranking to
 const SELF_ADVERT =
   /\b(next why|lands? tomorrow|every day|each day|tomorrow'?s why|new why|follow for|come back tomorrow)\b/i;
 
-export function endingProblems(loopLine: string): string[] {
+/**
+ * The next-part line (format redesign plan 4.4, SERIES_NEXT_LINE): the one exception to the no-advert ending, on The
+ * Why and The GTA File only, and only when the next part is planned and dated (src/nextpart.ts). One sentence of 8
+ * words or fewer, last in the loop line, naming the part and its day. Every like, subscribe, follow and comment ask
+ * stays banned.
+ */
+export const NEXT_LINE_MAX_WORDS = 8;
+
+export function nextLineRule(next: {
+  part: number;
+  day: string;
+  title: string;
+}): string {
+  return `The next-part line: this Short is part of a numbered series and Part ${next.part} is planned for ${next.day} ("${next.title}"). End the loop_line with one extra sentence of ${NEXT_LINE_MAX_WORDS} words or fewer naming that part and its day, in this shape: "Part ${next.part} ${next.day}: <two to four words on what it covers>." Say the part number in digits. It is a plain statement of what comes next, the only line allowed to point ahead, and it overrides the ending rule for that one sentence only: no like, subscribe, follow or comment ask, no "don't miss it", nothing else about the channel.`;
+}
+
+const lastSentence = (line: string): { rest: string; last: string } => {
+  const parts = line.trim().split(/(?<=[.!?]["”']?)\s+/);
+  const last = parts.pop() ?? "";
+  return { rest: parts.join(" "), last };
+};
+
+const DAY_WORDS =
+  /\b(tomorrow|tonight|later today|today|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i;
+const PART_PROMISE =
+  /\b(?:part|episode|file) (?:#?\d+|one|two|three|four|five|six|seven|eight|nine|ten|next)\b/i;
+const GENERIC_ASK =
+  /\b(subscribe|follow|like|comment|don't miss|do not miss|hit the|turn on|notification|bell)\b/i;
+
+/**
+ * What is wrong with a loop line's next-part sentence. With a planned part the last sentence must name it and its day
+ * in 8 words or fewer; with none, the line may not promise a part at all.
+ */
+export function nextLineProblems(
+  loopLine: string,
+  next: { part: number; day: string } | undefined,
+): string[] {
   const line = loopLine.trim();
+  if (!next) {
+    const promise = line.match(PART_PROMISE);
+    return promise && DAY_WORDS.test(line)
+      ? [
+          `The loop line promises "${promise[0]}", but no next part is planned and dated; end on the story's payoff instead.`,
+        ]
+      : [];
+  }
+  const { last } = lastSentence(line);
+  const out: string[] = [];
+  if (!new RegExp(`\\bpart ${next.part}\\b`, "i").test(last))
+    out.push(
+      `End the loop line with the next-part sentence naming "Part ${next.part}" in digits and ${next.day}, e.g. "Part ${next.part} ${next.day}: the map."`,
+    );
+  else if (!last.toLowerCase().includes(next.day.toLowerCase()))
+    out.push(`The next-part sentence "${last}" must say when: "${next.day}".`);
+  const n = last.split(/\s+/).filter(Boolean).length;
+  if (n > NEXT_LINE_MAX_WORDS)
+    out.push(
+      `The next-part sentence "${last}" is ${n} words; keep it to ${NEXT_LINE_MAX_WORDS}.`,
+    );
+  if (GENERIC_ASK.test(last))
+    out.push(
+      `The next-part sentence "${last}" asks the viewer for something; say only what comes next and when.`,
+    );
+  return out;
+}
+
+export function endingProblems(
+  loopLine: string,
+  next?: { part: number; day: string },
+): string[] {
+  // A planned next-part sentence is the one exception: the rest of the line is held to the rule as before.
+  const line =
+    next && !nextLineProblems(loopLine, next).length
+      ? lastSentence(loopLine).rest || loopLine.trim()
+      : loopLine.trim();
   const out: string[] = [];
   if (/\?["”']?$/.test(line))
     out.push(

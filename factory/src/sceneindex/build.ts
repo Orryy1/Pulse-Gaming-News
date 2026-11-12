@@ -823,6 +823,9 @@ export async function describeShots(
   deps: BuildDeps = {},
   o: { from?: number; to?: number; concurrency?: number } = {},
 ): Promise<{ index: SceneIndex; described: number; failed: number }> {
+  // SCENE_INDEX_DESCRIBE=false (12 Nov 2026, orchestrator): no bulk looking on the PC model while it is needed for
+  // renders; single picture checks elsewhere still run. Lookups keep working on names, lines and on-screen text.
+  if (process.env.SCENE_INDEX_DESCRIBE === "false") return { index, described: 0, failed: 0 };
   const todo = undescribed(index)
     .filter(
       (shot) => shot.start >= (o.from ?? 0) && shot.start < (o.to ?? Infinity),

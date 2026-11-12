@@ -273,3 +273,12 @@ Owner: massive retrospectives with full game histories, the making of, innovatio
 - Footage: owner's play first, then full movies; narration over everything; game sound under it; publisher caps from PUBLISHER_FOOTAGE_SECONDS, scaled up for long form.
 - First candidates: GTA San Andreas (the channel's best Short was a San Andreas "why"), then GTA V, then the Ocarina remake on 4 Dec, then GTA VI around late December.
 - Measure: watch hours per video against the 8,000-hour goal, and the 5 Dec long-video verdict.
+
+## 27-31. Owner said "do all" on 12 Nov
+
+- 27. Simulcast the owner's GTA VI streams to Pulse YouTube for watch hours (guide + eligibility check on claude/liveclips; owner does the one-time OBS setup).
+- 28. Search-demand Shorts from YouTube/Google suggestions (SEARCH_SHORTS, claude/search).
+- 29. Near-live clips from the live stream within minutes (LIVE_CLIPS, claude/liveclips), owner tap stays the gate.
+- 30. Retention-curve learning into the lessons loop (RETENTION_LEARN, claude/retention).
+- 31. Video replies to the best viewer question daily (COMMENT_REPLY_SHORTS, claude/retention).
+Aim: ready before 18 Nov; risky switches wait out the 18-21 Nov freeze unless proven.

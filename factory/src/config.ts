@@ -803,6 +803,9 @@ export interface Config {
   streamAsks: StreamAsksSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
+  /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
+  characterQuotes: boolean;
+  characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video (a Short takes one)
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
@@ -1605,6 +1608,8 @@ export function loadConfig(): Config {
     streamAsks: streamAsksSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
+    characterQuotes: bool("CHARACTER_QUOTES", false),
+    characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),

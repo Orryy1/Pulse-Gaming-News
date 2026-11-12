@@ -151,6 +151,7 @@ import {
 import { hudYield, type HudSpan } from "./hudyield.ts";
 import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
+import { QuoteMoment as CharacterQuote, inQuote } from "./components/QuoteMoment.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
 import type { Motif } from "./components/motifs/types.ts";
 import {
@@ -345,6 +346,8 @@ export type LongProps = {
   durationSeconds: number;
   variant: number;
   renderDate: string;
+  /** CHARACTER_QUOTES: the game's own lines, played in the silences the narration left for them. */
+  quotes?: import("./props.ts").ShortQuote[];
 };
 
 const resolveSrc = (src: string | null) =>
@@ -2563,6 +2566,12 @@ export const Long: React.FC<LongProps> = (props) => {
         gameLevels[Math.min(durationInFrames, Math.max(0, Math.round(f)))] ??
         GAME_UNDER
     : undefined;
+  // CHARACTER_QUOTES: the quotes' spans, for the overlay and the bed's dip under them.
+  const quoteSpans = (props.quotes ?? []).map((q) => ({
+    q,
+    from: Math.round(q.start * fps),
+    frames: Math.max(1, Math.round(q.seconds * fps)),
+  }));
   const musicVolume = (f: number) => {
     const fadeIn = interpolate(f, [0, 24], [0, 1], {
       extrapolateLeft: "clamp",
@@ -2595,7 +2604,8 @@ export const Long: React.FC<LongProps> = (props) => {
       Math.max(
         bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.07,
         0.42 * lift,
-      )
+      ) *
+      (inQuote(quoteSpans, f) ? 0.45 : 1)
     );
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
@@ -4923,6 +4933,11 @@ export const Long: React.FC<LongProps> = (props) => {
           volume={LEVEL.sting * 0.5}
         />
       </Sequence>
+      {quoteSpans.map(({ q, from, frames }, k) => (
+        <Sequence key={`quote${k}`} from={from} durationInFrames={frames} layout="none">
+          <CharacterQuote src={q.src} speaker={q.speaker} text={q.text} credit={q.credit} mode={q.mode} frames={frames} accent={COLOUR.amber} layout="long" />
+        </Sequence>
+      ))}
       {props.audioSrc ? (
         voiceFx.some((v) => v.kind === "phone") ? (
           // A message quote's words are cut out of the dry narration and played from their telephone slice.

@@ -156,22 +156,24 @@ export function rumourCapFor(perDay: number, share: number): number {
 export const SPOKEN_WORDS_PER_SECOND = 2.6;
 
 /** The fewest spoken words that reach SHORT_MIN_SECONDS at the narrator's own pace; 0 when the floor is off. */
-export function shortMinWords(minSeconds: number): number {
-  return minSeconds > 0 ? Math.ceil(minSeconds * SPOKEN_WORDS_PER_SECOND) : 0;
+export function shortMinWords(minSeconds: number, speed = 1): number {
+  // SHORT_SPEED plays every Short faster, so the floor's seconds need that many more words (12 Nov 2026).
+  return minSeconds > 0 ? Math.ceil(minSeconds * SPOKEN_WORDS_PER_SECOND * Math.max(1, speed)) : 0;
 }
 
 /** The writer's note for the floor. */
-export function shortFloorRule(minSeconds: number): string {
+export function shortFloorRule(minSeconds: number, speed = 1): string {
   if (minSeconds <= 0) return "";
-  return `Length floor: this Short must run at least ${minSeconds} seconds, so at least ${shortMinWords(minSeconds)} spoken words across hook, beats, take and loop line. Reach it with real substance from the sources (a consequence for the viewer, a comparison, the history), never padding.`;
+  return `Length floor: this Short must run at least ${minSeconds} seconds, so at least ${shortMinWords(minSeconds, speed)} spoken words across hook, beats, take and loop line. Reach it with real substance from the sources (a consequence for the viewer, a comparison, the history), never padding.`;
 }
 
 /** A draft under the floor goes back to the writer like any other house-rule miss. */
 export function shortFloorProblems(
   spokenWords: number,
   minSeconds: number,
+  speed = 1,
 ): string[] {
-  const min = shortMinWords(minSeconds);
+  const min = shortMinWords(minSeconds, speed);
   if (!min || spokenWords >= min) return [];
   return [
     `The script is ${spokenWords} spoken words, under the ${min} a ${minSeconds}-second Short needs (SHORT_MIN_SECONDS). Add substance from the sources, not padding.`,

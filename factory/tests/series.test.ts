@@ -28,6 +28,7 @@ import {
 } from "../src/editorial/newssegment.ts";
 import { dayPhrase, gtaFileParts, nextPartFor, type PartEntry } from "../src/nextpart.ts";
 import { readRun } from "../src/shortrun.ts";
+import { parseShortLengths, shortTarget } from "../src/shortlengths.ts";
 import {
   endingProblems,
   nextLineProblems,
@@ -324,6 +325,19 @@ test("SHORT_MIN_SECONDS survives SHORT_SPEED: a sped-up take under the floor pla
   assert.equal(floorBackFactor(31, 30, 1.1), 1);
   assert.equal(floorBackFactor(25, 0, 1.1), 1);
   assert.equal(floorBackFactor(25, 30, 1), 1);
+});
+
+test("the word budgets count SHORT_SPEED: the same seconds hold more words when every Short plays faster", () => {
+  assert.equal(shortMinWords(30), 78);
+  assert.equal(shortMinWords(30, 1.1), 86);
+  assert.equal(shortFloorProblems(85, 30, 1.1).length, 1);
+  assert.deepEqual(shortFloorProblems(86, 30, 1.1), []);
+  assert.match(shortFloorRule(30, 1.1), /at least 86 spoken words/);
+  const why = shortTarget(parseShortLengths("news=30-35,why=45-60"), "why", 1.1)!;
+  assert.deepEqual([why.wordsMin, why.wordsMax], [129, 171]);
+  const news = shortTarget(parseShortLengths("news=30-35,why=45-60"), "news", 1.1)!;
+  assert.deepEqual([news.wordsMin, news.wordsMax], [86, 100]);
+  assert.deepEqual(news.seconds, { min: 30, max: 35 }, "the seconds themselves do not move");
 });
 
 test("the GTA File's next-part line reads its own run file, and spares in the launch run are never promised", () => {

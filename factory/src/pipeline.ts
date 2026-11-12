@@ -6388,7 +6388,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     growthNotes(test, testDefaults),
     shortRuleNote(s.cfg, ep),
     personal ? PERSONAL_VOICE : "",
-    shortFloorRule(floor),
+    shortFloorRule(floor, s.cfg.shortSpeed),
     pulseCheck && s.cfg.newsSegmentSeries ? seriesPulseCheckNote(series) : "",
     nextPart ? nextLineRule(nextPart) : "",
   ]
@@ -6403,7 +6403,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       )
     : [];
   // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
-  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep));
+  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
     const problems = validateScript(sc, recent, length);
@@ -6434,7 +6434,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       problems.push(...endingProblems(sc.loop_line, nextPart));
     if (lineArm) problems.push(...nextLineProblems(sc.loop_line, nextPart));
     // Under SHORT_MIN_SECONDS after the rewrite, a Short stops like a thin one: a big story still goes out.
-    const short = shortFloorProblems(wordCount(narrationOf(sc)), floor);
+    const short = shortFloorProblems(wordCount(narrationOf(sc)), floor, s.cfg.shortSpeed);
     problems.push(...short);
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));

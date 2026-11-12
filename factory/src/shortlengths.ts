@@ -112,6 +112,8 @@ export interface ShortTarget {
 export function shortTarget(
   lengths: ShortLengths,
   format: LengthFormat | undefined,
+  /** SHORT_SPEED: every Short plays this much faster, so the same seconds hold this many more words (12 Nov 2026). */
+  speed = 1,
 ): ShortTarget | undefined {
   if (!format) return undefined;
   const own = lengths[format];
@@ -122,8 +124,8 @@ export function shortTarget(
   return {
     format: lane,
     seconds: band,
-    wordsMin: Math.round(band.min * SHORT_WORDS_PER_SECOND),
-    wordsMax: Math.floor(band.max * SHORT_WORDS_PER_SECOND),
+    wordsMin: Math.round(band.min * SHORT_WORDS_PER_SECOND * Math.max(1, speed)),
+    wordsMax: Math.floor(band.max * SHORT_WORDS_PER_SECOND * Math.max(1, speed)),
     beatsMax: band.max > 45 ? 6 : 4,
     capSeconds: Math.max(SHORT_NARRATION_CAP_SECONDS, band.max + 5),
   };

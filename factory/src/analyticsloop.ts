@@ -53,6 +53,8 @@ import {
   weightKey,
   type PostingFavour,
 } from "./loopfeedback.ts";
+import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
+import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 
 const DAY = 86_400_000;
 const H = 3_600_000;
@@ -208,6 +210,10 @@ export interface EpisodeInfo {
   events_per_minute?: number;
   wpm?: number;
   long: boolean;
+  /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
+  series?: string;
+  /** The next-part line test's arm (SERIES_NEXT_LINE). */
+  next_line?: { arm: "line" | "none"; said: boolean };
 }
 
 // ------------------------------------------------------------------ matching (spec section 4)
@@ -788,6 +794,8 @@ export interface LoopJson {
   };
   changes: LoopChange[];
   next_test: NextTest;
+  /** Subscribers per 1,000 views by series, the line test and the verdicts so far (src/seriesreport.ts); absent in older reports. */
+  series?: SeriesJson;
 }
 
 /** The test queue: the first is already set by the first report; each runs until judged. */
@@ -807,6 +815,16 @@ const TESTS: Array<Omit<NextTest, "started" | "judge_on">> = [
 ];
 const FIRST_TEST_START = "2026-11-11";
 
+/** A series Short from the switch-on (22 Nov): the fit test leaves it out so the loop reads cleanly. */
+export function seriesShort(e: EpisodeInfo | undefined): boolean {
+  return (
+    !!e &&
+    isSeriesTag(e.series) &&
+    isSerial(e.series) &&
+    e.live_at.slice(0, 10) >= SERIES_START
+  );
+}
+
 /** The fit test's reading: per platform, fit and not-fit breakouts at the fixed bars, at 72 hours. */
 export function judgeFitTest(
   rows: LoopRow[],
@@ -823,7 +841,8 @@ export function judgeFitTest(
         r.episode_id &&
         r.posted_at >= since &&
         age(r, now) >= MIN_AGE_HOURS &&
-        r.views !== null,
+        r.views !== null &&
+        !seriesShort(eps.get(r.episode_id)),
     );
     const v = (r: LoopRow) => r.views_72h ?? r.views!;
     const fit = xs.filter(
@@ -1298,9 +1317,13 @@ export async function runAnalyticsLoop(
     duration: unknown;
     opening: string | null;
     rubric: unknown;
+    story_series: string | null;
+    has_why: boolean | null;
+    has_run: boolean | null;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
-            e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric
+            e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
+            e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1349,6 +1372,20 @@ export async function runAnalyticsLoop(
       events_per_minute: metric("events_per_minute"),
       wpm: metric("wpm"),
       long: sc?.runtime === "long" || r.lane === "longform",
+      series: seriesTagFor(
+        {
+          lane: r.lane,
+          story_json: {
+            series: r.story_series ?? undefined,
+            why: r.has_why || undefined,
+            run: r.has_run || undefined,
+          },
+        },
+        sc,
+      ),
+      ...(sc?.next_line
+        ? { next_line: { arm: sc.next_line.arm, said: sc.next_line.said } }
+        : {}),
     });
   }
   const snaps = new Map<
@@ -2126,6 +2163,26 @@ export async function runAnalyticsLoop(
     await logEvent(db, null, "analytics_loop_change", { ...c });
 
   const test = nextTest(prev?.next_test, all, eps, now);
+  // Subscribers per 1,000 views by series (format redesign plan items 1 and 11), YouTube Shorts 72 hours or older.
+  const series = seriesJson(
+    all
+      .filter((r) => r.platform === "youtube" && r.kind === "short" && r.episode_id)
+      .map((r) => {
+        const e = eps.get(r.episode_id!)!;
+        return {
+          episode_id: e.id,
+          posted_at: r.posted_at,
+          views: r.views,
+          subs: r.subs,
+          viewed_pct: r.viewed_pct,
+          title: e.title,
+          game: e.game,
+          series: isSeriesTag(e.series) ? e.series : undefined,
+          next_line: e.next_line,
+        };
+      }),
+    now,
+  );
   const json: LoopJson = {
     version: 1,
     run_at: now.toISOString(),
@@ -2151,6 +2208,7 @@ export async function runAnalyticsLoop(
     },
     changes,
     next_test: test.test,
+    series,
   };
   const markdown = renderReport({
     cfg,
@@ -2393,6 +2451,13 @@ export function renderReport(x: RenderInput): string {
       : ["Nothing clears the minimum samples yet."]),
     "",
   );
+  if (json.series)
+    L.push(
+      "**Subscribers per 1,000 views by series** (YouTube Shorts 72 hours or older; the control's GTA news apart; TikTok and Instagram give no per-post follows, so they are left out)",
+      "",
+      ...seriesLines(json.series),
+      "",
+    );
   if (x.tooFew.length)
     L.push(
       `Too few to judge (under ${MIN_PATTERN} posts): ${x.tooFew.slice(0, 25).join("; ")}.`,

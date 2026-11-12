@@ -23,6 +23,7 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
+import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
 
@@ -823,6 +824,8 @@ export interface Config {
   spoilerGuard: boolean;
   /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
   streamAsks: StreamAsksSettings;
+  /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
+  liveClips: LiveClipsSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
@@ -1661,6 +1664,7 @@ export function loadConfig(): Config {
     gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
     spoilerGuard: bool("SPOILER_GUARD", false),
     streamAsks: streamAsksSettings(process.env),
+    liveClips: liveClipsSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
@@ -1891,6 +1895,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     streamAsks: streamAsksSummary(c.streamAsks),
+    liveClips: liveClipsSummary(c.liveClips),
     whySerial: c.whySerialEnabled
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",

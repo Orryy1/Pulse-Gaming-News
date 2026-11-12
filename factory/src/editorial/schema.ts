@@ -323,6 +323,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     radio: boolean;
     /** The clip really tests its question for GTA 6's players (src/gameplay.ts articleFields); older Shorts lack it. */
     real_test?: boolean;
+    /** Cut from the live stream minutes after it happened (LIVE_CLIPS): one-tap card, out on approval. */
+    live?: boolean;
     /** The rebuilt Short (src/gameplaydirect.ts): the cut's timing and the narrator's lines; older Shorts lack it. */
     direct?: {
       hook: string;

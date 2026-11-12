@@ -64,6 +64,14 @@ export interface GameplayMeta {
   };
   /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
   sound?: { speech_share?: number };
+  /** LIVE_CLIPS: found while the owner was live (src/liveclips): what gave it away, and the stream ask it seems to answer. */
+  live?: {
+    stream_id: string;
+    moment_at: string;
+    decided_at: string;
+    signals: Array<{ kind: string; score: number; detail: string }>;
+    ask?: string;
+  };
   /** VOD_MINER: the stream ask this moment answers and what the miner's local check made of it (src/streamasks/miner.ts). */
   stream_ask?: {
     question: string;
@@ -192,7 +200,12 @@ export async function newClips(
       if (Date.now() - at > 30 * 60_000) found.push({ dir, meta });
     }
   }
-  return found.sort((a, b) => (b.meta.score ?? 0) - (a.meta.score ?? 0));
+  // A clip from the live stream first (LIVE_CLIPS): it is worth most while its topic is hot.
+  const live = (m: GameplayMeta) => (m.source?.kind === "twitch_live" ? 1 : 0);
+  return found.sort(
+    (a, b) =>
+      live(b.meta) - live(a.meta) || (b.meta.score ?? 0) - (a.meta.score ?? 0),
+  );
 }
 
 export const GameplayReviewSchema = z.object({
@@ -317,7 +330,15 @@ export async function reviewClip(
   content.push({
     type: "text",
     text: [
-      `Source: ${meta.source.kind === "xbox_clip" ? "an Xbox clip the owner saved on purpose" : "a Twitch broadcast the highlight finder cut"}`,
+      `Source: ${meta.source.kind === "xbox_clip" ? "an Xbox clip the owner saved on purpose" : meta.source.kind === "twitch_live" ? "the owner's live Twitch stream, cut minutes ago where the stream's sound, its chat or a viewer's clip spiked" : "a Twitch broadcast the highlight finder cut"}`,
+      ...(meta.live
+        ? [
+            `What gave it away: ${meta.live.signals.map((x) => x.detail).join("; ")}`,
+            ...(meta.live.ask
+              ? [`Chat or the stream title named this stream ask: "${meta.live.ask}". Use it only if the frames show it.`]
+              : []),
+          ]
+        : []),
       `Stream title: ${meta.source.title || "(none)"}`,
       `Clip length: ${meta.clip.seconds} s; the finder's peak is at ${meta.clip.peak_in_clip ?? "?"} s`,
       `What Whisper heard: ${transcript.trim() || "(nothing, or it could not listen)"}`,
@@ -459,6 +480,7 @@ export function gameplayScript(
   r: GameplayReview,
   inboxId: string,
   experiments: Experiment[],
+  live = false,
 ): Script {
   const exp = experiments.find((e) => e.number === r.experiment_number);
   const question = /\?$/.test(r.question.trim())
@@ -511,6 +533,7 @@ export function gameplayScript(
       experiment_slug: exp?.slug ?? null,
       radio: r.radio_audible,
       real_test: r.real_test,
+      ...(live ? { live: true } : {}),
     },
   };
 }

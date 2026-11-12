@@ -855,6 +855,27 @@ export interface Config {
   longGuideFormat: boolean;
   /** GUIDE_CHAPTER_ACTION: each guide chapter ends in a job for day one. */
   guideChapterAction: boolean;
+  /**
+   * The weekly guide strand (src/longguide.ts, upgrade queue item 9): GUIDE_WEEKLY turns it on (off by default);
+   * GUIDE_WEEKLY_FILE names the plan (guides.json beside package.json when empty). One long guide a week in one fixed
+   * title frame, from the owner's own play first, fact-checked against the plan's confirmed facts file.
+   */
+  guideWeekly: boolean;
+  guideWeeklyFile: string;
+  /** GUIDE_OWN_FIRST: a weekly guide's chapters ask the owner's recordings for every footage target, not half. */
+  guideOwnFirst: boolean;
+  /**
+   * The Shorts-to-long funnel test (src/funnel.ts, upgrade queue item 18): FUNNEL_TEST turns it on (off by default).
+   * Each weekly guide gets FUNNEL_SHORTS Shorts cut from it, one a day in the cutdown slot within FUNNEL_DAYS of its
+   * release; FUNNEL_SHARE of them (by episode id) say and show the link in their last 5 seconds and get the related
+   * link, the rest are the control. With it on, the related-video routine links only Shorts cut from a long video
+   * and lists the other Shorts it linked before (FUNNEL_CLEAR_DAYS back) for their link to be removed.
+   */
+  funnelTest: boolean;
+  funnelShare: number;
+  funnelShorts: number;
+  funnelDays: number;
+  funnelClearDays: number;
   /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
   longSamePictureMaxSeconds: number;
   /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
@@ -1559,6 +1580,14 @@ export function loadConfig(): Config {
     longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
     longGuideFormat: bool("LONG_GUIDE_FORMAT", false),
     guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
+    guideWeekly: bool("GUIDE_WEEKLY", false),
+    guideWeeklyFile: str("GUIDE_WEEKLY_FILE", ""),
+    guideOwnFirst: bool("GUIDE_OWN_FIRST", true),
+    funnelTest: bool("FUNNEL_TEST", false),
+    funnelShare: Math.min(1, Math.max(0, Number(str("FUNNEL_SHARE", "0.5")) || 0)),
+    funnelShorts: Math.min(3, Math.max(0, int("FUNNEL_SHORTS", 3))),
+    funnelDays: Math.max(1, int("FUNNEL_DAYS", 3)),
+    funnelClearDays: Math.max(0, int("FUNNEL_CLEAR_DAYS", 60)),
     longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
     longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
     longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),

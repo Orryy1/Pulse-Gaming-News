@@ -1,0 +1,49 @@
+{
+  "game": "Grand Theft Auto VI",
+  "short": "GTA 6",
+  "wiki": "Grand Theft Auto VI",
+  "first": "2026-11-29",
+  "slot": "17:00",
+  "make_hours_before": 30,
+  "title_frame": "{short} {guide}, Learned From Real Play",
+  "facts_file": "guide_facts_gta6.md",
+  "min_play": 3,
+  "sources": [
+    {
+      "url": "https://support.rockstargames.com/articles/29jV3Cv2cCgvwM1XgtMO5o",
+      "source": "Rockstar Support",
+      "official": true
+    },
+    {
+      "url": "https://en.wikipedia.org/wiki/Grand_Theft_Auto_VI",
+      "source": "Wikipedia"
+    }
+  ],
+  "guides": [
+    {
+      "key": "early-money",
+      "on": false,
+      "guide": "Best Early Money",
+      "thumb": "EARLY MONEY",
+      "angle": "The fastest honest ways to build money in the first hours of GTA 6, ranked by what they actually paid in our own play, and the early buys worth the money.",
+      "play_notes": []
+    },
+    {
+      "key": "beginner-mistakes",
+      "on": false,
+      "guide": "Beginner Mistakes to Avoid",
+      "thumb": "DON'T DO THIS",
+      "angle": "The mistakes that cost new players money, time and progress in the first hours of GTA 6, each one something we did ourselves, and what to do instead.",
+      "play_notes": []
+    },
+    {
+      "key": "hidden-spots",
+      "on": false,
+      "guide": "Hidden Spots Worth Finding",
+      "thumb": "HIDDEN SPOTS",
+      "angle": "Places in Leonida worth a detour in the early game: what is there, how to get there and why it is worth it, from our own exploring. Only places open from the start.",
+      "not_before": "2026-12-06",
+      "play_notes": []
+    }
+  ]
+}

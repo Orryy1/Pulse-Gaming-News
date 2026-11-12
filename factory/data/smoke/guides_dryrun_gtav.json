@@ -1,0 +1,28 @@
+{
+  "game": "Grand Theft Auto V",
+  "short": "GTA 5",
+  "wiki": "Grand Theft Auto V",
+  "first": "2026-11-15",
+  "slot": "17:00",
+  "make_hours_before": 30,
+  "title_frame": "{short} {guide}, Learned From Real Play",
+  "min_play": 3,
+  "sources": [
+    { "url": "https://gta.fandom.com/wiki/Under_the_Bridge", "source": "GTA Wiki" }
+  ],
+  "guides": [
+    {
+      "key": "under-the-bridge",
+      "on": true,
+      "guide": "Under the Bridge Stunts",
+      "thumb": "50 BRIDGES",
+      "angle": "How to clear the 50 Under the Bridge stunts in GTA 5 story mode on the way to 100%: what counts, what to fly, how to find the next bridge and the mistakes that waste time, from the owner's own run.",
+      "play_notes": [
+        "TinoTV stream, 2 Nov 2026 (GTA V 100% run): playing as Franklin, he took a Buzzard Attack Chopper from a helipad at night and used it for the Under the Bridge stunts.",
+        "TinoTV stream, 2 Nov 2026: each counted pass puts an 'Under the Bridge' banner on screen with a running count; flying under the La Puerta Freeway showed 19 of 50 bridges flown under.",
+        "TinoTV stream, 2 Nov 2026: between bridges he opened the pause map to find the next one and set a waypoint, then flew low along the river channel and the freeways.",
+        "TinoTV stream, 2 Nov 2026: in heavy fog over the river channel and the hills the bridges were hard to see until close, so he flew slowly and low."
+      ]
+    }
+  ]
+}

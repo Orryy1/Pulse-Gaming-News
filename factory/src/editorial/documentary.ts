@@ -331,6 +331,15 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   roster?: import("./everygame.ts").SeriesRoster;
   /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
   sources?: Array<{ url: string; source: string; official?: boolean }>;
+  /** A weekly guide (src/longguide.ts): its key, fixed title and thumbnail words, facts file and the owner's play notes. */
+  guide?: {
+    key: string;
+    title: string;
+    thumb: string;
+    week: number;
+    facts_file?: string;
+    play_notes?: string[];
+  };
 };
 
 export async function selectDocTopic(

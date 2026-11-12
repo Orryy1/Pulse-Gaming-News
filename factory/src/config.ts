@@ -323,6 +323,10 @@ export interface Config {
   releaseGateMinFootageRanking: number; // 0-1, the same for a ranking
   writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
+  shortSkeletons: boolean; // news Shorts rotate structures (opening, order, length, ending), none shared by two of the newest 30 (SHORT_SKELETONS, src/editorial/skeletons.ts, off)
+  shortArguesCheck: boolean; // before release a Short needs a point not in the picture and some of Pulse's own material, else it goes back to the writer once, then out with a note (SHORT_ARGUES_CHECK, src/qa/argues.ts, off)
+  dropAngle: boolean; // an official drop keeps the usual slot and gets one reframing idea; no long trailer or screenshot breakdowns (DROP_ANGLE, src/editorial/dropangle.ts, off)
+  dropAngleHours: number; // an official drop goes out by this many hours after it landed, slot or not (DROP_ANGLE_HOURS)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
@@ -1107,6 +1111,10 @@ export function loadConfig(): Config {
     releaseGateMinFootageRanking: Number(str("RELEASE_GATE_MIN_FOOTAGE_RANKING", "0.05")) || 0.05,
     writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
+    shortSkeletons: bool("SHORT_SKELETONS", false),
+    shortArguesCheck: bool("SHORT_ARGUES_CHECK", false),
+    dropAngle: bool("DROP_ANGLE", false),
+    dropAngleHours: Math.max(1, Number(str("DROP_ANGLE_HOURS", "12")) || 12),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),

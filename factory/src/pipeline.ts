@@ -477,6 +477,9 @@ import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
+import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
+import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
+import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
 import { calendarBlock, readCalendar, type CalendarLane } from "./calendar.ts";
 import {
@@ -1328,19 +1331,26 @@ async function maybeSelectBig(
       make.reason = `YouTube's upload quota for today is spoken for (${headroom} units spare)`;
     }
   }
+  if (make && make.action === "make" && cfg.dropAngle) {
+    const wait = dropWait(make.story, now, {
+      hours: cfg.dropAngleHours,
+      leadHours: cfg.slotLeadMinutes / 60,
+      slotDue: !!(await bigSlot(s, now)),
+    });
+    if (wait) {
+      make.action = "held";
+      make.reason = wait;
+    }
+  }
   await recordVerdicts(db, cfg, verdicts, now);
   if (!make || make.action !== "make") return undefined;
   return createBig(s, make);
 }
 
-/** One editor call per story every three hours: a pass is reported, not retried each tick. */
-async function createBig(s: Services, v: BigVerdict): Promise<string | undefined> {
+/** The news slot a big story would fill now, if one is due. */
+async function bigSlot(s: Services, now: Date): Promise<Date | undefined> {
   const { db, cfg } = s;
-  const now = s.now();
-  const bucket = Math.floor(now.getTime() / (3 * 3_600_000));
-  if (await weeklyTried(db, `big:${v.story.key}:${v.attempt}:${bucket}`)) return undefined;
-  const cluster = bigCluster(v, now);
-  const slot = dueSlot(
+  return dueSlot(
     now,
     {
       slots: cfg.newsSlots,
@@ -1350,6 +1360,16 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
     },
     await takenSlots(db),
   );
+}
+
+/** One editor call per story every three hours: a pass is reported, not retried each tick. */
+async function createBig(s: Services, v: BigVerdict): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  const bucket = Math.floor(now.getTime() / (3 * 3_600_000));
+  if (await weeklyTried(db, `big:${v.story.key}:${v.attempt}:${bucket}`)) return undefined;
+  const cluster = bigCluster(v, now);
+  const slot = await bigSlot(s, now);
   // A follow-up to a story already covered is the editor's call, however big.
   const force = v.story.size >= cfg.bigStoryHuge && !v.development;
   let passed: string | undefined;
@@ -1509,7 +1529,9 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
               ...rule,
               scoreMin: cfg.sprintScoreMin,
             }))) &&
-        !cooled.has(franchiseKey(x.cluster)),
+        !cooled.has(franchiseKey(x.cluster)) &&
+        // DROP_ANGLE: an official drop keeps the usual news slot instead of racing.
+        !(cfg.dropAngle && isOfficialDrop(x.cluster)),
     );
     const big = qualified.filter(
       (x) => breakingScore(x.cluster, x.sighting) >= allowance.minScore,
@@ -4565,6 +4587,13 @@ export async function recentShapes(
        ORDER BY created_at DESC LIMIT 20`,
     [exceptId],
   );
+  // The newest Shorts' structures (SHORT_SKELETONS, src/editorial/skeletons.ts), "" for one written without.
+  const structures = await db.query<{ skeleton: string | null }>(
+    `SELECT script_json->>'skeleton' AS skeleton FROM episodes WHERE script_json IS NOT NULL AND id <> $1 AND status NOT IN ('failed','rejected')
+         AND COALESCE(script_json->>'runtime', 'short') = 'short'
+       ORDER BY created_at DESC LIMIT ${SKELETON_WINDOW}`,
+    [exceptId],
+  );
   const scripts = full.flatMap((r) => {
     try {
       return r.script?.hook && r.script.pulse_take
@@ -4580,6 +4609,7 @@ export async function recentShapes(
       .filter(Boolean),
     loops: rows.map((r) => (r.loop ?? "").trim()).filter(Boolean),
     scripts,
+    skeletons: structures.map((r) => r.skeleton ?? ""),
   };
 }
 
@@ -5443,6 +5473,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const argument = argumentArm(s.cfg, ep);
   if (argument)
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
+  // DROP_ANGLE (src/editorial/dropangle.ts): an official drop is written as one reframing idea, never a detail list.
+  const drop = s.cfg.dropAngle && !cluster.why && isOfficialDrop(cluster);
+  // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
+  // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
+  const skeleton =
+    s.cfg.shortSkeletons && !cluster.why && !cluster.run
+      ? pickSkeleton(cluster.hash, recent?.skeletons ?? [], {
+          questionEndings: !s.cfg.shortEndPayoff,
+          argument,
+          openings: hookStyleOpenings(test, testDefaults),
+          ...(drop ? { orders: ["call_then_proof", "one_detail"] } : {}),
+        })
+      : undefined;
   // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
   // with a person's take. Half the Shorts get that voice; assignment by episode, so a retry keeps its side.
   const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
@@ -5486,6 +5529,10 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (s.cfg.shortLabelsClean) problems.push(...cardFigureProblems(sc.beats));
     if (s.cfg.shortEndPayoff) problems.push(...endingProblems(sc.loop_line));
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
+    if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
+    if (drop) problems.push(...detailListProblems(sc));
+    // SHORT_ARGUES_CHECK (src/qa/argues.ts): a draft that only narrates its picture goes back to the writer once.
+    if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
     // The test variant is a house rule for this Short: a draft that ignored it is sent back like any other.
     problems.push(...growthProblems(sc, test, testDefaults));
     // No title or hook phrase a few recent Shorts already used (REPEAT_MAX, src/authenticity.ts); a Why
@@ -5549,6 +5596,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       draft: attempt > 0 ? script : undefined,
       segment: pulseCheck,
       noSeriesFollow: s.cfg.shortEndPayoff,
+      skeleton,
+      dropAngle: drop,
     });
     const { problems, thin } = houseProblems(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
@@ -5712,6 +5761,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     return;
   }
   await guardScript(s, ep, script, "after writing");
+  // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
+  if (skeleton) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: check,
@@ -10589,6 +10640,22 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     );
     if (held) return;
   }
+  // SHORT_ARGUES_CHECK (src/qa/argues.ts): a Short with no point beyond its picture, or none of Pulse's own
+  // material, was already sent back to the writer once; here it is released under the lane's usual mode with a
+  // note on the notice, never held for the owner. A twin repeats a Short already through it.
+  const argues =
+    s.cfg.shortArguesCheck && ep.lane !== "longform" && ep.lane !== "twin"
+      ? arguesCheck(script, ep.assets_json, ep.lane)
+      : undefined;
+  if (argues)
+    await logEvent(s.db, ep.id, "argues_check", {
+      pass: argues.pass,
+      point: argues.point,
+      own: argues.own,
+      describing: argues.describing,
+      sentences: argues.sentences,
+      problems: argues.problems,
+    }).catch(() => undefined);
   // A single-source story always waits for a human. A rumour that two outlets (or an official source)
   // carry is reported as a labelled report ("reportedly" throughout, the title says so) under the lane's
   // usual mode: from 25 Oct 2026 the channel covers leaks and reports, clearly marked.
@@ -10657,6 +10724,10 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
           `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${links.approve})  ·  ❌ [Reject](${links.reject})`,
           when,
         ];
+  if (argues && !argues.pass)
+    description.unshift(
+      `**Released with a note (argues, not describes):** ${argues.problems.join("; ")}. Nothing for you to do.`,
+    );
   const delivered = await s.notify({
     // Gameplay notices buzz the phone: the Maze Bank Short sat unseen for 48 hours among the channel's alerts.
     ping: ep.lane === "gameplay",

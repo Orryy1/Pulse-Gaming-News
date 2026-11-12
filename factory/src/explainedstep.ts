@@ -59,6 +59,7 @@ import {
   type StorySighting,
 } from "./editorial/explained.ts";
 import { longRulesFor, youShortfall } from "./editorial/longrules.ts";
+import { excludeDropStories } from "./editorial/dropangle.ts";
 import { dayKey } from "./lanes.ts";
 import { errorMessage, FatalError, log } from "./lib/util.ts";
 
@@ -174,7 +175,12 @@ export async function chooseWeekStory(
   const stories = groupStories(shorts, sightings).filter(
     (st) => s.cfg.includeRumours || !st.rumour,
   );
-  const first = rankStories(stories);
+  // DROP_ANGLE (src/editorial/dropangle.ts): a trailer or screenshot drop is never the week's long video.
+  const rank = (d?: Map<string, Demand>) =>
+    s.cfg.dropAngle
+      ? excludeDropStories(rankStories(stories, d))
+      : rankStories(stories, d);
+  const first = rank();
   let demand = new Map<string, Demand>();
   if (s.cfg.demandCheck && s.searchDemand) {
     const top = first
@@ -194,7 +200,7 @@ export async function chooseWeekStory(
       return new Map<string, Demand>();
     });
   }
-  const ranked = rankStories(stories, demand);
+  const ranked = rank(demand);
   return { pick: pickStory(ranked), ranked, demand };
 }
 

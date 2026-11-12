@@ -32,6 +32,8 @@ export interface StoryCluster {
     follow?: import("../editorial/why.ts").WhyFollow;
     /** A pre-made Short's slot (ISO): its time words are written for that moment (src/launchprep.ts). */
     airs_at?: string;
+    /** The Why as a numbered serial (WHY_SERIAL_ENABLED): its number, and whether the slot was a home-shelf one. */
+    serial?: { number: number; home: boolean };
   };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: { id: string; dir: string; review: import("../gameplay.ts").GameplayReview; rehearsal?: boolean };
@@ -47,8 +49,8 @@ export interface StoryCluster {
   series?: import("../series.ts").SeriesTag;
   /** A twin of a published Short in another language: the original's episode, the language and the login it uploads with. */
   twin?: { parent: string; language: string; account: string };
-  /** A Short in the named daily strand (src/strand.ts): its name, its franchise and whether it opens on the owner's own footage. */
-  strand?: { name: string; franchise: string; ownFootage: boolean };
+  /** A part of The GTA File (src/gtafile.ts): its number, the callback to the last part, its facts and whether it opens on the owner's footage. */
+  gtaFile?: import("../gtafile.ts").GtaFileStory;
 }
 
 const STOPWORDS = new Set(

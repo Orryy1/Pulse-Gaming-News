@@ -3,14 +3,19 @@
 // 24 on YouTube and never in 22 on Instagram. The reading is two lanes, not one cap: news and "why" at about 22 to
 // 35 seconds, and a small test lane of 60 to 75 seconds for strand pieces on the owner's own footage.
 //
-// SHORT_LENGTHS sets a target per format ("news=22-35,why=22-35,strand=60-75"); empty keeps the writer's old 25-40
+// The format redesign plan (11 Nov 2026) reads Pulse's own numbers the other way for the serials: Shorts of 60 s and
+// over converted best (2.22 subscribers per 1,000 views). So The Why as a serial gets its own band
+// (WHY_TARGET_SECONDS, 45-60, only with WHY_SERIAL_ENABLED; withWhyTarget) and The GTA File, which replaced the strand
+// (src/gtafile.ts), has the "gta_file" lane; the old "strand" key still reads as it.
+//
+// SHORT_LENGTHS sets a target per format ("news=22-35,why=22-35,gta_file=45-55"); empty keeps the writer's old 25-40
 // seconds and 70-100 words for every Short. The word budget follows from the seconds at the narrator's own pace, so
 // the voice is never sped up or slowed down to fit. INSTAGRAM_MAX_SECONDS (0 = off) keeps a longer Short off
 // Instagram: the cutdown code cuts entries out of long rankings and cannot make a shorter cut of a Short.
 
 /** The formats with a length lane. */
-export type LengthFormat = "news" | "why" | "strand";
-export const LENGTH_FORMATS: LengthFormat[] = ["news", "why", "strand"];
+export type LengthFormat = "news" | "why" | "gta_file";
+export const LENGTH_FORMATS: LengthFormat[] = ["news", "why", "gta_file"];
 
 /** A target length in seconds. */
 export interface LengthBand {
@@ -29,16 +34,26 @@ export const SHORT_WORDS_PER_SECOND = 2.6;
 /** The narration cap every Short had before the lanes: under a minute with the end card. */
 export const SHORT_NARRATION_CAP_SECONDS = 58;
 
-/** SHORT_LENGTHS (pure): "news=22-35,why=22-35,strand=60-75". Unknown formats and bad bands are dropped. */
+/** One band, "45-60" (WHY_TARGET_SECONDS); undefined when it is not a usable band. */
+export function parseBand(raw: string): LengthBand | undefined {
+  const m = raw.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!m) return undefined;
+  const min = Number(m[1]);
+  const max = Number(m[2]);
+  if (min < 10 || max > 180 || min >= max) return undefined;
+  return { min, max };
+}
+
+/** SHORT_LENGTHS (pure): "news=22-35,why=22-35,gta_file=45-55" ("strand" is read as "gta_file"). Unknown formats and bad bands are dropped. */
 export function parseShortLengths(raw: string): ShortLengths {
   const out: ShortLengths = {};
   for (const part of raw.split(",")) {
     const m = part
       .trim()
       .toLowerCase()
-      .match(/^([a-z]+)\s*=\s*(\d+)\s*-\s*(\d+)$/);
+      .match(/^([a-z_]+)\s*=\s*(\d+)\s*-\s*(\d+)$/);
     if (!m) continue;
-    const format = m[1] as LengthFormat;
+    const format = (m[1] === "strand" ? "gta_file" : m[1]) as LengthFormat;
     const min = Number(m[2]);
     const max = Number(m[3]);
     if (!LENGTH_FORMATS.includes(format)) continue;
@@ -49,20 +64,33 @@ export function parseShortLengths(raw: string): ShortLengths {
 }
 
 /**
- * Which lane a Short is in: only the news lane's Shorts have one (news, why, strand). A strand Short is in the long
- * strand lane only when it opens on the owner's own footage; otherwise it is a news Short. A planned launch run topic
- * (launch_run.json, src/shortrun.ts: the GTA VI launch calendar's "why" entries) has none: it keeps the length rules it
- * was planned under, whatever SHORT_LENGTHS says. Long videos and every other lane have none either.
+ * Which lane a Short is in: only the news lane's Shorts have one (news, why, and a GTA File part). A planned launch
+ * run topic (launch_run.json, src/shortrun.ts: the GTA VI launch calendar's "why" entries) has none: it keeps the
+ * length rules it was planned under, whatever SHORT_LENGTHS says. Long videos and every other lane have none either.
  */
 export function lengthFormatOf(ep: {
   lane: string;
-  story_json: { why?: unknown; run?: boolean; strand?: { ownFootage: boolean } } | null | undefined;
+  story_json: { why?: unknown; run?: boolean; gtaFile?: unknown } | null | undefined;
 }): LengthFormat | undefined {
   if (ep.lane !== "news" && ep.lane !== "news_breaking") return undefined;
-  if (!ep.story_json || ep.story_json.run) return undefined;
-  if (ep.story_json.strand?.ownFootage) return "strand";
+  if (!ep.story_json) return undefined;
+  if (ep.story_json.gtaFile) return "gta_file";
+  if (ep.story_json.run) return undefined;
   if (ep.story_json.why) return "why";
   return "news";
+}
+
+/**
+ * The lanes with The Why's serial band laid over them (WHY_TARGET_SECONDS, only when WHY_SERIAL_ENABLED): the Why
+ * band, and the GTA File's too when SHORT_LENGTHS gives it none, since its parts are written by the Why writer.
+ */
+export function withWhyTarget(
+  lengths: ShortLengths,
+  serial: boolean,
+  band: LengthBand | undefined,
+): ShortLengths {
+  if (!serial || !band) return lengths;
+  return { ...lengths, why: band, gta_file: lengths.gta_file ?? band };
 }
 
 /** What the writer, the checks and the voice step hold a Short to. */
@@ -79,8 +107,7 @@ export interface ShortTarget {
 
 /**
  * The target for a format, or undefined when SHORT_LENGTHS leaves it unset (the old rules then stand). A "why"
- * Short with no band of its own follows the news band; the strand lane has to be set on its own, and without it a
- * strand Short follows the news band too.
+ * Short with no band of its own follows the news band; a GTA File part follows the Why band, else the news band.
  */
 export function shortTarget(
   lengths: ShortLengths,
@@ -88,9 +115,10 @@ export function shortTarget(
 ): ShortTarget | undefined {
   if (!format) return undefined;
   const own = lengths[format];
-  const band = own ?? lengths.news;
+  const viaWhy = format === "gta_file" && !own ? lengths.why : undefined;
+  const band = own ?? viaWhy ?? lengths.news;
   if (!band) return undefined;
-  const lane = own ? format : "news";
+  const lane = own ? format : viaWhy ? "why" : "news";
   return {
     format: lane,
     seconds: band,

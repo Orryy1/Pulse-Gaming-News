@@ -81,10 +81,38 @@ const RunDocSchema = z.object({
 });
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
+/**
+ * A part of The GTA File (src/gtafile.ts), planned by hand from confirmed facts. It sits in its own run file
+ * (SERIES_GTA_FILE_RUN_FILE) and runs in the series slot on its date; the Why writer and the fact check make it.
+ */
+const RunFileSchema = z.object({
+  kind: z.literal("file"),
+  part: z.number().int().min(1),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  /** Only when this part runs outside SERIES_GTA_FILE_SLOT. */
+  slot: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/)
+    .optional(),
+  /** The claim, without the "GTA VI File #n:" prefix the factory adds. */
+  title: z.string(),
+  question: z.string(),
+  angle: z.string(),
+  /** What the last part established, for the callback; empty for part 1. */
+  recap: z.string(),
+  /** The confirmed facts the part stands on, each traceable to a source below. */
+  facts: z.array(z.string()).min(1),
+  /** For the next-part line (SERIES_NEXT_LINE, claude/series-core): what the next part is about, in a few words. */
+  next_teaser: z.string().optional(),
+  game: z.string().optional(),
+  sources: z.array(SourceSchema).min(1),
+});
+export type RunFile = z.infer<typeof RunFileSchema>;
+
 const RunSchema = z.array(
-  z.discriminatedUnion("kind", [RunWhySchema, RunDocSchema, RunSpareSchema]),
+  z.discriminatedUnion("kind", [RunWhySchema, RunDocSchema, RunSpareSchema, RunFileSchema]),
 );
-export type RunEntry = RunWhy | RunDoc | RunSpare;
+export type RunEntry = RunWhy | RunDoc | RunSpare | RunFile;
 
 /** The run's entries; a missing or broken file means no run, with a warning, never a stopped factory. */
 export function readRun(file: string): RunEntry[] {

@@ -25,7 +25,8 @@ import {
   seriesPulseCheckNote,
   seriesPulseCheckRule,
 } from "../src/editorial/newssegment.ts";
-import { dayPhrase, nextPartFor, type PartEntry } from "../src/nextpart.ts";
+import { dayPhrase, gtaFileParts, nextPartFor, type PartEntry } from "../src/nextpart.ts";
+import { readRun } from "../src/shortrun.ts";
 import {
   endingProblems,
   nextLineProblems,
@@ -308,6 +309,39 @@ test("the next part is the run's next entry on the same arc, numbered and dated;
   assert.equal(
     nextPartFor(numbered, london("2026-11-30", "18:30"), "Europe/London")?.part,
     8,
+  );
+});
+
+test("the GTA File's next-part line reads its own run file, and spares in the launch run are never promised", () => {
+  // The real plan (gta_file_run.json): parts in the series slot unless one names its own.
+  const parts = gtaFileParts(readRun("gta_file_run.json"), "18:30");
+  assert.ok(parts.length >= 3);
+  assert.ok(parts.every((p) => p.series === "gta_file" && p.slot && p.part));
+  const [p1, p2] = [...parts].sort((a, b) => a.part! - b.part!);
+  const next = nextPartFor(parts, london(p1!.date, p1!.slot), "Europe/London");
+  assert.equal(next?.part, p2!.part);
+  assert.equal(next?.title, p2!.title);
+  // Its own slot when the plan gives one; a doc or a Why in the same file is not a part.
+  const own = gtaFileParts(
+    [
+      { kind: "file", part: 1, date: "2026-11-30", title: "A" },
+      { kind: "file", part: 2, date: "2026-12-01", slot: "12:00", title: "B" },
+      { kind: "why", date: "2026-12-01", slot: "18:30", title: "C" },
+    ],
+    "18:30",
+  );
+  assert.deepEqual(own.map((p) => [p.part, p.slot]), [[1, "18:30"], [2, "12:00"]]);
+  // A launch-run spare has no slot until it fills one: never a promised part.
+  const withSpare = [
+    why("2026-11-30", "12:00", "Part one"),
+    { kind: "spare", title: "Spare", arc: "launch", game: "Grand Theft Auto VI" },
+    why("2026-12-01", "12:00", "Part two"),
+  ];
+  assert.equal(nextPartFor(withSpare, london("2026-11-30", "12:00"), "Europe/London")?.title, "Part two");
+  // A GTA File part is tagged as one, though the Why writer makes it.
+  assert.equal(
+    seriesTagFor({ lane: "news", story_json: { why: { question: "?" }, gtaFile: { part: 1 } } }),
+    "gta_file",
   );
 });
 

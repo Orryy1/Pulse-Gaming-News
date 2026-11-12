@@ -50,13 +50,15 @@ export function isSerial(tag: SeriesTag | undefined): boolean {
 export function seriesTagFor(
   ep: {
     lane: string;
-    story_json?: { why?: unknown; series?: unknown; run?: unknown } | null;
+    story_json?: { why?: unknown; series?: unknown; run?: unknown; gtaFile?: unknown } | null;
   },
   script?: { series?: unknown; is_rumour?: boolean } | null,
 ): SeriesTag | undefined {
   if (isSeriesTag(script?.series)) return script.series;
   if (isSeriesTag(ep.story_json?.series)) return ep.story_json.series;
   if (ep.lane !== "news" && ep.lane !== "news_breaking") return undefined;
+  // A GTA File part is written by the Why writer, so it carries a why brief too: its own tag comes first.
+  if (ep.story_json?.gtaFile) return "gta_file";
   if (ep.story_json?.why) return "why";
   if (ep.lane === "news" && !script?.is_rumour && !ep.story_json?.run)
     return "news_control";

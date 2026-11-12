@@ -4,8 +4,8 @@
 import { lateAngleNote } from "../bigstories.ts";
 import { airsAtNote, releaseDateNote } from "../launchprep.ts";
 import { pulseCheckRule, PULSE_CHECK_ASK } from "./newssegment.ts";
-import { whyBrief } from "./why.ts";
-import { strandBrief } from "../strand.ts";
+import { whyBrief, whySerialBrief } from "./why.ts";
+import { gtaFileBrief } from "../gtafile.ts";
 import {
   voiceFor,
   voiceProblems,
@@ -78,12 +78,16 @@ export interface ScriptLength {
 /** The news writer's brief. With the desk voice off (DESK_SHARE=0, owner 5 Nov 2026) no desk question is asked for: a take
  * written to answer it reads as an answer to nothing once the question is gone. Without a length lane, the old 25-40 s. */
 export function scriptPrompt(desk = true, length?: ScriptLength): string {
-  const seconds = length ? `${length.seconds.min}-${length.seconds.max}` : "25-40";
+  const seconds = length
+    ? `${length.seconds.min}-${length.seconds.max}`
+    : "25-40";
   const words = length
     ? `${length.wordsMin}-${length.wordsMax}`
     : `${WORDS_MIN}-${WORDS_MAX}`;
   const beats =
-    length && length.beatsMax > 4 ? `two to ${numberWords(length.beatsMax)}` : "two to four";
+    length && length.beatsMax > 4
+      ? `two to ${numberWords(length.beatsMax)}`
+      : "two to four";
   return `${HOUSE_STYLE}
 
 Write a ${seconds} second vertical Short script (${words} spoken words in total across hook, beats, take and loop line). Quoted examples in this brief show a shape; a draft that reuses one word for word is sent back.
@@ -219,12 +223,18 @@ export async function writeScript(
   const feedback = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
+  // A GTA File part ends on its own open question, so its last line never points to tomorrow's Why.
   const why = cluster.why
-    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow)}${launchNotes(cluster)}`
+    ? `\n\n${whyBrief(cluster.why.question, cluster.why.angle, cluster.why.follow, opts.noSeriesFollow || !!cluster.gtaFile)}${launchNotes(cluster)}`
     : launchNotes(cluster);
-  // The named daily strand (src/strand.ts): one test, how-to or "is it true" check, never an announcement.
-  const strand = cluster.strand
-    ? `\n\n${strandBrief({ ...cluster.strand, longLane: (opts.length?.seconds.max ?? 0) > 45 })}`
+  // The Why as a numbered serial (WHY_SERIAL_ENABLED, src/editorial/why.ts): claim hook, counterpoint, one "I" line.
+  const serial =
+    cluster.why?.serial && !cluster.gtaFile
+      ? `\n\n${whySerialBrief({ number: cluster.why.serial.number, seconds: opts.length?.seconds })}`
+      : "";
+  // The GTA File (src/gtafile.ts): the part number, the callback to the last part and confirmed facts only.
+  const file = cluster.gtaFile
+    ? `\n\n${gtaFileBrief({ ...cluster.gtaFile, seconds: opts.length?.seconds })}`
     : "";
   const recent =
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
@@ -241,7 +251,7 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${strand}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -573,8 +583,13 @@ export function shortYouMin(words: number): number {
 
 /** Deterministic house-rule checks. Returns human-readable problems; empty means valid. */
 /** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
-export function midQuestions(s: Pick<Script, "beats" | "pulse_take">): string[] {
-  const text = [...s.beats.map((b) => b.narration), s.pulse_take.narration].join(" ");
+export function midQuestions(
+  s: Pick<Script, "beats" | "pulse_take">,
+): string[] {
+  const text = [
+    ...s.beats.map((b) => b.narration),
+    s.pulse_take.narration,
+  ].join(" ");
   // "My Pulse check? Steady." is the segment's own lead-in, not a question answered to nobody.
   return (text.match(/[^.?!]*\?/g) ?? [])
     .map((q) => q.trim())
@@ -764,7 +779,9 @@ export function validateScript(
     if (
       b.visual.kind === "score" &&
       b.visual.items?.length &&
-      /metacritic|metascore|opencritic/i.test(`${b.visual.primary} ${b.visual.secondary}`)
+      /metacritic|metascore|opencritic/i.test(
+        `${b.visual.primary} ${b.visual.secondary}`,
+      )
     )
       problems.push(
         `Score card "${b.visual.primary}" is an aggregate, so it lists no outlets: those critics gave their own scores, not this one.`,

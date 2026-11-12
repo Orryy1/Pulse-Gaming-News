@@ -2637,29 +2637,9 @@ test("FRIEND_PASS off: no pass is asked for and the Short is as written", async 
   assert.ok(ep.script_json!.pulse_take.narration.endsWith(goodScript().pulse_take.narration));
 });
 
-// ---------------------------------------------- the named strand (src/strand.ts) and the length lanes (src/shortlengths.ts)
+// ---------------------------------- The GTA File (src/gtafile.ts), The Why as a serial and the length lanes (src/shortlengths.ts)
 
-import { maybeSelect, discoverTick } from "../src/pipeline.ts";
 import { parseShortLengths } from "../src/shortlengths.ts";
-
-const STRAND = {
-  strandName: "GTA 6, Checked",
-  strandSlot: "13:00", // the fixtures' one news slot
-  strandFranchise: "GTA VI|GTA 6|Grand Theft Auto VI",
-  breakingEnabled: false,
-};
-
-function gtaStories(s: Services, now: Date) {
-  s.discover = async () =>
-    clusterItems(
-      [
-        item("Take-Two raises GTA 6 sales forecast after record pre-orders", "Take-Two", "official", 10, now),
-        item("GTA 6 lets you lose the police by changing your clothes", "Rockstar Newswire", "official", 20, now),
-        item("Starfield second expansion delayed to early 2027", "Xbox Wire", "official", 15, now),
-      ],
-      now,
-    );
-}
 
 /** What the editor and the writer were sent. */
 function llmLog(s: Services) {
@@ -2679,51 +2659,102 @@ function llmLog(s: Services) {
   return seen;
 }
 
-test("the strand's slot takes the franchise's player-facing stories first and company numbers last; off, the slot is unchanged", async () => {
+const WHY_ON = {
+  whyEnabled: true,
+  whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+  whySlots: ["12:00", "18:30"],
+  whySlot: "12:00",
+  breakingEnabled: false,
+};
+
+/** A two-part GTA File run file in the test's folder. */
+async function gtaRun(dir: string): Promise<string> {
+  const file = path.join(dir, "gta_file_run.json");
+  const part = (n: number, date: string) => ({
+    kind: "file",
+    part: n,
+    date,
+    title: n === 1 ? "What launch week really changed" : "The map is hiding more than you think",
+    question: `What does part ${n} change for you?`,
+    angle: "Say only what the sources say.",
+    recap: n === 1 ? "" : "Part 1 covered the download code in the box.",
+    facts: ["Boxed copies contain a download code, not a disc (Rockstar Newswire)."],
+    sources: [
+      { url: "https://www.rockstargames.com/newswire/a", source: "Rockstar Newswire", official: true },
+      { url: "https://www.example.com/b", source: "Outlet" },
+    ],
+  });
+  await fs.writeFile(file, JSON.stringify([part(1, "2026-11-22"), part(2, "2026-11-23")]));
+  return file;
+}
+
+test("The GTA File's slot takes the planned part through the Why writer; off, the slot is an ordinary Why", async () => {
   {
-    const { s, db } = await setup(STRAND);
-    gtaStories(s, s.now());
+    const { s, db, f, dir, setClock } = await setup(WHY_ON);
+    s.cfg.seriesGtaFileEnabled = true;
+    s.cfg.seriesGtaFileRunFile = await gtaRun(dir);
     const seen = llmLog(s);
-    await discoverTick(s);
-    const id = await maybeSelect(s);
-    assert.ok(id, "the strand fills the news slot; no slot is added");
-    const ep = await getEpisode(db, id!);
-    assert.deepEqual(ep!.story_json.strand, { name: "GTA 6, Checked", franchise: "GTA VI", ownFootage: false });
-    const list = seen.selection[0]!.split("Candidates:\n")[1]!;
-    assert.match(list, /^0\. "GTA 6 lets you lose the police/);
-    assert.match(list, /\n1\. "Take-Two raises GTA 6 sales forecast/);
-    assert.doesNotMatch(list, /Starfield/, "the franchise's stories only");
-    assert.match(seen.selection[0]!, /This is the "GTA 6, Checked" slot/);
+    setClock(new Date("2026-11-22T17:00:00Z")); // 17:00 London, before the 18:30 slot
+    const id = await maybeSelectWhy(s);
+    assert.ok(id, "the part fills the 18:30 Why slot; no slot is added");
+    const ep = (await getEpisode(db, id!))!;
+    assert.equal(ep.story_hash, "gtafile:1");
+    assert.equal(ep.story_json.headline, "GTA VI File #1: What launch week really changed");
+    assert.equal(ep.story_json.gtaFile?.part, 1);
+    assert.equal(ep.story_json.gtaFile?.ownFootage, false);
+    assert.equal(ep.story_json.why?.question, "What does part 1 change for you?");
+    assert.equal(ep.story_json.why?.serial, undefined, "a part is not a numbered Why");
+    assert.equal(new Date(ep.slot_at!).toISOString(), "2026-11-22T18:30:00.000Z");
+    assert.equal(f.whyPrompts?.length ?? 0, 0, "no editor call");
+    await tick(s);
+    const done = (await getEpisode(db, id!))!;
+    assert.match(done.script_json!.youtube.title, /^GTA VI File #1: /, "the plan's title pattern");
+    assert.match(seen.script[0]!, /part 1 of "The GTA File"/);
+    assert.match(seen.script[0]!, /- Boxed copies contain a download code/);
+    assert.match(seen.script[0]!, /open with "GTA File, part 1\."/);
+    assert.doesNotMatch(seen.script[0]!, /a new Why question lands every day/, "a part ends on its own question");
+    // The next day picks up from the last: the callback quotes how part 1 went out.
+    setClock(new Date("2026-11-23T17:00:00Z"));
+    const id2 = await maybeSelectWhy(s);
+    const ep2 = (await getEpisode(db, id2!))!;
+    assert.equal(ep2.story_json.gtaFile?.part, 2);
+    assert.match(ep2.story_json.gtaFile!.previous!, /^"GTA VI File #1: /);
     await db.close();
   }
   {
-    const { s, db } = await setup({ breakingEnabled: false });
-    gtaStories(s, s.now());
-    const seen = llmLog(s);
-    await discoverTick(s);
-    const ep = await getEpisode(db, (await maybeSelect(s))!);
-    assert.equal(ep!.story_json.strand, undefined);
-    assert.match(seen.selection[0]!, /Starfield/);
-    assert.doesNotMatch(seen.selection[0]!, /Pulse's daily/);
+    // A day with no part planned: the slot goes to the Why editor, and the owner is told.
+    const { s, db, f, dir, setClock } = await setup(WHY_ON);
+    s.cfg.seriesGtaFileEnabled = true;
+    s.cfg.seriesGtaFileRunFile = await gtaRun(dir);
+    setClock(new Date("2026-11-24T17:00:00Z"));
+    f.whyTopics = [];
+    assert.equal(await maybeSelectWhy(s), undefined, "the fake editor passes");
+    assert.equal(f.whyPrompts?.length, 1, "the editor was asked");
+    assert.ok(f.notifications.some((n) => /The GTA File has no part planned/.test(n)));
     await db.close();
   }
   {
-    // A strand set on an hour that is not a news slot stays off: it never adds a slot.
-    const { s, db } = await setup({ ...STRAND, strandSlot: "20:00" });
-    gtaStories(s, s.now());
-    await discoverTick(s);
-    const ep = await getEpisode(db, (await maybeSelect(s))!);
-    assert.equal(ep!.story_json.strand, undefined);
-    assert.equal((await listEpisodes(db)).length, 1);
+    // Off (the default): the planned part is never read and the editor picks as before.
+    const { s, db, f, dir, setClock } = await setup(WHY_ON);
+    s.cfg.seriesGtaFileRunFile = await gtaRun(dir);
+    setClock(new Date("2026-11-22T17:00:00Z"));
+    f.whyTopics = [];
+    assert.equal(await maybeSelectWhy(s), undefined);
+    assert.equal(f.whyPrompts?.length, 1);
+    assert.equal((await listEpisodes(db)).length, 0);
+    assert.ok(!f.notifications.some((n) => /GTA File/.test(n)));
     await db.close();
   }
 });
 
-test("a strand Short opens on the owner's clip when the inbox has one, in the long lane SHORT_LENGTHS sets", async () => {
-  const { s, db, dir } = await setup({
-    ...STRAND,
-    shortLengths: parseShortLengths("news=22-35,why=22-35,strand=60-75"),
+test("a GTA File part opens on the owner's clip when the inbox has one, in the serial's 45-60 s band", async () => {
+  const { s, db, dir, setClock } = await setup({
+    ...WHY_ON,
+    whySerialEnabled: true,
+    whyTargetSeconds: { min: 45, max: 60 },
   });
+  s.cfg.seriesGtaFileEnabled = true;
+  s.cfg.seriesGtaFileRunFile = await gtaRun(dir);
   const root = path.join(dir, "gameplay");
   const clipDir = path.join(root, "inbox", "c1");
   await fs.mkdir(clipDir, { recursive: true });
@@ -2733,7 +2764,6 @@ test("a strand Short opens on the owner's clip when the inbox has one, in the lo
     JSON.stringify({ id: "c1", status: "published", clip: { file: "clip.mp4", seconds: 40 }, review: { at: "", keep: true, reason: "x", game: "Grand Theft Auto VI" } }),
   );
   s.cfg.gameplayRoot = root;
-  gtaStories(s, s.now());
   const seen = llmLog(s);
   const asked: string[] = [];
   s.ownClips = async (game, franchise, d, targets, max) => {
@@ -2750,18 +2780,69 @@ test("a strand Short opens on the owner's clip when the inbox has one, in the lo
       },
     ] as never;
   };
+  setClock(new Date("2026-11-22T17:00:00Z"));
+  const id = await maybeSelectWhy(s);
   await tick(s);
-  const [ep] = await db.query<{ story_json: any; assets_json: any }>(`SELECT story_json, assets_json FROM episodes`);
-  assert.equal(ep!.story_json.strand.ownFootage, true);
+  const [ep] = await db.query<{ story_json: any; assets_json: any }>(`SELECT story_json, assets_json FROM episodes WHERE id = $1`, [id]);
+  assert.equal(ep!.story_json.gtaFile.ownFootage, true);
   assert.deepEqual(asked, ["Grand Theft Auto VI|GTA VI|hook|1"], "one clip of the game the inbox names, for the hook");
   const first = ep!.assets_json.clips[0];
   assert.equal(first.role, "hook");
   assert.match(first.provenance, /own gameplay capture/);
-  assert.match(seen.system[0]!, /Write a 60-75 second vertical Short script \(156-195 spoken words/);
-  assert.match(seen.script[0]!, /belongs to "GTA 6, Checked"/);
-  assert.match(seen.script[0]!, /opens on the owner's own gameplay of GTA VI/);
-  assert.match(seen.script[0]!, /runs 60 to 75 seconds/);
+  assert.match(seen.system[0]!, /Write a 45-60 second vertical Short script \(117-156 spoken words/);
+  assert.match(seen.script[0]!, /opens on the owner's own GTA VI gameplay/);
+  assert.match(seen.script[0]!, /It runs 45 to 60 seconds/);
   await db.close();
+});
+
+test("The Why as a serial: numbered, 45-60 s, home shelf only in a home slot; off, the Why lane is as before", async () => {
+  const pick = (game: string) => ({
+    candidate_index: 0,
+    question: `Why does ${game} still matter?`,
+    title: `Why ${game} still matters`,
+    game,
+    wikipedia_title: game,
+    arc: "Loved; turned; still loved.",
+    angle: "Because of its design.",
+    reason: "r",
+  });
+  {
+    const { s, db, f, setClock } = await setup({
+      ...WHY_ON,
+      whySerialEnabled: true,
+      whyTargetSeconds: { min: 45, max: 60 },
+      whyHomeShare: 1,
+    });
+    const seen = llmLog(s);
+    setClock(new Date("2026-11-22T10:30:00Z"));
+    f.whyTopics = [pick("Resident Evil 4")];
+    const id = await maybeSelectWhy(s);
+    assert.ok(id);
+    const ep = (await getEpisode(db, id!))!;
+    assert.deepEqual(ep.story_json.why?.serial, { number: 1, home: true });
+    const list = f.whyPrompts![0]!;
+    assert.match(list, /\(home shelf/);
+    assert.doesNotMatch(list, /well-loved game/, "a home slot offers only the shelf");
+    assert.doesNotMatch(list, /Half-Life|Zelda/);
+    await tick(s);
+    assert.match(seen.script[0]!, /This is The Why #1, Pulse's numbered daily series/);
+    assert.match(seen.system[0]!, /Write a 45-60 second vertical Short script \(117-156 spoken words/);
+    await db.close();
+  }
+  {
+    const { s, db, f, setClock } = await setup(WHY_ON);
+    const seen = llmLog(s);
+    setClock(new Date("2026-11-22T10:30:00Z"));
+    f.whyTopics = [pick("Half-Life 2")];
+    const id = await maybeSelectWhy(s);
+    const ep = (await getEpisode(db, id!))!;
+    assert.equal(ep.story_json.why?.serial, undefined);
+    assert.match(f.whyPrompts![0]!, /well-loved game/);
+    await tick(s);
+    assert.doesNotMatch(seen.script[0]!, /The Why #/);
+    assert.match(seen.system[0]!, /Write a 25-40 second vertical Short script/);
+    await db.close();
+  }
 });
 
 test("with SHORT_LENGTHS off the writer is briefed exactly as before; on, news Shorts get 22-35 seconds", async () => {

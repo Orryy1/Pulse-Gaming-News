@@ -383,20 +383,25 @@ import {
   whySlotsAhead,
 } from "./storymix.ts";
 import {
-  isStrandSlot,
+  franchiseClip,
+  GTA_FILE_ALIASES,
+  GTA_FILE_GAME,
+  gtaFileEntry,
+  gtaFileFrom,
+  gtaFileProblems,
+  gtaFileRunProblems,
+  gtaFileSeries,
+  gtaFileTitle,
+  isGtaFileSlot,
   openOnOwnClip,
-  rankForStrand,
-  strandClip,
-  strandEditorNote,
-  strandFrom,
-  strandProblems,
-  strandSeries,
-  type Strand,
-} from "./strand.ts";
+  type GtaFile,
+} from "./gtafile.ts";
 import {
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
+  withWhyTarget,
+  type ShortLengths,
 } from "./shortlengths.ts";
 import { inboxFiles } from "./assets/library.ts";
 import {
@@ -413,7 +418,14 @@ import {
   type Demand,
 } from "./discovery/searchdemand.ts";
 import { slotLabel } from "./cadence.ts";
-import { recentWhyHooks, sameGame } from "./editorial/why.ts";
+import {
+  homeCandidates,
+  isHomeSlot,
+  nextWhyNumber,
+  recentWhyHooks,
+  sameGame,
+  whySerialProblems,
+} from "./editorial/why.ts";
 import { mediaRichNotice, shortMediaRichness } from "./qa/mediarich.ts";
 import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
@@ -480,7 +492,7 @@ import {
   shortFloorProblems,
   shortFloorRule,
 } from "./series.ts";
-import { nextPartFor } from "./nextpart.ts";
+import { gtaFileParts, nextPartFor } from "./nextpart.ts";
 import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
@@ -532,6 +544,7 @@ import {
   sparesDue,
   whyRunEntry,
   type RunSpare,
+  type RunFile,
   type RunWhy,
 } from "./shortrun.ts";
 import {
@@ -1143,6 +1156,9 @@ export function seriesFor(
       sc.evergreen_format === "documentary" ? SERIES.docs : SERIES.rankedLong,
     );
   else if (ep.story_hash?.startsWith("why:")) out.push(SERIES.why);
+  // A GTA File part (src/gtafile.ts) is a serial, not news: it goes on its own shelf only.
+  else if (ep.story_json?.gtaFile)
+    out.push(gtaFileSeries(ep.story_json.gtaFile.name));
   else if (
     ep.lane === "cutdown" ||
     (ep.lane === "evergreen" &&
@@ -1155,8 +1171,6 @@ export function seriesFor(
     out.push(SERIES.rankedShort);
   else if (ep.lane === "news" || ep.lane === "news_breaking")
     out.push(SERIES.news);
-  // A strand Short also joins the strand's own shelf, named as the strand (src/strand.ts).
-  if (ep.story_json?.strand) out.push(strandSeries(ep.story_json.strand));
   const focusOn =
     cfg.focusPlaylist &&
     (!cfg.focusUntil || dayKey(now, cfg.timezone) <= cfg.focusUntil);
@@ -1311,8 +1325,6 @@ async function createFromChoice(
     /** Our own dropped attempts at this story: never published, so not "already covered". */
     notCovered: string[];
   },
-  /** A word for the editor about this slot (the strand's, src/strand.ts). */
-  note?: string,
 ): Promise<string | undefined> {
   const { db } = s;
   const pool = candidates;
@@ -1322,7 +1334,6 @@ async function createFromChoice(
     (await recentHeadlines(db)).filter((h) => !big?.notCovered.includes(h)),
     [
       big?.note ?? "",
-      note ?? "",
       focusBlock(s.cfg, s.now()),
       hotBlock(await readHotTopic(db, s.now()).catch(() => undefined)),
       calendarFor(s.cfg, s.now(), "news", 3),
@@ -1738,34 +1749,6 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       (await maybeSelectWhy(s)) ??
       (await maybeSelectSpare(s))
     );
-  // The named strand (STRAND_NAME, src/strand.ts): its slot is one of the news slots, so it adds none. The slot takes the
-  // franchise's stories only, player-facing first and company numbers last; with none, it stays an ordinary news slot.
-  const strand = strandFrom(cfg);
-  if (strand && isStrandSlot(strand, slot, cfg.timezone)) {
-    const ranked = rankForStrand(
-      strand,
-      eligible.map((x) => x.cluster),
-      storyText,
-    ).slice(0, 12);
-    if (ranked.length) {
-      const ownFootage = await strandOwnFootage(cfg, strand).catch(() => false);
-      return createFromChoice(
-        s,
-        ranked.map((c) => ({
-          ...c,
-          strand: { name: strand.name, franchise: strand.franchise, ownFootage },
-        })),
-        { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
-        `strand "${strand.name}" ${slot.toISOString()}`,
-        undefined,
-        strandEditorNote(strand),
-      );
-    }
-    log("info", "no story for the strand; an ordinary news slot", {
-      strand: strand.name,
-      slot: slot.toISOString(),
-    });
-  }
   // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
   // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
   // Breaking news above never passes through it: speed matters more than format.
@@ -1799,13 +1782,124 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   );
 }
 
-/** Whether the gameplay inbox holds a clip of the strand's franchise, so the strand Short can open on the owner's footage. */
-export async function strandOwnFootage(
+/** Whether the gameplay inbox holds a clip of the franchise, so a GTA File part can open on the owner's footage. */
+export async function franchiseOwnFootage(
   cfg: Pick<Config, "footage" | "gameplayRoot">,
-  strand: Pick<Strand, "aliases">,
+  file: Pick<GtaFile, "aliases">,
 ): Promise<boolean> {
   if (!cfg.footage || !cfg.gameplayRoot) return false;
-  return Boolean(strandClip(strand, await inboxFiles(cfg.gameplayRoot)));
+  return Boolean(franchiseClip(file, await inboxFiles(cfg.gameplayRoot)));
+}
+
+/** The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS). */
+export function lengthsFor(
+  cfg: Pick<Config, "shortLengths" | "whySerialEnabled" | "whyTargetSeconds">,
+): ShortLengths {
+  return withWhyTarget(
+    cfg.shortLengths,
+    cfg.whySerialEnabled,
+    cfg.whyTargetSeconds,
+  );
+}
+
+/** A Why's place in the numbered series (WHY_SERIAL_ENABLED); undefined when the serial is off. */
+async function whySerialFor(
+  s: Services,
+  home: boolean,
+): Promise<{ number: number; home: boolean } | undefined> {
+  if (!s.cfg.whySerialEnabled) return undefined;
+  return { number: await nextWhyNumber(s.db), home };
+}
+
+/**
+ * A part of The GTA File (src/gtafile.ts) from its run file: like a planned Why, its sources are read and its angle
+ * set by hand, so the editor, the freshness rule and the demand check stay out of it. The callback quotes what the
+ * last part said when it went out; the hook opens on the owner's GTA VI footage when the inbox has a clip.
+ */
+export async function selectGtaFilePart(
+  s: Services,
+  file: GtaFile,
+  e: RunFile,
+  due: Date,
+): Promise<string | undefined> {
+  const now = s.now();
+  const read = await Promise.all(
+    e.sources.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
+  );
+  const items = e.sources
+    .map((u, i) => ({ u, a: read[i] }))
+    .filter((x) => x.a)
+    .map(({ u, a }) => ({
+      title: a!.title,
+      url: u.url,
+      summary: "",
+      publishedAt: now.toISOString(),
+      source: u.source,
+      sourceKind: u.official ? ("official" as const) : ("outlet" as const),
+    }));
+  // Confirmed facts only: with no official source readable, the part waits rather than run on outlets alone.
+  if (!items.some((i) => i.sourceKind === "official")) {
+    log("warn", "GTA File part has no readable official source", {
+      part: e.part,
+    });
+    return undefined;
+  }
+  const [prev] = await s.db.query<{
+    title: string | null;
+    take: string | null;
+  }>(
+    `SELECT script_json->'youtube'->>'title' AS title, script_json->'pulse_take'->>'narration' AS take FROM episodes
+      WHERE story_hash = $1 AND status NOT IN ('failed','rejected') AND script_json IS NOT NULL
+      ORDER BY created_at DESC LIMIT 1`,
+    [`gtafile:${e.part - 1}`],
+  );
+  const ownFootage = await franchiseOwnFootage(s.cfg, file).catch(() => false);
+  const cluster: StoryCluster = {
+    hash: `gtafile:${e.part}`,
+    headline: gtaFileTitle(e.part, e.title),
+    items,
+    sources: [...new Set(items.map((i) => i.source))],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: e.game ?? GTA_FILE_GAME,
+    visualNeed: "game_footage",
+    run: true,
+    why: { question: e.question, angle: e.angle, follow: { kind: "series" } },
+    gtaFile: {
+      name: file.name,
+      franchise: file.franchise,
+      part: e.part,
+      recap: e.recap,
+      ...(prev?.title
+        ? {
+            previous: `"${prev.title}"${prev.take ? `, verdict: "${prev.take}"` : ""}`,
+          }
+        : {}),
+      facts: e.facts,
+      ownFootage,
+    },
+  };
+  const id = shortId();
+  if (
+    !(await createEpisode(s.db, id, cluster, {
+      lane: "news",
+      priority: LANE_PRIORITY.news,
+      slotAt: due,
+    }))
+  )
+    return undefined;
+  await logEvent(s.db, id, "selected", {
+    headline: cluster.headline,
+    lane: "gta_file",
+    part: e.part,
+    own_footage: ownFootage,
+    slot_at: due.toISOString(),
+  });
+  log("info", "GTA File part selected", { id, part: e.part });
+  return id;
 }
 
 /**
@@ -2178,6 +2272,7 @@ export async function selectRunWhy(
   const follow = await followFor(s.db, e.game, now).catch(() => ({
     kind: "series" as const,
   }));
+  const serial = await whySerialFor(s, false);
   const cluster: StoryCluster = {
     hash: `why:${whySlug(e.question)}`,
     headline: e.title,
@@ -2197,6 +2292,7 @@ export async function selectRunWhy(
       arc: e.arc,
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
+      ...(serial ? { serial } : {}),
     },
     ...(how.premade ? { premade: true } : {}),
     ...(how.spare && e.kind === "spare"
@@ -2479,6 +2575,35 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     )
   )
     return undefined;
+  // The GTA File (src/gtafile.ts) owns its slot: the part planned for today, else the slot goes to the Why editor.
+  const file = gtaFileFrom(cfg);
+  if (file && isGtaFileSlot(file, due, cfg.timezone)) {
+    const run = readRun(file.runFile);
+    const part = gtaFileEntry(run, due, file, cfg.timezone);
+    const planProblems = gtaFileRunProblems(run);
+    if (planProblems.length)
+      log("warn", "GTA File run file has problems", { problems: planProblems });
+    if (part) {
+      const made = await selectGtaFilePart(s, file, part, due).catch((err) => {
+        log("warn", "GTA File part failed", {
+          part: part.part,
+          error: errorMessage(err),
+        });
+        return undefined;
+      });
+      if (made) return made;
+    }
+    log("info", "no GTA File part for the slot; the Why editor picks", {
+      slot: due.toISOString(),
+      part: part?.part ?? null,
+    });
+    await s
+      .notify({
+        level: "info",
+        content: `The GTA File has ${part ? `part ${part.part} planned, but it could not be made (no official source readable, or it was made and dropped before)` : "no part planned"} for ${slotLabel(due, cfg.timezone)}; that slot gets an ordinary Why Short instead.`,
+      })
+      .catch(() => undefined);
+  }
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
   let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
   // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
@@ -2524,10 +2649,19 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     slugs: fresh.map((r) => r.hash.replace(/^why:/, "")),
   };
   recent.games.push(...dropped.map((r) => r.game ?? "").filter(Boolean));
-  // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out.
-  const base = whyCandidates(
-    await s.discoverEvergreen(),
-    dayKey(now, cfg.timezone),
+  // Well-loved games with a story arc first (WHY_SEEDS), then the evergreen list; recent games left out. A home slot
+  // of the numbered serial (WHY_HOME_SHARE) offers only the home shelf's games (src/editorial/why.ts HOME_SHELF).
+  const today = dayKey(now, cfg.timezone);
+  const homeList =
+    cfg.whySerialEnabled &&
+    isHomeSlot(cfg.whyHomeShare, today, slotLabel(due, cfg.timezone))
+      ? homeCandidates(cfg.whyHomeFranchises, today).filter(
+          (c) => !recent.games.some((g) => sameGame(g, c.name)),
+        )
+      : [];
+  const home = homeList.length > 0;
+  const base = (
+    home ? homeList : whyCandidates(await s.discoverEvergreen(), today)
   ).filter((c) => !recent.games.some((g) => sameGame(g, c.name)));
   const { candidates, demand, skipped } = await demandRanked(s, base);
   if (!candidates.length) return undefined;
@@ -2581,6 +2715,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
   const follow = await followFor(db, topic.game, now).catch(() => ({
     kind: "series" as const,
   }));
+  const serial = await whySerialFor(s, home);
   const cluster: StoryCluster = {
     hash: `why:${slug}`,
     headline: topic.title,
@@ -2607,6 +2742,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
       angle: topic.angle,
       arc: topic.arc,
       follow,
+      ...(serial ? { serial } : {}),
     },
   };
   const id = shortId();
@@ -2627,6 +2763,7 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     game: topic.game,
     arc: topic.arc,
     follow,
+    ...(serial ? { serial: serial.number, home } : {}),
     reason: topic.reason,
     demand: pickedDemand ?? null,
     demand_skipped: skipped.map((c) => c.name),
@@ -6041,6 +6178,12 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
 
 // --------------------------------------------------------------------- steps
 
+/** The run the next-part line reads: The GTA File's own run file for its parts, else the launch run (SHORT_RUN_FILE). */
+function nextPartRun(cfg: Config, series: string | undefined) {
+  const file = series === "gta_file" ? gtaFileFrom(cfg) : undefined;
+  return file ? gtaFileParts(readRun(file.runFile), file.slot) : readRun(cfg.shortRunFile);
+}
+
 async function stepScript(s: Services, ep: Episode): Promise<void> {
   if (ep.lane === "cutdown") return stepScriptCutdown(s, ep);
   if (ep.lane === "gameplay") return stepScriptGameplay(s, ep);
@@ -6157,7 +6300,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       : undefined;
   const nextPart =
     lineArm === "line" && ep.slot_at
-      ? nextPartFor(readRun(s.cfg.shortRunFile), new Date(ep.slot_at), s.cfg.timezone)
+      ? nextPartFor(nextPartRun(s.cfg, series), new Date(ep.slot_at), s.cfg.timezone)
       : undefined;
   // SHORT_MIN_SECONDS (plan item 2): the news writer's Shorts reach the floor.
   const floor = FLOOR_LANES.includes(ep.lane) ? s.cfg.shortMinSeconds : 0;
@@ -6180,12 +6323,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       )
     : [];
   // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
-  const length = shortTarget(s.cfg.shortLengths, lengthFormatOf(ep));
+  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep));
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
     const problems = validateScript(sc, recent, length);
-    // A strand Short (src/strand.ts) never reads as an announcement.
-    if (cluster.strand) problems.push(...strandProblems(sc));
+    // A GTA File part (src/gtafile.ts) never reads as an announcement and says its part number first; a numbered
+    // Why is titled "Why [game] [claim]" and opens on a claim (src/editorial/why.ts).
+    if (cluster.gtaFile)
+      problems.push(...gtaFileProblems(sc, cluster.gtaFile.part));
+    else if (cluster.why?.serial) problems.push(...whySerialProblems(sc));
     const thin = s.cfg.shortRefuseThin
       ? thinProblems(narrationOf(sc), sc.thin_reason)
       : [];
@@ -6231,13 +6377,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         s.cfg.repeatMax,
       ),
     );
+    // A GTA File part opens "GTA File, part N" every day and ends on its own question: the Why's opening and
+    // follow rules would refuse both, so it answers only to the plea guard.
     if (cluster.why)
       problems.push(
-        ...whyHookProblems(sc.hook, whyHooks),
+        ...(cluster.gtaFile ? [] : whyHookProblems(sc.hook, whyHooks)),
         ...whyFollowProblems(
           sc.loop_line,
           cluster.why.follow,
-          s.cfg.shortEndPayoff,
+          s.cfg.shortEndPayoff || !!cluster.gtaFile,
         ),
         ...whyAnswerProblems(narrationOf(sc)),
       );
@@ -6283,6 +6431,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       dropAngle: drop,
       length,
     });
+    // A GTA File part's title follows the plan's pattern whatever the writer gave: "GTA VI File #7: [claim]".
+    if (cluster.gtaFile)
+      script = {
+        ...script,
+        youtube: {
+          ...script.youtube,
+          title: gtaFileTitle(cluster.gtaFile.part, script.youtube.title),
+        },
+      };
     const { problems, thin } = houseProblems(script);
     check = await factCheck(s.llm, script, cluster, articles, storeData);
     const blockers = check.issues
@@ -6952,8 +7109,8 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         ? ep.script_json?.evergreen_format === "documentary"
           ? s.cfg.docMaxSeconds
           : s.cfg.longformMaxSeconds
-        : // SHORT_LENGTHS: the strand's 60-75 s lane needs room past the minute; every other Short keeps 58 s.
-          (shortTarget(s.cfg.shortLengths, lengthFormatOf(ep))?.capSeconds ??
+        : // SHORT_LENGTHS and WHY_TARGET_SECONDS: a lane past the minute needs room; every other Short keeps 58 s.
+          (shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep))?.capSeconds ??
           SHORT_NARRATION_CAP_SECONDS);
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(
@@ -7275,9 +7432,9 @@ export async function gatherMedia(
     startSeconds: c.startSeconds,
     stock: c.stock,
   }));
-  // A strand Short (src/strand.ts) opens on the owner's own gameplay when the inbox holds a clip of the franchise.
-  const strand = ep.story_json.strand;
-  if (strand?.ownFootage && s.cfg.footage) {
+  // A GTA File part (src/gtafile.ts) opens on the owner's own gameplay when the inbox holds a clip of the game.
+  const gtaPart = ep.story_json.gtaFile;
+  if (gtaPart?.ownFootage && s.cfg.footage) {
     const hook = targetsFor(script).find((t) => t.key === "hook") ?? {
       key: "hook",
       text: script.hook,
@@ -7287,15 +7444,15 @@ export async function gatherMedia(
     };
     // The game as the inbox's reviewer named it, so the library finds the same clip the selection saw.
     const clipGame = s.cfg.gameplayRoot
-      ? strandClip(
-          strandFrom(s.cfg) ?? { aliases: [strand.franchise] },
+      ? franchiseClip(
+          { aliases: GTA_FILE_ALIASES },
           await inboxFiles(s.cfg.gameplayRoot).catch(() => []),
         )?.game
       : undefined;
     const [own] = await s
       .ownClips(
-        clipGame || script.game_title || strand.franchise,
-        strand.franchise,
+        clipGame || script.game_title || gtaPart.franchise,
+        gtaPart.franchise,
         dir,
         [hook],
         1,
@@ -7318,14 +7475,14 @@ export async function gatherMedia(
           audio: own.audio,
         }),
       );
-      await logEvent(s.db, ep.id, "strand_own_footage", {
-        strand: strand.name,
+      await logEvent(s.db, ep.id, "gta_file_own_footage", {
+        part: gtaPart.part,
         clip: own.provenance,
       });
     } else
-      log("info", "strand Short has no own clip to open on", {
+      log("info", "GTA File part has no own clip to open on", {
         episode: ep.id,
-        strand: strand.name,
+        part: gtaPart.part,
       });
   }
   // Licensed stock for the real-world lines of a picture story that has no publisher video of it.

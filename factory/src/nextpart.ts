@@ -19,6 +19,26 @@ export interface PartEntry {
   part?: number;
 }
 
+/**
+ * The GTA File's run file (SERIES_GTA_FILE_RUN_FILE, src/gtafile.ts) as parts: its "file" entries, numbered by their
+ * own part and dated, in the series slot unless an entry names its own.
+ */
+export function gtaFileParts(
+  run: ReadonlyArray<{ kind: string; part?: number; date?: string; slot?: string; title?: string }>,
+  slot: string,
+): PartEntry[] {
+  return run
+    .filter((e) => e.kind === "file" && !!e.date)
+    .map((e) => ({
+      kind: "file",
+      series: "gta_file",
+      date: e.date!,
+      slot: e.slot ?? slot,
+      title: e.title ?? "",
+      ...(e.part ? { part: e.part } : {}),
+    }));
+}
+
 export interface NextPart {
   /** The next part's number, as said and shown ("Part 8"). */
   part: number;

@@ -369,6 +369,8 @@ export interface Config {
   dropAngleHours: number; // an official drop goes out by this many hours after it landed, slot or not (DROP_ANGLE_HOURS)
   commentReplies: boolean; // answer good comments in a video's first hours
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
+  /** SHORT_OPEN_FOOTAGE: every Short opens on the game's own moving footage, its first 7 s screened ad-safe (src/openingstep.ts). */
+  shortOpenFootage: boolean;
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
   radarDays: string[];
   freeDays: string[];
@@ -1205,6 +1207,7 @@ export function loadConfig(): Config {
     dropAngleHours: Math.max(1, Number(str("DROP_ANGLE_HOURS", "12")) || 12),
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
+    shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon")
       .toLowerCase()

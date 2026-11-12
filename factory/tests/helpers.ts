@@ -160,6 +160,7 @@ export function testConfig(
     routineLanPort: 8081,
     commentReplies: false,
     openOnMotion: false,
+    shortOpenFootage: false,
     sprintExtra: 3,
     sprintScoreMin: 60,
     recapLong: false,

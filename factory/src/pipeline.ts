@@ -43,7 +43,8 @@ import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
-import { hasSpoilerWarning } from "./sceneindex/spoilers.ts";
+import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
+import { checkFirstSeconds, chooseOpening } from "./openingstep.ts";
 import { streamClipSpoiler } from "./sceneindex/spoilerclips.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
@@ -10873,6 +10874,20 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "stamp_dropped", { stamp: script.stamp.text, tag });
     script.stamp = undefined;
   }
+  // SHORT_OPEN_FOOTAGE (src/openingstep.ts): frame one is the game's own moving footage, cut out and tagged for the hook.
+  const opening =
+    s.cfg.shortOpenFootage && !assets.plan
+      ? await chooseOpening(
+          dir,
+          assets,
+          {
+            game: script.game_title,
+            entries: script.entries?.length ?? 0,
+            spoilerWindow: s.cfg.spoilerGuard && !!windowFor(spoilerWindows(), script.game_title, s.now()),
+          },
+          { blur: blurPlate },
+        )
+      : undefined;
   const planInput = {
     segments,
     words,
@@ -11078,6 +11093,19 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan.sfx.every((c) => Math.abs(c.frame - f) >= 60)
     )
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: cue.volume });
+  }
+  // ...and nothing in the first 7 s is what YouTube limits ads on; a failing later shot gives way to a picture that passes.
+  if (opening) {
+    const seconds = await checkFirstSeconds(dir, plan, assets, { openingChecked: opening.clip });
+    await logEvent(s.db, ep.id, "opening_footage", { ...opening, seconds });
+    const bad = seconds.replaced.filter((r) => !r.with);
+    if (!opening.ok || seconds.openingStill || bad.length)
+      log("warn", "short opening not on screened footage", {
+        episode: ep.id,
+        why: opening.why,
+        openingStill: seconds.openingStill,
+        unsafe: bad.map((r) => `shot ${r.shot}: ${r.problem}`),
+      });
   }
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured

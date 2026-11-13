@@ -52,6 +52,8 @@ export interface StoryCluster {
   twin?: { parent: string; language: string; account: string };
   /** A part of The GTA File (src/gtafile.ts): its number, the callback to the last part, its facts and whether it opens on the owner's footage. */
   gtaFile?: import("../gtafile.ts").GtaFileStory;
+  /** A search Short (SEARCH_SHORTS, src/searchq): the one query it answers, titled in the searcher's words, and its facts. */
+  search?: import("../searchq/brief.ts").SearchStory;
 }
 
 const STOPWORDS = new Set(

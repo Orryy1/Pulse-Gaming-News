@@ -48,6 +48,7 @@ import {
   HookStackSchema,
   LOOP_NAME_RULE,
   NO_LONG_RULES,
+  RETRO_CHAPTER_SHAPE,
   VERDICT_RULE,
   VERDICT_STAMP_RULE,
   guideActionProblems,
@@ -327,7 +328,7 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   /** Approved gameplay tests that count as a source for this documentary alone (src/editorial/testevidence.ts). */
   test_records?: import("./testevidence.ts").TestRecord[];
   /** A planned entry's own format (src/shortrun.ts): a guide follows the player's journey when LONG_GUIDE_FORMAT is on. */
-  format?: "guide" | "everygame";
+  format?: "guide" | "everygame" | "retro";
   /** "everygame" (src/editorial/everygame.ts): the series' roster, one chapter per game in release order. */
   roster?: import("./everygame.ts").SeriesRoster;
   /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
@@ -340,6 +341,27 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
     week: number;
     facts_file?: string;
     play_notes?: string[];
+  };
+  /**
+   * A full game retrospective (src/retrospective.ts, src/editorial/retrospective.ts): its key, fixed title and
+   * thumbnail words, the game's facts, the target length and which sources belong to which section. `chapters` is
+   * filled in when the outline is written: each chapter's section and, for the story, its act of the scene index.
+   */
+  retro?: {
+    key: string;
+    title: string;
+    thumb: string;
+    short: string;
+    year: number;
+    platforms: string;
+    steam: string;
+    minutes: number;
+    also_wiki: string[];
+    source_sections?: Record<string, import("./retrospective.ts").RetroSection[]>;
+    chapters?: import("./retrospective.ts").RetroChapterInfo[];
+    /** The outline indexes of the chapters as written, in on-screen order (a chapter can be dropped). */
+    written?: number[];
+    acts?: import("./retrospective.ts").StoryAct[];
   };
 };
 
@@ -567,8 +589,8 @@ export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
     .join("");
   return `${HOUSE}
 
-Write one chapter of a ${rules.guide ? "launch guide" : "game-by-game franchise documentary"}, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
-${rules.guide ? guideChapterShape(rules.chapterAction) : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
+Write one chapter of a ${rules.guide ? "launch guide" : rules.retro ? "full retrospective of one game, spoilers and all" : "game-by-game franchise documentary"}, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
+${rules.guide ? guideChapterShape(rules.chapterAction) : rules.retro ? RETRO_CHAPTER_SHAPE : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
 Hold attention the way the best documentaries do:
 ${rules.chapterAction ? "" : `- The last sentence of the chapter either looks forward, naming what's coming without saying how it ends (a calm that won't last, a choice that will cost someone), or, in about one chapter in three, lands on a plain consequence: what this chapter changed, said flatly. You're told which below. Word it fresh every time, and never "In the next chapter".
 `}- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source. Never more than two figures in one sentence, and a date's year only the first time that date comes up in the chapter.

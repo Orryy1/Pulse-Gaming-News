@@ -62,6 +62,22 @@ const FIRST_MINUTE_WORDS = 160;
 /** Seconds a Short keeps free under its narration cap once the quote is in: the estimate is only an estimate. */
 const LENGTH_MARGIN = 2.5;
 
+/**
+ * Quotes moved by the silence put into the narration after they were placed (pure): each by the seconds of every gap
+ * at or before its start, like the words (src/voice/pauses.ts openWords). A long video's chapter breathers go in
+ * after the quotes are opened, so without this every quote after a breather played early, over the narrator.
+ */
+export function quotesAfterGaps<T extends { start: number; end?: number }>(
+  quotes: readonly T[],
+  gaps: ReadonlyArray<{ at: number; seconds: number }>,
+): T[] {
+  return quotes.map((q) => {
+    const add = gaps.filter((g) => g.at <= q.start + 1e-6).reduce((n, g) => n + g.seconds, 0);
+    if (!add) return q;
+    return { ...q, start: q.start + add, ...(typeof q.end === "number" ? { end: q.end + add } : {}) };
+  });
+}
+
 /** The footage credit a quote shows: the game's cutscenes, via YouTube (pure). */
 export function quoteCredit(game: string): string {
   return `${game.replace(/\s*\([^)]*\)\s*$/, "").trim()} cutscenes, via YouTube`;
@@ -309,9 +325,17 @@ export async function quoteLongStep(
   o: {
     windows?: readonly SpoilerWindow[];
     footageCap?: { key: string; seconds: number };
+    /**
+     * A retrospective (src/editorial/retrospective.ts): the most quotes each chapter may take, by chapter (one each
+     * when unset), each story chapter's act of the scene index (its lines are offered only from there) and the most
+     * in the whole video (CHARACTER_QUOTES_LONG when unset).
+     */
+    perChapter?: readonly number[];
+    ranges?: ReadonlyArray<{ from: number; to: number } | undefined>;
+    max?: number;
   } = {},
 ): Promise<Script> {
-  const max = s.cfg.characterQuotesLong;
+  const max = o.max ?? s.cfg.characterQuotesLong;
   if (!s.cfg.characterQuotes || max <= 0 || script.character_quotes?.length)
     return script;
   try {
@@ -334,8 +358,18 @@ export async function quoteLongStep(
     const used = new Map<string, number>();
     let next = script;
     let calls = 0;
-    const tried = new Set<number>();
-    while ((next.character_quotes?.length ?? 0) < max && calls < max + 2) {
+    // Each chapter is tried as often as it may take quotes (once by default); a decline uses up a try.
+    const tries = new Map<number, number>();
+    const exhausted = (k: number) => (tries.get(k) ?? 0) >= (o.perChapter?.[k] ?? 1);
+    // A second quote in a chapter keeps a beat away from the chapter's first.
+    const freeBeats = (k: number) =>
+      chapters[k]!.beats.filter(
+        (b) =>
+          !(next.character_quotes ?? []).some(
+            (q) => chapters[k]!.beats.includes(q.beat) && Math.abs(q.beat - b) < 2,
+          ),
+      );
+    while ((next.character_quotes?.length ?? 0) < max && calls < max + 4) {
       // The chapter whose game offers the best-fitting line, not yet tried.
       let best:
         | {
@@ -346,7 +380,7 @@ export async function quoteLongStep(
           }
         | undefined;
       for (const [k, ch] of chapters.entries()) {
-        if (tried.has(k) || !ch.beats.length) continue;
+        if (exhausted(k) || !freeBeats(k).length) continue;
         if (!indexes.has(ch.game))
           indexes.set(ch.game, await quoteIndexFor(s.cfg.dataDir, ch.game));
         const index = indexes.get(ch.game);
@@ -375,26 +409,34 @@ export async function quoteLongStep(
           : undefined;
         const taken = new Set((next.character_quotes ?? []).map((q) => q.id));
         const text = ch.beats.map((b) => next.beats[b]!.narration).join(" ");
+        const range = o.ranges?.[k];
         const candidates = quoteCandidates(index, text, {
           window,
           now,
           use: "long",
           warned,
           placedAt: LONG_SPOILER_FREE_SECONDS,
-          max: 8,
-        }).filter((c) => !taken.has(c.id) && playedSeconds(index, c) <= left);
+          max: range ? 80 : 8,
+        })
+          .filter((c) => !taken.has(c.id) && playedSeconds(index, c) <= left)
+          .filter((c) => {
+            if (!range) return true;
+            const at = index.lines[c.line]?.start ?? -1;
+            return at >= range.from && at < range.to;
+          })
+          .slice(0, 8);
         if (!candidates.length) continue;
         if (!best || candidates[0]!.score > best.candidates[0]!.score)
           best = { k, candidates, index, cap };
       }
       if (!best) break;
-      tried.add(best.k);
+      tries.set(best.k, (tries.get(best.k) ?? 0) + 1);
       calls++;
       const r = await writeQuoteMoment(s.llm, next, best.candidates, {
         site: "quote.long",
         format: "documentary",
         names: [...best.index.cast, ...best.index.places],
-        beats: chapters[best.k]!.beats,
+        beats: freeBeats(best.k),
         now,
       });
       if (!r.quote || !verifyQuote(best.index, r.quote).ok) {

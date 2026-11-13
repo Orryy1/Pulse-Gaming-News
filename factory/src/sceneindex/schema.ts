@@ -71,6 +71,12 @@ export interface DialogueLine {
    * as the game's own attribution.
    */
   speakerGuessed?: boolean;
+  /**
+   * "context": the game showed no name plate and the speaker was named from the dialogue around the line by a text
+   * model that was sure (src/sceneindex/speakers.ts, the scene index tool's "speakers" command). Quoted like a shown
+   * speaker: GTA's cutscenes never print a name, so without it San Andreas had no quotable line at all.
+   */
+  speakerFrom?: "context";
   /** "voice": heard (Whisper); "textbox": read off the screen (text recognition); "both": heard and read. */
   via: "voice" | "textbox" | "both";
   /** The shot the line starts in. */
@@ -219,6 +225,7 @@ export function parseSceneIndex(raw: unknown): SceneIndex | undefined {
         ? {
             speaker: x.speaker.trim(),
             ...(x.speakerGuessed ? { speakerGuessed: true } : {}),
+            ...(x.speakerFrom === "context" ? { speakerFrom: "context" as const } : {}),
           }
         : {}),
       via: x.via === "voice" || x.via === "both" ? x.via : "textbox",

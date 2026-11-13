@@ -59,6 +59,12 @@ export interface FootageTarget {
   want: FootageWant;
   energy: "high" | "medium" | "low";
   keywords: string[];
+  /**
+   * A retrospective's story chapter (src/editorial/retrospective.ts): its act's stretch of the scene index's source,
+   * in seconds, and where in it this line falls (0 to 1, the line's place in the chapter). The scene index looks only
+   * inside it, so the story is shown in its own scenes and in order.
+   */
+  within?: { from: number; to: number; at?: number };
 }
 
 /** A keyframe inside a trailer. */

@@ -1021,6 +1021,30 @@ export interface Config {
   /** GUIDE_OWN_FIRST: a weekly guide's chapters ask the owner's recordings for every footage target, not half. */
   guideOwnFirst: boolean;
   /**
+   * Full game retrospectives (src/retrospective.ts, upgrade queue item 26), 40 to 90 minutes, from a plan file
+   * (RETRO_FILE; retros.json beside package.json when empty). RETRO_ENABLED turns the strand on (off by default) and
+   * each game in the plan has its own "on". A game runs only after its spoiler window and once its full-story movie
+   * is filed in the scene index: RETRO_MIN_INDEXED of it indexed, at least RETRO_MIN_HEARD heard lines.
+   */
+  retroEnabled: boolean;
+  retroFile: string;
+  retroMinIndexed: number;
+  retroMinHeard: number;
+  /** Character quotes: the most per story or best-moments chapter, per other chapter, and in the whole video. */
+  retroQuotesStory: number;
+  retroQuotesOther: number;
+  retroQuotesMax: number;
+  /**
+   * A chapter's publisher footage: the per-Short cap (PUBLISHER_FOOTAGE_SECONDS, a one-minute Short) scaled to the
+   * chapter's length times RETRO_FOOTAGE_SCALE, at most RETRO_CHAPTER_FOOTAGE_MAX seconds a chapter.
+   */
+  retroFootageScale: number;
+  retroChapterFootageMax: number;
+  /** RETRO_OWN_FIRST: the owner's recordings are asked for every footage target of a retrospective's chapters. */
+  retroOwnFirst: boolean;
+  /** RETRO_SANDBOX_CHAPTERS: a sandbox writes only these ("1,story:1": chapter numbers or a section's k-th). */
+  retroSandboxChapters: string;
+  /**
    * The Shorts-to-long funnel test (src/funnel.ts, upgrade queue item 18): FUNNEL_TEST turns it on (off by default).
    * Each weekly guide gets FUNNEL_SHORTS Shorts cut from it, one a day in the cutdown slot within FUNNEL_DAYS of its
    * release; FUNNEL_SHARE of them (by episode id) say and show the link in their last 5 seconds and get the related
@@ -1802,6 +1826,17 @@ export function loadConfig(): Config {
     guideWeekly: bool("GUIDE_WEEKLY", false),
     guideWeeklyFile: str("GUIDE_WEEKLY_FILE", ""),
     guideOwnFirst: bool("GUIDE_OWN_FIRST", true),
+    retroEnabled: bool("RETRO_ENABLED", false),
+    retroFile: str("RETRO_FILE", ""),
+    retroMinIndexed: Math.min(1, Math.max(0, Number(str("RETRO_MIN_INDEXED", "0.95")) || 0)),
+    retroMinHeard: Math.max(0, int("RETRO_MIN_HEARD", 400)),
+    retroQuotesStory: Math.max(0, int("RETRO_QUOTES_STORY", 3)),
+    retroQuotesOther: Math.max(0, int("RETRO_QUOTES_OTHER", 1)),
+    retroQuotesMax: Math.max(0, int("RETRO_QUOTES_MAX", 40)),
+    retroFootageScale: Math.max(0, Number(str("RETRO_FOOTAGE_SCALE", "1")) || 0),
+    retroChapterFootageMax: Math.max(0, int("RETRO_CHAPTER_FOOTAGE_MAX", 150)),
+    retroOwnFirst: bool("RETRO_OWN_FIRST", true),
+    retroSandboxChapters: str("RETRO_SANDBOX_CHAPTERS", ""),
     funnelTest: bool("FUNNEL_TEST", false),
     funnelShare: Math.min(1, Math.max(0, Number(str("FUNNEL_SHARE", "0.5")) || 0)),
     funnelShorts: Math.min(3, Math.max(0, int("FUNNEL_SHORTS", 3))),

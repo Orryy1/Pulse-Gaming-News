@@ -13,6 +13,9 @@
 //                                              (the light index: captions, chapters, storyboard, comments; no video downloaded)
 //   node --import tsx src/tools/sceneindex.ts alive "<game>"    (is the index's upload still up: "alive" or "gone")
 //   (the archive ranking and its picks: src/tools/archive.ts)
+//   node --import tsx src/tools/sceneindex.ts speakers "<game>" [--from=s --to=s] [--size=150]   who says each heard line,
+//                                              from the dialogue around it (one "sceneindex.speakers" call per chunk;
+//                                              CODEX_CALLS routes it). Run once the index is complete, not during a build.
 // Settings come from the environment (the factory's .env when run from its folder): DATA_DIR, YTDLP_PATH,
 // WHISPER_PYTHON and the SCENE_INDEX_* values of src/config.ts. Heavy steps take a turn themselves on the PC
 // (the orchestrator) unless ORCH_HELD says the caller already holds one; on the Mac run it behind ~/orch/macrun.sh.
@@ -565,6 +568,42 @@ async function main(): Promise<void> {
     const next = tidyIndex({ ...index, cast: names.cast, places: names.places });
     await saveSceneIndex(s.dataDir, next);
     console.log(`names: ${next.cast.length} characters and things, ${next.places.length} places`);
+    return;
+  }
+  if (command === "speakers") {
+    const index = await need(s);
+    const { loadConfig } = await import("../config.ts");
+    const { createClaude, withVoiceTags } = await import("../editorial/llm.ts");
+    const { createCodexLlm, codexRunnerPresent } = await import("../editorial/codex.ts");
+    const { attributeSpeakers } = await import("../sceneindex/speakers.ts");
+    const { fetchWikiArticle } = await import("../discovery/wikipedia.ts");
+    const cfg = loadConfig();
+    const claude = createClaude({ top: cfg.anthropicModel, mid: cfg.claudeModelMid, low: cfg.claudeModelLow });
+    const llm = withVoiceTags(
+      cfg.codexLlm && cfg.codexCalls.length && codexRunnerPresent(cfg.codexRunnerDir)
+        ? createCodexLlm(claude, {
+            enabled: true,
+            sites: cfg.codexCalls,
+            timeoutMs: cfg.codexTimeoutMinutes * 60_000,
+            python: cfg.codexPython,
+            runnerDir: cfg.codexRunnerDir,
+            tmpDir: path.join(s.dataDir, "tmp", "codex"),
+          })
+        : claude,
+    );
+    const plot = await fetchWikiArticle(index.game, 4000, fetch, "plot story characters")
+      .then((a) => a?.text ?? "")
+      .catch(() => "");
+    const before = index.lines.filter((l) => l.speaker && !l.speakerGuessed).length;
+    const r = await attributeSpeakers(llm, index, {
+      from: num(flag("from"), 0),
+      to: num(flag("to"), index.source.duration + 1),
+      size: num(flag("size"), 150),
+      plot,
+      save: async (next) => void (await saveSceneIndex(s.dataDir, next)),
+      log: (line) => console.log(line),
+    });
+    console.log(`speakers: ${r.named} of ${r.asked} heard lines named from the dialogue (${before} named before), ${r.failed} chunks failed`);
     return;
   }
   if (command === "tidy") {

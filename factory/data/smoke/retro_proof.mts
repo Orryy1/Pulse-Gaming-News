@@ -43,6 +43,7 @@ Object.assign(process.env, {
   RETRO_SANDBOX_CHAPTERS: process.env.RETRO_SANDBOX_CHAPTERS ?? "1,story:1",
   CHARACTER_QUOTES: "true",
   GAME_AUDIO_BED: "true",
+  SCENE_INDEX_CROP_RETRY: "true",
 });
 const { loadConfig } = await import("../../src/config.ts");
 const { openDb, migrate } = await import("../../src/db.ts");

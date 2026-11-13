@@ -118,6 +118,8 @@ import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
+import { searchHarvestTick } from "./searchq/job.ts";
+import { searchDir, searchKey } from "./searchq/store.ts";
 import { asksKey } from "./streamasks/page.ts";
 import { gameFetchPass } from "./sceneindex/gamefetch.ts";
 import { releaseRadar, type RadarGame } from "./discovery/weekly.ts";
@@ -263,6 +265,24 @@ export function createApp(
           "referrer-policy": "no-referrer",
         })
         .end(body);
+      return;
+    }
+
+    // SEARCH_SHORTS: the ranked queries, what answers each and why the rest are left out (src/searchq).
+    if (
+      cfg.searchShorts.enabled &&
+      req.method === "GET" &&
+      url.pathname === `/search/${searchKey(cfg.appSecret)}`
+    ) {
+      const file = path.join(searchDir(cfg.dataDir), "queries.html");
+      res
+        .writeHead(200, {
+          "content-type": "text/html; charset=utf-8",
+          "x-robots-tag": "noindex, nofollow",
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        })
+        .end(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "<p>No harvest yet.</p>");
       return;
     }
 
@@ -1865,6 +1885,13 @@ async function main(): Promise<void> {
       });
     setTimeout(asksPass, 3 * 60_000);
     setInterval(asksPass, 15 * 60_000);
+  }
+  // What people search (SEARCH_SHORTS): the suggestions read again every SEARCH_HARVEST_HOURS, ranked into
+  // data/search/queries.json for the search lane and queries.html for the owner (src/searchq).
+  if (cfg.searchShorts.enabled) {
+    const searchPass = () => void searchHarvestTick(cfg, { db });
+    setTimeout(searchPass, 4 * 60_000);
+    setInterval(searchPass, 20 * 60_000);
   }
   if (cfg.streamAsks.vodMiner) {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);

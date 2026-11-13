@@ -218,6 +218,8 @@ export function replyCluster(
     spare: undefined,
     series: undefined,
     gtaFile: undefined,
+    // Nor a search Short's query: the reply answers the viewer, under its own slot (search Shorts keep theirs).
+    search: undefined,
     bigStory: undefined,
     cutdown: undefined,
   };

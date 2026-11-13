@@ -615,6 +615,9 @@ import {
   gatherEveryGameEntry,
   loadEveryGameRoster,
 } from "./everygamestep.ts";
+import { maybeSelectSearch, searchMadeToday, searchProblems, SEARCH_CHECK_SITE, SEARCH_WRITE_SITE } from "./searchq/step.ts";
+import { searchTitleFor } from "./searchq/brief.ts";
+import { gameAliases } from "./sceneindex/spoilers.ts";
 import {
   EVERY_SHOT_TARGET,
   chapterList,
@@ -1703,6 +1706,19 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     return undefined;
   });
   if (premade) return premade;
+  // SEARCH_SHORTS (src/searchq): a search slot due now takes the best makeable query of the last harvest. Its own
+  // slots and its own allowance: it never takes a news slot, and it is not counted in the daily target below.
+  const searched = await maybeSelectSearch({
+    db,
+    cfg,
+    now: s.now,
+    ownFootage: (game) =>
+      franchiseOwnFootage(cfg, { aliases: gameAliases(game) }),
+  }).catch((err) => {
+    log("warn", "search selection failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (searched) return searched;
   // COMMENT_REPLY_SHORTS: the day's video reply to a viewer's question, near its own slot (src/commentreply.ts).
   const replied = await maybeSelectCommentReply(s).catch((err) => {
     log("warn", "reply Short selection failed", { error: errorMessage(err) });
@@ -1715,6 +1731,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     (await countToday(db, cfg.timezone)) -
     (await countSpareToday(db, cfg.timezone)) -
     (await bigMadeToday(db, cfg.timezone)) -
+    (await searchMadeToday(db, cfg.timezone)) -
     (cfg.dailyTargetShortsOnly
       ? await countToday(db, cfg.timezone, "longform")
       : 0);
@@ -2550,6 +2567,8 @@ export async function maybeSelectCommentReply(
   const ahead = slot.getTime() - now.getTime();
   if (ahead <= 0 || ahead > (cfg.slotLeadMinutes + 90) * 60_000) return undefined;
   if ((await repliesToday(db, cfg.timezone)) >= REPLY_LIMITS.perDay) return undefined;
+  // The search Shorts have their own slots (SEARCH_SLOTS): a reply never shares one.
+  if (cfg.searchShorts?.enabled && cfg.searchShorts.slots.includes(cfg.commentReplySlot)) return undefined;
   if ((await takenSlots(db)).some((t) => t.getTime() === slot.getTime())) return undefined;
   const filed = await filedQuestions(db, now);
   const eps = new Map<string, Episode>();
@@ -6776,6 +6795,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ),
         ...whyAnswerProblems(narrationOf(sc)),
       );
+    // A search Short (src/searchq): no story spoiler, and the searcher's words in the title.
+    if (cluster.search)
+      problems.push(...searchProblems(sc, cluster.search, cluster.gameHint ?? "", s.now()));
     // A report card is credited to an outlet: it must be one of this story's own sources.
     const outlets = cluster.items.map((i) => i.source.toLowerCase());
     for (const b of sc.beats)
@@ -6794,8 +6816,6 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
-      // A reply Short's writing is its own step, so CODEX_CALLS=reply.write can send it to Codex.
-      ...(cluster.reply ? { site: "reply.write" } : {}),
       desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
@@ -6819,7 +6839,22 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       skeleton,
       dropAngle: drop,
       length,
+      // The search lane and a reply Short each write on their own step, so CODEX_CALLS can route them.
+      ...(cluster.search
+        ? { site: SEARCH_WRITE_SITE }
+        : cluster.reply
+          ? { site: "reply.write" }
+          : {}),
     });
+    // A search Short keeps the searcher's words in its title: a title that drops them gives way to the planned one.
+    if (cluster.search)
+      script = {
+        ...script,
+        youtube: {
+          ...script.youtube,
+          title: searchTitleFor(script.youtube.title, cluster.search, cluster.gameHint ?? ""),
+        },
+      };
     // A GTA File part's title follows the plan's pattern whatever the writer gave: "GTA VI File #7: [claim]".
     if (cluster.gtaFile)
       script = {
@@ -6830,7 +6865,14 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         },
       };
     const { problems, thin } = houseProblems(script);
-    check = await factCheck(s.llm, script, cluster, articles, storeData);
+    check = await factCheck(
+      s.llm,
+      script,
+      cluster,
+      articles,
+      storeData,
+      cluster.search ? SEARCH_CHECK_SITE : undefined,
+    );
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")
       .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
@@ -6966,6 +7008,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (friend.kept && afterCheck) {
       script = friend.value;
       check = afterCheck;
+      // The friend pass speaks more like a friend; a search Short's title still carries the searcher's words.
+      if (cluster.search)
+        script = {
+          ...script,
+          youtube: {
+            ...script.youtube,
+            title: searchTitleFor(script.youtube.title, cluster.search, cluster.gameHint ?? ""),
+          },
+        };
     }
     await logEvent(s.db, ep.id, "friend_pass", {
       kept: friend.kept,
@@ -7863,7 +7914,16 @@ export async function gatherMedia(
   }));
   // A GTA File part (src/gtafile.ts) opens on the owner's own gameplay when the inbox holds a clip of the game.
   const gtaPart = ep.story_json.gtaFile;
-  if (gtaPart?.ownFootage && s.cfg.footage) {
+  // A search Short (src/searchq) opens on the owner's own footage of its game the same way: owner footage first.
+  const searchOwn = ep.story_json.search?.ownFootage
+    ? ep.story_json.gameHint ?? script.game_title
+    : undefined;
+  const ownOpen = gtaPart?.ownFootage
+    ? { franchise: gtaPart.franchise, aliases: GTA_FILE_ALIASES, event: "gta_file_own_footage", part: gtaPart.part as number | undefined }
+    : searchOwn
+      ? { franchise: searchOwn, aliases: gameAliases(searchOwn), event: "search_own_footage", part: undefined }
+      : undefined;
+  if (ownOpen && s.cfg.footage) {
     const hook = targetsFor(script).find((t) => t.key === "hook") ?? {
       key: "hook",
       text: script.hook,
@@ -7874,14 +7934,14 @@ export async function gatherMedia(
     // The game as the inbox's reviewer named it, so the library finds the same clip the selection saw.
     const clipGame = s.cfg.gameplayRoot
       ? franchiseClip(
-          { aliases: GTA_FILE_ALIASES },
+          { aliases: ownOpen.aliases },
           await inboxFiles(s.cfg.gameplayRoot).catch(() => []),
         )?.game
       : undefined;
     const [own] = await s
       .ownClips(
-        clipGame || script.game_title || gtaPart.franchise,
-        gtaPart.franchise,
+        clipGame || script.game_title || ownOpen.franchise,
+        ownOpen.franchise,
         dir,
         [hook],
         1,
@@ -7904,14 +7964,15 @@ export async function gatherMedia(
           audio: own.audio,
         }),
       );
-      await logEvent(s.db, ep.id, "gta_file_own_footage", {
-        part: gtaPart.part,
+      await logEvent(s.db, ep.id, ownOpen.event, {
+        ...(ownOpen.part !== undefined ? { part: ownOpen.part } : {}),
         clip: own.provenance,
       });
     } else
-      log("info", "GTA File part has no own clip to open on", {
+      log("info", "no own clip to open on", {
         episode: ep.id,
-        part: gtaPart.part,
+        franchise: ownOpen.franchise,
+        ...(ownOpen.part !== undefined ? { part: ownOpen.part } : {}),
       });
   }
   // Licensed stock for the real-world lines of a picture story that has no publisher video of it.

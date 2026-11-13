@@ -343,7 +343,29 @@ export interface SpeakContext {
 }
 export const speakContext = (): SpeakContext => ({ units: new Set() });
 
+/**
+ * Gaming abbreviations said as words, not letters (12 Nov 2026: the voice read "GOTY" as G-O-T-Y in the Resident
+ * Evil Short). Letter names that are said as letters (DLC, RPG, NPC, FPS) stay as they are.
+ */
+const SAID_AS_WORDS: Array<[RegExp, string]> = [
+  [/\bGOTYs\b/g, "Game of the Year awards"],
+  [/\bGOTY\b/g, "Game of the Year"],
+  [/\bTGA\b/g, "The Game Awards"],
+  [/\bAAA\b/g, "triple-A"],
+  [/\bAA\b(?=\s+(?:game|games|studio|studios|title|titles|budget))/g, "double-A"],
+  [/\bGaaS\b/g, "live-service"],
+  [/\bMSRP\b/g, "list price"],
+  [/\bIRL\b/g, "in real life"],
+  [/\bTBA\b/g, "to be announced"],
+  [/\bTBD\b/g, "to be decided"],
+  [/\bWIP\b/g, "work in progress"],
+];
+export function sayAbbreviations(text: string): string {
+  return SAID_AS_WORDS.reduce((t, [re, to]) => t.replace(re, to), text);
+}
+
 export function speakable(text: string, ctx?: SpeakContext): string {
+  text = sayAbbreviations(text);
   return speakCadence(
     speakNumbers(
       speakYearsAndMoney(

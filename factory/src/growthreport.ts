@@ -12,6 +12,7 @@ import { dayKey, weekday } from "./lanes.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { filedLines, readFiled } from "./sceneindex/gamefetch.ts";
 import { shortStats, type ShortStat } from "./experiments.ts";
+import { searchReachRows, searchShareLine } from "./searchq/report.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 
 export type GrowthFormat =
@@ -255,7 +256,7 @@ export async function gameAudioSides(
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts">>,
   now: Date,
   /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
   retention?: RetentionStudy,
@@ -274,6 +275,8 @@ export async function growthReport(
           ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
           // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
           ...(cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : []),
+          // SEARCH_SHORTS: the search Shorts' share of views from YouTube search against the other Shorts' (src/searchq).
+          ...(cfg.searchShorts?.enabled ? [searchShareLine(await searchReachRows(db, now))] : []),
           // RETENTION_LEARN: where viewers left this week's curves, the top three causes (src/retentionlearn.ts).
           ...(retention ? retentionLines(retention) : []),
         ]

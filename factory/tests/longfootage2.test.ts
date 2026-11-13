@@ -359,3 +359,9 @@ test("a fade or cut to black inside an index clip is cut off (every frame read, 
   assert.deepEqual(brightTrim(Array(60).fill(80)), { ok: true });
   assert.equal(brightTrim([...Array(30).fill(5), ...Array(20).fill(80)]).ok, false);
 });
+
+test("an editing app's watermark (KineMaster, InShot, CapCut) is writing not from the game", async () => {
+  const { OVERLAY_WORD } = await import("../src/assets/cliptext.ts");
+  for (const w of ["KINEMASTER", "KineMast", "InShot", "CapCut", "Bandicam"]) assert.ok(OVERLAY_WORD.test(w), w);
+  assert.equal(OVERLAY_WORD.test("Grove"), false);
+});

@@ -27,6 +27,7 @@ import { log, errorMessage } from "../lib/util.ts";
 import type { SegmentLook } from "./localvision.ts";
 import { clipJumps, gameplayCredit, wrongEntry } from "./gameplay.ts";
 import { trailerMatchesGame } from "./commons.ts";
+import { overlayWords } from "./cliptext.ts";
 import { titleNamesGame } from "../sceneindex/gamenames.ts";
 import { normTitle } from "./igdb.ts";
 import { editionOf, junkTitleReason, notOutYet } from "./junk.ts";
@@ -47,6 +48,12 @@ export interface FootageFirstOptions {
   perSentence: number;
   /** The whole pass stops starting new work after this long (FOOTAGE_FIRST_MAX_MINUTES); 0 = no limit. */
   maxMinutes: number;
+  /**
+   * LONG_INWORLD_TEXT (13 Nov 2026): the game's own writing (its subtitles, signs, mission text) does not refuse a
+   * segment; only writing not from the game does (a link, a handle, a caption fixed at the frame's edge:
+   * src/assets/cliptext.ts overlayWords). 48 San Andreas segments were refused for the game's own subtitles.
+   */
+  inWorldText?: boolean;
 }
 
 export const FOOTAGE_FIRST_DEFAULTS: FootageFirstOptions = {
@@ -65,6 +72,7 @@ export function footageOptions(cfg: {
   footagePullSeconds: number;
   footageVisionMax: number;
   footageFirstMaxMinutes: number;
+  longInWorldText?: boolean;
 }): FootageFirstOptions {
   return {
     sharePct: cfg.footageShareTarget,
@@ -73,6 +81,7 @@ export function footageOptions(cfg: {
     visionMax: cfg.footageVisionMax,
     perSentence: FOOTAGE_FIRST_DEFAULTS.perSentence,
     maxMinutes: cfg.footageFirstMaxMinutes,
+    ...(cfg.longInWorldText ? { inWorldText: true } : {}),
   };
 }
 
@@ -380,6 +389,8 @@ export function captionWords(page: { width: number; height: number; words: Array
 /** Why a segment is junk, from the local model's look at its frame; undefined for a usable one. */
 export function segmentRejectReason(
   look: SegmentLook | undefined,
+  /** LONG_INWORLD_TEXT: the look's "text" flag cannot tell the game's writing from an uploader's; the OCR decides. */
+  o: { inWorldText?: boolean } = {},
 ): string | undefined {
   if (!look) return "not looked at";
   if (look.mod) return "mod or kids' content";
@@ -387,7 +398,7 @@ export function segmentRejectReason(
   if (look.live) return "real camera footage";
   if (look.menu) return "menu or loading screen";
   if (look.gore) return "gore";
-  if (look.text) return "text on screen";
+  if (look.text && !o.inWorldText) return "text on screen";
   if (look.letterbox) return "letterboxed";
   if (look.dark) return "too dark";
   if (look.blurry) return "blurred";
@@ -1265,7 +1276,12 @@ export async function finishChapter(
         const pages = await deps.ocr(pending.flatMap((x) => x.frames)).catch(() => new Map());
         const ask: typeof pending = [];
         for (const x of pending)
-          if (x.frames.some((f) => captionWords(pages.get(f)) >= 2)) refuse(x.g, "text on screen (read)");
+          if (
+            o.inWorldText
+              ? overlayWords(x.frames.flatMap((f) => (pages.get(f) ? [pages.get(f)!] : []))).faulted.some(Boolean)
+              : x.frames.some((f) => captionWords(pages.get(f)) >= 2)
+          )
+            refuse(x.g, o.inWorldText ? "text not from the game (read)" : "text on screen (read)");
           else ask.push(x);
         // One look a segment: its first, middle and last frames side by side (31 Oct 2026: two separate looks a
         // segment cost 44 of a 64-minute run, and the middle frame alone missed banners that came and went).
@@ -1279,7 +1295,7 @@ export async function finishChapter(
         modelLooks += ask.length;
         report.looked += looks.filter(Boolean).length;
         for (const [i, x] of ask.entries()) {
-          const reason = segmentRejectReason(looks[i]);
+          const reason = segmentRejectReason(looks[i], { inWorldText: o.inWorldText });
           verdicts.push({ g: x.g, look: looks[i], reason, source: sources[x.g.src]!.url });
           if (!reason) clean += x.g.len;
         }

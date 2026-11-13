@@ -7,7 +7,9 @@
 // picture then goes to the paid API.
 
 import fs from "node:fs/promises";
-import { errorMessage, fetchWithTimeout } from "../lib/util.ts";
+import { z } from "zod";
+import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { createVisionRelay } from "./visionrelay.ts";
 import {
   chooseVisionHost,
@@ -951,4 +953,89 @@ export async function subjectFrames(
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
   return out;
+}
+
+// ---------------------------------------------------------------- FOOTAGE_LOOK_CODEX
+// 13 Nov 2026: with the PC relay down, footage first kept nothing (69 segments "not looked at" in the San Andreas
+// proof). FOOTAGE_LOOK_CODEX: Codex (the ChatGPT plan, CODEX_VISION) looks at the segments the local model could not,
+// a few side-by-side frames a call; never Claude, never a paid API (src/services.ts builds a Codex-only client).
+
+/** Looks at segment frames: one answer per file, undefined where it could not judge. */
+export type SegmentLooker = (files: string[]) => Promise<Array<SegmentLook | undefined>>;
+
+let segmentFallback: SegmentLooker | undefined;
+
+/** Sets (or, with nothing, clears) the looker used for segment frames the local model could not judge. */
+export function setSegmentLookFallback(look?: SegmentLooker): void {
+  segmentFallback = look;
+}
+
+/** lookFrames, then the fallback looker (FOOTAGE_LOOK_CODEX) for every frame the local model left unjudged. */
+export async function lookFramesOrFallback(files: string[]): Promise<Array<SegmentLook | undefined>> {
+  const out = await lookFrames(files);
+  const missing = out.flatMap((l, i) => (l ? [] : [i]));
+  if (!missing.length || !segmentFallback) return out;
+  try {
+    const alt = await segmentFallback(missing.map((i) => files[i]!));
+    for (const [k, i] of missing.entries()) out[i] = alt[k];
+  } catch (err) {
+    log("warn", "footage looks: fallback failed", { error: errorMessage(err) });
+  }
+  return out;
+}
+
+const CodexSegmentLooks = z.object({
+  segments: z.array(
+    z.object({
+      label: z.string(),
+      text: z.boolean(),
+      hud_only: z.boolean(),
+      webcam: z.boolean(),
+      gore: z.boolean(),
+      mod: z.boolean(),
+    }),
+  ),
+});
+
+/**
+ * The segment look as Codex calls (FOOTAGE_LOOK_CODEX): the local model's own question, `batch` images a call, the
+ * answers in order. `llm` must be Codex only; past `max` calls in a process the rest go unjudged.
+ */
+export function codexSegmentLook(llm: Llm, max = 30, batch = 6): SegmentLooker {
+  let calls = 0;
+  return async (files) => {
+    const out: Array<SegmentLook | undefined> = files.map(() => undefined);
+    for (let at = 0; at < files.length; at += batch) {
+      if (calls >= max) break;
+      calls++;
+      const part = files.slice(at, at + batch);
+      const content: LlmContent = [];
+      for (const [i, file] of part.entries()) {
+        content.push({ type: "text", text: `Segment ${i + 1}` });
+        content.push({
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(file)).toString("base64") },
+        });
+      }
+      content.push({
+        type: "text",
+        text: `Each image is one segment. For every segment, in order (segments[0] is Segment 1, ${part.length} in all):\n${LOOK_PROMPT}`,
+      });
+      try {
+        const r = await llm.structured({
+          tier: "mid",
+          site: "footagelook",
+          system: "You screen video game footage for a documentary. Answer only from what is visible.",
+          content,
+          schema: CodexSegmentLooks,
+          effort: "low",
+        });
+        for (const [i] of part.entries()) if (r.segments[i]) out[at + i] = lookAnswer(r.segments[i]);
+      } catch (err) {
+        log("warn", "footage looks: Codex did not answer", { error: errorMessage(err) });
+        break;
+      }
+    }
+    return out;
+  };
 }

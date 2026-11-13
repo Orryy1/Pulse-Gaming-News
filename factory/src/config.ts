@@ -830,6 +830,12 @@ export interface Config {
    * scene index's matched time as a lower-confidence pick (said so in its reason) instead of being refused unseen.
    */
   sceneMatchUnchecked: boolean;
+  /**
+   * FOOTAGE_LOOK_CODEX (+ FOOTAGE_LOOK_CODEX_MAX, default 30 calls of six segments a process): footage first's segment
+   * looks the local model could not make (the PC relay down) go to Codex (CODEX_VISION); never Claude or a paid API.
+   */
+  footageLookCodex: boolean;
+  footageLookCodexMax: number;
   cutsceneQuotes: boolean; // CUTSCENE_QUOTES: collect caption quotes for future review
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   /** SCENE_INDEX: the per-game scene index (src/sceneindex): built in the background, looked up before cutscenes are searched. Off: nothing is built or read. */
@@ -1757,6 +1763,8 @@ export function loadConfig(): Config {
     sceneMatchCodex: bool("SCENE_MATCH_CODEX", false),
     sceneMatchCodexMax: Math.max(0, int("SCENE_MATCH_CODEX_MAX", 40)),
     sceneMatchUnchecked: bool("SCENE_MATCH_UNCHECKED", false),
+    footageLookCodex: bool("FOOTAGE_LOOK_CODEX", false),
+    footageLookCodexMax: Math.max(0, int("FOOTAGE_LOOK_CODEX_MAX", 30)),
     cutsceneQuotes: bool("CUTSCENE_QUOTES", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
     sceneIndex: bool("SCENE_INDEX", false),

@@ -873,6 +873,8 @@ export interface CutsceneJob {
   ownSeconds?: number;
   /** The most clips this job may fetch (LONG_MOVING_FIRST retrospectives); unset: 24. */
   maxClips?: number;
+  /** LONG_INDEX_FIRST: the scene index's clips alone ("index"), or the cutscene search alone ("search"). */
+  mode?: "index" | "search";
 }
 
 /** Publisher footage already on a chapter (pure): its clips, never stock or the owner's own capture. */

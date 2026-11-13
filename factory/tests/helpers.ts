@@ -458,6 +458,8 @@ export function testConfig(
     sceneMatchCodex: false,
     sceneMatchCodexMax: 40,
     sceneMatchUnchecked: false,
+    footageLookCodex: false,
+    footageLookCodexMax: 30,
     cutsceneMaxSeconds: 20,
     sceneIndex: false,
     sceneIndexProxyHeight: 480,

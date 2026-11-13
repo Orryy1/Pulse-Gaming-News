@@ -732,6 +732,8 @@ export async function indexFirstCutscenes<
     /** A long video (late-story footage may follow its spoiler warning) and whether it opens with one. */
     long?: boolean;
     spoilerWarned?: boolean;
+    /** LONG_INDEX_FIRST: the index's clips alone ("index"), or the search alone ("search"). */
+    mode?: "index" | "search";
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
@@ -765,7 +767,7 @@ export async function indexFirstCutscenes<
           return ok;
         })
     : search;
-  if (!cfg.sceneIndex) return searched(options);
+  if (!cfg.sceneIndex || options.mode === "search") return searched(options);
   return cutscenesIndexFirst(
     options,
     async (o) => {
@@ -814,7 +816,7 @@ export async function indexFirstCutscenes<
         deps,
       });
     },
-    searched,
+    options.mode === "index" ? async () => [] : searched,
   );
 }
 /** SCENE_MATCH stills: a still is one frame, checked on its own (the frame on the word is the whole picture). */

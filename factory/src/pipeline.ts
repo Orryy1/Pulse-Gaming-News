@@ -849,6 +849,8 @@ export interface Services {
     /** SPOILER_GUARD: a long video, and whether it opens with a spoiler warning (src/sceneindex/spoilers.ts). */
     long?: boolean;
     spoilerWarned?: boolean;
+    /** LONG_INDEX_FIRST: the scene index's clips alone ("index"), or the cutscene search alone ("search"). */
+    mode?: "index" | "search";
   }): Promise<CutsceneClip[]>;
   /**
    * SCENE_MATCH for a stills-only publisher (Nintendo): one checked still of each named moment from the game's scene
@@ -8492,11 +8494,13 @@ export async function gatherMedia(
         for (const [beatIndex, entry] of entries.entries()) {
           if (!entry.game_title || entry.year > s.now().getFullYear() ||
               (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
-          // LONG_INDEX_FIRST: the first pass takes only the chapters whose game has a scene index; the second the rest.
-          if (cutscenesDone.has(beatIndex)) continue;
+          // LONG_INDEX_FIRST: the first pass takes the scene index's clips alone, for the chapters whose game has one;
+          // the second pass searches cutscene uploads for those chapters' lines the index left (after the trailers
+          // and gameplay, so the slow search never spends the gather's time first) and does the rest as before.
+          const indexedBefore = cutscenesDone.has(beatIndex);
           const recent = entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]);
           if (indexedOnly && !(s.cfg.sceneIndex && (await hasUsableIndex(s.cfg.dataDir, entry.game_title, recent)))) continue;
-          cutscenesDone.add(beatIndex);
+          if (indexedOnly) cutscenesDone.add(beatIndex);
           const eapp = await steamAppForEntry(s, entry).catch(() => undefined);
           const shots = docShotTargets(entry, chapterSentences(script, beatIndex), beatIndex);
           const want = script.beats[beatIndex]?.footage;
@@ -8505,10 +8509,18 @@ export async function gatherMedia(
             want: want?.want ?? "cinematic", energy: "medium", keywords: want?.keywords ?? [entry.game_title],
           }];
           const span = retroSpans[beatIndex];
-          const placed = span
+          const allPlaced = span
             ? targets.map((t, k) => ({ ...t, within: { ...span, at: targets.length > 1 ? k / (targets.length - 1) : 0.5 } }))
             : targets;
-          jobs.push({ gameTitle: entry.game_title, recentRelease: entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]), episodeDir: path.join(dir, `entry_${beatIndex}`),
+          // The search pass after an index pass: only the lines the index found no clip for.
+          const filled = new Set(
+            clips.filter((c) => c.beatIndex === beatIndex && /^Cutscenes for "/.test(c.provenance))
+              .map((c) => `beat:${beatIndex}${c.moment === undefined ? "" : `#m${c.moment}`}`),
+          );
+          const placed = indexedBefore ? allPlaced.filter((t) => !filled.has(t.key)) : allPlaced;
+          if (!placed.length) continue;
+          jobs.push({ gameTitle: entry.game_title,
+            ...(indexedOnly ? { mode: "index" as const } : indexedBefore ? { mode: "search" as const } : {}), recentRelease: entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]), episodeDir: path.join(dir, `entry_${beatIndex}`),
             // LONG_MOVING_FIRST: a retrospective's chapter may carry a clip for every line, not 24 at most.
             ...(retroT && s.cfg.longMovingFirst ? { maxClips: Math.min(RETRO_MOVING_CLIPS, Math.max(24, targets.length)) } : {}),
             pathPrefix: `entry_${beatIndex}`, beatIndex, targets: placed,
@@ -8530,7 +8542,7 @@ export async function gatherMedia(
         jobs, existing: clips, shouldStop: () => gatherBudget.over(),
         fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
           targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
-          maxSeconds: job.maxSeconds, publisher: job.publisher,
+          maxSeconds: job.maxSeconds, publisher: job.publisher, ...(job.mode ? { mode: job.mode } : {}),
           // A weekly guide never shows late story, warning or not (src/longguide.ts).
           long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
       });

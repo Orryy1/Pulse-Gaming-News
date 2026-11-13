@@ -15,7 +15,7 @@ import {
   DARK_LUMA,
   videoSeconds,
 } from "./clipscore.ts";
-import { lookFrames } from "./localvision.ts";
+import { lookFramesOrFallback } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
 import {
@@ -303,7 +303,8 @@ export function footageFirstDeps(o: {
         : undefined;
     },
     ocr: (files) => readText(files),
-    look: (files) => lookFrames(files),
+    // FOOTAGE_LOOK_CODEX: frames the local model could not judge go to Codex (localvision.ts lookFramesOrFallback).
+    look: (files) => lookFramesOrFallback(files),
     cut: async (file, at, seconds, dest) => {
       await run(FFMPEG, [
         "-v",

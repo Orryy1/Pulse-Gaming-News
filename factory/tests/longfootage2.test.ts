@@ -276,3 +276,54 @@ test("SCENE_MATCH_CODEX: with the local model unable to look, the fallback (Code
     setSubjectFallback(undefined);
   }
 });
+
+test("FOOTAGE_LOOK_CODEX: segments the local model left unjudged go to Codex, six a call; LONG_INWORLD_TEXT keeps game text", async () => {
+  const { codexSegmentLook, lookFramesOrFallback, setSegmentLookFallback } = await import("../src/assets/localvision.ts");
+  const { segmentRejectReason, footageOptions } = await import("../src/assets/footagefirst.ts");
+  const dir = await tmpDir();
+  const files = Array.from({ length: 8 }, (_, i) => path.join(dir, `seg${i}.jpg`));
+  for (const f of files) await fs.writeFile(f, "jpg");
+  const sizes: number[] = [];
+  const llm = {
+    structured: async (o: { content: Array<{ type: string }>; site?: string }) => {
+      assert.equal(o.site, "footagelook");
+      const n = o.content.filter((c) => c.type === "image").length;
+      sizes.push(n);
+      return {
+        segments: Array.from({ length: n }, () => ({ label: "car on a desert road", text: true, hud_only: false, webcam: false, gore: false, mod: false })),
+      };
+    },
+  } as never;
+  try {
+    setSegmentLookFallback(undefined);
+    assert.ok((await lookFramesOrFallback(files)).every((l) => l === undefined), "nothing judged without a fallback");
+    setSegmentLookFallback(codexSegmentLook(llm, 5));
+    const looks = await lookFramesOrFallback(files);
+    assert.deepEqual(sizes, [6, 2]);
+    assert.ok(looks.every((l) => l?.label === "car on a desert road"));
+    // The look's text flag refuses only without LONG_INWORLD_TEXT (the OCR then judges whose writing it is).
+    assert.equal(segmentRejectReason(looks[0]), "text on screen");
+    assert.equal(segmentRejectReason(looks[0], { inWorldText: true }), undefined);
+    const base = { footageShareTarget: 60, footageSources: 6, footagePullSeconds: 240, footageVisionMax: 120, footageFirstMaxMinutes: 40 };
+    assert.equal(footageOptions(base).inWorldText, undefined);
+    assert.equal(footageOptions({ ...base, longInWorldText: true }).inWorldText, true);
+  } finally {
+    setSegmentLookFallback(undefined);
+  }
+});
+
+test("LONG_INDEX_FIRST passes: the index pass never runs the slow search, the search pass never the index", async () => {
+  const { indexFirstCutscenes } = await import("../src/sceneindex/footage.ts");
+  const dataDir = await tmpDir();
+  const cfg = { sceneIndex: true, sceneIndexMinConfidence: 0.45, dataDir, ytdlpPath: "yt-dlp" };
+  const base = { gameTitle: "A Game With No Index", episodeDir: dataDir, targets: [], maxClips: 4, maxSeconds: 20 };
+  let searched = 0;
+  const search = async () => {
+    searched++;
+    return [];
+  };
+  await indexFirstCutscenes(cfg, { ...base, mode: "index" as const }, search);
+  assert.equal(searched, 0);
+  await indexFirstCutscenes(cfg, { ...base, mode: "search" as const }, search);
+  assert.equal(searched, 1);
+});

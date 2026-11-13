@@ -388,6 +388,12 @@ export interface LongPlanInput {
    * every unplayed clip and never straight after itself. Off: one shot spends a clip, as before.
    */
   clipRemainders?: boolean;
+  /**
+   * A film about one game (a retrospective; with movingFirst only): its opening and closing, which have little
+   * footage of their own, may play the film's game footage from any chapter (unplayed footage matched to no line
+   * first, in the closing any unplayed clip, then remainders) before a still.
+   */
+  oneGame?: boolean;
 }
 
 const PREVIEW_STOP = new Set(
@@ -571,6 +577,19 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   /** A clip shot's media once spent: where in the clip it starts when an earlier shot played the clip's first part. */
   const fromOffset = (m: LongMedia): LongMedia =>
     remainders && m.type === "clip" && shotStart[m.index]! > 0 ? { ...m, from: shotStart[m.index]! } : m;
+  /**
+   * oneGame (with movingFirst): a clip of the film's game for its opening or closing: unplayed footage matched to no
+   * line, then (the closing) any unplayed clip, then a remainder. Never stock, never a scene locked to its line.
+   */
+  const filmFootage = (closing: boolean): number | undefined => {
+    if (!input.oneGame || !input.movingFirst) return undefined;
+    const ok = clips.map((_, k) => k).filter((k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
+    return (
+      ok.find((k) => !clipUsed[k] && clips[k]!.moment === undefined) ??
+      (closing ? ok.find((k) => !clipUsed[k]) : undefined) ??
+      remainderOf(ok)
+    );
+  };
   /** LONG_CLIP_REMAINDERS: the first of `ks` with a remainder left, never the clip that just played. */
   const remainderOf = (ks: number[]): number | undefined =>
     remainders ? ks.find((k) => leftover(k) && !(last?.type === "clip" && last.index === k)) : undefined;
@@ -1128,6 +1147,12 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             cursor++;
             return { type: "clip", index: own };
           }
+          // oneGame: the film's own game footage from its chapters before a still.
+          const film = own === undefined ? filmFootage(seg.kind === "take") : undefined;
+          if (film !== undefined) {
+            cursor++;
+            return { type: "clip", index: film };
+          }
           cursor++;
           return order.length
             ? { type: "image", index: order[cursor % order.length]! }
@@ -1182,7 +1207,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       // which replays its clips from their start).
       const clipIdx = wantClip
         ? (ownClips.find((k) => !clipUsed[k] || seg.kind === "take") ??
-          (seg.kind === "take" ? undefined : remainderOf(restClips)))
+          (seg.kind === "take" ? undefined : remainderOf(restClips)) ??
+          (seg.kind === "hook" || seg.kind === "take" ? filmFootage(seg.kind === "take") : undefined))
         : undefined;
       const most = cap(at);
       if (clipIdx !== undefined) {

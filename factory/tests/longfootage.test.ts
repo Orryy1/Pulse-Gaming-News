@@ -646,3 +646,26 @@ test("LONG_CLIP_REMAINDERS: a clip cut short keeps its unseen rest, which plays 
   // Off: no shot starts partway into its clip.
   assert.ok(off.shots.every((s) => s.media.from === undefined));
 });
+
+test("a one-game film's opening and closing play its chapters' footage before a still (oneGame, LONG_MOVING_FIRST)", () => {
+  const { words, segments, duration } = timeline(2);
+  const clips = Array.from({ length: 12 }, (_, k) => ({
+    durationSeconds: 5,
+    beatIndex: 0,
+    span: { source: "m", from: k * 100, to: k * 100 + 5 },
+  }));
+  const images = [
+    { kind: "hero", aspect: 16 / 9, file: "topic.jpg" },
+    { kind: "screenshot", aspect: 16 / 9, beatIndex: 0, file: "c.jpg" },
+  ];
+  const input = { segments, words, durationSeconds: duration, images, clips, variant: 0, movingFirst: true, accentStillFrames: 75 };
+  const edges = (p: ReturnType<typeof buildLongPlan>) =>
+    p.shots
+      .filter((s) => segments[s.segment]!.kind !== "beat" && s.media.type === "clip")
+      .reduce((n, s) => n + (s.end - s.start), 0);
+  const off = buildLongPlan(input);
+  const on = buildLongPlan({ ...input, oneGame: true });
+  assert.ok(edges(on) > edges(off), `more footage in the opening and closing: ${edges(on)} > ${edges(off)}`);
+  // Off by default: the opening keeps to its own media.
+  assert.equal(edges(buildLongPlan({ ...input, movingFirst: false, oneGame: true })), edges(buildLongPlan({ ...input, movingFirst: false })));
+});

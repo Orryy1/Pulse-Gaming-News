@@ -10626,6 +10626,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       accentStillFrames: Math.round(s.cfg.longAccentStillSeconds * LONG_FPS),
       // A clip cut short keeps its unseen rest for a later shot (LONG_CLIP_REMAINDERS).
       clipRemainders: s.cfg.longClipRemainders,
+      // A retrospective is one game: its opening and closing may play footage from its chapters (LONG_MOVING_FIRST).
+      oneGame: isRetrospective(ep.factcheck_json),
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();

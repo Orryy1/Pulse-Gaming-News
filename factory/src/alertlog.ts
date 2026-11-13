@@ -25,6 +25,7 @@ export const OTHER = "other";
 const KINDS: ReadonlyArray<readonly [string, RegExp]> = [
   [ROUTINE, /^📋 Alert digest/u],
   ["narration_fault", /still has a fault after a second take/i],
+  ["pronunciation_unknown", /pronunciation tables do not know/i],
   ["voice_breaths", /sounds off[^]*audible breaths/i],
   ["voice_pace", /sounds off[^]*words a minute/i],
   ["graphics_muted", /graphics check looked at [^]* and muted /i],

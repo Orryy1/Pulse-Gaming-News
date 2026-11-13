@@ -7,6 +7,7 @@
 // until 1 Dec): a Codex failure stops that episode rather than spending Claude.
 //
 //   node --import tsx src/tools/clarity-proof.ts <episodes.json> <out-dir>
+//   node --import tsx src/tools/clarity-proof.ts --report <out-dir> <results.json>...
 //
 // episodes.json: rows of { id, lane, script_json, story_json } (the episodes table, or /admin/export). Nothing is
 // written to the database, no voice is made and nothing is uploaded.
@@ -454,6 +455,18 @@ ${cards}
 </body></html>`;
 }
 
+// --report <out-dir> <results.json>...: merge earlier results (a later file replaces an episode it repeats) and write
+// the report again, so one episode can be rerun after a Codex timeout without rerunning the rest.
+if (inFile === "--report") {
+  const byId = new Map<string, Result>();
+  for (const f of process.argv.slice(4))
+    for (const r of JSON.parse(fs.readFileSync(f, "utf8")) as Result[]) if (r) byId.set(r.id, r);
+  const merged = [...byId.values()];
+  fs.writeFileSync(path.join(outDir, "clarity-proof.json"), JSON.stringify(merged, null, 2));
+  fs.writeFileSync(path.join(outDir, "index.html"), html(merged));
+  console.log(`wrote ${path.join(outDir, "index.html")}`);
+  process.exit(0);
+}
 const rows: Row[] = JSON.parse(fs.readFileSync(inFile, "utf8"));
 const results: Result[] = new Array(rows.length);
 const CONCURRENCY = Number(process.env.PROOF_CONCURRENCY || 4);

@@ -234,17 +234,36 @@ export function retroChapterSpans(
 export function retroFootageSpans(
   retro: Retro,
   written: readonly number[],
-): Array<{ from: number; to: number } | undefined> {
+): Array<{ from: number; to: number; broll?: boolean } | undefined> {
   const acts = retro.acts ?? [];
   const story = retroChapterSpans(retro, written);
   if (!acts.length) return story;
-  const whole = { from: acts[0]!.from, to: acts.at(-1)!.to };
-  const first = { from: acts[0]!.from, to: acts[0]!.to };
+  // A chapter about the game rather than its story wants the world moving (B-roll), not a cutscene's talk.
+  const whole = { from: acts[0]!.from, to: acts.at(-1)!.to, broll: true };
+  const first = { from: acts[0]!.from, to: acts[0]!.to, broll: true };
   return written.map((i, k) => {
     const section = retro.chapters?.[i]?.section;
     if (!section) return undefined;
     if (section === "story") return story[k];
     return RETRO_SECTIONS.indexOf(section) < RETRO_SECTIONS.indexOf("story") ? first : whole;
+  });
+}
+
+/** LONG_MOVING_FIRST: the most cutscene clips one retrospective chapter fetches (a clip for every line of it). */
+export const RETRO_MOVING_CLIPS = 60;
+
+/** The sections where a remaster is part of the subject: its footage may be shown there, credited as the remaster. */
+export const RETRO_REMASTER_SECTIONS: readonly RetroSection[] = ["reception", "legacy"];
+
+/**
+ * RETRO_REMASTER_FOOTAGE (pure): which written chapters may show an official remaster's or Definitive Edition's
+ * footage, in on-screen order: the reception and legacy chapters only. A story chapter never does while the original's
+ * own footage exists (the scene index is the original's full-story movie).
+ */
+export function retroRemasterChapters(retro: Retro, written: readonly number[]): boolean[] {
+  return written.map((i) => {
+    const section = retro.chapters?.[i]?.section;
+    return Boolean(section && RETRO_REMASTER_SECTIONS.includes(section));
   });
 }
 
@@ -331,6 +350,29 @@ export function retroFootageCaps(
       cfg.retroChapterFootageMax,
     ),
   );
+}
+
+/**
+ * LONG_CHAPTER_FOOTAGE: each chapter of any long video (a documentary, a ranking, a guide) its own publisher footage
+ * allowance, as a retrospective's chapters have (retroFootageCaps): its game's per-Short cap scaled to the chapter's own
+ * length, times RETRO_FOOTAGE_SCALE, at most RETRO_CHAPTER_FOOTAGE_MAX a chapter and never more than 90% of it. Without
+ * it a long video's publisher footage is one per-Short allowance for the whole video (a 30-minute GTA documentary:
+ * 34 seconds of Rockstar footage, about 2% of it). Chapters in on-screen order.
+ */
+export function longChapterFootageCaps(
+  cfg: Pick<Config, "retroFootageScale" | "retroChapterFootageMax">,
+  script: Pick<Script, "beats" | "entries">,
+): number[] {
+  return [...(script.entries ?? [])]
+    .sort((a, b) => b.rank - a.rank)
+    .map((entry, k) =>
+      retroChapterFootageSeconds(
+        cutscenePublisher(entry.game_title).seconds,
+        chapterSecondsOf(chapterWords(script, k)),
+        cfg.retroFootageScale,
+        cfg.retroChapterFootageMax,
+      ),
+    );
 }
 
 export type { StoryAct };

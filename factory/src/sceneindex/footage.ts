@@ -13,10 +13,12 @@ import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import {
   cleanFrameReason,
+  cropClipInPlace,
   cutsceneDownloadArgs,
-  FRAME_HEIGHT,
-  FRAME_WIDTH,
+  overlayCornerCrop,
+  screenFramesOf,
   type CutsceneClip,
+  type FrameCrop,
 } from "../assets/cutscenes.ts";
 import {
   CLIP_SECONDS,
@@ -25,11 +27,11 @@ import {
   MIN_CLIP_SECONDS,
   type FootageTarget,
 } from "../assets/clipscore.ts";
-import { clipBigText } from "../assets/cliptext.ts";
+import { clipBigText, clipOverlayText } from "../assets/cliptext.ts";
 import { checkClip, namedSubjects, SUBJECT_CONFIDENCE, type SubjectAsk } from "../assets/scenecheck.ts";
 import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
 import type { VisualAsset } from "../assets/steam.ts";
-import { findQuote, findShots, shotAtPlace } from "./lookup.ts";
+import { brollShotAtPlace, findQuote, findShots, shotAtPlace } from "./lookup.ts";
 import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
 import { sectionArgs } from "./build.ts";
@@ -169,9 +171,10 @@ export function planIndexedClips(
       ...(within ? { within } : {}),
     }))
       candidates.push({ shot: h.shot, confidence: h.confidence });
-    // Nothing in the act matched by name or words: the act's own scene at the line's place in the chapter.
+    // Nothing in the act matched by name or words: the act's own scene at the line's place in the chapter (a chapter
+    // about the game rather than its story takes the liveliest shot near that place: brollShotAtPlace).
     if (t.within) {
-      const at = shotAtPlace(index, t.within, MIN_CLIP_SECONDS + 0.3);
+      const at = (t.within.broll ? brollShotAtPlace : shotAtPlace)(index, t.within, MIN_CLIP_SECONDS + 0.3);
       if (at !== undefined && !candidates.some((c) => c.shot === at))
         candidates.push({ shot: at, confidence: 0.3 });
     }
@@ -232,6 +235,13 @@ export interface IndexedOptions {
   ytdlp: string;
   publisher?: string;
   textCheck?: boolean;
+  /**
+   * LONG_INWORLD_TEXT (long videos): the text check refuses only writing that is not from the game (a channel mark,
+   * a link, the uploader's name, a caption fixed at the edge); the game's own signs, HUD and subtitles pass.
+   */
+  inWorldText?: boolean;
+  /** LONG_WATERMARK_CROP (long videos): a clip with one small corner mark is cut again cropped clear of it. */
+  watermarkCropKeep?: number;
   /** SPOILER_GUARD: whether a shot may be used for a line. */
   allow?: (shot: SceneShot, key: string) => boolean;
   /**
@@ -261,8 +271,10 @@ export interface IndexedOptions {
       seconds: number,
       file: string,
     ) => Promise<void>;
-    /** True when the finished clip may be used (no overlay, not blank, not dark). */
-    screen?: (file: string, seconds: number) => Promise<boolean>;
+    /** True (or a verdict) when the finished clip may be used (no overlay, not blank, not dark). */
+    screen?: (file: string, seconds: number) => Promise<boolean | ScreenVerdict>;
+    /** Crops a cut clip in place (LONG_WATERMARK_CROP). */
+    crop?: (file: string, crop: FrameCrop) => Promise<void>;
   };
 }
 
@@ -322,46 +334,35 @@ async function cut(
   );
 }
 
+/** How a cut clip fared on the screen: kept, or refused with the crop that might save it (LONG_WATERMARK_CROP). */
+export interface ScreenVerdict {
+  ok: boolean;
+  why?: string;
+  crop?: FrameCrop;
+}
+
 async function screen(
   file: string,
   seconds: number,
-  textCheck: boolean,
-): Promise<boolean> {
-  const raw = `${file}.gray`;
-  try {
-    await runCapped(
-      FFMPEG,
-      [
-        "-v",
-        "error",
-        "-y",
-        "-i",
-        file,
-        "-vf",
-        `fps=${(5 / Math.max(1, seconds)).toFixed(4)},scale=${FRAME_WIDTH}:${FRAME_HEIGHT},format=gray`,
-        "-frames:v",
-        "5",
-        "-an",
-        "-f",
-        "rawvideo",
-        raw,
-      ],
-      { timeout: 60_000, maxBuffer: 1024 * 1024 },
-    );
-    const data = await fs.readFile(raw);
-    const size = FRAME_WIDTH * FRAME_HEIGHT;
-    const frames: Uint8Array[] = [];
-    for (let at = 0; at + size <= data.length; at += size)
-      frames.push(data.subarray(at, at + size));
-    if (cleanFrameReason(frames)) return false;
-    const darkest = await darkestLuma(file);
-    if (darkest !== undefined && darkest < DARK_LUMA) return false;
-    if (textCheck && !(await clipBigText(file, seconds)).clean) return false;
-    return true;
-  } finally {
-    await fs.rm(raw, { force: true }).catch(() => undefined);
+  o: { textCheck: boolean; inWorldText?: boolean; uploader?: string; cropKeep?: number },
+): Promise<ScreenVerdict> {
+  const frames = await screenFramesOf(file, seconds);
+  const reason = cleanFrameReason(frames);
+  if (reason) {
+    const crop = reason === "persistent corner overlay" && o.cropKeep ? overlayCornerCrop(frames, o.cropKeep) : undefined;
+    return { ok: false, why: reason, ...(crop ? { crop } : {}) };
   }
+  const darkest = await darkestLuma(file);
+  if (darkest !== undefined && darkest < DARK_LUMA) return { ok: false, why: "dark" };
+  if (o.textCheck) {
+    const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds);
+    if (!read.clean) return { ok: false, why: `text: ${read.words.slice(0, 4).join(" ")}` };
+  }
+  return { ok: true };
 }
+
+/** A screen given as a plain yes or no (tests, older callers) as a verdict. */
+const verdictOf = (v: boolean | ScreenVerdict): ScreenVerdict => (typeof v === "boolean" ? { ok: v } : v);
 
 /**
  * Cutscene clips for the lines the index knows the exact shot of, in target order, each tagged with its line.
@@ -390,6 +391,7 @@ export async function indexedCutsceneClips(
       let p: PlannedClip | undefined;
       let rel = "";
       let confirmed = false;
+      let cropped: FrameCrop | undefined;
       for (const c of [first, ...(first.alternates ?? [])]) {
         const i = n++;
         const section = path.join(work, `section_${i}.mp4`);
@@ -414,15 +416,30 @@ export async function indexedCutsceneClips(
             section,
           );
           await (o.deps?.cut ?? cut)(section, lead, c.seconds, file);
-          if (
-            !(await (
-              o.deps?.screen ?? ((f, s) => screen(f, s, o.textCheck !== false))
-            )(file, c.seconds))
-          ) {
+          const screenOf = (f: string, n: number) =>
+            (o.deps?.screen ?? ((x: string, y: number) => screen(x, y, { textCheck: o.textCheck !== false, inWorldText: o.inWorldText, uploader: src.uploader, cropKeep: o.watermarkCropKeep })))(f, n);
+          let verdict = verdictOf(await screenOf(file, c.seconds));
+          cropped = undefined;
+          // LONG_WATERMARK_CROP: one small corner mark is cropped away and the clip screened once more.
+          if (!verdict.ok && verdict.crop && o.watermarkCropKeep) {
+            const crop = verdict.crop;
+            await (o.deps?.crop ?? cropClipInPlace)(file, crop);
+            verdict = verdictOf(await screenOf(file, c.seconds));
+            if (verdict.ok) cropped = crop;
+            log("info", verdict.ok ? "scene index: corner mark cropped away" : "scene index: cropped, still screened out", {
+              game: o.gameTitle,
+              at: c.from,
+              corner: crop.corner,
+              keeps: crop.keeps,
+              ...(verdict.ok ? {} : { why: verdict.why }),
+            });
+          }
+          if (!verdict.ok) {
             await fs.rm(file, { force: true }).catch(() => undefined);
             log("info", "scene index: clip screened out", {
               game: o.gameTitle,
               at: c.from,
+              why: verdict.why,
             });
             continue;
           }
@@ -475,7 +492,7 @@ export async function indexedCutsceneClips(
         luma: shot.luma,
         label: p.label,
         reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence}${confirmed ? `, ${p.names!.join(", ")} seen by the picture check` : ""})`,
-        provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted; chosen for ${p.key} by the scene index (${p.label})`,
+        provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted${cropped ? `, cropped clear of a ${cropped.corner} corner mark (${Math.round(cropped.keeps * 100)}% of the picture kept)` : ""}; chosen for ${p.key} by the scene index (${p.label})`,
         audio: false,
         credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
         youtubeSource: {
@@ -684,7 +701,9 @@ export async function indexFirstCutscenes<
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
-    Partial<Pick<Config, "spoilerGuard" | "sceneMatch" | "archiveSections">>,
+    Partial<
+      Pick<Config, "spoilerGuard" | "sceneMatch" | "archiveSections" | "longInWorldText" | "longWatermarkCrop" | "longWatermarkCropKeep">
+    >,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
   deps?: IndexedOptions["deps"],
@@ -732,6 +751,9 @@ export async function indexFirstCutscenes<
         minConfidence: cfg.sceneIndexMinConfidence,
         ytdlp: cfg.ytdlpPath,
         publisher: o.publisher,
+        // A long video shows the whole picture: the game's own writing stays, and a small corner mark can be cropped.
+        ...(o.long && cfg.longInWorldText ? { inWorldText: true } : {}),
+        ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep ?? 0.78 } : {}),
         // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
         ...(cfg.sceneMatch
           ? {

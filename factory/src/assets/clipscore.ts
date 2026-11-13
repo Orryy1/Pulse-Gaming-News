@@ -64,7 +64,7 @@ export interface FootageTarget {
    * in seconds, and where in it this line falls (0 to 1, the line's place in the chapter). The scene index looks only
    * inside it, so the story is shown in its own scenes and in order.
    */
-  within?: { from: number; to: number; at?: number };
+  within?: { from: number; to: number; at?: number; broll?: boolean };
 }
 
 /** A keyframe inside a trailer. */

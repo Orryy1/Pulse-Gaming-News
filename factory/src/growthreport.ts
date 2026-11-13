@@ -15,6 +15,7 @@ import { archiveLines, readArchive } from "./sceneindex/archive.ts";
 import { shortStats, type ShortStat } from "./experiments.ts";
 import { searchReachRows, searchShareLine } from "./searchq/report.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
+import { movingShareLines } from "./qa/movingshare.ts";
 
 export type GrowthFormat =
   | "news"
@@ -254,6 +255,28 @@ export async function gameAudioSides(
   return out;
 }
 
+/** The week's long renders with their moving share and stills share (each episode's latest "moving_share" event). */
+export async function movingShareRows(
+  db: Db,
+  now: Date,
+): Promise<Array<{ title: string; moving: number; stills: number }>> {
+  const rows = await db.query<{ detail: unknown; title: string | null; headline: string | null }>(
+    `SELECT DISTINCT ON (v.episode_id) v.detail, e.script_json->'youtube'->>'title' AS title, e.script_json->>'headline' AS headline
+       FROM events v JOIN episodes e ON e.id = v.episode_id
+      WHERE v.kind = 'moving_share' AND v.created_at > $1::timestamptz - interval '7 days'
+      ORDER BY v.episode_id, v.id DESC`,
+    [now],
+  );
+  return rows.flatMap((r) => {
+    const d = (typeof r.detail === "string" ? JSON.parse(r.detail) : r.detail) as {
+      movingShare?: number;
+      stillShare?: number;
+    } | null;
+    if (typeof d?.movingShare !== "number") return [];
+    return [{ title: r.title ?? r.headline ?? "untitled", moving: d.movingShare, stills: Number(d.stillShare ?? 0) }];
+  });
+}
+
 /** The Discord message. */
 export async function growthReport(
   db: Db,
@@ -282,6 +305,8 @@ export async function growthReport(
           ...(cfg.searchShorts?.enabled ? [searchShareLine(await searchReachRows(db, now))] : []),
           // RETENTION_LEARN: where viewers left this week's curves, the top three causes (src/retentionlearn.ts).
           ...(retention ? retentionLines(retention) : []),
+          // Every long render's moving share and stills share (src/qa/movingshare.ts).
+          ...movingShareLines(await movingShareRows(db, now).catch(() => [])),
         ]
           .join("\n")
           .slice(0, 3900),

@@ -48,6 +48,7 @@ import {
 import { gameNames, knownName, mergeNames } from "./names.ts";
 import { canonicalGame } from "./gamefetch.ts";
 import { lookAtShot, visionUp, type ShotLook } from "./describe.ts";
+import { DESCRIBE_RECHECK, describeGate } from "./describegate.ts";
 import { groundedCast, tidyIndex } from "./tidy.ts";
 
 const exec = promisify(execFile);
@@ -92,6 +93,8 @@ export interface BuildDeps {
   look?: typeof lookAtShot;
   visionUp?: () => Promise<boolean>;
   now?: () => Date;
+  /** DESCRIBE_HOURS: whether describing may run now (src/sceneindex/describegate.ts); set in tests. */
+  describeGate?: () => Promise<{ ok: boolean; why?: string }>;
 }
 
 /** A cutscene movie or a playthrough, by what the upload calls itself. */
@@ -972,6 +975,17 @@ export async function describeShots(
   // SCENE_INDEX_DESCRIBE=false (12 Nov 2026, orchestrator): no bulk looking on the PC model while it is needed for
   // renders; single picture checks elsewhere still run. Lookups keep working on names, lines and on-screen text.
   if (process.env.SCENE_INDEX_DESCRIBE === "false") return { index, described: 0, failed: 0 };
+  // DESCRIBE_HOURS (13 Nov 2026): only in the quiet window and while the PC shows no Orryy render or other heavy turn,
+  // asked again every DESCRIBE_RECHECK shots. Unset: as before.
+  const gate = deps.describeGate ?? (process.env.DESCRIBE_HOURS ? () => describeGate() : undefined);
+  if (gate) {
+    const g = await gate().catch(() => ({ ok: false, why: "the gate could not be read" }));
+    if (!g.ok) {
+      log("info", "scene index: describing waits", { game: index.game, why: g.why });
+      return { index, described: 0, failed: 0 };
+    }
+  }
+  let closed = false;
   const todo = undescribed(index)
     .filter(
       (shot) => shot.start >= (o.from ?? 0) && shot.start < (o.to ?? Infinity),
@@ -1014,8 +1028,18 @@ export async function describeShots(
   let streak = 0;
   let next = 0;
   let sinceSave = 0;
+  let sinceGate = 0;
   const worker = async () => {
-    while (next < todo.length && streak < 3) {
+    while (next < todo.length && streak < 3 && !closed) {
+      if (gate && ++sinceGate > DESCRIBE_RECHECK) {
+        sinceGate = 0;
+        const g = await gate().catch(() => ({ ok: false, why: "the gate could not be read" }));
+        if (!g.ok) {
+          closed = true;
+          log("info", "scene index: describing stopped mid-batch", { game: index.game, why: g.why });
+          break;
+        }
+      }
       const shot = todo[next++]!;
       const frames: string[] = [];
       try {

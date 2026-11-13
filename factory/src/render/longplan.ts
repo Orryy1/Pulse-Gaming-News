@@ -26,6 +26,7 @@ const STILL_SHOT = 180; // 6 s on a still
 const MIN_SHOT = 60; // never a still under 2 s
 const MIN_CLIP_SHOT = 39; // footage may cut faster: 1.3 s
 const MAX_STILL_SHOT = 240; // 8 s at most on one still
+const ACCENT_STILL_SHOT = 75; // LONG_MOVING_FIRST: 2.5 s on a still while footage is left
 
 export interface LongImage {
   kind: string;
@@ -371,6 +372,16 @@ export interface LongPlanInput {
    * sentence, which carries its title card, counts whenever this is given.
    */
   noStockOn?: boolean[][];
+  /**
+   * LONG_MOVING_FIRST (owner, 12 Nov 2026: long videos "nearly all moving footage from start to finish"): where the
+   * plan would reach for a still, any unplayed clip of the chapter that is free to fill comes first (loose footage, a
+   * clip of a sentence gone by, the same game's unseen footage from its other chapters), the cold open plays its
+   * footage before its art, and a still shown while the chapter still has unplayed footage stays up `accentStillFrames`
+   * at most: stills and graphics become brief accents. Off: the plan as it was.
+   */
+  movingFirst?: boolean;
+  /** LONG_ACCENT_STILL_SECONDS in frames: the longest a still holds while footage is left (movingFirst only). */
+  accentStillFrames?: number;
 }
 
 const PREVIEW_STOP = new Set(
@@ -559,6 +570,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     queue: LongMedia[],
     fallback: () => LongMedia,
     stillFallback?: () => LongMedia,
+    /** movingFirst: true while the chapter still has footage to play; a still then holds only accentStillFrames. */
+    footageLeft?: () => boolean,
   ) => {
     let at = from;
     while (at < to) {
@@ -619,6 +632,11 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           MAX_STILL_SHOT,
           most.still,
         );
+        // A brief accent while there is footage to come; what it leaves behind must still be a whole shot.
+        if (media.type === "image" && footageLeft?.()) {
+          const accent = Math.max(MIN_SHOT, input.accentStillFrames ?? ACCENT_STILL_SHOT);
+          if (len > accent && remaining - accent >= MIN_CLIP_SHOT) len = accent;
+        }
         if (remaining - len < MIN_SHOT) len = remaining;
       }
       if (media.type === "image") stillUses[media.index]!++;
@@ -736,6 +754,25 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               .map((_, k) => k)
               .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!));
       let replay = 0;
+      /**
+       * movingFirst: an unplayed clip free to fill the sentence being filled: loose footage, then one of a sentence
+       * already gone (never one picked for a sentence still to come, nor a confirmed scene of another line), then the
+       * same game's unseen footage from its other chapters. Undefined when none is left.
+       */
+      const spareFootage = (): number | undefined => {
+        const ok = (k: number) => !clipUsed[k] && !clips[k]!.cutsceneMatch?.targetKey && !stockBarred(k, current);
+        const loose = entryClips.find((k) => ok(k) && clips[k]!.moment === undefined);
+        if (loose !== undefined) return loose;
+        const gone = entryClips.find((k) => ok(k) && clips[k]!.moment !== undefined && clips[k]!.moment! < current);
+        if (gone !== undefined) return gone;
+        return kinClips.find((k) => !clipUsed[k]);
+      };
+      /** movingFirst: whether this chapter still has footage left to play (its own, or its game's from other chapters). */
+      const footageLeft = input.movingFirst
+        ? () =>
+            entryClips.some((k) => !clipUsed[k] && !clips[k]!.cutsceneMatch?.targetKey && !clips[k]!.stock) ||
+            kinClips.some((k) => !clipUsed[k])
+        : undefined;
       // The sentence being filled: filler never shows a picture chosen for another sentence (30 Oct 2026
       // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
       // it, such as David Jones's photo while the narrator talked about Keith Hamilton).
@@ -777,6 +814,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           return { type: "plate", index: 0 };
         };
         if (!entryImages.length) return own();
+        // LONG_MOVING_FIRST: unplayed footage that is free to fill before any still.
+        const moving = input.movingFirst ? spareFootage() : undefined;
+        if (moving !== undefined) return { type: "clip", index: moving };
         const free = entryImages.filter((k) =>
           real(k)
             ? realWorldMayFill(images[k]!.moment, current)
@@ -914,8 +954,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               queue.filter((q) => q.type !== "clip"),
               footageFirst,
               leastUsed,
+              footageLeft,
             );
-        } else fill(i, from, to, queue, footageFirst, leastUsed);
+        } else fill(i, from, to, queue, footageFirst, leastUsed, footageLeft);
       }
       continue;
     }
@@ -1019,7 +1060,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         let cursor = 0;
         const generic = (): LongMedia => {
           const own = ownClips.find((k) => !clipUsed[k]);
-          if (own !== undefined && cursor % 2 === 0) {
+          if (own !== undefined && (cursor % 2 === 0 || input.movingFirst)) {
             cursor++;
             return { type: "clip", index: own };
           }

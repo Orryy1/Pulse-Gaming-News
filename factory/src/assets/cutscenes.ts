@@ -335,6 +335,140 @@ export function cleanFrameReason(
   return undefined;
 }
 
+/** A crop of the picture as shares of its width and height: keep `w` x `h` starting at (`x`, `y`). */
+export interface FrameCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** The share of the picture kept (w x h). */
+  keeps: number;
+  corner: "top-left" | "top-right" | "bottom-left" | "bottom-right";
+}
+
+/**
+ * LONG_WATERMARK_CROP (pure): where to crop a clip refused for a persistent corner overlay so the mark is gone and the
+ * picture keeps its shape. Only one corner may carry the mark, and only as far as the smaller tiles show it (a channel
+ * logo in a tenth of the frame); the crop drops that much of the width and the height on that side, plus a margin,
+ * and is refused when it would keep less than `keep` of the picture. Undefined when no corner is marked, two are, or
+ * the mark is too big to crop away.
+ */
+export function overlayCornerCrop(
+  frames: readonly Uint8Array[],
+  keep: number,
+  width = FRAME_WIDTH,
+  height = FRAME_HEIGHT,
+): FrameCrop | undefined {
+  if (width < 20 || height < 20 || frames.length < MIN_SCREEN_FRAMES || frames.some((f) => f.length !== width * height))
+    return undefined;
+  const region = (x0: number, y0: number, x1: number, y1: number) => {
+    let diff = 0,
+      sum = 0,
+      square = 0,
+      count = 0;
+    for (let y = y0; y < y1; y++)
+      for (let x = x0; x < x1; x++) {
+        const p = y * width + x;
+        const value = frames[0]![p]!;
+        sum += value;
+        square += value * value;
+        count++;
+        for (let k = 1; k < frames.length; k++) diff += Math.abs(frames[k]![p]! - frames[k - 1]![p]!);
+      }
+    const mean = sum / count;
+    return {
+      motion: diff / (count * (frames.length - 1)),
+      texture: Math.sqrt(Math.max(0, square / count - mean * mean)),
+    };
+  };
+  const still = (r: { motion: number; texture: number }) => r.motion <= CORNER_STABILITY && r.texture >= CORNER_TEXTURE;
+  const picture = region(Math.floor(width * 0.25), Math.floor(height * 0.2), Math.floor(width * 0.75), Math.floor(height * 0.7));
+  if (picture.motion < PICTURE_MOTION) return undefined;
+  const cw = Math.floor(width * 0.2),
+    ch = Math.floor(height * 0.2);
+  const corners = [
+    { name: "top-left" as const, x: 0, y: 0, right: false, bottom: false },
+    { name: "top-right" as const, x: width - cw, y: 0, right: true, bottom: false },
+    { name: "bottom-left" as const, x: 0, y: height - ch, right: false, bottom: true },
+    { name: "bottom-right" as const, x: width - cw, y: height - ch, right: true, bottom: true },
+  ];
+  const marked: Array<{ name: FrameCrop["corner"]; right: boolean; bottom: boolean; fx: number; fy: number }> = [];
+  for (const c of corners) {
+    // How far into the frame the mark reaches from this corner's own edges, in tiles of half the corner.
+    let fx = 0,
+      fy = 0;
+    for (let dy = 0; dy < 2; dy++)
+      for (let dx = 0; dx < 2; dx++) {
+        const x0 = c.x + Math.floor((dx * cw) / 2);
+        const y0 = c.y + Math.floor((dy * ch) / 2);
+        const x1 = c.x + Math.floor(((dx + 1) * cw) / 2);
+        const y1 = c.y + Math.floor(((dy + 1) * ch) / 2);
+        if (!still(region(x0, y0, x1, y1))) continue;
+        fx = Math.max(fx, (c.right ? width - x0 : x1) / width);
+        fy = Math.max(fy, (c.bottom ? height - y0 : y1) / height);
+      }
+    if (!fx && still(region(c.x, c.y, c.x + cw, c.y + ch))) {
+      fx = cw / width;
+      fy = ch / height;
+    }
+    if (fx) marked.push({ name: c.name, right: c.right, bottom: c.bottom, fx, fy });
+  }
+  if (marked.length !== 1) return undefined;
+  const m = marked[0]!;
+  // The same share off the width and the height keeps the 16:9 shape; a small margin past the mark's tile.
+  const cut = Math.max(m.fx, m.fy) + 0.01;
+  const kept = (1 - cut) * (1 - cut);
+  if (kept < keep) return undefined;
+  return {
+    x: m.right ? 0 : cut,
+    y: m.bottom ? 0 : cut,
+    w: 1 - cut,
+    h: 1 - cut,
+    keeps: Math.round(kept * 1000) / 1000,
+    corner: m.name,
+  };
+}
+
+/** The ffmpeg crop filter for a FrameCrop (pure), before any scaling: even sizes, the offsets in whole pixels. */
+export function cropFilter(c: Pick<FrameCrop, "x" | "y" | "w" | "h">): string {
+  const f = (n: number) => n.toFixed(4);
+  return `crop=trunc(iw*${f(c.w)}/2)*2:trunc(ih*${f(c.h)}/2)*2:trunc(iw*${f(c.x)}):trunc(ih*${f(c.y)})`;
+}
+
+/** Re-encodes `file` in place with a crop, scaled back to 1080 lines; on failure the file is left as it was. */
+export async function cropClipInPlace(file: string, crop: FrameCrop): Promise<void> {
+  const tmp = `${file}.crop.mp4`;
+  try {
+    await runCapped(
+      FFMPEG,
+      ["-loglevel", "error", "-y", "-i", file, "-an", "-sn", "-dn", "-vf", `${cropFilter(crop)},scale=-2:1080`, "-c:v", "libx264", "-crf", "17", "-preset", "fast", "-pix_fmt", "yuv420p", tmp],
+      { timeout: 180_000, maxBuffer: 1024 * 1024 },
+    );
+    await fs.rename(tmp, file);
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+  }
+}
+
+/** Five grey frames of a clip at the screen's size, for cleanFrameReason and overlayCornerCrop. */
+export async function screenFramesOf(file: string, seconds: number): Promise<Uint8Array[]> {
+  const raw = `${file}.gray`;
+  try {
+    await runCapped(
+      FFMPEG,
+      ["-v", "error", "-y", "-i", file, "-vf", `fps=${(5 / Math.max(1, seconds)).toFixed(4)},scale=${FRAME_WIDTH}:${FRAME_HEIGHT},format=gray`, "-frames:v", "5", "-an", "-f", "rawvideo", raw],
+      { timeout: 60_000, maxBuffer: 1024 * 1024 },
+    );
+    const data = await fs.readFile(raw);
+    const size = FRAME_WIDTH * FRAME_HEIGHT;
+    const frames: Uint8Array[] = [];
+    for (let at = 0; at + size <= data.length; at += size) frames.push(data.subarray(at, at + size));
+    return frames;
+  } finally {
+    await fs.rm(raw, { force: true }).catch(() => undefined);
+  }
+}
+
 /** A long video gets up to six times the Short allowance, still a single per-video ceiling. */
 export function cutsceneBudgetSeconds(
   shortSeconds: number,
@@ -636,39 +770,35 @@ async function downloadSection(
   }
 }
 
-async function screenSection(file: string, seconds: number): Promise<boolean> {
-  const raw = `${file}.gray`;
-  try {
-    await runCapped(
-      FFMPEG,
-      [
-        "-v",
-        "error",
-        "-y",
-        "-i",
-        file,
-        "-vf",
-        `fps=${(5 / Math.max(1, seconds)).toFixed(4)},scale=${FRAME_WIDTH}:${FRAME_HEIGHT},format=gray`,
-        "-frames:v",
-        "5",
-        "-an",
-        "-f",
-        "rawvideo",
-        raw,
-      ],
-      { timeout: 60_000, maxBuffer: 1024 * 1024 },
-    );
-    const data = await fs.readFile(raw);
-    const size = FRAME_WIDTH * FRAME_HEIGHT;
-    const frames: Uint8Array[] = [];
-    for (let offset = 0; offset + size <= data.length; offset += size)
-      frames.push(data.subarray(offset, offset + size));
-    const reason = cleanFrameReason(frames);
-    if (reason) log("info", "cutscene section screened out", { file: path.basename(file), reason });
-    return reason === undefined;
-  } finally {
-    await fs.rm(raw, { force: true }).catch(() => undefined);
+/**
+ * Screens a downloaded section. LONG_WATERMARK_CROP (`cropKeep`, long videos only): a section refused for one small
+ * corner mark is cut again cropped away from it (overlayCornerCrop) and screened once more, so every clip cut from it
+ * is clean; a section that still fails, or whose mark is too big, goes as before.
+ */
+async function screenSection(file: string, seconds: number, cropKeep?: number): Promise<boolean> {
+  const frames = await screenFramesOf(file, seconds);
+  const reason = cleanFrameReason(frames);
+  if (reason === "persistent corner overlay" && cropKeep) {
+    const crop = overlayCornerCrop(frames, cropKeep);
+    if (crop) {
+      try {
+        await cropClipInPlace(file, crop);
+        const again = cleanFrameReason(await screenFramesOf(file, seconds));
+        log("info", again ? "cutscene section: cropped, still screened out" : "cutscene section: corner mark cropped away", {
+          file: path.basename(file),
+          corner: crop.corner,
+          keeps: crop.keeps,
+          ...(again ? { reason: again } : {}),
+        });
+        return again === undefined;
+      } catch (err) {
+        log("warn", "cutscene section: crop failed", { file: path.basename(file), error: errorMessage(err) });
+        return false;
+      }
+    }
   }
+  if (reason) log("info", "cutscene section screened out", { file: path.basename(file), reason });
+  return reason === undefined;
 }
 
 export interface CutsceneOptions {
@@ -688,6 +818,8 @@ export interface CutsceneOptions {
   llm?: Llm;
   /** APPLE_SOUND_TAGS (Mac only): hear each section's spoken lines and flag the clips that cut into one. */
   soundTags?: boolean;
+  /** LONG_WATERMARK_CROP: a section with one small corner mark is cropped clear of it when this much picture stays. */
+  watermarkCropKeep?: number;
   deps?: {
     search?: (query: string) => Promise<CutsceneUpload[]>;
     details?: (
@@ -737,6 +869,8 @@ export interface CutsceneJob {
    * owner's own capture never counts: it is his footage).
    */
   ownSeconds?: number;
+  /** The most clips this job may fetch (LONG_MOVING_FIRST retrospectives); unset: 24. */
+  maxClips?: number;
 }
 
 /** Publisher footage already on a chapter (pure): its clips, never stock or the owner's own capture. */
@@ -1074,7 +1208,7 @@ export async function cutsceneMedia(
           o.ytdlp,
         );
         if (Array.isArray(heard)) spoken.set(from.toFixed(2), heard);
-        if (!(await (o.deps?.screen ?? screenSection)(file, length))) {
+        if (!(await (o.deps?.screen ?? ((f, n) => screenSection(f, n, o.watermarkCropKeep)))(file, length))) {
           await fs.rm(file, { force: true });
           continue;
         }

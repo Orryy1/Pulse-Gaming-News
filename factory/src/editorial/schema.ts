@@ -252,6 +252,11 @@ export type Script = z.infer<typeof ScriptSchema> & {
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
   /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
   voice_tags?: VoiceTagMark[];
+  /**
+   * This episode's own spoken forms, token to words ("RE4": "Resident Evil 4"), learned when the voice spelled a
+   * token out (src/voice/pronounce.ts). Applied wherever the narration is made speakable; captions keep the script.
+   */
+  say_as?: Record<string, string>;
   /** Evergreen ranking Shorts carry their entries so media can be gathered per entry. */
   entries?: Array<{
     rank: number;
@@ -398,10 +403,13 @@ export function tidyLoopLine(line: string): string {
  * writer's delivery tags go back in where their words still stand. Every other caller gets plain words.
  */
 export function narrationOf(
-  s: Pick<Script, "hook" | "beats" | "pulse_take" | "loop_line" | "voice_tags">,
+  s: Pick<
+    Script,
+    "hook" | "beats" | "pulse_take" | "loop_line" | "voice_tags" | "say_as"
+  >,
   opts: { tags?: boolean } = {},
 ): string {
-  const ctx = speakContext(); // one script: "gigabytes" in the hook, "gigs" after it
+  const ctx = speakContext(s.say_as); // one script: "gigabytes" in the hook, "gigs" after it
   const texts = [
     s.hook,
     ...s.beats.map((b) => b.narration),

@@ -2,6 +2,7 @@
 // segment is on screen when, and how captions are paged.
 
 import type { Word } from "../voice/elevenlabs.ts";
+import { SAID_BACK, SPOKEN_BACK } from "../voice/speakable.ts";
 
 export type SegmentKind = "hook" | "beat" | "desk" | "take" | "loop";
 
@@ -458,7 +459,53 @@ function twoDigit(
 const possessive = (text: string | undefined) =>
   (text ?? "").match(/(['’]s)[.,;:!?)"”’]*$/)?.[1] ?? "";
 
-export function displayWords(words: Word[]): Word[] {
+/**
+ * Spoken-only forms back to how the script writes them, before the figures are turned back (pure): a respelling
+ * the voice needed ("triple-A" is "AAA", "four K" is "4K", "P v P" is "PvP", speakable.ts SAID_BACK), a token
+ * spelled out letter by letter for the voice ("T G G" is "TGG"), and "point oh" read as a figure ("1.0").
+ */
+export function writtenForms(words: Word[]): Word[] {
+  const bare = (w: Word | undefined) =>
+    (w?.text ?? "").toLowerCase().replace(/[.,;:!?)"”’]+$/, "");
+  const tail = (w: Word) => w.text.match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+  const out: Word[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]!;
+    const hit = SAID_BACK.find(
+      ([said]) =>
+        said.every((p, k) => bare(words[i + k]) === p) &&
+        // Only the last word may carry punctuation.
+        said.slice(0, -1).every((_, k) => !tail(words[i + k]!)),
+    );
+    if (hit) {
+      const last = words[i + hit[0].length - 1]!;
+      out.push({ text: `${hit[1]}${tail(last)}`, start: w.start, end: last.end });
+      i += hit[0].length - 1;
+      continue;
+    }
+    // Single capital letters in a row ("T G G") are one token on screen; "I" is a word.
+    const letter = (x: Word | undefined) => /^[A-HJ-Z][.,;:!?)"”’]*$/.test(x?.text ?? "");
+    let j = i;
+    while (letter(words[j]) && letter(words[j + 1]) && !tail(words[j]!)) j++;
+    if (j > i) {
+      const run = words.slice(i, j + 1);
+      out.push({
+        text: run.map((x) => x.text.replace(/[^A-Z]/g, "")).join("") + tail(run.at(-1)!),
+        start: w.start,
+        end: run.at(-1)!.end,
+      });
+      i = j;
+      continue;
+    }
+    if (bare(w) === "oh" && bare(words[i - 1]) === "point" && !tail(words[i - 1]!))
+      out.push({ ...w, text: `zero${tail(w)}` });
+    else out.push(w);
+  }
+  return out;
+}
+
+export function displayWords(spoken: Word[]): Word[] {
+  const words = writtenForms(spoken);
   const out: Word[] = [];
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
@@ -688,11 +735,6 @@ export function displayWords(words: Word[]): Word[] {
     } else merged.push(w);
   }
   // A word respelt for the voice ("pollish", speakable.ts RESPELL) is shown as written ("polish").
-  const SPOKEN_BACK: Record<string, string> = {
-    pollish: "polish",
-    obbuh: "Obbe",
-    tohst: "t0st",
-  };
   return merged.map((w) => {
     const m = w.text.match(/^([A-Za-z]+)(.*)$/);
     const back = m ? SPOKEN_BACK[m[1]!.toLowerCase()] : undefined;

@@ -313,6 +313,11 @@ import {
 } from "./voice/breathcheck.ts";
 import { speakable, speakContext } from "./voice/speakable.ts";
 import {
+  pronunciationPlan,
+  recordUnknown,
+  unknownFile,
+} from "./voice/pronounce.ts";
+import {
   buildSegments,
   srtFromWords,
   type SegmentInput,
@@ -7215,7 +7220,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     // The desk experiment: the narrator up to the facts, the desk partner's question in a second voice,
     // the narrator's take and close; three takes stitched onto one timeline.
     const sc = ep.script_json!;
-    const ctx = speakContext(); // the same order as segmentInputs, so the timings match the voice
+    const ctx = speakContext(sc.say_as); // the same order as segmentInputs, so the timings match the voice
     const partA = speakable(
       [sc.hook, ...sc.beats.map((b) => b.narration)].join(" "),
       ctx,
@@ -7326,6 +7331,53 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
     ];
     if (found.length)
       await stopForWriterNotes(s, ep, "at the narration check", found);
+  }
+  // The letter watch (owner, 12 Nov 2026, after "GOTY" was read G-O-T-Y): capitals the voice spelled out that are
+  // not said as letters. A spoken form the tables or the script know goes into script_json.say_as and the take is
+  // voiced once more; an unknown token read cleanly as letters is logged for the tables and the alert digest.
+  if (check?.letters?.length && !twin && ep.script_json) {
+    const sc = ep.script_json;
+    const plan = pronunciationPlan(check.letters, sc);
+    await logEvent(s.db, ep.id, "pronunciation", {
+      spelled: check.letters.slice(0, 10),
+      say_as: plan.sayAs,
+      why: plan.why,
+      unknown: plan.unknown.map((u) => u.token),
+    });
+    if (plan.unknown.length) {
+      await recordUnknown(
+        unknownFile(s.cfg.dataDir),
+        plan.unknown,
+        ep.id,
+        s.now(),
+      ).catch((err) =>
+        log("warn", "pronunciation list not written", {
+          error: errorMessage(err),
+        }),
+      );
+      const names = [...new Set(plan.unknown.map((u) => u.token))];
+      await s.notify({
+        content: `🔤 The voice spelled out ${names.map((n) => `"${n}"`).join(", ")} letter by letter in "${sc.headline ?? ep.id}", and the pronunciation tables do not know ${names.length === 1 ? "it" : "them"} yet: logged in data/admin/pronunciation_unknown.json for src/voice/speakable.ts.`,
+      });
+    }
+    const fresh = Object.entries(plan.sayAs).filter(
+      ([k, v]) => sc.say_as?.[k] !== v,
+    );
+    if (fresh.length) {
+      sc.say_as = { ...sc.say_as, ...Object.fromEntries(fresh) };
+      await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(sc),
+      ]);
+      // A fault like any other: voiced again once, then reported and kept.
+      check.ok = false;
+      for (const [token, said] of fresh)
+        check.issues.push({
+          at: check.letters.find((l) => l.token === token)?.at ?? 0,
+          meant: token,
+          heard: `${token} spelled out letter by letter (next take says "${said}")`,
+        });
+    }
   }
   if (check) {
     await logEvent(s.db, ep.id, "narration_check", {
@@ -9537,7 +9589,7 @@ export async function steamAppForEntry(
 
 export function segmentInputs(script: Script, desk = false): SegmentInput[] {
   // One context in spoken order, as the voice was given it (narrationOf and the desk parts do the same).
-  const ctx = speakContext();
+  const ctx = speakContext(script.say_as);
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
     { kind: "hook", text: speakable(script.hook, ctx) },

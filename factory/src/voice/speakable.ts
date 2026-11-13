@@ -340,32 +340,280 @@ export function speakUnits(text: string, ctx?: SpeakContext): string {
  */
 export interface SpeakContext {
   units: Set<string>;
+  /**
+   * One episode's own spoken forms (script_json.say_as), learned by the narration check's letter watch
+   * (src/voice/pronounce.ts): "RE4" said "Resident Evil 4" because the Short is about Resident Evil 4.
+   */
+  sayAs?: Record<string, string>;
 }
-export const speakContext = (): SpeakContext => ({ units: new Set() });
+export const speakContext = (sayAs?: Record<string, string>): SpeakContext => ({
+  units: new Set(),
+  ...(sayAs && Object.keys(sayAs).length ? { sayAs } : {}),
+});
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** An episode's own spoken forms, whole words only and case as written. */
+export function applySayAs(
+  text: string,
+  sayAs?: Record<string, string>,
+): string {
+  if (!sayAs) return text;
+  // Longest first, so "RE4" is not half-replaced by an entry for "RE".
+  for (const [from, to] of Object.entries(sayAs).sort(
+    (a, b) => b[0].length - a[0].length,
+  ))
+    if (from.trim() && to.trim())
+      text = text.replace(
+        new RegExp(`(?<![\\w])${escapeRe(from)}(?![\\w])`, "g"),
+        to,
+      );
+  return text;
+}
+
+/**
+ * Said as letters, and rightly (the pronunciation audit, 12 Nov 2026: 1,700 narrations and 120 voiced episodes).
+ * The voice reads these letter by letter and that is how players say them: "PS5" is "P S five", "GTA 6" is
+ * "G T A six". The narration check's letter watch (pronounce.ts) leaves them alone; any other capitals the voice
+ * spells out are flagged, fixed where the tables or the script know a spoken form, and logged where not.
+ */
+export const SAID_AS_LETTERS = new Set(
+  // Platforms, hardware and formats.
+  (
+    "PC PS PSP PSN PSVR NES SNES GBA DS N XB HD SD UHD TV CD DVD USB SSD HDD CPU GPU RTX GTX RX AMD API OS VR AR XR " +
+    "VRR HDR DLSS FSR FOV HUD UI UX FPS RPM " +
+    // Genres and game words.
+    "DLC RPG JRPG CRPG ARPG MMO MMORPG RTS NPC PVP PVE QA AI CGI FMV DRM NFT XP HP " +
+    // Companies, studios, outlets and bodies said as letters.
+    "GTA EA IGN CJ DMA CDPR WB SIE MS AMD NBA NFL NHL UFC WWE MLB GDC CES BAFTA ESRB VGC IWGB SAG STJV KGB FBI CIA " +
+    "MI UN UK US USA EU BBC CNN HBO ABC NBC CBS ESPN DC MC BMG MCM ASC ROG TGG SNK NIS IGDB SEO " +
+    // Titles and series said as letters.
+    "ODST GTAO DMZ MSX VG IOS MIA FF RE MW BO RDR CEO COO CFO CTO VP PR HR NDA MFA DJ PT TD RC FM AM PM ET PT GMT UTC ID"
+  )
+    .split(/\s+/)
+    .filter(Boolean),
+);
 
 /**
  * Gaming abbreviations said as words, not letters (12 Nov 2026: the voice read "GOTY" as G-O-T-Y in the Resident
- * Evil Short). Letter names that are said as letters (DLC, RPG, NPC, FPS) stay as they are.
+ * Evil Short), and short forms said as their full names. Letter names that are said as letters (DLC, RPG, NPC,
+ * FPS, PS5, GTA) stay as they are (SAID_AS_LETTERS). Decisions follow how players say them out loud: "Final
+ * Fantasy 7", not "F F seven"; "Modern Warfare 4", not "M W four"; "Pub-G", not "P U B G".
  */
-const SAID_AS_WORDS: Array<[RegExp, string]> = [
+type Said = string | ((match: string, ...groups: string[]) => string);
+const SAID_AS_WORDS: Array<[RegExp, Said]> = [
   [/\bGOTYs\b/g, "Game of the Year awards"],
   [/\bGOTY\b/g, "Game of the Year"],
   [/\bTGA\b/g, "The Game Awards"],
   [/\bAAA\b/g, "triple-A"],
-  [/\bAA\b(?=\s+(?:game|games|studio|studios|title|titles|budget))/g, "double-A"],
+  [
+    /\bAA\b(?=\s+(?:game|games|studio|studios|title|titles|budget|release|releases|publisher|publishers))/g,
+    "double-A",
+  ],
   [/\bGaaS\b/g, "live-service"],
   [/\bMSRP\b/g, "list price"],
   [/\bIRL\b/g, "in real life"],
   [/\bTBA\b/g, "to be announced"],
   [/\bTBD\b/g, "to be decided"],
   [/\bWIP\b/g, "work in progress"],
+  [/\bNG\+/g, "New Game Plus"],
+  // A time zone after a time is said the way US presenters say it ("7 p.m. Eastern"): the voice read "ET" as "Eastern
+  // Time" in one place and "E T" in another (the GTA 6 buyer's guide, 9 Nov 2026).
+  [/(?<=(?:\d|\d\s?[AaPp]\.?[Mm]\.?|\bnoon|\bmidnight)\s?)ET\b/g, "Eastern"],
+  [/(?<=(?:\d|\d\s?[AaPp]\.?[Mm]\.?|\bnoon|\bmidnight)\s?)PT\b/g, "Pacific"],
+  [/(?<=(?:\d|\d\s?[AaPp]\.?[Mm]\.?|\bnoon|\bmidnight)\s?)CT\b/g, "Central"],
+  // "GMT" came out "G M T" in one take and "Greenwich Mean Time" in the next (the Xbox pre-load Short, re-voiced
+  // 13 Nov 2026): spaced letters pin it to the letters; captions and the check join them back.
+  [/\bGMT\b/g, "G M T"],
+  [/\bBST\b/g, "B S T"],
+  [/\bDDoS\b/g, "D-dos"],
+  [/\bMOBA(s?)\b/g, "Moba$1"],
+  [/\bPUBG\b/g, "Pub-G"],
+  [/\bFIFA\b/g, "Fifa"],
+  [/\bLEGO\b/g, "Lego"],
+  [/\bSEGA\b/g, "Sega"],
+  [/\bNASA\b/g, "Nasa"],
+  [/\bDICE\b/g, "Dice"],
+  [/\bRAGE\b/g, "Rage"],
+  [/\bSIM\b(?=\s+(?:card|cards|swap|swapping|swaps))/g, "sim"],
+  [/\bPALGN\b/g, "Pal G N"],
+  [/\bRAM\b/g, "ram"],
+  [/\bGAAP\b/g, "gap"],
+  [/\bPEGI\b/g, "Peggy"],
+  [/\bRAAM\b/g, "Raam"],
+  [
+    /\bCoD\b|\bCOD(?=\s+(?:game|games|fans|players|campaign|campaigns|season|seasons|franchise|series|is|was|has)\b)/g,
+    "Call of Duty",
+  ],
+  [/\bWoW\b/g, "World of Warcraft"],
+  [/\bLoL\b/g, "League of Legends"],
+  [/\bBotW\b/g, "Breath of the Wild"],
+  [/\bTotK\b/g, "Tears of the Kingdom"],
+  [/\bRDR\s?2\b/g, "Red Dead 2"],
+  // A series' letters and its number, run together or spaced: the full name, as people say it.
+  [/\bFF\s?(\d{1,2}|[IVX]{1,5})\b/g, "Final Fantasy $1"],
+  [/\bRE\s?([2-9])\b/g, "Resident Evil $1"],
+  [/\bMW\s?([1-4]|I{2,3}|IV)\b/g, "Modern Warfare $1"],
+  [/\bBO\s?([1-7]|I{2,3}|IV|VI{0,2})\b/g, "Black Ops $1"],
+  [/\bKH\s?(\d)\b/g, "Kingdom Hearts $1"],
+  [/\bMGS\s?(\d|[IVX]{1,3})\b/g, "Metal Gear Solid $1"],
+  [
+    /\bTLOU\s?(\d)?\b/g,
+    (_m: string, n?: string) => `The Last of Us${n ? ` Part ${n}` : ""}`,
+  ],
+  // "GTA6", "GTAV" and "GTA VI" are all "G T A six": the letters stay, the number gets its space.
+  [/\bGTA(?=\d)/g, "GTA "],
+  [/\bGTA(?=(?:IV|VI|V|III)\b)/g, "GTA "],
+  [/\bGTA\+/g, "GTA Plus"],
+  [/\b2K(\d{2})\b/g, "2K $1"],
 ];
 export function sayAbbreviations(text: string): string {
-  return SAID_AS_WORDS.reduce((t, [re, to]) => t.replace(re, to), text);
+  return SAID_AS_WORDS.reduce(
+    (t, [re, to]) =>
+      typeof to === "string" ? t.replace(re, to) : t.replace(re, to),
+    text,
+  );
 }
 
+/**
+ * Symbols, versions, resolutions, frame rates and web addresses as they are said (the pronunciation audit,
+ * 12 Nov 2026): "&" is "and", "90%" is "90 percent", "1.0" is "one point oh", "v1.2" is "version one point
+ * two", "4K" is "four K", "1080p" is "ten-eighty P", "60fps" is "60 FPS", "mod.io" is "mod dot I O" and a
+ * handle "@PulseGMG" is "at PulseGMG". An emoji is never said. Captions turn the figures back (timeline.ts).
+ */
+export function speakSymbols(text: string): string {
+  const DOT_WORD: Record<string, string> = {
+    com: "dot com",
+    net: "dot net",
+    org: "dot org",
+    io: "dot I O",
+    gg: "dot G G",
+    tv: "dot T V",
+    co: "dot co",
+    uk: "dot U K",
+  };
+  const RES: Record<string, string> = {
+    "480": "four-eighty",
+    "720": "seven-twenty",
+    "1080": "ten-eighty",
+    "1440": "fourteen-forty",
+    "2160": "twenty-one sixty",
+  };
+  return (
+    text
+      // A line in capitals ("CAN YOU LAND ON THE TARGET?", a challenge card read aloud) is words, not letters: each
+      // word in title case, letters players say as letters kept.
+      .replace(/\b[A-Z][A-Z'’]*(?:[\s,]+[A-Z][A-Z'’]*){2,}\b/g, (run) =>
+        run.replace(/[A-Z][A-Z'’]*/g, (w) =>
+          SAID_AS_LETTERS.has(w) || romanValue(w) !== undefined
+            ? w
+            : w[0] + w.slice(1).toLowerCase(),
+        ),
+      )
+      .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
+      .replace(/(?<![\w])[:;]-?[)(DPp](?![\w])/g, "")
+      .replace(
+        /\b([A-Za-z0-9][\w-]*)\.(com|net|org|io|gg|tv|co|uk)\b/gi,
+        (_m, name: string, tld: string) =>
+          `${name} ${DOT_WORD[tld.toLowerCase()]}`,
+      )
+      .replace(/(?<![\w@])@([A-Za-z_]\w{1,30})/g, "at $1")
+      .replace(/(?<=\w)&(?=\w)/g, " and ")
+      .replace(/\s&\s/g, " and ")
+      .replace(
+        /\b[vV](\d+(?:\.\d+)+|\d+)\b/g,
+        (_m, v: string) => `version ${versionWords(v)}`,
+      )
+      .replace(
+        /(?<![\w$£€¥.,])(\d+(?:\.\d+){2,})(?![\w.]|\.\d)/g,
+        (_m, v: string) => versionWords(v),
+      )
+      .replace(
+        /(?<![\w$£€¥.,])(\d+)\.0(?![\d%]|\.\d|\s?%)/g,
+        (_m, n: string) => `${numberWords(Number(n))} point oh`,
+      )
+      .replace(/(?<![\w.,])(\d{1,3})%(?![\w])/g, "$1 percent")
+      .replace(
+        /(?<![\w.$£€¥])([48])K\b/g,
+        (_m, n: string) => `${n === "4" ? "four" : "eight"} K`,
+      )
+      .replace(
+        /(?<![\w.])(480|720|1080|1440|2160)[pP]\b/g,
+        (_m, n: string) => `${RES[n]} P`,
+      )
+      .replace(/(?<=\d)\s?fps\b/gi, " FPS")
+      .replace(/\b(\d{1,3})\s?ms\b/g, "$1 milliseconds")
+      .replace(/\bX\s?\/\s?S\b/g, "X and S")
+      .replace(/(?<=\b[A-Za-z][\w]*)\+(?=\s|[.,;:!?]|$)/g, " Plus")
+      .replace(/\s\+\s/g, " plus ")
+      .replace(/(?<![\w#])#(\d{1,3})\b/g, "number $1")
+      // A camel-case name with a run of capitals inside is two words to the ear: "GTAGarage" is "GTA Garage",
+      // "SteamOS" is "Steam OS", "NielsenIQ" is "Nielsen IQ", "PvP" is "P v P", "DayZ" is "Day Z".
+      .replace(/\b([A-Z]{2,})([A-Z][a-z]{2,})\b/g, "$1 $2")
+      .replace(/\b([A-Z][a-z]{2,})([A-Z]{2,})\b/g, "$1 $2")
+      .replace(/\b(Pv)([PE])\b/g, "P v $2")
+      .replace(/\b(Day|Fighter)Z\b/g, "$1 Z")
+      .replace(/\bREDstream\b/g, "Red stream")
+      .replace(/\bmicroSD\b/g, "micro SD")
+      .replace(/\beSports\b/g, "esports")
+      .replace(/\s{2,}/g, " ")
+  );
+}
+
+/** "1.1.1" as "one point one point one"; a ".0" part is "oh". */
+function versionWords(v: string): string {
+  return v
+    .split(".")
+    .map((p, i) =>
+      i > 0 && p === "0"
+        ? "oh"
+        : i === 0
+          ? numberWords(Number(p))
+          : p.length > 1
+            ? numberWords(Number(p))
+            : ONES[Number(p)]!,
+    )
+    .join(" point ");
+}
+
+/**
+ * The spoken form of one token when the tables know it ("GOTY" is "Game of the Year", "FF7" is "Final Fantasy
+ * 7"), or undefined when they do not. The narration check's letter watch uses it to fix a token the voice spelled.
+ */
+export function knownSpokenForm(token: string): string | undefined {
+  const said = speakUnits(speakSymbols(sayAbbreviations(token)));
+  return said !== token ? said : undefined;
+}
+
+/**
+ * Spoken forms the screen shows as written: the voice says "triple-A", the captions show "AAA". Only respellings
+ * that are not ordinary prose come back; a full name ("Game of the Year", "Final Fantasy 7") is what was said and
+ * reads well on screen as it is. Each entry is the spoken words (case ignored, punctuation after the last word
+ * kept) and the written form. Used by displayWords in src/render/timeline.ts.
+ */
+export const SAID_BACK: Array<[string[], string]> = [
+  [["triple-a"], "AAA"],
+  [["double-a"], "AA"],
+  [["pub-g"], "PUBG"],
+  [["d-dos"], "DDoS"],
+  [["p", "v", "p"], "PvP"],
+  [["p", "v", "e"], "PvE"],
+  [["four", "k"], "4K"],
+  [["eight", "k"], "8K"],
+  [["four-eighty", "p"], "480p"],
+  [["seven-twenty", "p"], "720p"],
+  [["ten-eighty", "p"], "1080p"],
+  [["fourteen-forty", "p"], "1440p"],
+  [["new", "game", "plus"], "New Game+"],
+  [["gta", "plus"], "GTA+"],
+  [["peggy"], "PEGI"],
+  [["raam"], "RAAM"],
+  [["pal", "g", "n"], "PALGN"],
+  [["red", "stream"], "REDstream"],
+];
+
 export function speakable(text: string, ctx?: SpeakContext): string {
-  text = sayAbbreviations(text);
+  text = speakSymbols(sayAbbreviations(applySayAs(text, ctx?.sayAs)));
   return speakCadence(
     speakNumbers(
       speakYearsAndMoney(
@@ -477,7 +725,9 @@ export function roundPrices(text: string): string {
 
 /** Figures in words exactly as written, without rounding: for comparing a transcript with a script. */
 export function speakExact(text: string): string {
-  return speakNumbers(speakYearsAndMoney(speakUnits(text)));
+  return speakNumbers(
+    speakYearsAndMoney(speakUnits(speakSymbols(sayAbbreviations(text)))),
+  );
 }
 
 function speakYearsAndMoney(text: string): string {

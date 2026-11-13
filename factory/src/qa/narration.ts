@@ -9,7 +9,13 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { numberWords, speakExact } from "../voice/speakable.ts";
+import {
+  numberWords,
+  romanValue,
+  SAID_AS_LETTERS,
+  speakExact,
+  SPOKEN_BACK,
+} from "../voice/speakable.ts";
 
 const run = promisify(execFile);
 const SCRIPT = path.join(
@@ -38,6 +44,163 @@ export interface NarrationCheck {
   pauses: NarrationPause[];
   /** Everything the recogniser heard, for the check on what was actually said (src/editorial/writernotes.ts). */
   heard?: string;
+  /** Capitals the voice read letter by letter that are not said that way (the letter watch, letterReadings). */
+  letters?: LetterReading[];
+}
+
+/**
+ * A token the voice spelled out letter by letter where players say a word ("GOTY" read G-O-T-Y in the Resident
+ * Evil Short, 12 Nov 2026). `clean` is true when the letters heard are exactly the token's own, false when the
+ * reading was garbled (some letters, a different run).
+ */
+export interface LetterReading {
+  token: string;
+  at: number;
+  heard: string;
+  clean: boolean;
+}
+
+const coreOf = (t: string) =>
+  t
+    .replace(/^[("“‘'[]+/, "")
+    .replace(/[)"”’'\].,!?;:…]+$/, "")
+    .replace(/['’]s$/, "");
+
+/** The letters of a capitalised token as said ("PS5" is "PS", "NPCs" is "NPC"), or undefined when it is not one. */
+export function lettersOf(core: string): string | undefined {
+  if (!/^[A-Za-z0-9]{2,9}$/.test(core)) return undefined;
+  if ((core.match(/[A-Z]/g) ?? []).length < 2) return undefined;
+  const letters = core.replace(/\d+/g, "").replace(/(?<=[A-Z])s$/, "");
+  if (!/^[A-Za-z]{2,7}$/.test(letters)) return undefined;
+  if (romanValue(letters) !== undefined) return undefined;
+  return letters.toUpperCase();
+}
+
+/**
+ * The letter watch: every capitalised token in what the voice was given that is not on the said-as-letters list
+ * (SAID_AS_LETTERS), and that the voice read as separate letters. Found from the word timings: Whisper writes a
+ * spelled token as single letters in a row ("G", "O", "T", "Y"), as dotted or hyphened letters ("G-O-T-Y"), or as
+ * the capitals themselves held as long as spelled letters take at the take's own pace (LETTER_SHARE). Pure.
+ */
+export function letterReadings(
+  meant: TimedWord[],
+  heard: TimedWord[],
+): LetterReading[] {
+  // The two clocks can sit a little apart (Whisper's own habit): their median offset on matching long words.
+  const offs: number[] = [];
+  let from = 0;
+  for (const m of meant) {
+    const t = coreOf(m.text).toLowerCase();
+    if (t.length <= 3) continue;
+    for (let k = from; k < Math.min(heard.length, from + 8); k++)
+      if (coreOf(heard[k]!.text).toLowerCase() === t) {
+        offs.push(heard[k]!.start - m.start);
+        from = k + 1;
+        break;
+      }
+  }
+  offs.sort((a, b) => a - b);
+  const off = offs.length ? offs[Math.floor(offs.length / 2)]! : 0;
+  const pace = syllablePace(heard);
+  const out: LetterReading[] = [];
+  for (const m of meant) {
+    const core = coreOf(m.text);
+    const letters = lettersOf(core);
+    if (
+      !letters ||
+      SAID_AS_LETTERS.has(letters) ||
+      SAID_AS_LETTERS.has(core.toUpperCase())
+    )
+      continue;
+    const s = m.start + off - 0.2;
+    const e = (m.end ?? m.start + 0.3) + off + 0.2;
+    const hs = heard.filter((h) => (h.end ?? h.start + 0.2) > s && h.start < e);
+    if (!hs.length) continue;
+    const heardText = hs.map((h) => h.text).join(" ");
+    let spelled: string | undefined;
+    // Single letters in a row.
+    let run = "";
+    for (const h of hs) {
+      const c = coreOf(h.text).replace(/\.$/, "");
+      if (/^[A-Za-z]$/.test(c) && c !== "a" && c !== "I")
+        run += c.toUpperCase();
+      else if (run.length >= 2) break;
+      else run = "";
+    }
+    if (run.length >= 2) spelled = run;
+    // Dotted or hyphened letters in one word.
+    for (const h of hs) {
+      const c = coreOf(h.text);
+      if (!spelled && /^(?:[A-Za-z][.-]){1,}[A-Za-z]\.?$/.test(c))
+        spelled = c.replace(/[.-]/g, "").toUpperCase();
+    }
+    // The capitals themselves, held as long as letters take at this take's own pace.
+    if (!spelled) {
+      const k = heard.findIndex(
+        (h) => hs.includes(h) && lettersOf(coreOf(h.text)) === letters,
+      );
+      if (k >= 0) {
+        const same = heard[k]!;
+        // Whisper can stretch a word over the silence after it: it ends where the next word starts at the latest.
+        const end = Math.min(
+          same.end ?? same.start,
+          (heard[k + 1]?.start ?? Infinity) + 0.02,
+        );
+        const units = (end - same.start) / pace;
+        if (
+          units >= LETTER_SHARE * letterSyllables(letters) &&
+          units >= WORD_STRETCH * wordSyllables(letters)
+        )
+          spelled = letters;
+      }
+    }
+    if (!spelled) continue;
+    out.push({
+      token: core,
+      at: Math.round(m.start * 100) / 100,
+      heard: heardText,
+      clean: spelled === letters,
+    });
+  }
+  return out;
+}
+
+/**
+ * How long a spelled token holds, in syllables of the take's own pace (the audit, 12 Nov 2026, 125 voiced episodes):
+ * capitals said as letters held 0.6 to 1 syllable a letter (GTA 2.3, ESRB 4.0, IWGB 4.4, "GOTY" in the Requiem Short
+ * 3.8), names read as words about their own syllables (GameSpot 2.0, PlayStation 2.3, "PUBG" as "pub-G" 2.0 to 2.3,
+ * confirmed against a spelled reference take). A token is spelled when it holds at least LETTER_SHARE of its letters'
+ * syllables and WORD_STRETCH times the syllables it would have as a word.
+ */
+export const LETTER_SHARE = 0.7;
+export const WORD_STRETCH = 1.5;
+
+/** Syllables a run of letters takes spelled out: W is three ("double-u"), every other letter one. */
+export function letterSyllables(letters: string): number {
+  return [...letters].reduce((n, c) => n + (c === "W" ? 3 : 1), 0);
+}
+
+/** Syllables of a token said as a word (its vowel groups, at least one). */
+export function wordSyllables(token: string): number {
+  return Math.max(1, (token.toLowerCase().match(/[aeiouy]+/g) ?? []).length);
+}
+
+/** Seconds per syllable in a take: the median over its ordinary lower-case words (0.2 s when it has none). */
+export function syllablePace(heard: TimedWord[]): number {
+  const r = heard
+    .filter(
+      (h) =>
+        /^[a-z][a-z'’]+[.,!?]?$/.test(h.text) &&
+        h.end !== undefined &&
+        h.end - h.start > 0 &&
+        h.end - h.start < 1.2,
+    )
+    .map((h) => {
+      const w = h.text.toLowerCase().replace(/[^a-z]/g, "").replace(/e$/, "");
+      return (h.end! - h.start) / Math.max(1, (w.match(/[aeiouy]+/g) ?? []).length);
+    })
+    .sort((a, b) => a - b);
+  return r.length >= 5 ? r[Math.floor(r.length / 2)]! : 0.2;
 }
 
 export interface NarrationPause {
@@ -133,6 +296,10 @@ const UNIT_SAME: Record<string, string> = {
   megabyte: "megabytes",
   // Respelt for the voice (speakable.ts RESPELL): the same word to the check.
   pollish: "polish",
+  // "8.0" is said "eight point oh" (speakSymbols); a script that said "point zero" is the same figure.
+  oh: "zero",
+  // Sounds the same, so the ear cannot tell them apart: "Switch 2" heard as "Switch too" (pronunciation audit, 12 Nov 2026).
+  too: "two",
 };
 
 // "2nd" read aloud is "second": the same number to the check, however Whisper writes it (FFXIV doc,
@@ -173,13 +340,21 @@ const ORDINAL_SAME: Record<string, string> = {
 
 export function tokens(word: string): string[] {
   // Whisper writes "GTA 5" as "GTA V": a capital Roman numeral (never "I" or "X", which are words) is its number.
+  // Letters Whisper wrote with dots or hyphens ("G-O-T-Y", "U.S.") are the token itself ("GOTY", "US").
+  const dotted = /^(?:[A-Za-z][.-]){1,}[A-Za-z]\.?[,;:!?)"”’]*$/.exec(
+    word,
+  )?.[0];
+  if (dotted && !/[a-z]{2}/.test(dotted))
+    return [dotted.replace(/[^A-Za-z]/g, "").toLowerCase()];
   const roman = word.replace(/[.,;:!?)"”’]+$/, "");
   if (ROMAN[roman] !== undefined)
     return numberWords(ROMAN[roman]!).split(/[\s-]+/);
   // "64's" and "V's" are how Whisper writes "sixty-four's" and "five's" (false alarms on 2 and 3 Nov 2026, each costing
   // a second voicing): the number's words with the last one possessive, as the script spells it. A year goes through the voice's own reading below.
   const owned = /^(\d{1,3}|[IVX]+)['’]s$/.exec(roman)?.[1];
-  const ownedNumber = owned && (ROMAN[owned] ?? Number(owned));
+  // "XIV's" too (the FFXIV documentary and Short, 31 Oct and 4 Nov 2026: "fourteen's" heard as "XIV's" was a fault).
+  const ownedNumber =
+    owned && (ROMAN[owned] ?? romanValue(owned) ?? Number(owned));
   if (ownedNumber) {
     const said = numberWords(ownedNumber).split(/[\s-]+/);
     said[said.length - 1] += "s";
@@ -197,7 +372,9 @@ export function tokens(word: string): string[] {
       .replace(/[’']s$/, "s")
       .replace(/[^a-z0-9]/g, "");
     // "gigs" and "gigabytes" are the same word to the check (the voice shortens repeats, speakUnits).
-    t = UNIT_SAME[t] ?? ORDINAL_SAME[t] ?? t;
+    // A word respelt for the voice ("pollish", "obbuh") is the written word to the check (speakable.ts SPOKEN_BACK).
+    const back = SPOKEN_BACK[t]?.toLowerCase().replace(/[^a-z0-9]/g, "");
+    t = UNIT_SAME[t] ?? ORDINAL_SAME[t] ?? back ?? t;
     // The letter V inside a word ("V-Gauge") and Whisper's lone "V" for it are one sound; a lone capital V already reads
     // as five above, so the two have to meet or every "V-" name is a fault.
     if (t === "v") t = "five";
@@ -239,6 +416,37 @@ export function joinFigures(words: TimedWord[]): TimedWord[] {
     if (prev && /^[,.]\d/.test(w.text) && /\d$/.test(prev.text))
       out[out.length - 1] = { ...prev, text: prev.text + w.text, end: w.end };
     else out.push({ ...w });
+  }
+  return out;
+}
+
+/**
+ * Single capital letters in a row are one token: "T G G" (a token spelled out on purpose for the voice) against
+ * Whisper's "TGG", or Whisper's "G O T Y" against "GOTY". "I" is a word, never a letter here.
+ */
+export function joinLetters(words: TimedWord[]): TimedWord[] {
+  const out: TimedWord[] = [];
+  const letter = (t: string) => /^[A-HJ-Z][.,;:!?)"”’]*$/.test(t);
+  for (let i = 0; i < words.length; i++) {
+    let j = i;
+    while (
+      j + 1 < words.length &&
+      letter(words[j]!.text) &&
+      letter(words[j + 1]!.text) &&
+      !/[.,;:!?]$/.test(words[j]!.text)
+    )
+      j++;
+    if (j > i) {
+      const run = words.slice(i, j + 1);
+      out.push({
+        text:
+          run.map((w) => w.text.replace(/[^A-Z]/g, "")).join("") +
+          (run.at(-1)!.text.match(/[.,;:!?)"”’]+$/)?.[0] ?? ""),
+        start: run[0]!.start,
+        end: run.at(-1)!.end,
+      });
+      i = j;
+    } else out.push({ ...words[i]! });
   }
   return out;
 }
@@ -300,10 +508,10 @@ export function checkNarration(
 ): NarrationCheck {
   const heard = heardSpeech(allHeard);
   const A: Array<{ t: string; at: number; w: string }> = [];
-  for (const w of meant)
+  for (const w of joinLetters(meant))
     for (const t of tokens(w.text)) A.push({ t, at: w.start, w: w.text });
   const B: Array<{ t: string; at: number; w: string }> = [];
-  for (const w of joinFigures(heard))
+  for (const w of joinLetters(joinFigures(heard)))
     for (const t of tokens(w.text)) B.push({ t, at: w.start, w: w.text });
   // "a hundred" is "one hundred": the voice said "100" as people do, and Whisper wrote "a" (it failed
   // a good narration and paid for a second voicing, QA notes 26 Oct 2026). Only before a scale word.
@@ -375,6 +583,7 @@ export function checkNarration(
   const real = dropShuffles(issues);
   return {
     heard: heard.map((w) => w.text).join(" "),
+    letters: letterReadings(meant, heard),
     ok: !real.length && drift <= maxDrift,
     issues: real,
     drift: Math.round(drift * 100) / 100,

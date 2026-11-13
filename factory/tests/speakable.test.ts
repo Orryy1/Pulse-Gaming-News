@@ -14,7 +14,7 @@ test("prices are spoken in the currency on screen", () => {
   assert.equal(speakable("$1 deal"), "one dollar deal");
   assert.equal(speakable("a $1.5bn deal"), "a one point five billion dollars deal");
   assert.equal(speakable("$1,299.00"), "one thousand two hundred ninety-nine dollars");
-  assert.equal(speakable("No prices, 2027 and 86%."), "No prices, twenty twenty-seven and 86%.");
+  assert.equal(speakable("No prices, 2027 and 86%."), "No prices, twenty twenty-seven and 86 percent.");
   assert.equal(numberWords(105), "one hundred five");
   assert.equal(numberWords(3_000_042), "three million forty-two");
 });

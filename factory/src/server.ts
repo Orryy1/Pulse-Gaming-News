@@ -147,6 +147,7 @@ import {
   markGrowthReportSent,
 } from "./growthreport.ts";
 import { graphicsDigest } from "./gfxauditstep.ts";
+import { readUnknown, unknownDigestLine, unknownFile } from "./voice/pronounce.ts";
 import {
   alertDigestDue,
   markAlertDigestSent,
@@ -2369,7 +2370,10 @@ async function main(): Promise<void> {
       await markAlertDigestSent(db, key);
       // The graphics audit's day (GRAPHICS_AUDIT, src/gfxauditstep.ts): one line, when it ran.
       const gfxLine = await graphicsDigest(db, new Date()).catch(() => undefined);
-      const post = await writeAlertDigest(cfg, new Date(), gfxLine ? [gfxLine] : []);
+      // Abbreviations the voice spelled out that the pronunciation tables do not know yet (src/voice/pronounce.ts).
+      const sayLine = unknownDigestLine(await readUnknown(unknownFile(cfg.dataDir)));
+      const extra = [gfxLine, sayLine].filter((x): x is string => Boolean(x));
+      const post = await writeAlertDigest(cfg, new Date(), extra);
       if (post) await services.notify(post);
       // Platforms gone quiet are said once a morning, and only on a morning there are some (SOCIAL_SCOREBOARD).
       if (cfg.socialScoreboard) {

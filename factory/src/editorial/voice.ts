@@ -14,6 +14,7 @@
 import { writerNoteProblems } from "./writernotes.ts";
 import { spoilerProblems } from "../sceneindex/spoilers.ts";
 import { voiceTagsSetting } from "../config.ts";
+import { ATTRIBUTION_RULE, guardedAttributionProblems } from "./attribution.ts";
 
 /** The sign-off that closes every long video and weekly recap (Shorts loop instead). */
 export const SIGN_OFF = "That's the Pulse. Play something good this week.";
@@ -62,7 +63,9 @@ export const PULSE_FACT_RULES = `Facts and safety (non-negotiable):
 - Rumors are labeled in the first two sentences and stay labeled to the end: say "reportedly", "according to" or "rumored", name who is reporting it and, when known, their track record. Split what is confirmed from what is not. Never upgrade a rumor in the closer.
 - Advertiser-friendly: no profanity, no graphic violence, no shock language, no fake stakes or outrage. Sexual material is "adult content" or "mature content", never "sex"; drugs are "drugs"; real deaths and self-harm are mentioned gently or not at all.
 - The channel speaks as "we", never about itself in the third person ("Pulse is"); the name is on screen. No personal details about whoever runs it. No calls to like, subscribe or comment.
-- Everything you write in a narration field is recorded and published as it stands, with no human reading it first. It only ever tells the story. Never mention the source, an excerpt, the brief, a draft, these rules or what you were asked to do, never explain why you can't write something, and never ask for anything. Where the material is thin, say less about that part.`;
+- Everything you write in a narration field is recorded and published as it stands, with no human reading it first. It only ever tells the story. Never mention the source, an excerpt, the brief, a draft, these rules or what you were asked to do, never explain why you can't write something, and never ask for anything. Where the material is thin, say less about that part.
+
+${ATTRIBUTION_RULE}`;
 
 /** The running question that brings viewers back: asked in long-video and recap comments and posts. */
 export const RUNNING_QUESTION = "What are you playing this week?";
@@ -473,9 +476,16 @@ export function figuresIn(sentence: string): string[] {
  */
 export function writingProblems(
   text: string,
-  opts: { long?: boolean } = {},
+  opts: {
+    long?: boolean;
+    /** False where the caller checks credits itself with more context (a documentary chapter: src/pipeline.ts). */
+    attributions?: boolean;
+  } = {},
 ): string[] {
   const p: string[] = [];
+  // Credits (ATTRIBUTION_GUARD, src/editorial/attribution.ts): Wikipedia on air, one frame within a minute or over 3 times.
+  if (opts.attributions !== false)
+    p.push(...guardedAttributionProblems(text, { wpm: opts.long ? 140 : 165 }));
   const t = outsideQuotes(text);
   const words = wordsIn(t);
   // A colon reads like a slide label aloud; one before a quotation is fine, and so is a time ("9:30").

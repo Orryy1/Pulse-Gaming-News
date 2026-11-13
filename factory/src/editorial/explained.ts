@@ -859,7 +859,7 @@ export function explainedSource(
     ),
     ...(background
       ? [
-          `[Background: Wikipedia, "${background.title}"]\n${background.text.slice(0, 3000)}`,
+          `[Background: research notes, "${background.title}"]\n${background.text.slice(0, 3000)}`,
         ]
       : []),
   ];

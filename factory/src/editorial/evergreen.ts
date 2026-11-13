@@ -230,7 +230,7 @@ export type EvergreenScript = z.infer<typeof EvergreenScriptSchema>;
 const HOUSE = `You write for Pulse Gaming News, a YouTube Shorts channel about video games.
 
 ${voiceFor("ranking")}
-Never invent release years, scores, prices or player counts: use the facts provided (Steam figures and the Wikipedia background) or long-established public knowledge. Opinions are framed as opinion.`;
+Never invent release years, scores, prices or player counts: use the facts provided (Steam figures and the background notes) or long-established public knowledge. Opinions are framed as opinion.`;
 
 export function topicPrompt(): string {
   return `${HOUSE}
@@ -283,7 +283,7 @@ export async function writeEvergreen(
     ? `\n\nThis week's data (use these and nothing else):\n${brief}\n\n${FORMAT_RULES[topic.format] ?? ""}`
     : "";
   const factBlock = facts.length
-    ? `\n\nFacts for entries: Steam figures and a Wikipedia background (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
+    ? `\n\nFacts for entries: Steam figures and background notes (use these numbers, never others):\n${facts.map((f) => `- ${f.title}: ${factsText(f.facts)}`).join("\n")}`
     : "";
   const fb = feedback.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`

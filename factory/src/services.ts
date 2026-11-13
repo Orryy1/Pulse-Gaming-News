@@ -411,8 +411,22 @@ export function createServices(db: Db, cfg: Config): Services {
         () => accessToken(db, oauthConfig(cfg)),
         (units) => quotaAdd(db, new Date(), units),
       ),
+    // PRIMARY_SOURCES: each sentence keeps its references and the most-cited originals are read (src/discovery/wikirefs.ts).
     research: (title, fallbackQuery, maxChars, focus) =>
-      researchGame(title, fallbackQuery, maxChars, undefined, focus),
+      researchGame(
+        title,
+        fallbackQuery,
+        maxChars,
+        undefined,
+        focus,
+        cfg.primarySources
+          ? {
+              cited: true,
+              read: (url) => fetchArticle(url),
+              primaries: cfg.primarySourcesMax,
+            }
+          : undefined,
+      ),
     fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
       stockLibraries(cfg).length
         ? libraryStockClips(

@@ -481,7 +481,7 @@ export async function writeEveryGameShort(
   return llm.structured({
     site: "everygame.short",
     system: everyGameShortPrompt(entries.length),
-    content: `${rosterBrief(roster, entries)}${scope}\n\n${frame}${opts.background ? `\n\nBackground on the series (Wikipedia):\n${opts.background}` : ""}${fb}`,
+    content: `${rosterBrief(roster, entries)}${scope}\n\n${frame}${opts.background ? `\n\nBackground on the series (research notes):\n${opts.background}` : ""}${fb}`,
     schema: EveryGameShortSchema,
     effort: "medium",
   });
@@ -982,7 +982,7 @@ export async function outlineEveryGame(
   return llm.structured({
     site: "everygame.outline",
     system: `${everyGameOutlinePrompt()}${opts.openLoops ? `\n\n${opts.openLoops}` : ""}`,
-    content: `${rosterBrief(roster, roster.entries)}\n\nTitle: ${title}\nAngle: ${angle}\n\nSeries overview (Wikipedia):\n${seriesNotes || "(not available)"}${fb}`,
+    content: `${rosterBrief(roster, roster.entries)}\n\nTitle: ${title}\nAngle: ${angle}\n\nSeries overview (research notes):\n${seriesNotes || "(not available)"}${fb}`,
     schema: EveryGameOutlineSchema,
     effort: "medium",
   });

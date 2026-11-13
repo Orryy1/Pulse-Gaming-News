@@ -515,6 +515,11 @@ import { guardScript, stopForWriterNotes } from "./writerguard.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
+import { descriptionSources } from "./discovery/wikirefs.ts";
+import {
+  attributionProblems,
+  scrubNarration,
+} from "./editorial/attribution.ts";
 import {
   GatherBudget,
   GatherOutOfTime,
@@ -2243,7 +2248,7 @@ async function stepScriptEveryGame(
       facts: rosterBrief(roster, entries),
     },
     ...(background?.text
-      ? [{ title: `Wikipedia: ${background.title}`, facts: background.text }]
+      ? [{ title: `Background notes: ${background.title}`, facts: background.text }]
       : []),
   ];
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -2963,6 +2968,15 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
     });
     return undefined;
   }
+  // PRIMARY_SOURCES: the originals the article cites are read and become the Short's own sources, so the writer
+  // credits IGN or the studio, never Wikipedia (src/discovery/wikirefs.ts). The article stays as background.
+  const originals = s.cfg.primarySources
+    ? ((
+        await s
+          .research(topic.wikipedia_title, topic.game, 9000, topic.question)
+          .catch(() => undefined)
+      )?.primaries ?? [])
+    : [];
   const slug = whySlug(topic.question);
   // The reason to follow in the last line: our documentary or ranking on the game, else the series.
   const follow = await followFor(db, topic.game, now).catch(() => ({
@@ -2978,11 +2992,21 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
         url,
         summary: "",
         publishedAt: now.toISOString(),
-        source: "Wikipedia",
+        source: s.cfg.primarySources ? "Background notes" : "Wikipedia",
         sourceKind: "outlet",
       },
+      ...originals.map((o) => ({
+        title: o.title,
+        url: o.url,
+        summary: "",
+        publishedAt: now.toISOString(),
+        source: o.outlet,
+        sourceKind: "outlet" as const,
+      })),
     ],
-    sources: ["Wikipedia"],
+    sources: originals.length
+      ? [...new Set(originals.map((o) => o.outlet))]
+      : [s.cfg.primarySources ? "Background notes" : "Wikipedia"],
     hasOfficial: false,
     corroborated: true,
     rumourSignals: false,
@@ -4179,6 +4203,19 @@ async function stepScriptDocumentary(
             chapter.paragraphs.map((x) => x.narration).join(" "),
           ),
         );
+      // Credits across the whole video (ATTRIBUTION_GUARD, src/editorial/attribution.ts): Wikipedia on air, one frame
+      // within a minute or over three times. Sent back once, on the first draft; the friend pass varies what is left.
+      if (attempt === 0 && s.cfg.attributionGuard)
+        problems.push(
+          ...attributionProblems(
+            chapter.paragraphs.map((x) => x.narration).join(" "),
+            {
+              before: chapters
+                .map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" "))
+                .join(" "),
+            },
+          ),
+        );
       // The rules read the first draft only, so each costs one revision at most.
       let misses: string[] = [];
       if (attempt === 0 && ruleRevisions > 0) {
@@ -4286,6 +4323,27 @@ async function stepScriptDocumentary(
         );
       chapter = cut.chapter;
     }
+    // Wikipedia never reaches the voice: a line that still names it loses the credit (src/editorial/attribution.ts).
+    {
+      const scrubbed = scrubNarration(chapter!.paragraphs);
+      if (scrubbed.changed) {
+        chapter = { ...chapter!, paragraphs: scrubbed.lines };
+        warnings.push(
+          `${plan.game_title}: Wikipedia taken off the air in ${scrubbed.changed} line${scrubbed.changed === 1 ? "" : "s"}.`,
+        );
+      }
+    }
+    // The credits that still repeat across the video, for the friend pass to reword.
+    const credits = s.cfg.attributionGuard
+      ? attributionProblems(
+          chapter!.paragraphs.map((x) => x.narration).join(" "),
+          {
+            before: chapters
+              .map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" "))
+              .join(" "),
+          },
+        )
+      : [];
     // The friend pass (FRIEND_PASS) on a chapter the fact check passed clean: the delivery only, kept when no figure,
     // name or quote moved, no chapter rule newly breaks and the fact check passes it again.
     if (clean && friendPassOn(s.cfg, "documentary")) {
@@ -4299,9 +4357,20 @@ async function stepScriptDocumentary(
         });
       const friend = await friendPass({
         before,
-        write: () => friendChapter(s.llm, before, { tier: s.cfg.friendPassTier }),
+        write: () =>
+          friendChapter(s.llm, before, {
+            tier: s.cfg.friendPassTier,
+            credits,
+          }),
         guard: (after) => [
           ...friendChapterProblems(before, after),
+          // The pass may reword credits, never add a repeat or put Wikipedia back on air.
+          ...(s.cfg.attributionGuard
+            ? newProblems(
+                attributionProblems(before.paragraphs.map((x) => x.narration).join(" ")),
+                attributionProblems(after.paragraphs.map((x) => x.narration).join(" ")),
+              )
+            : []),
           ...newProblems(rulesFor(before), rulesFor(after)),
           ...chapterRefusal(after),
         ],
@@ -4513,13 +4582,20 @@ async function readRunSources(
   if (!list.length || (topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
     return { text: "", urls: [], read: 0, missed: [], parts: [] };
   const got = await Promise.all(
-    list.map((u) => s.fetchArticle(u.url).catch(() => undefined)),
+    list.map((u) =>
+      s.cfg.primarySources && /wikipedia\.org\//.test(u.url)
+        ? Promise.resolve(undefined)
+        : s.fetchArticle(u.url).catch(() => undefined),
+    ),
   );
   const parts: string[] = [];
   const urls: string[] = [];
   const missed: string[] = [];
   const each: Array<{ url: string; text: string }> = [];
   list.forEach((u, i) => {
+    // Wikipedia is the map (PRIMARY_SOURCES): its article is each chapter's research, with the references it cites,
+    // so a "[Wikipedia]" section would only teach the writer to say "according to Wikipedia" (10 Nov 2026).
+    if (s.cfg.primarySources && /wikipedia\.org\//.test(u.url)) return;
     const a = got[i];
     if (!a?.text?.trim()) return void missed.push(u.url);
     // A retrospective's press (a review, a making-of feature) is read at more length: its quotes are the chapter's.
@@ -13133,7 +13209,7 @@ export function videoMetadata(
       chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
       credits ? `\nSources:\n${credits}` : "",
       script.sources?.length
-        ? `\nSources:\n${script.sources.map((u) => `• Wikipedia: ${u}`).join("\n")}`
+        ? `\nSources:\n${descriptionSources(script.sources).join("\n")}`
         : "",
       // The photo libraries used, named (only Commons: the line the channel always had).
       affiliate?.shopUrl

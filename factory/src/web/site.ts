@@ -5,6 +5,7 @@
 // pages, the sitemaps and the RSS feed the newsletter sends from. Pure
 // renderers; the server supplies the episodes and the game cards.
 
+import { outletName } from "../discovery/wikirefs.ts";
 import type { Script } from "../editorial/schema.ts";
 import { polishTitle } from "../editorial/seo.ts";
 import { LIVE_AT } from "../analytics.ts";
@@ -409,7 +410,10 @@ export function articlePage(
     ...(ep.story_json.items ?? [])
       .slice(0, 6)
       .map((i) => ({ name: i.source, url: i.url })),
-    ...(s.sources ?? []).map((u) => ({ name: "Wikipedia", url: u })),
+    // The originals by name (PRIMARY_SOURCES); Wikipedia only for a script that listed nothing else.
+    ...(s.sources ?? [])
+      .filter((u, _i, all) => !/wikipedia\.org/.test(u) || all.every((x) => /wikipedia\.org/.test(x)))
+      .map((u) => ({ name: /wikipedia\.org/.test(u) ? "Wikipedia" : outletName(u), url: u })),
   ];
   const products = productsFor(s, ep.lane === "free");
   const shop = products.length

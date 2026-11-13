@@ -413,6 +413,9 @@ export interface Config {
   releaseGateMaxSlate: number; // 0-1, the same on the finished picture at the release gate
   releaseGateMinFootage: number; // 0-1, a documentary's share of game footage when the game has plenty of it
   releaseGateMinFootageRanking: number; // 0-1, the same for a ranking
+  primarySources: boolean; // Wikipedia research keeps each sentence's references and reads the most-cited originals, so scripts credit and the fact check reads the original (PRIMARY_SOURCES, src/discovery/wikirefs.ts, on)
+  primarySourcesMax: number; // at most this many originals read for one brief (PRIMARY_SOURCES_MAX, default 4)
+  attributionGuard: boolean; // "Wikipedia" on air and an attribution frame repeated within a minute or over 3 times go back to the writer once, then the friend pass varies them (ATTRIBUTION_GUARD, src/editorial/attribution.ts, on)
   writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   shortSkeletons: boolean; // news Shorts rotate structures (opening, order, length, ending), none shared by two of the newest 30 (SHORT_SKELETONS, src/editorial/skeletons.ts, off)
@@ -1412,6 +1415,9 @@ export function loadConfig(): Config {
     releaseGateMaxSlate: Number(str("RELEASE_GATE_MAX_SLATE", "0.08")) || 0.08,
     releaseGateMinFootage: Number(str("RELEASE_GATE_MIN_FOOTAGE", "0.1")) || 0.1,
     releaseGateMinFootageRanking: Number(str("RELEASE_GATE_MIN_FOOTAGE_RANKING", "0.05")) || 0.05,
+    primarySources: bool("PRIMARY_SOURCES", true),
+    primarySourcesMax: int("PRIMARY_SOURCES_MAX", 4),
+    attributionGuard: bool("ATTRIBUTION_GUARD", true),
     writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     shortSkeletons: bool("SHORT_SKELETONS", false),

@@ -9,6 +9,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { runCapped } from "../lib/child.ts";
+import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import {
@@ -23,12 +24,14 @@ import {
 import {
   CLIP_SECONDS,
   DARK_LUMA,
+  brightRun,
   darkestLuma,
+  frameLumas,
   MIN_CLIP_SECONDS,
   type FootageTarget,
 } from "../assets/clipscore.ts";
 import { clipBigText, clipOverlayText } from "../assets/cliptext.ts";
-import { checkClip, namedSubjects, SUBJECT_CONFIDENCE, type SubjectAsk } from "../assets/scenecheck.ts";
+import { checkClip, hasSubjectFallback, lookSubject, namedSubjects, SUBJECT_CONFIDENCE, type SubjectAsk } from "../assets/scenecheck.ts";
 import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
 import type { VisualAsset } from "../assets/steam.ts";
 import { brollShotAtPlace, findQuote, findShots, shotAtPlace } from "./lookup.ts";
@@ -248,7 +251,7 @@ export interface IndexedOptions {
    * SCENE_MATCH: a line that names someone or somewhere gets its clip only once this picture check sees them in it
    * (src/assets/scenecheck.ts checkClip on the local model); refused, the next best shot is tried, then the search.
    */
-  check?: (file: string, seconds: number, ask: SubjectAsk) => Promise<boolean>;
+  check?: (file: string, seconds: number, ask: SubjectAsk) => Promise<boolean | "unchecked">;
   /** SCENE_MATCH: how many next-best shots a named line may try after its first. */
   alternates?: number;
   /**
@@ -256,6 +259,11 @@ export interface IndexedOptions {
    * a shot it refuses is skipped (the clip itself is still checked after the cut). Unset: every shot is fetched.
    */
   precheck?: (from: number, seconds: number, ask: SubjectAsk) => Promise<boolean>;
+  /**
+   * SCENE_MATCH_UNCHECKED: a named moment nobody could check (the local model down, Codex not answering) is kept at
+   * the index's matched time as a lower-confidence pick: said so in its reason, never locked to its line.
+   */
+  uncheckedOk?: boolean;
   deps?: {
     /** Fetches [from, to) of the source at full quality into `file`. */
     download?: (
@@ -285,7 +293,8 @@ async function download(
   file: string,
   ytdlp: string,
 ): Promise<void> {
-  await runCapped(
+  // A 403 on the stream link is tried again with fresh formats, then another format (src/lib/ytsection.ts).
+  await downloadSectionRetrying(
     ytdlp,
     cutsceneDownloadArgs(
       { videoId, title: "", uploader: "", duration: to },
@@ -339,6 +348,8 @@ export interface ScreenVerdict {
   ok: boolean;
   why?: string;
   crop?: FrameCrop;
+  /** Kept only once cut to these seconds of it ([from, from + seconds)): a fade or cut to black left out. */
+  trim?: { from: number; seconds: number };
 }
 
 async function screen(
@@ -358,7 +369,19 @@ async function screen(
     const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds);
     if (!read.clean) return { ok: false, why: `text: ${read.words.slice(0, 4).join(" ")}` };
   }
-  return { ok: true };
+  // Every frame, not four a second: a fade or a cut to black between the samples is cut off, or the clip refused.
+  return brightTrim(await frameLumas(file));
+}
+
+/**
+ * The verdict on a clip's per-frame brightness (pure, 30 fps): kept whole when no frame is dark; else cut to its
+ * longest run of bright frames when that still makes a clip; else refused as dark. No frames read: kept.
+ */
+export function brightTrim(lumas: readonly number[], fps = 30): ScreenVerdict {
+  if (!lumas.length || lumas.every((l) => l >= DARK_LUMA)) return { ok: true };
+  const run = brightRun(lumas, DARK_LUMA);
+  if (!run || (run.end - run.start) / fps < MIN_CLIP_SECONDS) return { ok: false, why: "dark (a frame of black)" };
+  return { ok: true, trim: { from: run.start / fps, seconds: Math.floor(((run.end - run.start) / fps) * 30) / 30 } };
 }
 
 /** A screen given as a plain yes or no (tests, older callers) as a verdict. */
@@ -386,12 +409,17 @@ export async function indexedCutsceneClips(
   const out: CutsceneClip[] = [];
   try {
     let n = 0;
+    // The index's upload refused on every retry, twice: the rest of the lines go to the next upload (the search).
+    let refused = 0;
     const lineOf = new Map(o.targets.map((t) => [t.key, t.text]));
     for (const first of plan) {
+      if (refused >= 2) break;
       let p: PlannedClip | undefined;
       let rel = "";
       let confirmed = false;
+      let unchecked = false;
       let cropped: FrameCrop | undefined;
+      let trimmed: { from: number; seconds: number } | undefined;
       for (const c of [first, ...(first.alternates ?? [])]) {
         const i = n++;
         const section = path.join(work, `section_${i}.mp4`);
@@ -434,6 +462,21 @@ export async function indexedCutsceneClips(
               ...(verdict.ok ? {} : { why: verdict.why }),
             });
           }
+          trimmed = undefined;
+          // A fade or cut to black inside the clip: cut off, the clip kept with what is left.
+          if (verdict.ok && verdict.trim) {
+            const t = verdict.trim;
+            const tmp = `${file}.trim.mp4`;
+            try {
+              await (o.deps?.cut ?? cut)(file, t.from, t.seconds, tmp);
+              await fs.rename(tmp, file);
+              trimmed = t;
+              log("info", "scene index: dark frames cut off", { game: o.gameTitle, at: c.from, keeps: t });
+            } catch (err) {
+              await fs.rm(tmp, { force: true }).catch(() => undefined);
+              verdict = { ok: false, why: `dark, trim failed: ${errorMessage(err)}` };
+            }
+          }
           if (!verdict.ok) {
             await fs.rm(file, { force: true }).catch(() => undefined);
             log("info", "scene index: clip screened out", {
@@ -444,9 +487,18 @@ export async function indexedCutsceneClips(
             continue;
           }
           // SCENE_MATCH: the named moment must be seen in the clip itself, or the next best shot is tried.
+          unchecked = false;
           if (o.check && c.names?.length) {
-            const ok = await o.check(file, c.seconds, ask).catch(() => false);
-            if (!ok) {
+            const ok = await o.check(file, c.seconds, ask).catch(() => false as const);
+            if (ok === "unchecked" && o.uncheckedOk) {
+              unchecked = true;
+              log("info", "scene index: named moment kept unchecked (no picture check answered)", {
+                game: o.gameTitle,
+                key: c.key,
+                names: c.names,
+                at: c.from,
+              });
+            } else if (ok !== true) {
               await fs.rm(file, { force: true }).catch(() => undefined);
               log("info", "scene index: named moment not seen, next shot", {
                 game: o.gameTitle,
@@ -455,21 +507,23 @@ export async function indexedCutsceneClips(
                 at: c.from,
               });
               continue;
-            }
-            confirmed = true;
+            } else confirmed = true;
           }
         } catch (err) {
+          if (streamRefused(err)) refused++;
           log("warn", "scene index: clip not fetched", {
             game: o.gameTitle,
             at: c.from,
             error: errorMessage(err),
           });
           await fs.rm(file, { force: true }).catch(() => undefined);
+          if (refused >= 2) break;
           continue;
         } finally {
           await fs.rm(section, { force: true }).catch(() => undefined);
         }
         p = c;
+        if (trimmed) p = { ...c, from: Math.round((c.from + trimmed.from) * 100) / 100, seconds: trimmed.seconds };
         break;
       }
       if (!p) continue;
@@ -491,7 +545,7 @@ export async function indexedCutsceneClips(
         motion: Math.min(1, shot.motion / 40),
         luma: shot.luma,
         label: p.label,
-        reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence}${confirmed ? `, ${p.names!.join(", ")} seen by the picture check` : ""})`,
+        reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence}${confirmed ? `, ${p.names!.join(", ")} seen by the picture check` : ""}${unchecked ? `, unchecked: lower confidence, no picture check answered for ${p.names!.join(", ")}` : ""})`,
         provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted${cropped ? `, cropped clear of a ${cropped.corner} corner mark (${Math.round(cropped.keeps * 100)}% of the picture kept)` : ""}; chosen for ${p.key} by the scene index (${p.label})`,
         audio: false,
         credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
@@ -592,6 +646,12 @@ export function matchingSlug(slugs: string[], game: string): string | undefined 
   });
 }
 
+/** True when a game has a scene index here that fits the release a video is about (LONG_INDEX_FIRST). */
+export async function hasUsableIndex(dataDir: string, game: string, recentRelease?: boolean): Promise<boolean> {
+  const index = await findIndex(dataDir, game).catch(() => undefined);
+  return Boolean(index && indexFitsRelease(index, recentRelease));
+}
+
 async function findIndex(dataDir: string, game: string): Promise<SceneIndex | undefined> {
   const exact = await loadSceneIndex(dataDir, game);
   if (exact) return exact;
@@ -616,6 +676,11 @@ export async function proxyPrecheck(
   workDir: string,
   /** ARCHIVE_SECTIONS: with no proxy here, the shot's seconds are fetched small from YouTube instead. */
   sectionsVia?: string,
+  /**
+   * The local model could not look (the relay is down): pass the shot on to the check after the cut, which a fallback
+   * (SCENE_MATCH_CODEX) or SCENE_MATCH_UNCHECKED may settle, instead of refusing it unseen. Off: refused as before.
+   */
+  passWhenDown = false,
 ): Promise<IndexedOptions["precheck"]> {
   const proxy = path.join(dataDir, "sceneindex", index.slug || sceneSlug(index.game), index.proxy?.file || "proxy.mp4");
   const here = await fs.stat(proxy).then((s) => s.size > 0).catch(() => false);
@@ -628,13 +693,15 @@ export async function proxyPrecheck(
       let offset = from;
       if (!here) {
         video = path.join(dir, "section.mp4");
-        await runCapped(sectionsVia!, sectionArgs(index.source.videoId, from, from + seconds, 360, video), {
+        await downloadSectionRetrying(sectionsVia!, sectionArgs(index.source.videoId, from, from + seconds, 360, video), {
           timeout: 300_000,
           maxBuffer: 8 * 1024 * 1024,
         });
         offset = 0;
       }
       const r = await checkClip(video, seconds, ask, {
+        // The cheap first look is the local model's alone: a fallback looks once, at the cut clip.
+        look: subjectFrames,
         // The frames go to this run's own folder, never beside the index.
         grab: async (_f, times) => {
           const out: string[] = [];
@@ -649,7 +716,7 @@ export async function proxyPrecheck(
           return out;
         },
       });
-      return r.ok;
+      return r.ok || (passWhenDown && Boolean(r.unchecked));
     } finally {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
@@ -698,11 +765,13 @@ export async function indexFirstCutscenes<
     /** A long video (late-story footage may follow its spoiler warning) and whether it opens with one. */
     long?: boolean;
     spoilerWarned?: boolean;
+    /** LONG_INDEX_FIRST: the index's clips alone ("index"), or the search alone ("search"). */
+    mode?: "index" | "search";
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
     Partial<
-      Pick<Config, "spoilerGuard" | "sceneMatch" | "archiveSections" | "longInWorldText" | "longWatermarkCrop" | "longWatermarkCropKeep">
+      Pick<Config, "spoilerGuard" | "sceneMatch" | "sceneMatchUnchecked" | "archiveSections" | "longInWorldText" | "longWatermarkCrop" | "longWatermarkCropKeep">
     >,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
@@ -731,7 +800,7 @@ export async function indexFirstCutscenes<
           return ok;
         })
     : search;
-  if (!cfg.sceneIndex) return searched(options);
+  if (!cfg.sceneIndex || options.mode === "search") return searched(options);
   return cutscenesIndexFirst(
     options,
     async (o) => {
@@ -757,8 +826,18 @@ export async function indexFirstCutscenes<
         // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
         ...(cfg.sceneMatch
           ? {
-              check: async (file: string, seconds: number, ask: SubjectAsk) => (await checkClip(file, seconds, ask)).ok,
-              precheck: await proxyPrecheck(cfg.dataDir, index, o.episodeDir, cfg.archiveSections ? cfg.ytdlpPath : undefined),
+              check: async (file: string, seconds: number, ask: SubjectAsk) => {
+                const r = await checkClip(file, seconds, ask);
+                return r.ok ? true : r.unchecked ? ("unchecked" as const) : false;
+              },
+              precheck: await proxyPrecheck(
+                cfg.dataDir,
+                index,
+                o.episodeDir,
+                cfg.archiveSections ? cfg.ytdlpPath : undefined,
+                hasSubjectFallback() || Boolean(cfg.sceneMatchUnchecked),
+              ),
+              ...(cfg.sceneMatchUnchecked ? { uncheckedOk: true } : {}),
             }
           : {}),
         ...(allow
@@ -770,7 +849,7 @@ export async function indexFirstCutscenes<
         deps,
       });
     },
-    searched,
+    options.mode === "index" ? async () => [] : searched,
   );
 }
 /** SCENE_MATCH stills: a still is one frame, checked on its own (the frame on the word is the whole picture). */
@@ -926,7 +1005,7 @@ export async function indexedSceneStills(
             (
               deps.look ??
               (async (f: string, a: SubjectAsk) =>
-                (await subjectFrames([f], a))[0])
+                (await lookSubject([f], a))[0])
             )(file, ask),
             (
               deps.screen ?? (async (f: string) => (await screenFrames([f]))[0])

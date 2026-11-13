@@ -591,3 +591,81 @@ test("LONG_CHAPTER_FOOTAGE: each chapter of a long video gets its own publisher 
   // Nintendo is stills only: no footage allowance at all.
   assert.equal(caps[1], 0);
 });
+
+test("LONG_CLIP_REMAINDERS: a clip cut short keeps its unseen rest, which plays later from where it stopped", () => {
+  const { words, segments, duration } = timeline(8);
+  // Few, long clips: each first shot uses part of one, the rest is left over.
+  const clips = Array.from({ length: 3 }, (_, k) => ({
+    durationSeconds: 14,
+    beatIndex: 0,
+    span: { source: "m", from: k * 100, to: k * 100 + 14 },
+  }));
+  const images = Array.from({ length: 8 }, (_, m) => ({
+    kind: "screenshot",
+    aspect: 16 / 9,
+    beatIndex: 0,
+    moment: m,
+    file: `s${m}.jpg`,
+  }));
+  const input = {
+    segments,
+    words,
+    durationSeconds: duration,
+    images,
+    clips,
+    variant: 0,
+    momentCounts: [8],
+    noRepeats: true,
+    movingFirst: true,
+    accentStillFrames: 75,
+    rhythm: true,
+  };
+  const fps = 30;
+  const seconds = (p: ReturnType<typeof buildLongPlan>) =>
+    p.shots.filter((s) => s.segment === 1 && s.media.type === "clip").reduce((n, s) => n + (s.end - s.start) / fps, 0);
+  const off = buildLongPlan(input);
+  const on = buildLongPlan({ ...input, clipRemainders: true });
+  assert.ok(seconds(on) >= seconds(off), `no less footage: ${seconds(on)} >= ${seconds(off)}`);
+  // Every frame of a clip plays at most once in the chapter: its shots never overlap inside it.
+  const byClip = new Map<number, Array<[number, number]>>();
+  for (const s of on.shots.filter((x) => x.segment === 1 && x.media.type === "clip")) {
+    const from = s.media.from ?? 0;
+    byClip.set(s.media.index, [...(byClip.get(s.media.index) ?? []), [from, from + s.end - s.start]]);
+    assert.ok(from + (s.end - s.start) <= 14 * fps, "never past the clip's last frame");
+  }
+  for (const spans of byClip.values()) {
+    const sorted = [...spans].sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < sorted.length; i++) assert.ok(sorted[i]![0] >= sorted[i - 1]![1], "no frame twice");
+  }
+  // A remainder never follows its own first part straight away.
+  const shots = on.shots;
+  for (let i = 1; i < shots.length; i++)
+    if (shots[i]!.media.type === "clip" && shots[i]!.media.from)
+      assert.ok(!(shots[i - 1]!.media.type === "clip" && shots[i - 1]!.media.index === shots[i]!.media.index));
+  assert.ok(on.shots.some((s) => s.media.type === "clip" && (s.media.from ?? 0) > 0), "a remainder plays");
+  // Off: no shot starts partway into its clip.
+  assert.ok(off.shots.every((s) => s.media.from === undefined));
+});
+
+test("a one-game film's opening and closing play its chapters' footage before a still (oneGame, LONG_MOVING_FIRST)", () => {
+  const { words, segments, duration } = timeline(2);
+  const clips = Array.from({ length: 12 }, (_, k) => ({
+    durationSeconds: 5,
+    beatIndex: 0,
+    span: { source: "m", from: k * 100, to: k * 100 + 5 },
+  }));
+  const images = [
+    { kind: "hero", aspect: 16 / 9, file: "topic.jpg" },
+    { kind: "screenshot", aspect: 16 / 9, beatIndex: 0, file: "c.jpg" },
+  ];
+  const input = { segments, words, durationSeconds: duration, images, clips, variant: 0, movingFirst: true, accentStillFrames: 75 };
+  const edges = (p: ReturnType<typeof buildLongPlan>) =>
+    p.shots
+      .filter((s) => segments[s.segment]!.kind !== "beat" && s.media.type === "clip")
+      .reduce((n, s) => n + (s.end - s.start), 0);
+  const off = buildLongPlan(input);
+  const on = buildLongPlan({ ...input, oneGame: true });
+  assert.ok(edges(on) > edges(off), `more footage in the opening and closing: ${edges(on)} > ${edges(off)}`);
+  // Off by default: the opening keeps to its own media.
+  assert.equal(edges(buildLongPlan({ ...input, movingFirst: false, oneGame: true })), edges(buildLongPlan({ ...input, movingFirst: false })));
+});

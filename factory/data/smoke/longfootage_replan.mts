@@ -19,10 +19,10 @@ fs.mkdirSync(out, { recursive: true });
 const cfg = loadConfig();
 const db = new PGlite(dbDir);
 const rows = ids.length
-  ? (await db.query<any>(`SELECT id, lane, script_json, assets_json, updated_at FROM episodes WHERE id = ANY($1)`, [ids])).rows
+  ? (await db.query<any>(`SELECT id, lane, script_json, assets_json, factcheck_json, updated_at FROM episodes WHERE id = ANY($1)`, [ids])).rows
   : (
       await db.query<any>(
-        `SELECT id, lane, script_json, assets_json, updated_at FROM episodes
+        `SELECT id, lane, script_json, assets_json, factcheck_json, updated_at FROM episodes
           WHERE lane IN ('longform','documentary') AND assets_json->'longPlan' IS NOT NULL AND id NOT LIKE 'retro%'
           ORDER BY updated_at DESC LIMIT 5`,
       )
@@ -39,7 +39,7 @@ for (const ep of rows) {
   const craft = longCraft(script, cfg);
   const fillerAt = (e: number, m: number) =>
     cfg.fillers && !(a.quietMoments ?? []).includes(`${e}:${m}`) ? moments[e]?.[m]?.filler : undefined;
-  const input = (movingFirst: boolean) => ({
+  const input = (movingFirst: boolean, clipRemainders = false) => ({
     segments,
     words,
     durationSeconds: duration,
@@ -67,6 +67,7 @@ for (const ep of rows) {
     coldOpenFrames: craft.coldOpen ? coldOpenTiming(LONG_FPS).frames : 0,
     movingFirst,
     accentStillFrames: Math.round(cfg.longAccentStillSeconds * LONG_FPS),
+    clipRemainders,
   });
   const measure = (plan: any) => movingShare({ shots: plan.shots, fps: plan.fps, words, clips: a.clips ?? [] });
   const row = {
@@ -81,8 +82,12 @@ for (const ep of rows) {
     rendered: a.longPlan ? measure(a.longPlan) : null,
     replanned: measure(buildLongPlan(input(false))),
     movingFirst: measure(buildLongPlan(input(true))),
+    // 13 Nov 2026 (LONG_CLIP_REMAINDERS): a clip cut short keeps its unseen rest for a later shot.
+    remainders: measure(buildLongPlan(input(true, true))),
+    // A retrospective is one game: its opening and closing may play its chapters' footage.
+    ...(ep.factcheck_json?.topic?.retro ? { oneGame: measure(buildLongPlan({ ...input(true, true), oneGame: true })) } : {}),
   };
   res.push(row);
-  console.log(JSON.stringify({ id: row.id, title: row.title, minutes: row.minutes, clips: row.clips, clipSeconds: row.clipSeconds, rendered: row.rendered?.movingShare, replanned: row.replanned.movingShare, movingFirst: row.movingFirst.movingShare, stills: [row.rendered?.stillShare, row.replanned.stillShare, row.movingFirst.stillShare] }));
+  console.log(JSON.stringify({ id: row.id, title: row.title, minutes: row.minutes, clips: row.clips, clipSeconds: row.clipSeconds, rendered: row.rendered?.movingShare, replanned: row.replanned.movingShare, movingFirst: row.movingFirst.movingShare, remainders: row.remainders.movingShare, oneGame: (row as any).oneGame?.movingShare, stills: [row.rendered?.stillShare, row.replanned.stillShare, row.movingFirst.stillShare, row.remainders.stillShare] }));
 }
 fs.writeFileSync(path.join(out, "replan.json"), JSON.stringify(res, null, 2));

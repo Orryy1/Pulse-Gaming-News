@@ -528,7 +528,7 @@ export function bookendEcho(
   const first = hookShots.find((s) => s.end > coldFrames) ?? hookShots[0];
   if (!first) return plan;
   const fits = (s: LongShot) =>
-    s.media.type !== "clip" || (clipFrames[s.media.index] ?? 0) >= to - from;
+    s.media.type !== "clip" || (clipFrames[s.media.index] ?? 0) - (s.media.from ?? 0) >= to - from;
   const source = fits(first)
     ? first
     : hookShots.find((s) => s.media.type === "image");

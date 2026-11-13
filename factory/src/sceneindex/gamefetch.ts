@@ -130,76 +130,9 @@ export const SERIES_RESOLVE_DAYS = 45;
 
 // ---------------------------------------------------------------- what counts as one game
 
-/** Fans' short forms, written out: "GTA6" and "GTA 6" are "grand theft auto 6". */
-const SHORT_FORMS: Record<string, string> = {
-  gta: "grand theft auto",
-  cod: "call of duty",
-  rdr: "red dead redemption",
-  tlou: "the last of us",
-  ff: "final fantasy",
-  mgs: "metal gear solid",
-  totk: "the legend of zelda tears of the kingdom",
-  botw: "the legend of zelda breath of the wild",
-};
-
-const ONES: Record<string, number> = {
-  "": 0,
-  i: 1,
-  ii: 2,
-  iii: 3,
-  iv: 4,
-  v: 5,
-  vi: 6,
-  vii: 7,
-  viii: 8,
-  ix: 9,
-};
-
-/** A Roman numeral's value, II to XXXIX; "I" and "X" alone stay words ("I Am Bread", "Mega Man X"). */
-function romanNumber(w: string): number | undefined {
-  if (!w || w === "i" || w === "x") return undefined;
-  const m = /^(x{0,3})(ix|iv|v?i{0,3})$/.exec(w);
-  if (!m) return undefined;
-  const n = m[1]!.length * 10 + (ONES[m[2]!] ?? 0);
-  return n >= 2 ? n : undefined;
-}
-
-/**
- * The key one game has however it is written (pure): case, accents, punctuation, a leading "The", the fans' short
- * forms and Roman numerals all set aside. "GTA VI", "GTA 6", "gta6", "Grand Theft Auto 6" and "Grand Theft Auto
- * VI" are all "grand theft auto 6"; "Grand Theft Auto: San Andreas" and "GTA San Andreas" are one key.
- */
-export function canonicalGame(name: string): string {
-  const words = name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[®™©]/g, "")
-    .replace(/['’]/g, "")
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .flatMap((w) => {
-      const m = /^([a-z]+?)(\d+|[ivx]+)?$/.exec(w);
-      const short = m ? SHORT_FORMS[m[1]!] : undefined;
-      if (
-        short &&
-        (m![2] === undefined ||
-          /^\d+$/.test(m![2]) ||
-          romanNumber(m![2]) !== undefined)
-      )
-        return [...short.split(" "), ...(m![2] ? [m![2]] : [])];
-      return [w];
-    })
-    .map((w) => {
-      const n = romanNumber(w);
-      return n === undefined ? w : String(n);
-    });
-  if (words[0] === "the" && words.length > 1) words.shift();
-  return words.join(" ");
-}
+// canonicalGame and isSeriesName live in ./gamenames.ts (shared with the footage title rules).
+export { canonicalGame, isSeriesName } from "./gamenames.ts";
+import { canonicalGame, isSeriesName } from "./gamenames.ts";
 
 /** Consoles, handhelds, headsets and their services: never a game, whatever the videos say. */
 const HARDWARE_ANCHOR =
@@ -231,73 +164,6 @@ export function isAddOn(name: string, steamType?: string): boolean {
   );
 }
 
-/**
- * Series and franchise names that are not one game: a story or a video "about GTA" names a series. Names that
- * are also one current game (Doom, Minecraft, Fortnite, Hades, Starfield, Hollow Knight) are not here.
- */
-const SERIES_NAMES = [
-  "GTA",
-  "Grand Theft Auto",
-  "Zelda",
-  "The Legend of Zelda",
-  "Mario",
-  "Super Mario",
-  "Pokemon",
-  "God of War",
-  "The Elder Scrolls",
-  "Red Dead",
-  "Fallout",
-  "The Witcher",
-  "Cyberpunk",
-  "Resident Evil",
-  "Final Fantasy",
-  "Assassin's Creed",
-  "Halo",
-  "Gears of War",
-  "Spider-Man",
-  "Battlefield",
-  "Mass Effect",
-  "Monster Hunter",
-  "Street Fighter",
-  "Metal Gear",
-  "Metal Gear Solid",
-  "Silent Hill",
-  "Horizon",
-  "Diablo",
-  "Warcraft",
-  "Persona",
-  "Kingdom Hearts",
-  "Destiny",
-  "Call of Duty",
-  "Forza",
-  "Borderlands",
-  "Half-Life",
-  "Star Wars",
-  "Sonic",
-  "Sonic the Hedgehog",
-  "Metroid",
-  "Kirby",
-  "Donkey Kong",
-  "Mortal Kombat",
-  "Tekken",
-  "Tomb Raider",
-  "Far Cry",
-  "Need for Speed",
-  "The Sims",
-  "Batman",
-  "Dark Souls",
-  "Uncharted",
-  "Crash Bandicoot",
-  "Dragon Quest",
-  "Yakuza",
-  "Like a Dragon",
-];
-const SERIES_KEYS = new Set(SERIES_NAMES.map(canonicalGame));
-
-/** True when a name is a series rather than one game (pure): "GTA", "Fallout", "Zelda". */
-export function isSeriesName(name: string): boolean {
-  return SERIES_KEYS.has(canonicalGame(name));
-}
 
 const hasWords = (hay: string, needle: string) =>
   needle !== "" && ` ${hay} `.includes(` ${needle} `);

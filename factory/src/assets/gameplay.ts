@@ -26,6 +26,7 @@ import { screenFrames } from "./localvision.ts";
 import { FFMPEG, FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
 import { PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import { trailerMatchesGame, distinguishing } from "./commons.ts";
+import { namesOtherEntry, titleNamesGame } from "../sceneindex/gamenames.ts";
 import { normTitle } from "./igdb.ts";
 import { junkTitleReason, notOutYet } from "./junk.ts";
 import { fetchWithTimeout, errorMessage, log } from "../lib/util.ts";
@@ -59,7 +60,10 @@ export function gameplayTitleFits(
 ): boolean {
   if (NOT_GAMEPLAY.test(title) || !GAMEPLAY.test(title)) return false;
   const words = distinguishing(game, franchise);
-  if (words.length) return trailerMatchesGame(title, game, franchise);
+  if (words.length && trailerMatchesGame(title, game, franchise)) return true;
+  // Fans' aliases ("GTA SA", "San Andreas", "GTA 5"): never another numbered entry of the series.
+  if (titleNamesGame(title, game)) return !wrongEntry(game, title) && !namesOtherEntry(title, game);
+  if (words.length) return false;
   // The first game shares the series name: the title must name the series and no numbered sibling.
   const t = title.toLowerCase();
   return (

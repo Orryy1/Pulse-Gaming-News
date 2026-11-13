@@ -185,7 +185,7 @@ export async function clipBigText(
 
 /** Words only an uploader puts on a game's picture (one OCR word each; links and handles by their marks). */
 export const OVERLAY_WORD =
-  /^(subscribe[ds]?|subscribers?|patreon|twitch|youtube|discord|instagram|tiktok|twitter|facebook|walkthrough|playthrough|longplay|gameplay|commentary|cutscenes?|1080p|1440p|2160p|720p|60fps|30fps|50fps|4k|8k|remastered)$/i;
+  /^(subscribe[ds]?|subscribers?|patreon|twitch|youtube|discord|instagram|tiktok|twitter|facebook|walkthrough|playthrough|longplay|gameplay|commentary|cutscenes?|1080p|1440p|2160p|720p|60fps|30fps|50fps|4k|8k|remastered|kinemast\w*|inshot|capcut|filmora|wondershare|bandicam|fraps|ocam|powerdirector|vivavideo)$/i;
 /** A link, a handle or a tag, wherever it sits. */
 export const OVERLAY_MARK = /(^www\.|https?:|\.(com|net|org|tv|gg|io|co)\b|^@\w{3,}|^#\w{3,})/i;
 /** Lettering that is the game's own HUD: money, a clock, a score, ammo (digits and their marks). */

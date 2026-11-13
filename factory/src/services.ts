@@ -8,6 +8,8 @@ import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
 import { createClaude, withVoiceTags } from "./editorial/llm.ts";
 import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
+import { codexSubjectLook, setSubjectFallback } from "./assets/scenecheck.ts";
+import { codexSegmentLook, setSegmentLookFallback } from "./assets/localvision.ts";
 import { localVisionDown, onVisionRelayAlert } from "./assets/localvision.ts";
 import { withVisionGuard } from "./assets/visionrelay.ts";
 import { FEEDS } from "./discovery/feeds.ts";
@@ -207,6 +209,36 @@ export function createServices(db: Db, cfg: Config): Services {
           })(new Set<string>()),
         })
       : claude;
+  // SCENE_MATCH_CODEX: while the local vision model is down, Codex makes the named-moment picture check. Its client
+  // has a fallback that refuses, so a look Codex fails is left unjudged: never a call to Claude or a paid API.
+  const codexOnly = (site: string) =>
+    createCodexLlm(
+      {
+        structured: async () => {
+          throw new Error(`${site}: Codex only, no fallback`);
+        },
+      },
+      {
+        enabled: true,
+        sites: [site],
+        vision: true,
+        timeoutMs: Math.min(cfg.codexTimeoutMinutes, 5) * 60_000,
+        python: cfg.codexPython,
+        runnerDir: cfg.codexRunnerDir,
+        tmpDir: path.join(cfg.dataDir, "tmp", "codex"),
+      },
+    );
+  setSubjectFallback(
+    cfg.sceneMatch && cfg.sceneMatchCodex && cfg.codexVision && codexHere
+      ? codexSubjectLook(codexOnly("scenematch"), cfg.sceneMatchCodexMax)
+      : undefined,
+  );
+  // FOOTAGE_LOOK_CODEX: the same for footage first's segment looks.
+  setSegmentLookFallback(
+    cfg.footageLookCodex && cfg.codexVision && codexHere
+      ? codexSegmentLook(codexOnly("footagelook"), cfg.footageLookCodexMax)
+      : undefined,
+  );
   // Codex's answers get the same treatment as Claude's: delivery tags out of every field, kept for the voice only.
   const llm = withVoiceTags(routed);
   if (routed !== claude)

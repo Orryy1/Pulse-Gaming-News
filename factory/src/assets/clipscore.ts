@@ -167,6 +167,38 @@ export async function darkestLuma(file: string): Promise<number | undefined> {
   }
 }
 
+/**
+ * Every frame's mean brightness, in order (13 Nov 2026): darkestLuma samples four frames a second and missed a
+ * cutscene's fade to black in its last four frames, which played as a black flash in the San Andreas proof.
+ */
+export async function frameLumas(file: string): Promise<number[]> {
+  try {
+    const { stderr, stdout } = await run(
+      FFMPEG,
+      ["-hide_banner", "-i", file, "-vf", "signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      { maxBuffer: 32 * 1024 * 1024 },
+    );
+    return parseSignalStats(`${stdout}\n${stderr}`).map((f) => f.luma);
+  } catch {
+    return [];
+  }
+}
+
+/** The longest run of frames at `floor` brightness or more, as [start, end) frame numbers (pure); undefined for none. */
+export function brightRun(lumas: readonly number[], floor = DARK_LUMA): { start: number; end: number } | undefined {
+  let best: { start: number; end: number } | undefined;
+  let from = -1;
+  for (let i = 0; i <= lumas.length; i++) {
+    const ok = i < lumas.length && lumas[i]! >= floor;
+    if (ok && from < 0) from = i;
+    if (!ok && from >= 0) {
+      if (!best || i - from > best.end - best.start) best = { start: from, end: i };
+      from = -1;
+    }
+  }
+  return best;
+}
+
 /** Parses ffmpeg's metadata=print output into per-frame brightness and motion. */
 export function parseSignalStats(
   text: string,

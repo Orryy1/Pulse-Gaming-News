@@ -6,6 +6,7 @@
 import path from "node:path";
 import fs from "node:fs/promises";
 import { runCapped } from "../lib/child.ts";
+import { downloadSectionRetrying } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import {
@@ -14,7 +15,7 @@ import {
   DARK_LUMA,
   videoSeconds,
 } from "./clipscore.ts";
-import { lookFrames } from "./localvision.ts";
+import { lookFramesOrFallback } from "./localvision.ts";
 import type { Llm } from "../editorial/llm.ts";
 import { judgeGameplay } from "./gameplay.ts";
 import {
@@ -150,7 +151,8 @@ export function footageFirstDeps(o: {
       : undefined,
     download: async (url, from, to, dest) => {
       await fs.mkdir(path.dirname(dest), { recursive: true });
-      await run(
+      // A 403 on the stream link is tried again with fresh formats, then another format (src/lib/ytsection.ts).
+      await downloadSectionRetrying(
         ytdlp,
         [
           "--no-playlist",
@@ -301,7 +303,8 @@ export function footageFirstDeps(o: {
         : undefined;
     },
     ocr: (files) => readText(files),
-    look: (files) => lookFrames(files),
+    // FOOTAGE_LOOK_CODEX: frames the local model could not judge go to Codex (localvision.ts lookFramesOrFallback).
+    look: (files) => lookFramesOrFallback(files),
     cut: async (file, at, seconds, dest) => {
       await run(FFMPEG, [
         "-v",

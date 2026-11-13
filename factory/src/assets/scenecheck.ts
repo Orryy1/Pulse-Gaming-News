@@ -5,13 +5,19 @@
 // is shown the clip's own frames, from the one on the word to the one before the cut, and must see the named
 // character (else place or thing) in them. A moment it does not confirm is not used; the line keeps the ordinary
 // pick. With the local model down nothing is confirmed, so nothing unconfirmed slips through.
+// 13 Nov 2026: with the PC relay down the San Andreas proof lost 13 named moments. SCENE_MATCH_CODEX: Codex (the
+// ChatGPT plan, CODEX_VISION) looks instead when the local model cannot (setSubjectFallback, wired in services.ts;
+// never Claude, never a paid API); a check nobody could make is "unchecked", which SCENE_MATCH_UNCHECKED may accept
+// at the scene index's matched time as a lower-confidence pick (src/sceneindex/footage.ts).
 
 import fs from "node:fs/promises";
 import path from "node:path";
 import { runCapped } from "../lib/child.ts";
 import { FFMPEG } from "../lib/bin.ts";
-import { log } from "../lib/util.ts";
-import { subjectFrames, type SubjectLook } from "./localvision.ts";
+import { errorMessage, log } from "../lib/util.ts";
+import { subjectAnswer, subjectFrames, subjectPrompt, type SubjectLook } from "./localvision.ts";
+import { z } from "zod";
+import type { Llm, LlmContent } from "../editorial/llm.ts";
 import type { Assignment, Candidate, FootageTarget } from "./clipscore.ts";
 
 /** A frame counts as showing the subject from this certainty up. */
@@ -144,6 +150,79 @@ export interface ClipCheck {
   ok: boolean;
   looks: Array<SubjectLook | undefined>;
   times: number[];
+  /** No frame could be judged at all (the local model down and no fallback answered): not a "no". */
+  unchecked?: boolean;
+}
+
+/** Looks at frames for a named subject: one answer per frame, undefined where it could not judge. */
+export type SubjectLooker = (files: string[], ask: SubjectAsk) => Promise<Array<SubjectLook | undefined>>;
+
+/** SCENE_MATCH_CODEX: who looks when the local model cannot (src/services.ts sets it). Unset: nobody. */
+let fallbackLook: SubjectLooker | undefined;
+
+/** Sets (or, with nothing, clears) the looker used while the local vision model is down. */
+export function setSubjectFallback(look?: SubjectLooker): void {
+  fallbackLook = look;
+}
+
+/** True when a fallback looker is set (SCENE_MATCH_CODEX). */
+export function hasSubjectFallback(): boolean {
+  return fallbackLook !== undefined;
+}
+
+/**
+ * The subject check on frames: the free local model; when it judged none of them (the relay is down), the fallback
+ * looker (Codex) once for all of them. A fallback that fails leaves the frames unjudged.
+ */
+export async function lookSubject(files: string[], ask: SubjectAsk): Promise<Array<SubjectLook | undefined>> {
+  const looks = await subjectFrames(files, ask);
+  if (!files.length || looks.some(Boolean) || !fallbackLook) return looks;
+  try {
+    const alt = await fallbackLook(files, ask);
+    return files.map((_, i) => alt[i]);
+  } catch (err) {
+    log("warn", "scene match: fallback picture check failed", { game: ask.game, error: errorMessage(err) });
+    return looks;
+  }
+}
+
+const CodexLooks = z.object({
+  frames: z.array(z.object({ shows: z.boolean(), confidence: z.number(), seen: z.string() })),
+});
+
+/**
+ * The subject check as one vision call over all of a clip's frames (SCENE_MATCH_CODEX): the same question the local
+ * model gets, answered per frame in order. `llm` must be Codex only (services.ts builds one that never falls back to
+ * Claude); `max` caps the calls a process makes, past which frames go unjudged.
+ */
+export function codexSubjectLook(llm: Llm, max = 40): SubjectLooker {
+  let calls = 0;
+  return async (files, ask) => {
+    if (calls >= max) return files.map(() => undefined);
+    calls++;
+    const content: LlmContent = [];
+    for (const [i, file] of files.entries()) {
+      content.push({ type: "text", text: `Frame ${i + 1}` });
+      content.push({
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(file)).toString("base64") },
+      });
+    }
+    content.push({
+      type: "text",
+      text: `${subjectPrompt(ask)}\nAnswer for every frame, in order: frames[0] is Frame 1. There are ${files.length} frames.`,
+    });
+    const r = await llm.structured({
+      tier: "mid",
+      site: "scenematch",
+      system:
+        "You check whether frames of a video game cutscene show a named character, place or thing. Answer only from what is visible.",
+      content,
+      schema: CodexLooks,
+      effort: "low",
+    });
+    return files.map((_, i) => subjectAnswer(r.frames[i]));
+  };
 }
 
 /**
@@ -168,8 +247,9 @@ export async function checkClip(
   let frames: string[] = [];
   try {
     frames = await (deps.grab ?? grabFrames)(file, times, dir);
-    const looks = await (deps.look ?? subjectFrames)(frames, ask);
+    const looks = await (deps.look ?? lookSubject)(frames, ask);
     const ok = confirmedBy(looks);
+    const unchecked = looks.every((l) => l === undefined);
     log(
       "info",
       ok
@@ -183,7 +263,7 @@ export async function checkClip(
         ),
       },
     );
-    return { ok, looks, times };
+    return { ok, looks, times, ...(unchecked ? { unchecked } : {}) };
   } catch (err) {
     log("warn", "scene match: picture check failed", {
       game: ask.game,
@@ -219,7 +299,7 @@ export function localSceneReview(
     for (const t of targets) {
       const names = namedSubjects(t, [], gameTitle);
       if (!names.length || !candidates.length) continue;
-      const looks = await (deps.look ?? subjectFrames)(
+      const looks = await (deps.look ?? lookSubject)(
         candidates.map((c) => c.frame),
         { game: gameTitle, line: t.text, names },
       );

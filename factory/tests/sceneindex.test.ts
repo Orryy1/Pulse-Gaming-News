@@ -1947,3 +1947,58 @@ test("SCENE_MATCH stills: a frame with text across it is refused even when it sh
   assert.equal(stillConfirmed(undefined, clean), false);
   assert.equal(firstSpoken("And at Lon Lon Ranch, Malon sings to Epona.", ["Malon", "Epona", "Lon Lon Ranch"]), "Lon Lon Ranch");
 });
+
+test("SCENE_MATCH_UNCHECKED: a named moment nobody could check is kept at the index's time, flagged, never locked to its line", async () => {
+  const run = async (uncheckedOk: boolean) =>
+    indexedCutsceneClips({
+      index: sample(),
+      gameTitle: GAME,
+      episodeDir: await tmpDir(),
+      targets: [target("beat:2", "Ganondorf rises over Hyrule Castle")],
+      maxClips: 8,
+      maxSeconds: 60,
+      minConfidence: 0.2,
+      ytdlp: "yt-dlp",
+      check: async () => "unchecked" as const,
+      uncheckedOk,
+      deps: {
+        download: async (_id, from, _to, file) => fs.writeFile(file, String(from)),
+        cut: async (_s, _a, _x, file) => fs.writeFile(file, "c"),
+        screen: async () => true,
+      },
+    });
+  const kept = await run(true);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0]!.cutsceneMatch, undefined, "an unchecked moment is not the line's alone");
+  assert.match(kept[0]!.reason ?? "", /unchecked: lower confidence/);
+  // Off: refused unseen, as before (the search covers the line).
+  assert.equal((await run(false)).length, 0);
+});
+
+test("a scene index whose upload YouTube keeps refusing gives the rest of its lines to the search", async () => {
+  let tries = 0;
+  const clips = await indexedCutsceneClips({
+    index: sample(),
+    gameTitle: GAME,
+    episodeDir: await tmpDir(),
+    targets: [
+      target("beat:0", "Ganondorf rises over Hyrule Castle"),
+      target("beat:1", "The camera drifts through the mist"),
+      target("beat:2", "Link wakes in the forest"),
+    ],
+    maxClips: 8,
+    maxSeconds: 60,
+    minConfidence: 0.2,
+    ytdlp: "yt-dlp",
+    deps: {
+      download: async () => {
+        tries++;
+        throw new Error("ERROR: unable to download video data: HTTP Error 403: Forbidden");
+      },
+      cut: async (_s, _a, _x, file) => fs.writeFile(file, "c"),
+      screen: async () => true,
+    },
+  });
+  assert.equal(clips.length, 0);
+  assert.equal(tries, 2, "two refusals and the index stops");
+});

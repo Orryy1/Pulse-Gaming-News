@@ -827,6 +827,23 @@ export interface Config {
   cutsceneScenes: boolean; // CUTSCENE_SCENES: seek named scenes in the cutscene search (chapters, captions, scene uploads); off by default
   /** SCENE_MATCH: a line that names a moment ("Ganondorf rises") gets an indexed or located clip only once the free local vision model sees it there (src/assets/scenecheck.ts); off: the index and the search decide alone. */
   sceneMatch: boolean;
+  /**
+   * SCENE_MATCH_CODEX (+ SCENE_MATCH_CODEX_MAX, default 40 calls a process): while the local vision model is down,
+   * Codex (CODEX_VISION, the ChatGPT plan) makes the named-moment picture check instead; never Claude or a paid API.
+   */
+  sceneMatchCodex: boolean;
+  sceneMatchCodexMax: number;
+  /**
+   * SCENE_MATCH_UNCHECKED: a named moment nobody could check (local model down, Codex not answering) is kept at the
+   * scene index's matched time as a lower-confidence pick (said so in its reason) instead of being refused unseen.
+   */
+  sceneMatchUnchecked: boolean;
+  /**
+   * FOOTAGE_LOOK_CODEX (+ FOOTAGE_LOOK_CODEX_MAX, default 30 calls of six segments a process): footage first's segment
+   * looks the local model could not make (the PC relay down) go to Codex (CODEX_VISION); never Claude or a paid API.
+   */
+  footageLookCodex: boolean;
+  footageLookCodexMax: number;
   cutsceneQuotes: boolean; // CUTSCENE_QUOTES: collect caption quotes for future review
   cutsceneMaxSeconds: number; // CUTSCENE_MAX_SECONDS: per-Short budget, scaled for long videos
   /** SCENE_INDEX: the per-game scene index (src/sceneindex): built in the background, looked up before cutscenes are searched. Off: nothing is built or read. */
@@ -1074,6 +1091,17 @@ export interface Config {
   retroRemasterFootage: boolean;
   longMovingFirst: boolean;
   longAccentStillSeconds: number;
+  /**
+   * LONG_INDEX_FIRST: a long video's chapter whose game has a scene index gathers from the game's own movie (the
+   * index's upload) before trailers and generic gameplay, so its footage allowance goes to the game's own scenes
+   * first; later trailer and gameplay clips are trimmed to what the allowance leaves (src/pipeline.ts gatherMedia).
+   */
+  longIndexFirst: boolean;
+  /**
+   * LONG_CLIP_REMAINDERS: a clip used for a shorter slot is not spent: the long planner may play its unseen
+   * remainder later from where the first shot stopped (a per-shot source offset, src/render/longplan.ts).
+   */
+  longClipRemainders: boolean;
   /**
    * LONG_CHAPTER_FOOTAGE: every long video's chapters each get their own publisher footage allowance, as a
    * retrospective's do (src/retrostep.ts longChapterFootageCaps, RETRO_FOOTAGE_SCALE, RETRO_CHAPTER_FOOTAGE_MAX), in
@@ -1742,6 +1770,11 @@ export function loadConfig(): Config {
     // Off unless asked for: the Mac runs CUTSCENE_FOOTAGE=true, and the scene search must not switch on with it unreviewed.
     cutsceneScenes: bool("CUTSCENE_SCENES", false),
     sceneMatch: bool("SCENE_MATCH", false),
+    sceneMatchCodex: bool("SCENE_MATCH_CODEX", false),
+    sceneMatchCodexMax: Math.max(0, int("SCENE_MATCH_CODEX_MAX", 40)),
+    sceneMatchUnchecked: bool("SCENE_MATCH_UNCHECKED", false),
+    footageLookCodex: bool("FOOTAGE_LOOK_CODEX", false),
+    footageLookCodexMax: Math.max(0, int("FOOTAGE_LOOK_CODEX_MAX", 30)),
     cutsceneQuotes: bool("CUTSCENE_QUOTES", false),
     cutsceneMaxSeconds: Math.max(0, int("CUTSCENE_MAX_SECONDS", 20)),
     sceneIndex: bool("SCENE_INDEX", false),
@@ -1884,6 +1917,8 @@ export function loadConfig(): Config {
     retroRemasterFootage: bool("RETRO_REMASTER_FOOTAGE", false),
     longMovingFirst: bool("LONG_MOVING_FIRST", false),
     longAccentStillSeconds: Math.min(8, Math.max(1.3, Number(str("LONG_ACCENT_STILL_SECONDS", "2.5")) || 2.5)),
+    longIndexFirst: bool("LONG_INDEX_FIRST", false),
+    longClipRemainders: bool("LONG_CLIP_REMAINDERS", false),
     longChapterFootage: bool("LONG_CHAPTER_FOOTAGE", false),
     funnelTest: bool("FUNNEL_TEST", false),
     funnelShare: Math.min(1, Math.max(0, Number(str("FUNNEL_SHARE", "0.5")) || 0)),

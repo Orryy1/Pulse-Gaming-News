@@ -727,7 +727,9 @@ const Clip: React.FC<{
   level?: (f: number) => number;
   /** An audio-only proof render: the clip's sound alone, no picture decoded. */
   audioOnly?: boolean;
-}> = ({ src, audio, frames, punchAt, startFrom, level, audioOnly }) => {
+  /** LONG_CLIP_REMAINDERS: the shot plays the clip from this frame (its unseen remainder), sound and picture. */
+  offset?: number;
+}> = ({ src, audio, frames, punchAt, startFrom, level, audioOnly, offset }) => {
   const frame = useCurrentFrame();
   const punch =
     punchAt === undefined
@@ -739,6 +741,7 @@ const Clip: React.FC<{
     return sound ? (
       <Audio
         src={src}
+        startFrom={offset || undefined}
         volume={
           level
             ? (f) =>
@@ -753,7 +756,7 @@ const Clip: React.FC<{
       <OffthreadVideo
         src={src}
         muted={!sound}
-        startFrom={startFrom}
+        startFrom={(offset ?? 0) + (startFrom ?? 0) || undefined}
         volume={
           sound
             ? level
@@ -1297,6 +1300,7 @@ const Backdrop: React.FC<{
               audio={clip.audio}
               frames={len}
               startFrom={jl?.get(i)?.lead}
+              offset={s.media.from}
               level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
               audioOnly
             />
@@ -1328,6 +1332,7 @@ const Backdrop: React.FC<{
                 audio={clip.audio}
                 frames={len}
                 startFrom={jl?.get(i)?.lead}
+                offset={s.media.from}
                 level={gameLevel ? (f) => gameLevel(s.start + f) : undefined}
                 audioOnly={audioOnly}
                 punchAt={

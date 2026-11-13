@@ -137,7 +137,8 @@ if (PHASE === "script") {
   const id = fs.readFileSync(idFile, "utf8").trim();
   const ep = (await getEpisode(db, id))!;
   const a = structuredClone(ep.assets_json) as any;
-  for (const k of ["images", "clips", "longPlan", "plan", "video", "poster", "thumbnail", "thumbs"]) delete a[k];
+  // The footage-first pass too (13 Nov 2026): kept, its record stopped the next render gathering it again.
+  for (const k of ["images", "clips", "longPlan", "plan", "video", "poster", "thumbnail", "thumbs", "footageFirst"]) delete a[k];
   await db.query(
     `UPDATE episodes SET status = 'voiced', assets_json = $2, qa_json = NULL, attempts = 0, last_error = NULL, next_attempt_at = NULL WHERE id = $1`,
     [id, JSON.stringify(a)],

@@ -66,9 +66,9 @@ res.clip_screen_seconds_by_source = kinds;
 res.quotes = quotes.map((q) => ({ speaker: q.speaker, text: q.text, start: r3(q.start), seconds: r3(q.seconds) }));
 res.quote_seconds = r3(quotes.reduce((n, q) => n + Number(q.seconds || 0), 0));
 const ga = ev.filter((e) => e.kind === "game_audio").at(-1)?.detail;
-res.game_audio_event = ga ? { on: ga.on, hearable: ga.hearable, heard: (ga.heard ?? []).length } : null;
-const heardIdx = new Set((ga?.heard ?? []).map((h: any) => h.index));
-res.game_sound_screen_seconds = r3(clipShots.filter((s) => heardIdx.has(s.media.index) || (clips[s.media.index]?.audio && clipSoundKind(clips[s.media.index]) !== "none")).reduce((n, s) => n + (s.end - s.start) / fps, 0));
+res.game_audio_event = ga ? { on: ga.on, hearable: ga.hearable, heard: Array.isArray(ga.heard) ? ga.heard.length : ga.heard } : null;
+const heardIdx = new Set(Array.isArray(ga?.heard) ? ga.heard.map((h: any) => h.index) : []);
+res.game_sound_screen_seconds = r3(clipShots.filter((s) => heardIdx.has(s.media.index) || (clips[s.media.index]?.audio && !["none", "trailer"].includes(clipSoundKind(clips[s.media.index])))).reduce((n, s) => n + (s.end - s.start) / fps, 0));
 res.quote_events = ev.filter((e) => e.kind === "character_quote").map((e) => e.detail);
 // ---------------------------------------------------------------- Whisper
 const wav = path.join(OUT!, "asr.wav");

@@ -769,3 +769,16 @@ test("inside a spoiler window a line past the opening share is never offered or 
   await fs.rm(path.join(dir, "sceneindex"), { recursive: true, force: true });
   await db.close();
 });
+
+test("quotes move with the chapter breathers put into the narration after them", async () => {
+  const { quotesAfterGaps } = await import("../src/charquotestep.ts");
+  const quotes = [
+    { id: "a", start: 40, end: 42.5, seconds: 2.5 },
+    { id: "b", start: 243.81, seconds: 2.54 },
+  ];
+  const moved = quotesAfterGaps(quotes, [{ at: 69, seconds: 4 }]);
+  assert.equal(moved[0], quotes[0], "a quote before the breather stays where it was");
+  assert.equal(moved[1]!.start, 247.81);
+  assert.equal(quotesAfterGaps(quotes, [{ at: 10, seconds: 4 }, { at: 100, seconds: 2 }])[0]!.end, 46.5);
+  assert.deepEqual(quotesAfterGaps(quotes, []), quotes);
+});

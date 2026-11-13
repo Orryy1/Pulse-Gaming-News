@@ -689,6 +689,7 @@ import {
 import { askExperiments } from "./streamasks/job.ts";
 import {
   fitClipsAroundQuotes,
+  quotesAfterGaps,
   openQuotes,
   prepareQuotes,
   quoteLongStep,
@@ -7593,6 +7594,12 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
       if (gaps.length) {
         await insertSilence(path.join(dir, "voice.mp3"), gaps);
         narration.words = openWords(narration.words, gaps);
+        // The quotes and the caption words were timed before the breathers went in: they move with the narration
+        // (13 Nov 2026: a quote after one chapter breather played 4 s early, over the narrator, and its own gap stayed silent).
+        if (opened) {
+          opened.quotes = quotesAfterGaps(opened.quotes ?? [], gaps);
+          if (opened.captionWords) opened.captionWords = openWords(opened.captionWords, gaps);
+        }
         narration.durationSeconds += gaps.reduce((n, g) => n + g.seconds, 0);
         breaks = gapSpans(gaps)
           .filter((g) => g.kind === "chapter")

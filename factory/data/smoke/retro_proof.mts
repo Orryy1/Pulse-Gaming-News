@@ -145,6 +145,28 @@ if (PHASE === "script") {
   const dir = path.join(SB, "episodes", id);
   for (const f of fs.readdirSync(dir)) if (/^entry_\d+$/.test(f)) fs.renameSync(path.join(dir, f), path.join(dir, `old_${f}_${Date.now()}`));
   console.log("REGATHER", id, Object.keys(a).join(","));
+} else if (PHASE === "replan") {
+  // The voice and the media kept; the quotes moved past the chapter breathers voiced before the 13 Nov fix (the
+  // breaks are in final time: each one's place before it went in is its start less the breaks before it), then the
+  // plan and the video dropped so the next render plans and draws again.
+  const id = fs.readFileSync(idFile, "utf8").trim();
+  const ep = (await getEpisode(db, id))!;
+  const a = structuredClone(ep.assets_json) as any;
+  const { quotesAfterGaps } = await import("../../src/charquotestep.ts");
+  let before = 0;
+  const gaps = (a.breaks ?? []).map((b: { start: number; end: number }) => {
+    const g = { at: b.start - before, seconds: b.end - b.start };
+    before += g.seconds;
+    return g;
+  });
+  const was = (a.quotes ?? []).map((q: any) => q.start);
+  if (process.env.REPLAN_SHIFT_QUOTES === "1") a.quotes = quotesAfterGaps(a.quotes ?? [], gaps);
+  for (const k of ["longPlan", "plan", "video", "poster", "thumbnail", "thumbs"]) delete a[k];
+  await db.query(
+    `UPDATE episodes SET status = 'voiced', assets_json = $2, qa_json = NULL, attempts = 0, last_error = NULL, next_attempt_at = NULL WHERE id = $1`,
+    [id, JSON.stringify(a)],
+  );
+  console.log("REPLAN", id, JSON.stringify({ gaps, quotes: (a.quotes ?? []).map((q: any, i: number) => ({ was: was[i], now: q.start })) }));
 } else if (PHASE === "render") {
   const id = fs.readFileSync(idFile, "utf8").trim();
   const ep = await run(id, ["rendered", "approved", "awaiting_approval", "scheduled", "qa"], 8);

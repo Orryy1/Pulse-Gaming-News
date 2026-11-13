@@ -62,6 +62,22 @@ const FIRST_MINUTE_WORDS = 160;
 /** Seconds a Short keeps free under its narration cap once the quote is in: the estimate is only an estimate. */
 const LENGTH_MARGIN = 2.5;
 
+/**
+ * Quotes moved by the silence put into the narration after they were placed (pure): each by the seconds of every gap
+ * at or before its start, like the words (src/voice/pauses.ts openWords). A long video's chapter breathers go in
+ * after the quotes are opened, so without this every quote after a breather played early, over the narrator.
+ */
+export function quotesAfterGaps<T extends { start: number; end?: number }>(
+  quotes: readonly T[],
+  gaps: ReadonlyArray<{ at: number; seconds: number }>,
+): T[] {
+  return quotes.map((q) => {
+    const add = gaps.filter((g) => g.at <= q.start + 1e-6).reduce((n, g) => n + g.seconds, 0);
+    if (!add) return q;
+    return { ...q, start: q.start + add, ...(typeof q.end === "number" ? { end: q.end + add } : {}) };
+  });
+}
+
 /** The footage credit a quote shows: the game's cutscenes, via YouTube (pure). */
 export function quoteCredit(game: string): string {
   return `${game.replace(/\s*\([^)]*\)\s*$/, "").trim()} cutscenes, via YouTube`;

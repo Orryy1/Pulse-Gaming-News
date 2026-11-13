@@ -24,7 +24,9 @@ import {
 import {
   CLIP_SECONDS,
   DARK_LUMA,
+  brightRun,
   darkestLuma,
+  frameLumas,
   MIN_CLIP_SECONDS,
   type FootageTarget,
 } from "../assets/clipscore.ts";
@@ -346,6 +348,8 @@ export interface ScreenVerdict {
   ok: boolean;
   why?: string;
   crop?: FrameCrop;
+  /** Kept only once cut to these seconds of it ([from, from + seconds)): a fade or cut to black left out. */
+  trim?: { from: number; seconds: number };
 }
 
 async function screen(
@@ -365,7 +369,19 @@ async function screen(
     const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds);
     if (!read.clean) return { ok: false, why: `text: ${read.words.slice(0, 4).join(" ")}` };
   }
-  return { ok: true };
+  // Every frame, not four a second: a fade or a cut to black between the samples is cut off, or the clip refused.
+  return brightTrim(await frameLumas(file));
+}
+
+/**
+ * The verdict on a clip's per-frame brightness (pure, 30 fps): kept whole when no frame is dark; else cut to its
+ * longest run of bright frames when that still makes a clip; else refused as dark. No frames read: kept.
+ */
+export function brightTrim(lumas: readonly number[], fps = 30): ScreenVerdict {
+  if (!lumas.length || lumas.every((l) => l >= DARK_LUMA)) return { ok: true };
+  const run = brightRun(lumas, DARK_LUMA);
+  if (!run || (run.end - run.start) / fps < MIN_CLIP_SECONDS) return { ok: false, why: "dark (a frame of black)" };
+  return { ok: true, trim: { from: run.start / fps, seconds: Math.floor(((run.end - run.start) / fps) * 30) / 30 } };
 }
 
 /** A screen given as a plain yes or no (tests, older callers) as a verdict. */
@@ -403,6 +419,7 @@ export async function indexedCutsceneClips(
       let confirmed = false;
       let unchecked = false;
       let cropped: FrameCrop | undefined;
+      let trimmed: { from: number; seconds: number } | undefined;
       for (const c of [first, ...(first.alternates ?? [])]) {
         const i = n++;
         const section = path.join(work, `section_${i}.mp4`);
@@ -444,6 +461,21 @@ export async function indexedCutsceneClips(
               keeps: crop.keeps,
               ...(verdict.ok ? {} : { why: verdict.why }),
             });
+          }
+          trimmed = undefined;
+          // A fade or cut to black inside the clip: cut off, the clip kept with what is left.
+          if (verdict.ok && verdict.trim) {
+            const t = verdict.trim;
+            const tmp = `${file}.trim.mp4`;
+            try {
+              await (o.deps?.cut ?? cut)(file, t.from, t.seconds, tmp);
+              await fs.rename(tmp, file);
+              trimmed = t;
+              log("info", "scene index: dark frames cut off", { game: o.gameTitle, at: c.from, keeps: t });
+            } catch (err) {
+              await fs.rm(tmp, { force: true }).catch(() => undefined);
+              verdict = { ok: false, why: `dark, trim failed: ${errorMessage(err)}` };
+            }
           }
           if (!verdict.ok) {
             await fs.rm(file, { force: true }).catch(() => undefined);
@@ -491,6 +523,7 @@ export async function indexedCutsceneClips(
           await fs.rm(section, { force: true }).catch(() => undefined);
         }
         p = c;
+        if (trimmed) p = { ...c, from: Math.round((c.from + trimmed.from) * 100) / 100, seconds: trimmed.seconds };
         break;
       }
       if (!p) continue;

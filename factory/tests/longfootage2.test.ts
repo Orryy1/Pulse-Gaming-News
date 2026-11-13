@@ -341,3 +341,21 @@ test("LONG_INDEX_FIRST never trims licensed Creative Commons gameplay to fit the
   assert.ok(after.some((c) => /Creative Commons/.test(c.provenance)), "the CC gameplay stays");
   assert.equal(after.some((c) => /trailer/i.test(c.provenance)), false, "the trailer gives way");
 });
+
+test("a fade or cut to black inside an index clip is cut off (every frame read, not four a second)", async () => {
+  const { brightTrim } = await import("../src/sceneindex/footage.ts");
+  const { brightRun } = await import("../src/assets/clipscore.ts");
+  // The San Andreas proof's clip: 63 frames, its last four at 16 (four-a-second sampling saw 32 at worst).
+  const fade = [...Array(59).fill(85), 16, 16, 16, 16];
+  assert.deepEqual(brightRun(fade), { start: 0, end: 59 });
+  const v = brightTrim(fade);
+  assert.equal(v.ok, true);
+  assert.equal(v.trim?.from, 0);
+  assert.ok(Math.abs(v.trim!.seconds - 59 / 30) < 0.04);
+  // A cut through black near the end of a short clip: the longer bright part is kept.
+  const cutThrough = [...Array(49).fill(85), 1, 8, 13, 27, 42];
+  assert.ok(Math.abs(brightTrim(cutThrough).trim!.seconds - 49 / 30) < 0.04);
+  // Bright throughout: kept whole; mostly black: refused.
+  assert.deepEqual(brightTrim(Array(60).fill(80)), { ok: true });
+  assert.equal(brightTrim([...Array(30).fill(5), ...Array(20).fill(80)]).ok, false);
+});

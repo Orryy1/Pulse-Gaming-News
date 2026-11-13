@@ -588,6 +588,18 @@ export interface Config {
   /** The report's story-pick multiplier (0.85 to 1.15, moved 0.05 a week at most) on the news slot's candidates; breaking
    * news never: ANALYTICS_LOOP_SCORING, default off. */
   analyticsLoopScoring: boolean;
+  /** Retention curve learning (src/retentionlearn.ts): every Short and long video's audience retention curve read once it
+   * is 48 hours old, each drop lined up with what was on screen and in the narration, and the patterns across videos
+   * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
+   * ANALYTICS_LOOP_LESSONS) and the Sunday growth report: RETENTION_LEARN, default off. */
+  retentionLearn: boolean;
+  /** Video replies to comments (src/commentreply.ts): once a day the best viewer question the community engine filed
+   * (substantive, answerable from the video's confirmed facts, not hostile) gets its own Short, opening on the comment as
+   * a card with the commenter's public handle and "You asked...", then a reply on the original comment pointing to it:
+   * COMMENT_REPLY_SHORTS, default off. */
+  commentReplyShorts: boolean;
+  /** The reply Short's slot, local time (it is made from SLOT_LEAD_MINUTES + 90 before it): COMMENT_REPLY_SLOT, default 16:30. */
+  commentReplySlot: string;
   /** Share of Shorts that get a thumbnail made for the search tile instead of their first frame (src/shortthumb.ts); 0.5 is a fair test: SHORT_SEARCH_THUMB_SHARE, default 0. */
   shortSearchThumbShare: number;
   /** YouTube autocomplete terms this video really answers, in its tags and one description line (src/searchterms.ts): SEARCH_TERMS, default off. */
@@ -1499,6 +1511,9 @@ export function loadConfig(): Config {
     analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
+    retentionLearn: bool("RETENTION_LEARN", false),
+    commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),
+    commentReplySlot: str("COMMENT_REPLY_SLOT", "16:30").trim(),
     shortSearchThumbShare: Number(str("SHORT_SEARCH_THUMB_SHARE", "0")) || 0,
     searchTerms: bool("SEARCH_TERMS", false),
     abQueueClean: bool("AB_QUEUE_CLEAN", false),

@@ -49,6 +49,7 @@ import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
 import { keyTime } from "./longplan.ts";
 import { HookPoster } from "./components/HookPoster.tsx";
+import { CommentCard, commentCardFrames } from "./components/CommentCard.tsx";
 import { V_STYLES, V_STYLES_CORE } from "./components/vertical/index.ts";
 import { VBOX, type VStyle } from "./components/vertical/types.ts";
 import { storyYearOf } from "./components/vertical/pulse/map.ts";
@@ -193,6 +194,8 @@ export const Short: React.FC<ShortProps> = (props) => {
   const hookIndex = props.segments.findIndex((s) => s.kind === "hook");
   const hookEnd =
     hookIndex >= 0 ? segmentEnds[hookIndex]! : Math.round(3 * fps);
+  // COMMENT_REPLY_SHORTS: the viewer's comment is up over the opening while "You asked..." is said; no shelf under it.
+  const replyFrames = props.reply ? commentCardFrames(hookEnd, fps) : 0;
   // The hook's cut to the old game (plan.ts thenWindows) ends the opening poster: the year needs the whole frame.
   const hookThen = plan.shots.find((s) => s.then && s.start < hookEnd);
   const posterEnd = hookThen && hookThen.start > 12 ? hookThen.start : hookEnd;
@@ -787,7 +790,7 @@ export const Short: React.FC<ShortProps> = (props) => {
         </Sequence>
       ))}
       {/* The shelf steps back while a stamp holds the band, so the two never overlap. */}
-      <AbsoluteFill style={{ opacity: inScene ? 0 : clean ? 1 : shelfLevel() }}>
+      <AbsoluteFill style={{ opacity: inScene || frame < replyFrames ? 0 : clean ? 1 : shelfLevel() }}>
         <Shelf
           plan={cleanShelf}
           accent={accent}
@@ -848,6 +851,11 @@ export const Short: React.FC<ShortProps> = (props) => {
         }
       />}
       <TurnFlash turns={plan.turns} accent={accent} />
+      {props.reply && replyFrames > 0 ? (
+        <Sequence from={0} durationInFrames={replyFrames} layout="none">
+          <CommentCard handle={props.reply.handle} text={props.reply.text} frames={replyFrames} accent={accent} />
+        </Sequence>
+      ) : null}
       {motif?.card && stingOn && (!kept || (keptSpan(kept, "sting")?.from === hookEnd && keptSpan(kept, "sting")?.to === hookEnd + MOTIF_STING)) ? (
         <Sequence from={hookEnd} durationInFrames={MOTIF_STING} layout="none">
           <MotifSting>

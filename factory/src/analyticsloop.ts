@@ -56,6 +56,7 @@ import {
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
+import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 
 const DAY = 86_400_000;
 const H = 3_600_000;
@@ -801,6 +802,25 @@ export interface LoopJson {
   next_test: NextTest;
   /** Subscribers per 1,000 views by series, the line test and the verdicts so far (src/seriesreport.ts); absent in older reports. */
   series?: SeriesJson;
+  /** RETENTION_LEARN (src/retentionlearn.ts): the week's retention curve study, its lines and lessons; absent while off. */
+  retention?: {
+    shorts: number;
+    long: number;
+    section: string[];
+    lessons: string[];
+    causes: RetentionStudy["causes"];
+  };
+}
+
+/** Retention lessons go first, at most RETENTION_LESSON_SLOTS of them, then the report's own, six in all. */
+export const RETENTION_LESSON_SLOTS = 3;
+
+/** The writers' lessons with the retention study's merged in (pure): its first, then the rest, never a blocked phrase. */
+export function withRetentionLessons(loop: string[], retention: string[], blocklist: string[], max = 6): string[] {
+  const blocked = blocklist.map((b) => b.toLowerCase()).filter(Boolean);
+  const ok = (l: string) => !blocked.some((b) => l.toLowerCase().includes(b));
+  const first = retention.filter(ok).slice(0, RETENTION_LESSON_SLOTS);
+  return [...first, ...loop.filter((l) => ok(l) && !first.includes(l))].slice(0, max);
 }
 
 /** The test queue: the first is already set by the first report; each runs until judged. */
@@ -1291,6 +1311,8 @@ export async function runAnalyticsLoop(
   cfg: Config,
   sources: LoopSources,
   now: Date,
+  /** RETENTION_LEARN's study of the stored curves (src/retentionlearn.ts retentionStudy); absent while it is off. */
+  retentionStudy?: RetentionStudy,
 ): Promise<{ markdown: string; json: LoopJson; files: string[] }> {
   const dir = loopDir(cfg);
   const prev = readPrevious(dir);
@@ -2005,12 +2027,16 @@ export async function runAnalyticsLoop(
   // ---- feedback
   const date = end;
   const blocklist = prev?.lessons_blocklist ?? [];
-  const lessons = lessonLines(
-    patterns,
-    watch,
-    subsBest && subsBest.rate >= 1.5 * subsBest.rest ? subsBest : undefined,
+  const lessons = withRetentionLessons(
+    lessonLines(
+      patterns,
+      watch,
+      subsBest && subsBest.rate >= 1.5 * subsBest.rest ? subsBest : undefined,
+      blocklist,
+      date,
+    ),
+    retentionStudy?.lessons ?? [],
     blocklist,
-    date,
   );
   const tk = breakouts.tiktok;
   const fitSplit = (tk?.rows ?? [])
@@ -2224,6 +2250,17 @@ export async function runAnalyticsLoop(
     changes,
     next_test: test.test,
     series,
+    ...(retentionStudy
+      ? {
+          retention: {
+            shorts: retentionStudy.videos.filter((v) => v.kind === "short").length,
+            long: retentionStudy.videos.filter((v) => v.kind === "long").length,
+            section: retentionSection(retentionStudy),
+            lessons: retentionStudy.lessons,
+            causes: retentionStudy.causes.slice(0, 5),
+          },
+        }
+      : {}),
   };
   const markdown = renderReport({
     cfg,
@@ -2476,6 +2513,14 @@ export function renderReport(x: RenderInput): string {
   if (x.tooFew.length)
     L.push(
       `Too few to judge (under ${MIN_PATTERN} posts): ${x.tooFew.slice(0, 25).join("; ")}.`,
+      "",
+    );
+  // RETENTION_LEARN: where viewers leave, from each video's retention curve lined up with what was on screen.
+  if (json.retention)
+    L.push(
+      "**Where viewers leave (YouTube retention curves, the top drop causes)**",
+      "",
+      ...json.retention.section,
       "",
     );
 

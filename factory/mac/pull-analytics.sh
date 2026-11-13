@@ -29,6 +29,23 @@ fi
 if [ -z "$err" ]; then
   mv -f "$DEST/latest.md.part" "$DEST/latest.md"
   mv -f "$DEST/latest.json.part" "$DEST/latest.json"
+  # RETENTION_LEARN: the week's retention lessons go into lessons.md as one dated line, newest first (GROWTH-LOOP.md
+  # step 3), once per report; nothing is written while the report carries none.
+  LOOP_JSON="$DEST/latest.json" LESSONS="$DEST/lessons.md" node -e '
+    const fs = require("fs");
+    const j = JSON.parse(fs.readFileSync(process.env.LOOP_JSON, "utf8"));
+    const ls = (j.retention && j.retention.lessons) || [];
+    if (!ls.length) process.exit(0);
+    const day = String(j.run_at).slice(0, 10);
+    const d = new Date(day + "T12:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    const line = `- ${d} (retention curves, automatic, ${j.retention.shorts} Shorts): ` + ls.map((l) => l.replace(/ \(retention curves [^)]*\)\.?$/, ".")).join(" ");
+    let text = "";
+    try { text = fs.readFileSync(process.env.LESSONS, "utf8"); } catch { text = "# Pulse lessons\n\nOne line per verdict, newest first.\n\n"; }
+    if (text.includes(`- ${d} (retention curves`)) process.exit(0);
+    const at = text.search(/^- /m);
+    text = at < 0 ? text.replace(/\n*$/, "\n\n") + line + "\n" : text.slice(0, at) + line + "\n" + text.slice(at);
+    fs.writeFileSync(process.env.LESSONS, text);
+  ' 2>/dev/null || echo "retention lessons not filed in lessons.md" >&2
 else
   rm -f "$DEST/latest.md.part" "$DEST/latest.json.part"
 fi

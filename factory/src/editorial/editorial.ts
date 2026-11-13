@@ -1,6 +1,7 @@
 // Story selection, scripting and fact-checking. The model does the judgement;
 // this file enforces the rules that must never depend on model compliance.
 
+import { replyBrief } from "../commentreply.ts";
 import { lateAngleNote } from "../bigstories.ts";
 import { airsAtNote, releaseDateNote } from "../launchprep.ts";
 import { pulseCheckRule, PULSE_CHECK_ASK } from "./newssegment.ts";
@@ -218,7 +219,7 @@ export async function writeScript(
     /** SHORT_LENGTHS: this Short's length lane; absent, the old 25-40 seconds and 70-100 words. */
     length?: ScriptLength;
     availableQuotes?: readonly CutsceneQuote[];
-    /** The step, so CODEX_CALLS can route this writer (the search lane: "search.write"). Absent: read from the caller. */
+    /** The step, so CODEX_CALLS can route this writer (the search lane: "search.write", a reply Short: "reply.write"). Absent: read from the caller. */
     site?: string;
   },
 ): Promise<Script> {
@@ -260,7 +261,9 @@ export async function writeScript(
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
   const late = lateAngleNote(cluster.bigStory?.lateHours);
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${search}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
+  // A video reply to a viewer's question (COMMENT_REPLY_SHORTS, src/commentreply.ts): the comment and how to answer it.
+  const replyNote = cluster.reply ? `\n\n${replyBrief(cluster.reply)}` : "";
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${search}${replyNote}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&

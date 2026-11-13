@@ -37,8 +37,11 @@ import {
   approvalLinks,
   quotaHeadroom,
   prepareRemake,
+  segmentInputs,
   type Services,
 } from "./pipeline.ts";
+import { retentionStudy } from "./retentionlearn.ts";
+import { replyPointers } from "./commentreply.ts";
 import {
   QUOTA,
   publishHeld,
@@ -823,12 +826,13 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     if (url.pathname === "/admin/analytics-loop" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       try {
-        const out = await withLease(db, "analytics-loop", 30 * 60, () =>
+        const out = await withLease(db, "analytics-loop", 30 * 60, async () =>
           runAnalyticsLoop(
             db,
             cfg,
             liveLoopSources(cfg, services.youtube()),
             new Date(),
+            await retentionStudy(db, cfg, new Date(), segmentInputs),
           ),
         );
         if (!out) {
@@ -2121,6 +2125,20 @@ async function main(): Promise<void> {
     setTimeout(() => void pass(), 120_000);
     setInterval(() => void pass(), 5 * 60_000);
   }
+  // COMMENT_REPLY_SHORTS (src/commentreply.ts): once a reply Short is public, one reply under the comment it answers,
+  // pointing to it (YouTube links a video reply to a comment only when it is made in its Android app).
+  if (cfg.commentReplyShorts && !cfg.dryRun) {
+    const point = () =>
+      replyPointers({
+        db,
+        reply: (id, text) => services.youtube().replyToComment(id, text),
+        headroom: () => quotaHeadroom(db, cfg, new Date()),
+        now: new Date(),
+      }).catch((err) =>
+        log("warn", "reply Short pointers failed", { error: errorMessage(err) }),
+      );
+    setInterval(() => void point(), 10 * 60_000);
+  }
   // A new video's fresh comments: the good ones get a reply while the video is young.
   if (cfg.commentReplies && !cfg.communityEngine && !cfg.dryRun) {
     const deps = {
@@ -2359,12 +2377,13 @@ async function main(): Promise<void> {
       const key = await analyticsLoopDue(db, cfg, new Date());
       if (!key) return;
       await markAnalyticsLoopSent(db, key);
-      const out = await withLease(db, "analytics-loop", 30 * 60, () =>
+      const out = await withLease(db, "analytics-loop", 30 * 60, async () =>
         runAnalyticsLoop(
           db,
           cfg,
           liveLoopSources(cfg, services.youtube()),
           new Date(),
+          await retentionStudy(db, cfg, new Date(), segmentInputs),
         ),
       );
       if (out) log("info", "analytics loop report written", { week: key });
@@ -2381,7 +2400,9 @@ async function main(): Promise<void> {
       const key = await growthReportDue(db, cfg, new Date());
       if (!key) return;
       await markGrowthReportSent(db, key);
-      await services.notify(await growthReport(db, cfg, new Date()));
+      await services.notify(
+        await growthReport(db, cfg, new Date(), await retentionStudy(db, cfg, new Date(), segmentInputs)),
+      );
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),

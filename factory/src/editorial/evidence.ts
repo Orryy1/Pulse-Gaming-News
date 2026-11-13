@@ -12,6 +12,8 @@
 // page is in the source text; the page is Pulse's own browser frame with the source credit, never a copy of a
 // company's letterhead or a site's design; a beat with no record in the source gets no evidence page.
 import type { WikiArticle } from "../discovery/wikipedia.ts";
+import { stripRefMarks } from "../discovery/wikirefs.ts";
+import { sourceCredit } from "./documentary.ts";
 import type { DocMoment } from "./documentary.ts";
 import { sentencesOf } from "./longform.ts";
 
@@ -167,12 +169,27 @@ export function recordPassage(
 
 /** The credit a page carries: the record's own words, and where Pulse read them. */
 export function evidenceCredit(
-  source: Pick<WikiArticle, "title">,
+  source: Pick<WikiArticle, "title"> & Partial<Pick<WikiArticle, "text" | "refs" | "url">>,
   issuer?: string,
+  passage?: string,
 ): string {
+  // Cited notes (PRIMARY_SOURCES): the statement's speaker, or the originals the passage cites; never Wikipedia.
+  if (source.refs?.length) {
+    if (issuer) return `${issuer}, on the record`;
+    if (passage && source.text)
+      return `From the record: ${sourceCredit(passage, source as WikiArticle)}`;
+    return `From the record: ${source.title}`;
+  }
   return issuer
     ? `${issuer}, as quoted in Wikipedia: ${source.title}`
     : `From the record: Wikipedia, ${source.title}`;
+}
+
+/** A source card's credit line: the originals with cited notes, the article as before without. */
+function passageCredit(source: WikiArticle, passage: string): string {
+  return source.refs?.length
+    ? sourceCredit(passage, source)
+    : `Wikipedia: ${source.title}`;
 }
 
 /** The writer's rule for the shot list (DOC_EVIDENCE): key beats show the record, word for word. */
@@ -233,7 +250,11 @@ export function markEvidence(
       continue;
     }
     if (g.kind === "source" && g.primary) {
-      g.evidence = { kind, page: "statement", credit: evidenceCredit(source) };
+      g.evidence = {
+        kind,
+        page: "statement",
+        credit: evidenceCredit(source, undefined, g.primary),
+      };
       added.push(`${kind}: record "${g.primary.slice(0, 60)}"`);
       continue;
     }
@@ -277,8 +298,8 @@ export function markEvidence(
       if (said && words >= 10 && words <= 70) {
         out[i]!.graphic = {
           kind: "source",
-          primary: said.passage,
-          secondary: `Wikipedia: ${source.title}`,
+          primary: stripRefMarks(said.passage),
+          secondary: passageCredit(source, said.passage),
           items: [said.verdict!],
           evidence: { kind, page: "aggregate", credit: evidenceCredit(source) },
         };
@@ -291,10 +312,14 @@ export function markEvidence(
     out[i]!.graphic = {
       ...NONE,
       kind: "source",
-      primary: passage,
-      secondary: `Wikipedia: ${source.title}`,
+      primary: stripRefMarks(passage),
+      secondary: passageCredit(source, passage),
       items: [],
-      evidence: { kind, page: "statement", credit: evidenceCredit(source) },
+      evidence: {
+        kind,
+        page: "statement",
+        credit: evidenceCredit(source, undefined, passage),
+      },
     };
     // A caption never sits beside a graphic.
     out[i]!.emphasis = "";

@@ -26,6 +26,15 @@ import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { FootageSchema, type Script, type BeatVisual } from "./schema.ts";
 import type { WikiArticle } from "../discovery/wikipedia.ts";
+import {
+  briefText,
+  marksIn,
+  primaryCredits,
+  sourceHeading,
+  stripRefMarks,
+  type WikiRef,
+} from "../discovery/wikirefs.ts";
+import { scrubWikipedia } from "./attribution.ts";
 import { placeFor } from "../render/places.ts";
 import { REHOOK_RULE, rehookProblems } from "./rehooks.ts";
 import {
@@ -503,7 +512,7 @@ Plan a single-story documentary told in turning points, in time order, ${DOC_CHA
 
 Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
       loops,
-    content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (Wikipedia):\n${franchiseNotes || "(not available)"}`,
+    content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (research notes):\n${franchiseNotes || "(not available)"}`,
     schema: DocOutlineSchema,
     effort: "medium",
   });
@@ -577,7 +586,7 @@ ${rules.chapterAction ? "" : `- The last sentence of the chapter either looks fo
 - At most one sentence in the chapter opens "That's a" or "That's an".
 - Tell it like someone who knows the story and cares about it, with the judgement in the wording: plain verdict words on the decisions ("a reckless bet", "the smartest cut they made"). The narrator steps forward as "I" once in the chapter, for the one take the chapter turns on, and no more than once per hundred words; never a string of "I think" and "honestly". One dry aside, two at most in a long chapter, aimed at companies or situations, never at players. Opinions are said as opinions; facts stay exact.
 - ${REHOOK_RULE} In a chapter that means two or three inside it, besides the last line.
-Every fact, number, date, name and quote must come from the SOURCE text provided. If the source doesn't say it, don't say it: tell the part of the story it does cover. The paragraphs are recorded and published as they stand, so they only ever tell the story. They never mention the source, the brief, a draft or these rules, never explain what can't be written and never ask for anything. If the SOURCE can't support the chapter's main events at all, leave paragraphs empty and name what's missing in missing_evidence; that line goes to the factory, which finds more sources and asks again. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
+Every fact, number, date, name and quote must come from the SOURCE text provided. Its ⁽n⁾ marks and the list of who reported each line are for credits only: never copy a mark into narration or a callout, and credit a line, when it needs a credit, to the original its mark names. If the source doesn't say it, don't say it: tell the part of the story it does cover. The paragraphs are recorded and published as they stand, so they only ever tell the story. They never mention the source, the brief, a draft or these rules, never explain what can't be written and never ask for anything. If the SOURCE can't support the chapter's main events at all, leave paragraphs empty and name what's missing in missing_evidence; that line goes to the factory, which finds more sources and asks again. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
 footage names what the picture should show for that paragraph, with 1-4 keywords.
 List every factual claim in "claims" with the source section it came from.${extra}`;
@@ -681,7 +690,7 @@ export async function writeChapter(
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
   const loops = loopBrief(ctx.loops ?? [], ctx.index + 1);
-  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${quoteBrief(ctx.availableQuotes)}${ctx.availableQuotes?.length ? " A quote paragraph may be shorter than the paragraph word limit." : ""}`;
+  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\n${sourceHeading(ctx.source)}:\n${briefText(ctx.source)}${quoteBrief(ctx.availableQuotes)}${ctx.availableQuotes?.length ? " A quote paragraph may be shorter than the paragraph word limit." : ""}`;
   const edited =
     ctx.draft && ctx.feedback?.length
       ? await reviseByEdits(llm, {
@@ -743,8 +752,8 @@ export async function checkChapterItems(
 ): Promise<Array<{ quote: string; problem: string }>> {
   const r = await llm.structured({
     site: "doc.check",
-    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. A sentence about the source itself, a brief, a draft, a chapter being written or what is missing from the material isn't narration, even when it's true: list it. Return an empty list when everything checks out.`,
-    content: `NARRATION:\n${chapter.paragraphs.map((p) => p.narration).join("\n\n")}\n\nSOURCE (Wikipedia, "${source.title}"):\n${source.text}`,
+    system: `You are a documentary fact-checker. Compare the narration with the SOURCE. List every specific factual statement (a date, number, name, quote, ranking, sales figure, event or cause) that the source does not support or that contradicts it. Framing, scene-setting description, transitions and clearly marked opinion are fine. Be strict about numbers and quotes. A sentence about the source itself, a brief, a draft, a chapter being written or what is missing from the material isn't narration, even when it's true: list it. The SOURCE is research notes whose ⁽n⁾ marks name the original each line came from; where an original's own words are included (a section headed "[Outlet] headline"), check the narration against those words first: if the original says something different from the notes, list the claim with what the original says. A credit to an outlet the marks don't name for that fact is a problem, and so is any line that names Wikipedia. Return an empty list when everything checks out.`,
+    content: `NARRATION:\n${chapter.paragraphs.map((p) => p.narration).join("\n\n")}\n\n${sourceHeading(source)}:\n${briefText(source)}`,
     schema: DocCheckSchema,
     effort: "medium",
   });
@@ -785,9 +794,18 @@ export function groundCallouts(
   chapter: DocChapter,
   source: WikiArticle,
 ): { chapter: DocChapter; removed: string[] } {
-  const hay = norm(source.text);
+  const hay = norm(groundingText(source));
   const removed: string[] = [];
-  const paragraphs = chapter.paragraphs.map((p) => {
+  const paragraphs = chapter.paragraphs.map((p0) => {
+    // A mark copied from the notes never reaches the screen.
+    const p = {
+      ...p0,
+      callout: {
+        ...p0.callout,
+        primary: stripRefMarks(p0.callout.primary),
+        secondary: stripRefMarks(p0.callout.secondary),
+      },
+    };
     const c = p.callout;
     if (c.kind === "none")
       return {
@@ -983,7 +1001,7 @@ export async function writeDocMoments(
         site: "doc.shots",
         tier: "mid",
         system,
-        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nSOURCE (Wikipedia, "${ctx.source.title}"):\n${ctx.source.text}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
+        content: `Chapter: ${ctx.chapterTitle} (${ctx.game})${ctx.games?.length ? `\nGames in this documentary's chapters: ${ctx.games.join("; ")}` : ""}\n\n${ctx.sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\n${sourceHeading(ctx.source)}:\n${briefText(ctx.source)}${ctx.lessons ? `\n\n${ctx.lessons}` : ""}\n\nReturn exactly ${n} moments.`,
         schema: docMomentsSchema(n),
         effort: "low",
         maxTokens: 12000,
@@ -1018,23 +1036,101 @@ export async function writeDocMoments(
  */
 export function sourceCredit(passage: string, source: WikiArticle): string {
   const parts = source.text.split(/(?:^|\n)\[([^\]\n]+)\][ \t]*/);
-  if (parts.length < 3) return `Wikipedia: ${source.title}`;
+  // Cited notes (PRIMARY_SOURCES): a passage of the notes is credited to the originals its sentences cite, never
+  // to Wikipedia; plain notes keep the old credit.
+  const cited = () =>
+    source.refs?.length
+      ? citedCredit(passage, parts[0] ?? source.text, source.refs, source.title)
+      : `Wikipedia: ${source.title}`;
+  if (parts.length < 3) return cited();
   const want = norm(passage);
   // A planned guide's sources follow its article: what comes before the first header is the article itself.
-  if (parts[0]!.trim() && norm(parts[0]!).includes(want))
-    return `Wikipedia: ${source.title}`;
+  if (parts[0]!.trim() && norm(parts[0]!).includes(want)) return cited();
   for (let i = 1; i + 1 < parts.length; i += 2) {
     if (!norm(parts[i + 1]!).includes(want)) continue;
     const head = parts[i]!.trim();
-    const wiki = head.match(/^Background: Wikipedia, "?([^"]+)"?/);
-    if (wiki) return `Wikipedia: ${wiki[1]}`;
+    const wiki = head.match(/^Background: (?:Wikipedia|research notes), "?([^"]+)"?/);
+    if (wiki)
+      return source.refs?.length
+        ? `Research notes: ${wiki[1]}`
+        : `Wikipedia: ${wiki[1]}`;
     if (/^Pulse Short/i.test(head))
       return "Pulse Gaming News: our earlier report";
     if (/^Coverage summaries/i.test(head)) return "News coverage: summaries";
-    const title = parts[i + 1]!.split("\n")[0]!.trim();
+    const title = stripRefMarks(parts[i + 1]!.split("\n")[0]!).trim();
     return title ? `${head}: ${title}` : head;
   }
   return `Sources: ${source.title}`;
+}
+
+/**
+ * The credit for a passage of cited notes (pure): the originals its sentences' marks name ("Summarised from IGN
+ * and Kotaku"), or "Research notes" when the passage cites nothing. Never Wikipedia.
+ */
+export function citedCredit(
+  passage: string,
+  text: string,
+  refs: readonly WikiRef[],
+  title: string,
+): string {
+  const want = norm(stripRefMarks(passage));
+  const byN = new Map(refs.map((r) => [r.n, r]));
+  const outlets: string[] = [];
+  if (want)
+    for (const line of text.split("\n"))
+      for (const sentence of line.split(/(?<=⁾)\s+/)) {
+        const sn = norm(stripRefMarks(sentence));
+        if (sn.length < 12 || !(want.includes(sn) || sn.includes(want)))
+          continue;
+        for (const n of marksIn(sentence)) {
+          const o = byN.get(n)?.outlet;
+          if (o && !outlets.includes(o)) outlets.push(o);
+        }
+      }
+  return outlets.length
+    ? `Summarised from ${outlets.slice(0, 2).join(" and ")}`
+    : `Research notes: ${title}`;
+}
+
+/** The text the on-screen facts are grounded in: the notes and the outlets (and years) their marks name. */
+export function groundingText(
+  source: Pick<WikiArticle, "text" | "refs">,
+): string {
+  return source.refs?.length
+    ? `${source.text}\n${source.refs.map((r) => `${r.outlet} ${r.date?.slice(0, 4) ?? ""}`).join("\n")}`
+    : source.text;
+}
+
+/**
+ * A documentary's source list (pure): the originals its briefs read and cited (PRIMARY_SOURCES), else the articles
+ * as before. Wikipedia is the map; the description credits the record.
+ */
+export function docSources(d: Pick<DocDraft, "chapters">): string[] {
+  const originals = primaryCredits(
+    d.chapters.map((c) => c.source),
+    15,
+  ).map((c) => c.url);
+  if (originals.length) return originals;
+  return [
+    ...new Set(
+      d.chapters.flatMap((c) => [c.source.url, ...(c.source.also ?? [])]),
+    ),
+  ];
+}
+
+/** The on-screen source line: the originals most read, else the old line. */
+export function docAttribution(d: Pick<DocDraft, "chapters">): string {
+  const names = [
+    ...new Set(
+      primaryCredits(
+        d.chapters.map((c) => c.source),
+        15,
+      ).map((c) => c.name),
+    ),
+  ].slice(0, 3);
+  return names.length
+    ? `Sources: ${names.join(", ")} / Pulse`
+    : "Sources: Wikipedia / Pulse";
 }
 
 export function groundDocMoments(
@@ -1047,7 +1143,17 @@ export function groundDocMoments(
   /** LONG_VERDICT_STAMPS: off, a verdict never reaches the screen; on, only where verdictProblem finds nothing. */
   verdicts = false,
 ): { moments: DocMoment[]; removed: string[] } {
-  const hay = norm(source.text);
+  const hay = norm(groundingText(source));
+  // A mark copied from the notes never reaches the screen.
+  moments = moments.map((m) => ({
+    ...m,
+    graphic: {
+      ...m.graphic,
+      primary: stripRefMarks(m.graphic.primary),
+      secondary: stripRefMarks(m.graphic.secondary),
+      items: m.graphic.items.map(stripRefMarks),
+    },
+  }));
   const removed: string[] = [];
   const none = { kind: "none" as const, primary: "", secondary: "", items: [] };
   const digitsOk = (t: string) =>
@@ -1327,7 +1433,11 @@ export function validateChapter(
     );
   const before = earlierOf(opts.earlier).map(chapterText);
   // Banned phrases, a possessive on a year, copied example lines, and how it sounds aloud.
-  p.push(...phraseProblems(text), ...writingProblems(text, { long: true }));
+  // Credits are checked across the whole video in the pipeline (src/editorial/attribution.ts), not chapter by chapter.
+  p.push(
+    ...phraseProblems(text),
+    ...writingProblems(text, { long: true, attributions: false }),
+  );
   p.push(...stockSegueProblems([...before, text].join(" ")));
   const thats = sentencesIn(text).filter((x) => /^That['’]s an?\b/.test(x));
   if (thats.length > 1)
@@ -1479,7 +1589,7 @@ export async function writeBookends(
 Write the intro and outro of a finished ${rules.guide ? "launch guide" : "documentary"}.
 ${rules.hookStack ? `${hookStackRule(rules.hookStack, rules.guide ? "guide" : "documentary")}${rules.verdicts ? `\nRight after the surprises, one line teaches the three verdicts this video gives every claim: confirmed, reported and busted, in those words.` : ""}${rules.youFloor ? `\n${youRule(rules.youFloor)}` : ""}\nThe intro runs 120-220 spoken words.` : `The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.`}
 The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
-    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (Wikipedia):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
+    content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (research notes):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
     schema: DocBookendsSchema,
     effort: "medium",
   });
@@ -1615,7 +1725,7 @@ export function docToScript(d: DocDraft): Script {
   const n = d.chapters.length;
   const beats = d.chapters.flatMap(({ plan, chapter }, ci) =>
     chapter.paragraphs.map((p, pi) => ({
-      narration: p.narration,
+      narration: scrubWikipedia(p.narration),
       ...(p.quote ? { quote: p.quote } : {}),
       footage: p.footage,
       visual: (pi === 0
@@ -1635,25 +1745,24 @@ export function docToScript(d: DocDraft): Script {
             }) as BeatVisual,
     })),
   );
-  const sources = [
-    ...new Set(d.chapters.flatMap((c) => [c.source.url, ...(c.source.also ?? [])])),
-  ];
+  // The originals first (PRIMARY_SOURCES); Wikipedia only when a chapter had nothing else to credit.
+  const sources = docSources(d);
   return {
     story_type: "other",
     game_title: d.topic.franchise,
     steam_search_term: "",
     headline: d.outline.title,
-    hook: d.bookends.intro.narration,
+    hook: scrubWikipedia(d.bookends.intro.narration),
     hook_footage: { want: "cinematic", keywords: [d.topic.franchise] },
     beats,
     pulse_take: {
       label: d.bookends.outro.label.toUpperCase(),
-      narration: withSignOff(d.bookends.outro.narration),
+      narration: withSignOff(scrubWikipedia(d.bookends.outro.narration)),
       on_screen: d.bookends.outro.on_screen,
     },
     loop_line: "",
     is_rumour: false,
-    attribution: "Sources: Wikipedia / Pulse",
+    attribution: docAttribution(d),
     youtube: d.outline.youtube,
     claims: d.chapters.flatMap((c) =>
       c.chapter.claims.map((x) => ({

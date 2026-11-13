@@ -38,6 +38,7 @@ import {
   type VoiceTagMark,
 } from "../voice/tags.ts";
 import { applyEdits } from "./revise.ts";
+import { ATTRIBUTION_VARY, attributionFrames } from "./attribution.ts";
 import { errorMessage } from "../lib/util.ts";
 
 /** Whether the friend pass runs for this writer (FRIEND_PASS). */
@@ -166,9 +167,16 @@ export function quotesOf(text: string): string[] {
   );
 }
 
-const ATTRIBUTION =
-  /\b(?:reportedly|according to|rumou?red|allegedly|reports?|reported|claims?|suggests?|leak(?:s|ed)?|sources?)\b/gi;
-const attributions = (t: string) => (t.match(ATTRIBUTION) ?? []).length;
+// A rumor's label never goes. A credit frame may be reworded ("according to Kotaku" to "Kotaku says") and a repeated
+// one may go (ATTRIBUTION_VARY, 13 Nov 2026), so frames are counted as frames, one needed for each source named.
+const RUMOR_LABEL =
+  /\b(?:reportedly|rumou?red|allegedly|unconfirmed|suggests?|leak(?:s|ed)?|sources? (?:say|said|claim|told))\b/gi;
+const rumorLabels = (t: string) => (t.match(RUMOR_LABEL) ?? []).length;
+const creditFrames = (t: string) =>
+  attributionFrames(t).filter((f) => !f.key.includes("wikipedia"));
+/** The credits a rewrite must keep: one for each source the original credits, however often it credited it. */
+const creditsNeeded = (t: string) =>
+  new Set(creditFrames(t).map((f) => f.key)).size;
 
 const kindOf = (p: string) =>
   p
@@ -234,9 +242,13 @@ export function factDrift(before: string, after: string): string[] {
   for (const q of quotesOf(after))
     if (!qb.includes(q) && !plainBefore.includes(q))
       p.push(`The rewrite adds the quotation "${q}".`);
-  if (attributions(after) < attributions(before))
+  if (rumorLabels(after) < rumorLabels(before))
     p.push(
-      `The rewrite drops an attribution ("reportedly", "according to", "reports"); a rumor keeps every label.`,
+      `The rewrite drops an attribution, a rumor label ("reportedly", "rumored", "sources say"); a rumor keeps every label.`,
+    );
+  if (creditFrames(after).length < creditsNeeded(before))
+    p.push(
+      `The rewrite drops an attribution ("according to", "told", "says"); reword a repeated credit, but keep one for each source named.`,
     );
   const invented = inventedExperience(after);
   if (invented && !inventedExperience(before))
@@ -300,12 +312,14 @@ export const FRIEND_FACT_LOCK = `Never change (your version goes back to the fac
 - Every number, price, percentage, date, name, title, outlet and platform stays, meaning the same thing, and nothing new comes in: no comparison game, no year, no figure, no person, no outlet. A joke may only use what's already there.
 - No figure worked out from the ones there either ("ten dollars more", "twice the price"): a sum the sources never state is a new fact.
 - Quotations stay word for word inside their quote marks, credited as before, and your own words never go in quote marks.
-- Every "reportedly", "according to" and named reporter stays; a rumor never sounds more certain than it did.
+- Every rumor label ("reportedly", "rumored") and every named reporter stays; a rumor never sounds more certain than it did. A credit that repeats may be reworded (see Credits), never taken off a rumor, a number or a quote.
 - Opinions stay opinions; never turn one into a fact or a fact into a guess.`;
 
 /** The friend pass's instructions: the shared voice, the facts rules, the tags and the pass's own rules. */
 export function friendPassPrompt(): string {
   return `${PULSE_VOICE}\n\n${PULSE_FACT_RULES}\n\n${VOICE_TAG_RULE}\n\n${FRIEND_STYLE}
+
+${ATTRIBUTION_VARY}
 
 ${FRIEND_FACT_LOCK}`;
 }
@@ -592,7 +606,11 @@ export function chapterText(c: Pick<DocChapter, "paragraphs">): string {
 export async function friendChapter(
   llm: Llm,
   chapter: DocChapter & { voice_tags?: VoiceTagMark[] },
-  opts: { tier?: Tier } = {},
+  opts: {
+    tier?: Tier;
+    /** The credits that still repeat across the video (src/editorial/attribution.ts): the pass rewords these. */
+    credits?: string[];
+  } = {},
 ): Promise<DocChapter & { voice_tags?: VoiceTagMark[] }> {
   const texts = voiceTexts(
     chapter.paragraphs.map((x) => x.narration),
@@ -605,6 +623,11 @@ export async function friendChapter(
     `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out. One dry aside, two at most in a long chapter. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
     `Delivery tags: at most ${tagLimit(sentences, CHAPTER_TAGS_MOST)} in the chapter, at least four sentences apart.`,
     `Length: the chapter has ${words} words; your edits together add or remove at most ${Math.round(words * 0.1)}.`,
+    ...(opts.credits?.length
+      ? [
+          `Credits that repeat across the video, reword these here (Credits above):\n${opts.credits.map((c) => `- ${c}`).join("\n")}`,
+        ]
+      : []),
   ];
   const lines: Record<string, string> = {};
   const view: Record<string, unknown> = {};

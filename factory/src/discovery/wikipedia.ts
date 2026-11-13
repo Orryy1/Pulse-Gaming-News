@@ -1,7 +1,19 @@
 // Research for the documentary lane: a game's English Wikipedia article as
 // plain text, cut to the sections a history needs (development, release,
-// reception, legacy). The writer may use only these facts, and the video's
-// description credits the articles it drew on.
+// reception, legacy). The writer may use only these facts. Since 13 Nov 2026
+// Wikipedia is the map, not the source: with PRIMARY_SOURCES each sentence
+// keeps the marks of the references it cites and the most-cited originals are
+// read (src/discovery/wikirefs.ts), so the writer credits the original, the
+// fact check reads it and the description credits it. Wikipedia is never named
+// on air.
+
+import {
+  citeArticle,
+  readPrimaries,
+  renumber,
+  type PrimaryRead,
+  type WikiRef,
+} from "./wikirefs.ts";
 
 const API = "https://en.wikipedia.org/w/api.php";
 const UA =
@@ -156,6 +168,10 @@ export interface WikiArticle {
   text: string; // the picked sections
   /** Other articles merged into the text (a chapter short of evidence), for the video's credits. */
   also?: string[];
+  /** What the text's ⁽n⁾ marks cite (src/discovery/wikirefs.ts): the outlet, headline and address of each. */
+  refs?: WikiRef[];
+  /** The originals read and added under "[Outlet] headline", for the fact check and the credits. */
+  primaries?: PrimaryRead[];
 }
 
 /** One brief out of several articles, the first keeping its name; each comes under its own heading. */
@@ -169,15 +185,59 @@ export function mergeArticles(articles: WikiArticle[]): WikiArticle | undefined 
   const first = unique[0];
   if (!first) return undefined;
   if (unique.length === 1) return first;
+  // Each article's marks are renumbered after the one before, so two articles never share a number.
+  let next = 1;
+  const refs: WikiRef[] = [];
+  const primaries: PrimaryRead[] = [];
+  const texts = unique.map((a) => {
+    if (!a.refs?.length) return a.text;
+    const r = renumber(a.text, a.refs, next);
+    for (const p of a.primaries ?? []) {
+      const n = r.map.get(p.n);
+      if (n !== undefined) primaries.push({ ...p, n });
+    }
+    next += r.refs.length;
+    refs.push(...r.refs);
+    return r.text;
+  });
   return {
     title: first.title,
     url: first.url,
-    text: unique.map((a) => `# From "${a.title}"\n${a.text}`).join("\n\n"),
+    text: unique.map((a, i) => `# From "${a.title}"\n${texts[i]}`).join("\n\n"),
     also: unique.slice(1).map((a) => a.url),
+    ...(refs.length ? { refs } : {}),
+    ...(primaries.length ? { primaries } : {}),
   };
 }
 
 type FetchLike = typeof fetch;
+
+/**
+ * How a brief is made from an article: with `cited`, each sentence keeps the marks of what it cites; with `read`,
+ * the most-cited originals are fetched and their own words added (src/discovery/wikirefs.ts, PRIMARY_SOURCES).
+ */
+export interface ResearchOptions {
+  cited?: boolean;
+  read?: (url: string) => Promise<{ title: string; text: string } | undefined>;
+  /** At most this many originals read for one brief (default 4). */
+  primaries?: number;
+}
+
+/** The plain article made cited and given its originals, as the options ask; the plain article on any failure. */
+async function withCitations(
+  a: WikiArticle,
+  maxChars: number,
+  focus: string | undefined,
+  fetchFn: FetchLike,
+  opts: ResearchOptions | undefined,
+): Promise<WikiArticle> {
+  if (!opts?.cited) return a;
+  const cited = await citeArticle(a, maxChars, focus, fetchFn).catch(() => a);
+  if (!opts.read || !cited.refs?.length) return cited;
+  return readPrimaries(cited, opts.read, { max: opts.primaries ?? 4 }).catch(
+    () => cited,
+  );
+}
 
 /** The article's picked sections, following redirects; undefined when there is no such article. */
 export async function fetchWikiArticle(
@@ -240,15 +300,19 @@ export async function researchGame(
   maxChars = 9000,
   fetchFn: FetchLike = fetch,
   focus?: string,
+  opts?: ResearchOptions,
 ): Promise<WikiArticle | undefined> {
   const direct = await fetchWikiArticle(title, maxChars, fetchFn, focus).catch(
     () => undefined,
   );
-  if (direct) return direct;
+  if (direct) return withCitations(direct, maxChars, focus, fetchFn, opts);
   const found = await searchWikiTitle(fallbackQuery, fetchFn).catch(
     () => undefined,
   );
-  return found
-    ? fetchWikiArticle(found, maxChars, fetchFn, focus).catch(() => undefined)
+  const a = found
+    ? await fetchWikiArticle(found, maxChars, fetchFn, focus).catch(
+        () => undefined,
+      )
     : undefined;
+  return a ? withCitations(a, maxChars, focus, fetchFn, opts) : undefined;
 }

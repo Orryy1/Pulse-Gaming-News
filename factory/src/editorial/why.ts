@@ -366,7 +366,7 @@ export function whyBrief(
   /** SHORT_END_PAYOFF: no "a new Why every day" in the last line; a real documentary or ranking is still pointed to. */
   noSeriesFollow = false,
 ): string {
-  return `This Short is not breaking news: it answers one question about a game, using the sources (its Wikipedia article) as the evidence.
+  return `This Short is not breaking news: it answers one question about a game, using the sources (background notes on the game and the originals they cite) as the evidence. Credit the original outlet or studio, never Wikipedia.
 Question: ${question}
 Likely answer to test against the sources: ${angle}
 Structure for this Short (it replaces the news hook and beat rules where they differ):

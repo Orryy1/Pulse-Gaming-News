@@ -288,7 +288,7 @@ export function factsText(f: SteamFacts): string {
       `Players on Steam right now: ${f.currentPlayers.toLocaleString("en-US")}`,
     `Data fetched: ${f.fetchedAt}`,
     f.background &&
-      `Background (Wikipedia, ${f.backgroundUrl ?? "en.wikipedia.org"}): ${f.background.replace(/\s+/g, " ").trim()}`,
+      `Background notes: ${f.background.replace(/\s+/g, " ").trim()}`,
   ];
   return lines.filter(Boolean).join("\n");
 }

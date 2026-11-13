@@ -103,11 +103,13 @@ export function figuresOf(text: string): Set<string> {
 }
 
 const I_FORM = /^I(?:'m|'d|'ll|'ve|’m|’d|’ll|’ve)?$/;
+// The possessive goes before the trailing stops, so "B.J.'s" and "B.J." are the same name ("B.J").
 const clean = (raw: string) =>
   raw
     .replace(/^[("“'‘[]+/, "")
     .replace(/[)"”'’\].,;:!?…]+$/, "")
-    .replace(/['’]s$/, "");
+    .replace(/['’]s$/, "")
+    .replace(/[.]+$/, "");
 
 /**
  * The names a text says: capitalised words that aren't the first of their sentence, and any word with a digit or a
@@ -117,11 +119,14 @@ const clean = (raw: string) =>
 export function namesOf(text: string): Set<string> {
   const out = new Set<string>();
   for (const s of sentencesIn(stripVoiceTags(text))) {
-    s.split(/\s+/).forEach((raw, i) => {
+    const toks = s.split(/\s+/);
+    toks.forEach((raw, i) => {
       const tok = clean(raw);
       if (!/[A-Z]/.test(tok) || I_FORM.test(tok)) return;
       const strong = /\d/.test(tok) || /[A-Z].*[A-Z]/.test(tok);
-      if (i === 0 && !strong) return;
+      // A word after a colon opens a clause like a sentence does ("My verdict: Don't...").
+      const opens = i === 0 || /:$/.test(toks[i - 1] ?? "");
+      if (opens && !strong) return;
       out.add(tok);
     });
   }
@@ -220,13 +225,29 @@ export function factDrift(before: string, after: string): string[] {
   if (added.length) p.push(`The rewrite adds the figure ${added.join(", ")}.`);
   const wb = lowerWords(before);
   const wa = lowerWords(after);
-  const newNames = [...namesOf(after)].filter((n) => !wb.has(n.toLowerCase()));
+  // The short form people say for a name already there is the same name ("GTA" for "Grand Theft Auto").
+  const initials = new Set(
+    nameRunsOf(before)
+      .filter((run) => run.length > 1)
+      .map((run) => run.map((x) => x[0]).join("").toUpperCase()),
+  );
+  const newNames = [...namesOf(after)].filter(
+    (n) => !wb.has(n.toLowerCase()) && !initials.has(n),
+  );
   const named = namesOf(before);
+  const afterInitials = new Set(
+    nameRunsOf(after)
+      .filter((run) => run.length > 1)
+      .map((run) => run.map((x) => x[0]).join("").toUpperCase()),
+  );
   const lostNames = nameRunsOf(before)
     .filter(
       (run) =>
         run.some((x) => named.has(x)) &&
-        !run.some((x) => wa.has(x.toLowerCase())),
+        !run.some((x) => wa.has(x.toLowerCase()) || afterInitials.has(x)) &&
+        !(run.length > 1 && wa.has(run.map((x) => x[0]).join("").toLowerCase())) &&
+        // Our own segment's name is a label, not a fact: saying it plainly instead is the point.
+        !run.some((x) => /^pulse$/i.test(x)),
     )
     .map((run) => run.join(" "));
   if (newNames.length)
@@ -510,7 +531,10 @@ export async function friendShort(
   });
   const hookMarks = extractVoiceTags(texts[0]!).marks;
   const { voice_tags: _old, ...rest } = script;
-  const build = (r: { lines: Record<string, string>; marks: VoiceTagMark[] }): Script => {
+  const build = (r: {
+    lines: Record<string, string>;
+    marks: VoiceTagMark[];
+  }): Script => {
     const line = (key: string) => {
       const t = r.lines[key];
       if (!t?.trim()) throw new Error(`the friend pass left ${key} empty`);
@@ -541,7 +565,10 @@ export async function friendShort(
     hook: { text: toBraces(texts[0]!), editable: false },
   };
   for (const [k, t] of Object.entries(first.braced))
-    trimView[k] = { narration: t, words: wordsIn(stripVoiceTags(fromBraces(t))) };
+    trimView[k] = {
+      narration: t,
+      words: wordsIn(stripVoiceTags(fromBraces(t))),
+    };
   const trimmed = await editLines(llm, {
     site: "friend.short",
     tier: opts.tier ?? "mid",

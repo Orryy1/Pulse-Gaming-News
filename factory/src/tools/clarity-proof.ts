@@ -214,10 +214,25 @@ function house(
 }
 
 /** Facts a rewrite may not add; dropping a weaker figure or name is a fair edit, adding one is not. */
-const addsFacts = (before: Script, after: Script) =>
-  factDrift(shortText(before), shortText(after)).filter(
-    (p) => !/ drops the (figure|name) /.test(p),
-  );
+// A figure or name the verified claims or the sources already carry is not new (the stand-in for the fact check).
+const ADDED = /^The rewrite adds the (?:figure|name) (.+)\.$/;
+const addsFacts = (before: Script, after: Script, row: Row) => {
+  const known = [
+    ...(row.script_json.claims ?? []).map((c) => c.claim),
+    ...(row.story_json?.items ?? []).map(
+      (i: any) => `${i.title} ${i.summary ?? ""}`,
+    ),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return factDrift(shortText(before), shortText(after)).filter((p) => {
+    if (/ drops the (figure|name) /.test(p)) return false;
+    const m = p.match(ADDED);
+    return (
+      !m || !m[1]!.split(", ").every((x) => known.includes(x.toLowerCase()))
+    );
+  });
+};
 
 interface Result {
   id: string;
@@ -300,7 +315,7 @@ async function prove(row: Row): Promise<Result> {
         effort: "medium",
       }));
     written = strip(written);
-    const added = addsFacts(before, written);
+    const added = addsFacts(before, written, row);
     r.steps.push({
       step: "writer (new rules)",
       kept: !added.length,

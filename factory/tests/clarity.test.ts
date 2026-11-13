@@ -293,3 +293,14 @@ test("a plug for another video goes back; a funnel cut is not written here", () 
   ])
     assert.equal(videoPlugProblems(t).length, 0, t);
 });
+
+test("the facts guard reads short forms, possessives and a verdict's capital as the same facts", async () => {
+  const { factDrift } = await import("../src/editorial/friendpass.ts");
+  assert.deepEqual(factDrift("Grand Theft Auto 6 Ultimate costs $99.99.", "GTA 6 Ultimate costs $99.99."), []);
+  assert.deepEqual(
+    factDrift("Bethesda brings back B.J. Blazkowicz. B.J.'s daughters left.", "Bethesda brings back B.J. Blazkowicz. His daughters left B.J. alone."),
+    [],
+  );
+  assert.deepEqual(factDrift("It costs $80. My Pulse check? Faint.", "It costs $80. My verdict: Don't buy it yet."), []);
+  assert.match(factDrift("Sony makes it.", "Sony and Nintendo make it.").join(" "), /adds the name Nintendo/);
+});

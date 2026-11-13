@@ -161,6 +161,21 @@ function excitement(loud, motion, bonus) {
   return score;
 }
 
+// LIVE_CLIPS (src/liveclips): the stretches of each broadcast the live clipper already cut, by VOD id, in seconds
+// from the VOD's start: { "v2923231248": [[4520, 4560]] }. The VOD's id is in its file name ("[v2923231248]").
+async function liveTaken(file) {
+  const vod = path.basename(file).match(/\[(v\d+)\]/)?.[1];
+  if (!vod) return [];
+  try {
+    const all = JSON.parse(
+      await fs.readFile(path.join(ROOT, "live_taken.json"), "utf8"),
+    );
+    return Array.isArray(all[vod]) ? all[vod] : [];
+  } catch {
+    return [];
+  }
+}
+
 function pickWindows(score, duration) {
   const want = Math.max(2, Math.min(12, Math.round(duration / 60 / 12)));
   const windows = [];
@@ -362,6 +377,16 @@ async function main() {
         excitement(loud, motion, tags && soundBonus(tags)),
         duration,
       );
+      // LIVE_CLIPS: a moment already cut from this broadcast while it was live is not cut again from its VOD.
+      const taken = await liveTaken(f.full);
+      if (taken.length)
+        windows = windows.filter(
+          (w) =>
+            !taken.some(
+              ([from, to]) =>
+                w.start < to + 30 && w.start + CLIP_SECONDS > from - 30,
+            ),
+        );
     }
     log(`  ${windows.length} moment(s)`);
     for (const w of windows) {

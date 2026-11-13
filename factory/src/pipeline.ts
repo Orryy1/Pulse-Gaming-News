@@ -923,9 +923,10 @@ export function episodeDir(cfg: Config, id: string): string {
 }
 
 /** A gameplay card's links: with GAMEPLAY_ONE_TAP, Approve and Reject act on the tap (src/server.ts). */
-export function gameplayLinks(cfg: Config, id: string) {
+export function gameplayLinks(cfg: Config, id: string, live = false) {
   const links = approvalLinks(cfg, id);
-  return cfg.gameplayOneTap
+  // A clip from the live stream is always one tap (LIVE_CLIPS): its topic is hot for an hour or two, not a day.
+  return cfg.gameplayOneTap || live
     ? {
         ...links,
         approve: `${links.approve}&now=1`,
@@ -5138,6 +5139,7 @@ export async function ingestGameplay(
               dayKey(s.now(), cfg.timezone),
               cfg.gameplayRehearsalUntil,
             ),
+            ...(meta.source.kind === "twitch_live" ? { live: true } : {}),
           },
         };
         episode = shortId();
@@ -5240,7 +5242,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       throw new FatalError("no clean payoff: the clip stops before anything is answered");
     const cut = directCut(direction, blacks, meta.clip.seconds);
     const lines = fitLines(direction, cut.payoffAt);
-    const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg));
+    const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg), ref.live);
     script.hook = lines.hook;
     script.beats = [
       {
@@ -5353,6 +5355,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     ref.review,
     ref.id,
     await gameplayExperiments(s.cfg),
+    ref.live,
   );
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
@@ -12286,7 +12289,7 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
   const dir = episodeDir(s.cfg, ep.id);
   // Auto mode needs nothing from the owner: a short "going out" note with a Watch link, no buttons.
   const g = script.gameplay;
-  const tap = gameplayLinks(s.cfg, ep.id);
+  const tap = gameplayLinks(s.cfg, ep.id, Boolean(g?.live));
   const rehearsal = ep.lane === "gameplay" && !!ep.story_json.gameplay?.rehearsal;
   const description = rehearsal && g
     ? [
@@ -12303,6 +12306,11 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
       ]
     : g
     ? [
+        ...(g.live
+          ? [
+              `🔴 **From today's live stream**, cut minutes after it happened. One tap on Approve and it goes out ${s.cfg.liveClips.publishNow ? "at the next free gap" : "in the next gameplay slot"}.`,
+            ]
+          : []),
         `**Question:** ${g.question}`,
         `**Result:** ${g.result}`,
         `**Game:** ${script.game_title}${g.experiment_number ? `  ·  test #${g.experiment_number} on the list` : "  ·  a fresh test"}`,
@@ -12407,7 +12415,7 @@ async function stepAwaitApproval(s: Services, ep: Episode): Promise<void> {
         [ep.id],
       );
       if (Number(told?.n ?? 0) === 0) {
-        const links = gameplayLinks(s.cfg, ep.id);
+        const links = gameplayLinks(s.cfg, ep.id, Boolean(ep.script_json?.gameplay?.live));
         await logEvent(s.db, ep.id, "gameplay_reminded", {});
         await s.notify({
           ping: true,
@@ -12560,7 +12568,12 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
           AND status NOT IN ('failed','rejected') AND id <> $2`,
       [s.now(), ep.id],
     );
-    const slot = nextGameplaySlot(
+    // LIVE_CLIPS_PUBLISH_NOW: a clip from the live stream goes out while its topic is hot, at the first time clear of
+    // every other publish (choosePublishAt keeps the gap), not in the evening's gameplay slot.
+    const slot =
+      ep.story_json.gameplay?.live && s.cfg.liveClips.publishNow
+        ? new Date(s.now().getTime() + 60_000)
+        : nextGameplaySlot(
       s.cfg,
       s.now(),
       rows.filter((r) => r.lane !== "gameplay").map((r) => new Date(r.at)),

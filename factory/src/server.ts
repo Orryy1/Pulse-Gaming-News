@@ -113,6 +113,7 @@ import {
 } from "./routines.ts";
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
+import { liveClipsTick } from "./liveclips/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -1897,6 +1898,11 @@ async function main(): Promise<void> {
   if (cfg.macGameplay) {
     void macGameplayTick(cfg);
     setInterval(() => void macGameplayTick(cfg), 5 * 60_000);
+  }
+  // Near-live clips while the owner streams (LIVE_CLIPS): src/liveclips/job.ts.
+  if (cfg.liveClips.enabled) {
+    setTimeout(() => void liveClipsTick(cfg), 30_000);
+    setInterval(() => void liveClipsTick(cfg), 15_000);
   }
 
   // Boot checks: everything that silently stops an unattended factory, posted to Discord once.

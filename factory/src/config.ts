@@ -528,6 +528,14 @@ export interface Config {
   /** FRIEND_PASS_TIER: the model for the friend pass. "top" (Opus) wrote the edgier, funnier lines in the 11 Nov tuning
    * at about three times the mid model's few cents per Short; "mid" is the cheaper fallback. */
   friendPassTier: "top" | "mid";
+  /** The clarity gate (src/editorial/clarity.ts, owner 13 Nov 2026: the scripts were "nonsensical / confusing / unclear"):
+   * after writing, a judge reads the script cold, states its point, flags every confusing line and scores clarity 1-10;
+   * flagged lines are rewritten and a score under CLARITY_MIN goes back to the writer once, then to a plain rewrite.
+   * CLARITY_GATE lists the writers it runs for, as FRIEND_PASS does ("shorts", "documentary" chapters), "off" for none:
+   * default both. Its steps are "clarity.judge" and "clarity.rewrite" (CODEX_CALLS=clarity routes both). */
+  clarityGate: FriendPassFormat[];
+  /** CLARITY_MIN: the lowest clarity score that passes without going back to the writer (default 8). */
+  clarityMin: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1571,6 +1579,8 @@ export function loadConfig(): Config {
     seriesFeaturedVideo: str("SERIES_FEATURED_VIDEO", "").trim(),
     friendPass: friendPassFrom(process.env.FRIEND_PASS),
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
+    clarityGate: friendPassFrom(process.env.CLARITY_GATE),
+    clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     reachReport: bool("REACH_REPORT", false),

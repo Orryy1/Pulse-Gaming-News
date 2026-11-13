@@ -770,8 +770,10 @@ test("a question halfway through a Short, answered by the narrator, goes back to
 });
 
 test("the voice study (11 Nov 2026) reaches every writer and no rule contradicts it", async () => {
-  // Shorts: "you" three to five per hundred words, short sentences, one owned verdict, no "So" opener.
-  assert.match(PULSE_VOICE, /three to five "you" or "your" per hundred words/);
+  // Shorts: short sentences, one owned verdict, no "So" opener; since 13 Nov 2026 "you" where natural, not a quota.
+  assert.doesNotMatch(PULSE_VOICE, /three to five "you" or "your" per hundred words/);
+  assert.match(PULSE_VOICE, /Use "you" where it is natural, never to a quota/);
+  assert.match(PULSE_VOICE, /Clarity first/);
   assert.match(PULSE_VOICE, /sentences average 9-12 words/);
   assert.match(PULSE_VOICE, /flat claim followed by one "I" line/);
   assert.match(PULSE_VOICE, /never "So", which the hook rules ban/);
@@ -790,8 +792,10 @@ test("the voice study (11 Nov 2026) reaches every writer and no rule contradicts
   const { youRule } = await import("../src/editorial/longrules.ts");
   assert.doesNotMatch(youRule(25), /no "I"/);
   assert.match(youRule(25), /"I" is only ever an opinion/);
-  // The news writer's brief asks for the rate the check counts.
-  assert.match(scriptPrompt(), /three to five times per hundred words/);
+  // The news writer's brief asks for "you" where natural and for the Short's one point, never a count.
+  assert.doesNotMatch(scriptPrompt(), /three to five times per hundred words/);
+  assert.match(scriptPrompt(), /never to a count/);
+  assert.match(scriptPrompt(), /put it in "point"/);
   const { PERSONAL_VOICE } = await import("../src/pipeline.ts");
   assert.doesNotMatch(PERSONAL_VOICE, /End on a question viewers will argue about/);
   assert.match(PERSONAL_VOICE, /never stacked/);
@@ -808,7 +812,7 @@ test("the voice study's example lines are sent back when copied, and asking endi
   assert.match(phraseProblems("Let us know below.").join(" "), /let us know/i);
 });
 
-test('a Short says "you" three times per hundred words, never fewer than two', async () => {
+test('the old "you" floor is kept for reports but no longer sends a Short back', async () => {
   const { shortYouMin } = await import("../src/editorial/editorial.ts");
   assert.equal(shortYouMin(60), 2);
   assert.equal(shortYouMin(70), 2);

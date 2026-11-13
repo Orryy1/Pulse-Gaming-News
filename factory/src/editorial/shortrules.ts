@@ -9,7 +9,7 @@
 import { numberWords } from "../voice/speakable.ts";
 
 /** The first line carries the stake. Worded so it holds for a question hook and a statement hook alike (hook style test). */
-export const STAKE_RULE = `First line: the hook has to carry a stake for the viewer, not just the fact: what this costs them, saves them, takes from them, or what they should do or not do. Whatever shape the hook takes (a question, a statement, a surprise), someone scrolling past should feel it is about them or their game. Shapes that work, in this story's own words: a warning ("Do not pre-order X yet", only when the sources say X is on sale or open for pre-order), a loss ("Your X save won't carry over"), a thing to do tonight ("Claim X before Friday"), a price they will pay. Keep the game's name in the first five words and every other hook rule.`;
+export const STAKE_RULE = `First line: the hook has to carry a stake for the viewer, not just the fact: what this costs them, saves them, takes from them, or what they should do or not do. Whatever shape the hook takes (a question, a statement, a surprise), someone scrolling past should feel it is about them or their game. Shapes that work, in this story's own words: a warning ("Do not pre-order X yet", only when the sources say X is on sale or open for pre-order), a loss ("X saves won't carry over"), a thing to do tonight ("Claim X before Friday"), a price they will pay. The stake is the news said plainly with its consequence, never a "your" bolted onto something that isn't the viewer's ("your unfinished trilogy", "your East Coast unlock"): if the sentence reads oddly with "your" in it, say the thing itself. Keep the game's name in the first five words and every other hook rule.`;
 
 /** The hook of a ranking or list: its premise stays, the stake is the argument fans will have. */
 export const STAKE_RULE_EVERGREEN = `First line: besides the premise, the hook gives fans something to fight over or a reason it matters to them ("Your favorite Fallout probably isn't number one"), never just the list's name. It still never hints at number one.`;
@@ -92,10 +92,31 @@ export function preorderProblems(narration: string, sourceText: string): string[
   ];
 }
 
-export const ENDING_RULE = `The ending: this overrides what the brief says about the loop line. The loop_line is a statement, never a question: either the payoff of the whole Short in its sharpest form, or a line whose last words run straight back into the hook, so the replay sounds like the next sentence. Never a question to the viewer, never an advert for ourselves ("the next Why lands tomorrow", "every day", "follow for"), never a summary of what was just said. The viewer's question goes in the pinned comment, not here.`;
+export const ENDING_RULE = `The ending: this overrides what the brief says about the loop line. The loop_line is a statement, never a question: the payoff of the whole Short said plainly, so a viewer who hears only that line knows the point, or a line whose last words run straight back into the hook, so the replay sounds like the next sentence. It follows from the take and makes sense heard on its own: never a quip, metaphor or callback the viewer has to decode ("Wishful thinking still belongs off your receipt" means nothing heard once). Never a question to the viewer, never an advert for ourselves or another video ("the next Why lands tomorrow", "every day", "follow for", "our documentary"), never a summary of what was just said. The viewer's question goes in the pinned comment, not here.`;
 
-/** With a real long video to point at, that pointer stays, as a statement. */
-export const ENDING_RULE_FOLLOW = `If this Short has a documentary or ranking to point to, the pointer stays in the line, as a statement.`;
+/**
+ * Pointers to our long videos stay out of news and Why Shorts (owner, 13 Nov 2026: the GTA Shorts ended "our full GTA
+ * documentary checks which launch promises survive the trip"): a tacked-on plug is the least clear line in the Short.
+ * The one place for a pointer is a Short cut from the long video itself (src/funnel.ts), which says FUNNEL_LINE.
+ */
+export const ENDING_RULE_FOLLOW = `No pointer to another video in the narration: our documentaries and rankings go in the pinned comment, not the last line.`;
+
+/** A spoken pointer to one of our long videos ("our full GTA documentary", "the full guide is linked below"). */
+export const VIDEO_PLUG =
+  /\b(?:[Oo]ur (?:full |whole |new |latest )?|[Tt]he (?:full|whole) )(?:[A-Z][\w']*(?: [A-Z0-9][\w']*)* )?(?:[Dd]ocumentar(?:y|ies)|[Rr]anking|[Gg]uide|[Dd]eep dive|[Ll]ong video|[Rr]etrospective)\b|\blinked (?:just )?below\b/;
+
+/**
+ * A plug in a news or Why Short's narration (owner, 13 Nov 2026): never, except in a Short cut from the long video
+ * itself (src/funnel.ts), which is not written by these writers.
+ */
+export function videoPlugProblems(narration: string): string[] {
+  const hit = narration.match(VIDEO_PLUG);
+  return hit
+    ? [
+        `"${hit[0]}" plugs another video; a news Short ends on its own point. Our long videos are linked in the pinned comment.`,
+      ]
+    : [];
+}
 
 const SELF_ADVERT =
   /\b(next why|lands? tomorrow|every day|each day|tomorrow'?s why|new why|follow for|come back tomorrow)\b/i;
@@ -235,7 +256,7 @@ export function evergreenRuleNote(cfg: ShortRuleSettings): string {
   return [
     cfg.shortStakeFirst ? STAKE_RULE_EVERGREEN : "",
     cfg.shortEndPayoff
-      ? "The ending: the loop_line is a statement, never a question to the viewer: the pick's sharpest line, or words that run back into the hook."
+      ? "The ending: the loop_line is a statement, never a question to the viewer: the pick's sharpest line said plainly, or words that run back into the hook, and it makes sense heard on its own."
       : "",
     cfg.shortTightScript ? TIGHT_RULE : "",
   ]

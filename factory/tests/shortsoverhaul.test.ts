@@ -323,21 +323,30 @@ test("the ending is a statement with no advert", () => {
   assert.equal(endingProblems("And that glide still works.").length, 0);
 });
 
-test("a Why with the rule on no longer has to point at tomorrow", () => {
+test("a Why never has to point at tomorrow or at a long video, and a plug goes back", () => {
   assert.equal(
     whyFollowProblems("The glide still works.", undefined, true).length,
     0,
   );
-  assert.ok(
-    whyFollowProblems("The glide still works.", undefined, false).length > 0,
+  assert.equal(
+    whyFollowProblems("The glide still works.", undefined, false).length,
+    0,
   );
-  // A real long video is still pointed to.
-  assert.ok(
+  assert.equal(
     whyFollowProblems(
       "The glide still works.",
       { kind: "documentary", title: "X", franchise: "Y" },
       true,
-    ).length > 0,
+    ).length,
+    0,
+  );
+  assert.equal(
+    whyFollowProblems(
+      "The glide still works, and our full GTA documentary has the rest.",
+      { kind: "documentary", title: "X", franchise: "Y" },
+      true,
+    ).length,
+    1,
   );
 });
 

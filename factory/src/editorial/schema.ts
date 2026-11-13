@@ -134,6 +134,12 @@ export const ScriptSchema = z.object({
     .string()
     .describe("Term to find the game on the Steam store, or empty string"),
   headline: z.string().describe("On-screen headline, 3-8 words, no clickbait"),
+  point: z
+    .string()
+    .optional()
+    .describe(
+      "The Short's one point in one plain sentence a casual viewer could repeat to a friend: who did what, the number that carries it and what it means for them. Never spoken; the clarity check reads the script against it",
+    ),
   hook: z
     .string()
     .describe("First spoken line: the news itself in 5-10 words, game named"),

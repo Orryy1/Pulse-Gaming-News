@@ -198,9 +198,10 @@ test("house-rule validation", () => {
       loop_line: "So mark early 2027 for Starfield's second expansion.",
     }),
   );
+  // Since 13 Nov 2026 "you" is not counted: a floor made writers bolt "your" onto things (the clarity judge reads it).
   assert.ok(
-    bulletin.some((p) => /says "you" never/.test(p)),
-    "a script that never speaks to the viewer is sent back",
+    !bulletin.some((p) => /says "you"/.test(p)),
+    "a script that says \"you\" less often is not sent back for it",
   );
   const recent = {
     takes: ["For us, Bethesda has", "In fairness, the"],

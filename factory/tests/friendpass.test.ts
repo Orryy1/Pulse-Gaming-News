@@ -455,7 +455,8 @@ test("the Pulse Check reads as a friend's verdict and keeps its four readings", 
     undefined,
     "it ends the take",
   );
-  const s = goodScript({
+  // Since 13 Nov 2026 the spoken form is a plain verdict; the older form still reads, but goes back.
+  const old = goodScript({
     pulse_take: {
       label: PULSE_CHECK_LABEL,
       narration:
@@ -463,12 +464,21 @@ test("the Pulse Check reads as a friend's verdict and keeps its four readings", 
       on_screen: "STEADY: nothing changes yet",
     },
   });
-  assert.deepEqual(pulseCheckProblems(s), []);
+  assert.match(pulseCheckProblems(old).join(" "), /Don't say "Pulse check" aloud/);
   assert.deepEqual(
-    midQuestions(s),
+    midQuestions(old),
     [],
     "its lead-in is not a question answered to nobody",
   );
+  const s = goodScript({
+    pulse_take: {
+      label: PULSE_CHECK_LABEL,
+      narration: "You can wait a week. My verdict? Nothing changes for you yet.",
+      on_screen: "STEADY: nothing changes yet",
+    },
+  });
+  assert.deepEqual(pulseCheckProblems(s), []);
+  assert.deepEqual(midQuestions(s), [], "nor is the plain verdict's");
   assert.equal(
     midQuestions(
       goodScript({

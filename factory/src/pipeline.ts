@@ -278,6 +278,16 @@ import {
   shortSettledText,
 } from "./editorial/friendpass.ts";
 import {
+  clarityGate,
+  clarityLog,
+  judgeClarity,
+  clarityRewriteShort,
+  clarityShortProblems,
+  clarityRewriteChapter,
+  clarityChapterProblems,
+  shortLines,
+} from "./editorial/clarity.ts";
+import {
   narrationOf,
   tidyLoopLine,
   wordCount,
@@ -340,6 +350,7 @@ import {
   lineNamesLaterVersion,
   sourceTag,
   endingProblems,
+  videoPlugProblems,
   nextLineProblems,
   nextLineRule,
   evergreenRuleNote,
@@ -1201,7 +1212,7 @@ export function shortWpmMax(cfg: Pick<Config, "shortMinWpm" | "shortSpeed">): nu
 
 /** The personal voice for the voice test: a take, honestly held, never an invented experience. */
 export const PERSONAL_VOICE =
-  "Voice for this Short: a gamer talking to a friend, not a news report. Once the viewer has the facts, give Pulse's verdict as a flat claim, then one first-person line that owns it (\"That's steep. I'd wait for a sale.\"); one \"I think\" or \"honestly\" at most, never stacked and never in the first sentence. When the story has a downside, say it before the praise, so the praise is believed, and be warm more often than sharp. One light joke gamers would get is welcome if it fits, aimed at a company, a price or the situation. Tie the story to the biggest game of the moment only when the sources make the link real. End on the kicker the brief asks for, never on \"let me know\" or a general \"what do you think?\". Never claim to have played, owned, watched or felt anything, and never put words in anyone's mouth: opinions only, and every fact stays exactly as the sources give it.";
+  "Voice for this Short: a gamer talking to a friend, not a news report. Say the news plainly first, so the viewer knows the point; once they have the facts, give Pulse's verdict in the take as a flat claim with its reason, then one first-person line that owns it (\"That's steep. I'd wait for a sale.\"); the beats carry no \"I\" lines, and one \"I think\" or \"honestly\" at most, never stacked and never in the first sentence. When the story has a downside, say it before the praise, so the praise is believed, and be warm more often than sharp. One light joke gamers would get is welcome only if it follows straight from the line before and makes sense heard once, aimed at a company, a price or the situation; no joke beats a confusing one. Tie the story to the biggest game of the moment only when the sources make the link real. End on the kicker the brief asks for, never on \"let me know\" or a general \"what do you think?\". Never claim to have played, owned, watched or felt anything, and never put words in anyone's mouth: opinions only, and every fact stays exactly as the sources give it.";
 
 /** A stable 0-1 number for an id (FNV-1a), for splitting episodes between test sides. */
 export function unitHash(id: string): number {
@@ -4388,6 +4399,56 @@ async function stepScriptDocumentary(
         why: friend.why.slice(0, 4),
       }).catch(() => undefined);
     }
+    // The clarity gate (CLARITY_GATE) per chapter: a cold read, then the flagged lines rewritten in the narrator's voice
+    // (under CLARITY_MIN) or plainly, each version kept only when no fact moved, no chapter rule newly breaks and the
+    // fact check passes it.
+    if (clean && friendPassOn({ friendPass: s.cfg.clarityGate }, "documentary")) {
+      const settled = chapter!;
+      const rulesFor = (c: typeof settled) =>
+        validateChapter(c, {
+          earlier: chapters,
+          priorDoc,
+          loops: openLoops.loops,
+          chapter: index + 1,
+        });
+      let lastRead: Awaited<ReturnType<typeof judgeClarity>> | undefined;
+      const clarity = await clarityGate<typeof settled>({
+        value: settled,
+        min: s.cfg.clarityMin,
+        judge: async (v) =>
+          (lastRead = await judgeClarity(s.llm, {
+            lines: v.paragraphs.map((x) => x.narration),
+            title: plan.chapter_title,
+            format: "chapter",
+          })),
+        writer: (v) =>
+          lastRead
+            ? clarityRewriteChapter(s.llm, v, lastRead, { min: s.cfg.clarityMin })
+            : Promise.reject(new Error("no cold read to revise from")),
+        rewrite: (v, j, plain) =>
+          clarityRewriteChapter(s.llm, v, j, { plain, min: s.cfg.clarityMin }),
+        accept: async (before, after) => {
+          const guard = [
+            ...clarityChapterProblems(before, after),
+            ...(s.cfg.attributionGuard
+              ? newProblems(
+                  attributionProblems(before.paragraphs.map((x) => x.narration).join(" ")),
+                  attributionProblems(after.paragraphs.map((x) => x.narration).join(" ")),
+                )
+              : []),
+            ...newProblems(rulesFor(before), rulesFor(after)),
+            ...chapterRefusal(after),
+          ];
+          return guard.length ? guard : checkChapter(s.llm, after, source);
+        },
+      });
+      chapter = clarity.value;
+      await logEvent(s.db, ep.id, "doc_clarity_gate", {
+        chapter: index + 1,
+        ...clarityLog(clarity),
+        kept: clarity.value !== settled,
+      }).catch(() => undefined);
+    }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
       warnings.push(
@@ -6970,6 +7031,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     problems.push(...releaseDateProblems(publicText(sc)));
     if (s.cfg.shortEndPayoff)
       problems.push(...endingProblems(sc.loop_line, nextPart));
+    // No plug for another video in a news or Why Short (owner, 13 Nov 2026); only a funnel cut points to its long video.
+    problems.push(...videoPlugProblems(narrationOf(sc)));
     if (lineArm) problems.push(...nextLineProblems(sc.loop_line, nextPart));
     // Under SHORT_MIN_SECONDS after the rewrite, a Short stops like a thin one: a big story still goes out.
     const short = shortFloorProblems(wordCount(narrationOf(sc)), floor, s.cfg.shortSpeed);
@@ -7238,6 +7301,92 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       why: friend.why.slice(0, 6),
       before: shortText(before),
       ...(friend.kept ? { tags: (script.voice_tags ?? []).length } : {}),
+    }).catch(() => undefined);
+  }
+  // The clarity gate (CLARITY_GATE, src/editorial/clarity.ts): a judge reads the settled Short cold. Flagged lines get a
+  // plain rewrite; under CLARITY_MIN the writer revises once first. Each version is kept only when no fact moved, no
+  // house rule newly breaks and the fact check passes it, so the worst case is the script as it was.
+  if (
+    friendPassOn({ friendPass: s.cfg.clarityGate }, "shorts") &&
+    check.verdict === "pass" &&
+    check.rumour_labelling_ok &&
+    !check.issues.some((i) => i.severity === "blocker")
+  ) {
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    let gateCheck: typeof check | undefined;
+    const settled = script;
+    const accept = async (before: Script, after: Script): Promise<string[]> => {
+      const guard = [
+        ...clarityShortProblems(before, after, wordsLimits),
+        ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+      ];
+      if (guard.length) return guard;
+      const v = friendCheckVerdict(
+        await factCheck(s.llm, after, cluster, articles, storeData),
+        shortSettledText(before),
+      );
+      const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+      const late = airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : [];
+      if (v.blockers.length || late.length) return [...v.blockers, ...late];
+      gateCheck = v.check;
+      return [];
+    };
+    const clarity = await clarityGate<Script>({
+      value: settled,
+      min: s.cfg.clarityMin,
+      judge: (v) =>
+        judgeClarity(s.llm, {
+          lines: shortLines(v),
+          intended: v.point,
+          title: v.youtube.title,
+        }),
+      writer: async (v, notes) =>
+        writeScript(s.llm, cluster, articles, {
+          desk: s.cfg.deskShare > 0,
+          variantNote,
+          mustLabelRumour,
+          feedback: notes,
+          storeData,
+          recent,
+          draft: v,
+          segment: pulseCheck,
+          noSeriesFollow: s.cfg.shortEndPayoff,
+          skeleton,
+          dropAngle: drop,
+          length,
+          ...(cluster.search
+            ? { site: SEARCH_WRITE_SITE }
+            : cluster.reply
+              ? { site: "reply.write" }
+              : {}),
+        }),
+      rewrite: (v, j, plain) =>
+        clarityRewriteShort(s.llm, v, j, {
+          plain,
+          min: s.cfg.clarityMin,
+          wordsMax: wordsLimits.wordsMax,
+        }),
+      accept,
+    });
+    if (clarity.value !== settled && gateCheck) {
+      script = clarity.value;
+      check = gateCheck;
+      if (cluster.search)
+        script = {
+          ...script,
+          youtube: {
+            ...script.youtube,
+            title: searchTitleFor(script.youtube.title, cluster.search, cluster.gameHint ?? ""),
+          },
+        };
+    }
+    await logEvent(s.db, ep.id, "clarity_gate", {
+      ...clarityLog(clarity),
+      kept: script !== settled,
+      before_text: shortText(settled),
     }).catch(() => undefined);
   }
   // RUMOUR_SHARE=0 (format redesign plan item 2) stops rumour Shorts the same way.

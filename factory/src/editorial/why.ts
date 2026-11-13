@@ -13,11 +13,12 @@
 // sellers, names the arc it sees, and two freshness rules hold for WHY_FRESH_DAYS (14): no game or topic
 // twice, and no hook opening the same way (src/pipeline.ts maybeSelectWhy, stepScript). The last line points
 // the viewer at a reason to follow (the full documentary or ranking on the same game, else the daily series)
-// without breaking the loop.
+// without breaking the loop; since 13 Nov 2026 that pointer lives in the pinned comment only (followRule).
 import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { EvergreenCandidate } from "./evergreen.ts";
 import { voiceFor } from "./voice.ts";
+import { videoPlugProblems } from "./shortrules.ts";
 
 /**
  * Well-loved games whose history has a turning point a Why Short can answer from Wikipedia: a sequel that
@@ -295,25 +296,16 @@ export interface WhyFollow {
   franchise?: string;
 }
 
-/** The writer's instruction for the last line's reason to follow. */
-export function followRule(follow: WhyFollow | undefined): string {
-  const f = follow ?? { kind: "series" as const };
-  const what =
-    f.kind === "documentary"
-      ? `our full documentary on ${f.franchise ?? "this game"} ("${f.title}"), with the word "documentary"`
-      : f.kind === "ranking"
-        ? `our full ${f.franchise ?? "series"} ranking ("${f.title}"), with the word "ranking"`
-        : `the series: a new Why question lands every day (say "every day", "tomorrow" or "the next Why")`;
-  return `- the loop_line also gives the viewer a specific reason to follow: it points to ${what}, in a few words, and still hands back to the question so the end runs into the start ("The rest is in our GTA documentary, so why did Rockstar never go back?" style). Never "like and subscribe", "hit subscribe" or "follow for more": the reason is the next story, not the button. Keep it one sentence of at most 22 words.`;
+/**
+ * The writer's instruction for the last line. It used to point the viewer at our documentary, ranking or the daily
+ * series ("our full GTA documentary checks which launch promises survive the trip"); since 13 Nov 2026 (owner: the
+ * scripts were unclear, and plugs tacked on at the end were part of it) the narration points nowhere. The long video
+ * is linked in the pinned comment (whyPinnedLine) and as the related video, so the viewer still finds it.
+ */
+export function followRule(_follow?: WhyFollow): string {
+  return `- the loop_line points to nothing outside this Short: no documentary, ranking, guide or "next Why" plug and no "like and subscribe". The pinned comment carries the link. It is the Short's own last line: the answer said plainly, or a hand-back to the question, in one sentence of at most 22 words.`;
 }
 
-/** Spoken cues that the loop line names the follow reason. */
-const FOLLOW_CUE: Record<WhyFollow["kind"], RegExp> = {
-  documentary: /\bdocumentar(y|ies)\b/i,
-  ranking: /\b(ranking|ranked)\b/i,
-  series:
-    /\b(every day|each day|daily|tomorrow|next why|the why|this series|the series)\b/i,
-};
 /** A generic call to action: the reason must be the next story, never the button. */
 const GENERIC_CTA =
   /\b(subscribe|smash (that|the)|hit (the )?(like|bell)|like (and|&) (sub|follow)|follow for more|don'?t forget to)\b/i;
@@ -336,25 +328,15 @@ export function whyAnswerProblems(narration: string): string[] {
 
 export function whyFollowProblems(
   loopLine: string,
-  follow: WhyFollow | undefined,
-  noSeriesFollow = false,
+  _follow?: WhyFollow,
+  _noSeriesFollow = false,
 ): string[] {
-  const f = follow ?? { kind: "series" as const };
   const out: string[] = [];
-  if (noSeriesFollow && f.kind === "series")
-    return GENERIC_CTA.test(loopLine)
-      ? ["The loop line asks for a subscribe or a like; end on the story's payoff."]
-      : [];
   if (GENERIC_CTA.test(loopLine))
     out.push(
-      `The loop line asks for a subscribe or a like; give the specific reason to follow instead (${f.kind === "series" ? "a new Why every day" : `our ${f.kind}`}).`,
+      "The loop line asks for a subscribe or a like; end on the story's own payoff.",
     );
-  if (!FOLLOW_CUE[f.kind].test(loopLine))
-    out.push(
-      f.kind === "series"
-        ? `The loop line must point to the series (a new Why every day, or tomorrow's Why) while handing back to the question.`
-        : `The loop line must point to our ${f.kind} on ${f.franchise ?? "this game"} ("${f.title}") while handing back to the question.`,
-    );
+  out.push(...videoPlugProblems(loopLine));
   return out;
 }
 
@@ -363,18 +345,18 @@ export function whyBrief(
   question: string,
   angle: string,
   follow?: WhyFollow,
-  /** SHORT_END_PAYOFF: no "a new Why every day" in the last line; a real documentary or ranking is still pointed to. */
-  noSeriesFollow = false,
+  /** Kept for callers: since 13 Nov 2026 the last line points to nothing either way (followRule). */
+  _noSeriesFollow = false,
 ): string {
   return `This Short is not breaking news: it answers one question about a game, using the sources (background notes on the game and the originals they cite) as the evidence. Credit the original outlet or studio, never Wikipedia.
 Question: ${question}
 Likely answer to test against the sources: ${angle}
 Structure for this Short (it replaces the news hook and beat rules where they differ):
-- hook: the question as tension, in under 3 seconds, ideally with a contrast fact: "Rockstar has re-released GTA 5 three times. GTA 4? Not once." The hook may be or contain the question itself. When the answer text above says "Open close to" a line, the hook is that line, almost word for word: it was chosen on purpose and it outranks the rule about naming the game in the first five words.
+- hook: the question as tension, in under 3 seconds, ideally with a contrast fact: "Rockstar has re-released GTA 5 three times. GTA 4? Not once." The hook may be or contain the question itself. When the answer text above says "Open close to" a line, the hook is that line, almost word for word: it was chosen on purpose and it outranks the rule about naming the game in the first five words. Clarity still comes first: if that line would leave a first-time viewer guessing what it means (a metaphor, a "your" on something that isn't theirs, a "this" with nothing to point at), keep its point and its game and say it plainly.
 - beats: two to four pieces of evidence from the sources, each with a hard specific (a year, a number, a named person or a quote), told as a story with a turn: what fans loved, what changed, where it stands now.
 - pulse_take: the verdict in the Pulse voice, with the fair counterpoint in your own words (never a stock "in fairness" opener).
 - loop_line: hand back to the question so the end runs into the start ("So why does it still get ignored?" style), never a call to comment. Read the loop line and then the hook aloud: on a replay the hook must sound like the natural next sentence.
-${noSeriesFollow && (follow?.kind ?? "series") === "series" ? "" : followRule(follow)}
+${followRule(follow)}
 - story_type is "explainer". If the sources do not support an answer, say what is known and what is not, never guess.
 The YouTube title is the question or a claim with a named company or game and a verb, under 60 characters.`;
 }

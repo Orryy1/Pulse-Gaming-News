@@ -166,7 +166,7 @@ test("hook openings and shapes: no repeated first words in the window, no third 
   );
 });
 
-test("the last line points to our documentary or ranking, or else to the series, never to the button", () => {
+test("the last line points to nothing outside the Short, never a plug or the button (13 Nov 2026)", () => {
   const doc = {
     kind: "documentary" as const,
     title: "Why GTA 6 Had to Go Back to Vice City",
@@ -174,15 +174,23 @@ test("the last line points to our documentary or ranking, or else to the series,
     franchise: "GTA",
   };
   assert.deepEqual(
+    whyFollowProblems("So why did Rockstar never go back?", doc),
+    [],
+    "no pointer is asked for",
+  );
+  assert.match(
     whyFollowProblems(
       "The rest is in our GTA documentary, so why did Rockstar never go back?",
       doc,
-    ),
-    [],
+    ).join(" "),
+    /plugs another video/,
   );
   assert.match(
-    whyFollowProblems("So why did Rockstar never go back?", doc)[0]!,
-    /must point to our documentary on GTA/,
+    whyFollowProblems(
+      "Even car theft comes with homework; our documentary asks which GTA 6 launch promises you can trust.",
+      doc,
+    ).join(" "),
+    /plugs another video/,
   );
   assert.match(
     whyFollowProblems(
@@ -191,36 +199,22 @@ test("the last line points to our documentary or ranking, or else to the series,
     ).join(" "),
     /asks for a subscribe or a like/,
   );
-  assert.deepEqual(
-    whyFollowProblems(
-      "A new Why lands every day, so why did Nintendo stop?",
-      undefined,
-    ),
-    [],
-  );
-  assert.deepEqual(
+  assert.match(
     whyFollowProblems(
       "Our Halo ranking has the rest, so which one still holds up?",
-      {
-        kind: "ranking",
-        title: "Every Halo Campaign Ranked",
-        videoId: "x",
-        franchise: "Halo",
-      },
-    ),
-    [],
+      { kind: "ranking", title: "Every Halo Campaign Ranked", videoId: "x", franchise: "Halo" },
+    ).join(" "),
+    /plugs another video/,
   );
-  // The brief tells the writer, and never asks for a comment.
+  // The brief tells the writer to point nowhere, and never asks for a comment; the pinned comment keeps the link.
   const brief = whyBrief(
     "Why no San Andreas sequel?",
     "Rockstar moved on to Liberty City",
     doc,
   );
-  assert.match(
-    brief,
-    /our full documentary on GTA \("Why GTA 6 Had to Go Back to Vice City"\)/,
-  );
-  assert.match(followRule(undefined), /a new Why question lands every day/);
+  assert.doesNotMatch(brief, /our full documentary on GTA/);
+  assert.match(brief, /points to nothing outside this Short/);
+  assert.match(followRule(undefined), /pinned comment carries the link/);
   assert.doesNotMatch(brief, /let me know in the comments/i);
   assert.equal(
     whyPinnedLine(doc),

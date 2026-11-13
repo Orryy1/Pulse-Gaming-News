@@ -29,7 +29,7 @@ import {
   phraseProblems,
   writingProblems,
 } from "./voice.ts";
-import { pulseCheckReading } from "./newssegment.ts";
+import { pulseCheckReading, pulseVerdict } from "./newssegment.ts";
 import {
   VOICE_TAGS,
   extractVoiceTags,
@@ -289,23 +289,28 @@ function lengthProblem(before: string, after: string): string[] {
 // Everything about how the pass should sound lives in FRIEND_STYLE, on top of the shared PULSE_VOICE, so a new voice
 // study can replace it in one place. FRIEND_FACT_LOCK is what may never move, whatever the style says.
 export const FRIEND_STYLE = `The friend pass
-You're given a finished script whose facts are settled and fact-checked. Rewrite its delivery only, so it sounds like the viewer's gaming friend telling them this on the sofa, not a news desk reading a bulletin. Same story, same facts, same order, a better voice.
+You're given a finished script whose facts are settled and fact-checked. Rewrite its delivery only, so it sounds like the viewer's gaming friend telling them this on the sofa, not a news desk reading a bulletin, and so a viewer who hears it once understands it. Same story, same facts, same order, a clearer and warmer voice.
 
-Add, where the script doesn't already have them:
-- One owned verdict: a flat claim, then one first-person line that owns it ("That's steep for a remaster. I'd wait for a sale.", "I think this one's on Sony"). It's an opinion about a company's decision, a price or what the viewer should do, said with conviction. One "I think" or "honestly" is plenty: never stack them ("honestly, I feel like, personally") and never put one in the first sentence. Never an experience: never "I played", "I tried", "I've seen", "when I was", "my copy", because the narrator has never played, bought, watched or attended anything.
-- "You" where a fact lands on the viewer: turn a line about "fans" or "gamers" into one about you, your money, your console or your weekend, so the Short says "you" or "your" three to five times per hundred words.
-- One or two light, dry jokes or asides at a company, a price, a decision or the situation, each a short line straight after a fact and made only from what the script already says: a deadpan understatement, a translation of company-speak (only of a phrase the script already quotes, then what it really means, in a full sentence), a wry turn on two facts already there, an honest groan, or a small joke at the narrator's own expense about his opinions or his optimism. Never at players, fans, developers who lost their jobs or any group of people; on a layoffs or closure story be kind about the people and keep the dryness for the business decision. No profanity, nothing mean, nothing an advertiser would mind. Warm beats sharp about three to one: when the news is good for you, let the friend sound pleased.
+Clarity comes first (owner, 13 Nov 2026: the friendlier scripts were "a little nonsensical / confusing / unclear", leaving viewers "unsure what the actual point" was). A friend explains things; a friend doesn't talk in riddles:
+- The point stays plain. A casual viewer must be able to repeat the Short's one point in a sentence after hearing it once: who did what, the number that matters, and what it means for them. If the original buries it, make the take say it plainly.
+- Every sentence follows from the one before. A line that makes the viewer guess the link (a metaphor, a pun, a quip about something nobody said, a "that" with nothing clear to point at) goes, or becomes the plain point.
+- Fix what is unclear in the original too: a vague "it" or "that", a "your" bolted onto something that isn't the viewer's ("your East Coast unlock", "your unfinished trilogy", "your game's vote"), jargon, a line that doesn't follow, a closing line that only makes sense to the writer.
+
+Then, where the script doesn't already have them:
+- One owned verdict, in the take: a flat claim with its reason, then at most one first-person line that owns it ("That's steep for a remaster. I'd wait for a sale.", "I think this one's on Sony"). The "I" lives in the take: the beats tell the story and carry no "I'd" or "I want" lines, and a Short has one or two "I" sentences in all. One "I think" or "honestly" is plenty: never stack them and never put one in the first sentence. Never an experience: never "I played", "I tried", "I've seen", "when I was", "my copy", because the narrator has never played, bought, watched or attended anything.
+- "You" where it is natural: when a fact really lands on the viewer (their money, their console, their wait, their pre-order), say "you"; turn a line about "fans" or "gamers" into one about you. No quota: a sentence that reads oddly with "you" in it stays about the game.
+- At most one light joke, and only one that earns its place: it follows straight from the line before, a viewer gets it with no context, and it is about a company, a price, a decision or the situation (a deadpan understatement, an honest groan, a translation of a phrase the script already quotes, a wry turn on two facts already there). Read it after the line before it: if the link isn't obvious, cut it. If no joke comes naturally from the facts, add none: a clear Short with no joke beats a funny one nobody follows. Never at players, fans, developers who lost their jobs or any group of people; on a layoffs or closure story be kind about the people and keep the dryness for the business decision. No profanity, nothing mean, nothing an advertiser would mind. Warm beats sharp about three to one: when the news is good for you, let the friend sound pleased.
 - Spoken rhythm: contractions, short sentences (in a Short about 9-12 words on average, one in three under eight), a short line after a long one, and a spoken joining word ("right", "well", "look", "of course", "so", "which") about once per hundred words, at most one rhetorical "right?". Every sentence still has a verb.
 - Delivery tags where a person would truly react: [sighs] before a catch or a groan, [chuckles] right after the dry line, [sarcastic] on it, [excited] before good news, [curious] before something odd. Never on a plain fact or a flat verdict, never two within two sentences, never inside a quotation.
 
-Be noticeably more personal than the original: the flat, news-desk register is exactly what the owner turned down (11 Nov 2026). A friend reading both should hear the difference within the first few lines: one real first-person take and one aside that would make a friend smirk (on a closure or layoffs story the smirk is at the business decision, never the people). More opinion words don't make it more personal: one committed verdict beats four hedged ones.
+Personal means a real opinion, said clearly: the flat, news-desk register is what the owner turned down (11 Nov 2026), and riddles are what he turned down next (13 Nov 2026). A friend reading both versions should hear one real first-person take and a story that is easier to follow. More opinion words don't make it more personal: one committed verdict with a reason beats four hedged ones.
 
-Sound like a person, not a parody of one: no meme slang ("bro", "it's giving", "no cap"), no "folks", "guys" or "y'all", no "let's be real", "plot twist", "spoiler alert" or "buckle up", no exclamation marks, no "um", "literally", "basically" or filler "like", no pun for its own sake, no laughing at your own line. One good aside beats three forced ones: if a joke doesn't come naturally from the facts, leave it out and let the take carry the warmth.
+Sound like a person, not a parody of one: no meme slang ("bro", "it's giving", "no cap"), no "folks", "guys" or "y'all", no "let's be real", "plot twist", "spoiler alert" or "buckle up", no exclamation marks, no "um", "literally", "basically" or filler "like", no pun for its own sake, no laughing at your own line, no metaphor the viewer has to decode.
 
 What the change sounds like, with made-up facts (copy the move, never the words):
-Desk: "Ubisoft delayed Skull Raiders to March 2027. The studio said it needs more time for polish. It's the third delay since 2024. Pulse check: weak, if you pre-ordered."
-Friend: "Ubisoft delayed Skull Raiders to March 2027. [sighs] The studio says it needs more time for polish, which, three delays since 2024, tracks. I'd pull that pre-order and decide when it's out. My Pulse check? Weak, if you pre-ordered."
-The facts, the figures and the reading are the same; the joke is a wry turn on two facts already there, the take is a real call in the first person, and it's no longer.`;
+Desk: "Ubisoft delayed Skull Raiders to March 2027. The studio said it needs more time for polish. It's the third delay since 2024. Pre-orders remain open."
+Friend: "Ubisoft delayed Skull Raiders again, to March 2027. The studio says it needs more time for polish. That's the third delay since 2024, so a pre-order now just ties up your money. I'd cancel it and decide once it's out."
+The facts and figures are the same; the point is said plainly, every line follows the one before, and the take is a real call in the first person with its reason.`;
 
 /** What the pass may never change: the guard and the fact check enforce it whatever the style asks for. */
 export const FRIEND_FACT_LOCK = `Never change (your version goes back to the fact check, and a moved fact throws it away):
@@ -451,18 +456,18 @@ export async function friendShort(
   );
   const notes = [
     `This is a news Short. Edit the beats, the take and the loop line; the hook is fixed and can't be edited.`,
-    `Keep each beat saying what it said: its card is on screen with it. Ask no questions in the beats or the take${opts.segment ? ` (the Pulse Check's own "My Pulse check?" is fine)` : ""}, and keep every sentence that speaks to the viewer as "you".`,
+    `Keep each beat saying what it said: its card is on screen with it. Ask no questions in the beats or the take${opts.segment ? ` (the verdict's own "My verdict?" is fine)` : ""}, and keep "you" wherever a fact really lands on the viewer.`,
     script.is_rumour
       ? `This story is a rumor: every label and the reporter's name stay, and the take treats it as unconfirmed.`
       : "",
     opts.segment
-      ? `The take ends on the Pulse Check with the reading "${pulseCheckReading(script.pulse_take.narration) ?? "as given"}". Keep that reading word and say it like a friend's verdict, not a label: "My Pulse check? Steady, but..." or "Pulse check: weak, if...", with a reason of up to 8 words in the narrator's voice. "Pulse check" is said once, at the very end of the take.`
+      ? `The take ends on the Pulse Check, said out loud as a plain verdict: its last sentence starts "My verdict:" and says in everyday words what the viewer should do or think, in at most 12 words. Keep it last and keep its meaning (the card reads "${script.pulse_take.on_screen}"). Never say "Pulse check" or a reading word (strong, steady, weak, faint) aloud: the card carries them.`
       : "",
     script.stamp?.word
       ? `The word "${script.stamp.word}" carries an on-screen stamp, so it stays spoken exactly as written.`
       : "",
     opts.endStatement
-      ? `The loop line stays one statement, never a question, with its meaning and its last words as they are (they run back into the hook on a replay).`
+      ? `The loop line stays one statement, never a question, with its meaning as it is. If it only makes sense to the writer (a quip with no clear link to the line before), say the Short's point plainly instead.`
       : `The loop line stays one complete closing sentence with its meaning as it is.`,
     opts.recent && (opts.recent.takes.length || opts.recent.loops.length)
       ? `Recent Shorts' takes opened and closed like this; open the take and end the loop line differently:\n${[
@@ -470,8 +475,8 @@ export async function friendShort(
           ...opts.recent.loops.map((l) => `- closed "${l}"`),
         ].join("\n")}`
       : "",
-    `Delivery tags: one to three in the whole Short, on the jokes, the groans and the good news. A laugh or chuckle goes right after the line that earns it, never in front of a plain fact.`,
-    `Length is a hard limit, because a Short runs 25-40 seconds: the original has ${words} written words and yours must have ${lo}-${hi}, so your edits together add at most ${Math.max(0, hi - words)} words${words > lo ? ` or remove at most ${words - lo}` : ""} (tags don't count). Pay for a take or an aside by trimming a restatement or a weak clause, or by merging two short facts, but never a line that speaks to the viewer. Never pad with an idiom or a stock line ("the writing was on the wall", "at the end of the day"): every word you add is a take, a joke or rhythm.`,
+    `Delivery tags: one to three in the whole Short, on the joke, the groans and the good news. A laugh or chuckle goes right after the line that earns it, never in front of a plain fact.`,
+    `Length is a hard limit, because a Short runs 25-40 seconds: the original has ${words} written words and yours must have ${lo}-${hi}, so your edits together add at most ${Math.max(0, hi - words)} words${words > lo ? ` or remove at most ${words - lo}` : ""} (tags don't count). Pay for a take or an aside by trimming a restatement or a weak clause, or by merging two short facts, or by cutting a line that doesn't follow. Never pad with an idiom or a stock line ("the writing was on the wall", "at the end of the day"): every word you add makes the point clearer, or it is the take.`,
   ].filter(Boolean);
   const lines: Record<string, string> = {};
   const view: Record<string, unknown> = {
@@ -542,7 +547,7 @@ export async function friendShort(
     tier: opts.tier ?? "mid",
     effort: "high",
     notes: [
-      `This news Short has just had its delivery made more personal, and it now runs ${over} words over its limit. Cut at least ${over + 2} words with edits, and change nothing else. The surest cut is a whole sentence: drop the weakest one that carries no fact, then restatements, filler and weak clauses; keep the narrator's best take and best joke, every fact, figure, name and quotation, every line that speaks to the viewer as "you", the Pulse Check and the loop line's meaning. Keep the delivery tags where they are unless their sentence goes.`,
+      `This news Short has just had its delivery made more personal, and it now runs ${over} words over its limit. Cut at least ${over + 2} words with edits, and change nothing else. The surest cut is a whole sentence: drop the weakest one that carries no fact, then restatements, filler and weak clauses; keep the narrator's take, every fact, figure, name and quotation, the point said plainly, the closing verdict and the loop line's meaning. Keep the delivery tags where they are unless their sentence goes.`,
       script.stamp?.word ? `The word "${script.stamp.word}" stays spoken.` : "",
     ].filter(Boolean),
     lines: first.braced,
@@ -577,6 +582,11 @@ export function friendShortProblems(
   const reading = pulseCheckReading(before.pulse_take.narration);
   if (reading && pulseCheckReading(after.pulse_take.narration) !== reading)
     p.push(`The rewrite lost the Pulse Check's reading "${reading}".`);
+  if (
+    pulseVerdict(before.pulse_take.narration) &&
+    !pulseVerdict(after.pulse_take.narration)
+  )
+    p.push(`The rewrite lost the take's closing verdict ("My verdict: ...").`);
   if (
     before.stamp?.word &&
     !a
@@ -620,7 +630,7 @@ export async function friendChapter(
   const words = wordsIn(chapterText(chapter));
   const notes = [
     `This is one chapter of a long documentary, told by someone who knows the whole story and cares about it. Edit the paragraphs; each keeps telling what it told (its on-screen callout and footage stay with it).`,
-    `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out. One dry aside, two at most in a long chapter. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
+    `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out. At most one dry aside, two in a long chapter, and only where it follows straight from the line before and a viewer gets it with no context; cut any line a listener would have to decode (a metaphor, a pun, a quip about something not said). Every sentence follows from the one before. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
     `Delivery tags: at most ${tagLimit(sentences, CHAPTER_TAGS_MOST)} in the chapter, at least four sentences apart.`,
     `Length: the chapter has ${words} words; your edits together add or remove at most ${Math.round(words * 0.1)}.`,
     ...(opts.credits?.length

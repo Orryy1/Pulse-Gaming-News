@@ -5,6 +5,8 @@ import {
   pulseCheckProblems,
   pulseCheckReading,
   pulseCheckRule,
+  pulseReadingOf,
+  pulseVerdict,
 } from "../src/editorial/newssegment.ts";
 import { writeScript } from "../src/editorial/editorial.ts";
 import { goodScript } from "./helpers.ts";
@@ -19,7 +21,7 @@ const script = (narration: string, over: object = {}) =>
     ...over,
   });
 
-test("the reading is read from the take's last sentence", () => {
+test("an older take's spoken reading is still read from its last sentence", () => {
   assert.equal(
     pulseCheckReading("You can wait. Pulse check: weak, if you buy day one."),
     "weak",
@@ -33,65 +35,89 @@ test("the reading is read from the take's last sentence", () => {
   assert.equal(pulseCheckReading("You can wait."), undefined);
 });
 
+test("the plain verdict is the take's last sentence, and the reading comes from the card", () => {
+  assert.equal(
+    pulseVerdict("Nothing is confirmed. My verdict: wait until Rockstar says so."),
+    "My verdict: wait until Rockstar says so.",
+  );
+  assert.equal(pulseVerdict("So my verdict? Skip the deluxe edition."), "So my verdict? Skip the deluxe edition.");
+  assert.equal(pulseVerdict("My verdict: wait. Then decide."), undefined, "it ends the take");
+  assert.equal(pulseVerdict("You can wait."), undefined);
+  assert.equal(pulseReadingOf(script("x")), "steady");
+  assert.equal(
+    pulseReadingOf(
+      goodScript({
+        pulse_take: { label: PULSE_CHECK_LABEL, narration: "Pulse check: weak.", on_screen: "Pricey" },
+      }),
+    ),
+    "weak",
+    "an older script without the card's reading falls back to the spoken one",
+  );
+});
+
 test("a right Pulse Check passes", () => {
   assert.deepEqual(
-    pulseCheckProblems(script("You can wait a week. Pulse check: steady.")),
+    pulseCheckProblems(script("You can wait a week. My verdict: nothing changes for you yet.")),
     [],
   );
 });
 
+test("the name and the reading word are never spoken: a viewer doesn't know them", () => {
+  assert.match(
+    pulseCheckProblems(script("You can wait a week. Pulse check: steady.")).join(),
+    /Don't say "Pulse check" aloud/,
+  );
+  assert.match(
+    pulseCheckProblems(script("You can wait a week. My verdict: faint.")).join(),
+    /speaks a reading word/,
+  );
+  assert.match(
+    pulseCheckProblems(script("You can wait a week. My verdict: steady, because nothing changes.")).join(),
+    /speaks a reading word/,
+  );
+});
+
 test("a rumor can only read faint, so a report is never rated as if it were confirmed", () => {
-  const strong = script("It looks real. Pulse check: strong.", {
+  const strong = goodScript({
     is_rumour: true,
     pulse_take: {
       label: PULSE_CHECK_LABEL,
-      narration: "It looks real. Pulse check: strong.",
+      narration: "It looks real. My verdict: get excited.",
       on_screen: "STRONG: it looks real",
     },
   });
   assert.match(pulseCheckProblems(strong).join(), /reads faint/);
-  const faint = script(
-    "Sony has not said. Pulse check: faint, until it does.",
-    {
-      is_rumour: true,
-      pulse_take: {
-        label: PULSE_CHECK_LABEL,
-        narration: "Sony has not said. Pulse check: faint, until it does.",
-        on_screen: "FAINT: Sony has not said",
-      },
+  const faint = goodScript({
+    is_rumour: true,
+    pulse_take: {
+      label: PULSE_CHECK_LABEL,
+      narration: "Sony has not said. My verdict: treat it as a rumor for now.",
+      on_screen: "FAINT: Sony has not said",
     },
-  );
+  });
   assert.deepEqual(pulseCheckProblems(faint), []);
 });
 
-test("it sends back a take that drops it, is only the reading, runs long, repeats it or mislabels the card", () => {
+test("it sends back a take that drops it, is only the verdict, runs long or mislabels the card", () => {
   assert.match(pulseCheckProblems(script("You can wait.")).join(), /must end/);
   assert.match(
-    pulseCheckProblems(script("Pulse check: steady.")).join(),
+    pulseCheckProblems(script("My verdict: wait for reviews.")).join(),
     /only sentence/,
   );
   assert.match(
     pulseCheckProblems(
       script(
-        "You can wait. Pulse check: steady, because nothing about this changes what you should do next.",
+        "You can wait. My verdict: wait, because nothing about this changes what you should do next.",
       ),
     ).join(),
     /keep it to/,
   );
   assert.match(
     pulseCheckProblems(
-      script("You can wait. Pulse check: steady.", {
-        loop_line: "Pulse check on the next one?",
-      }),
-    ).join(),
-    /once/,
-  );
-  assert.match(
-    pulseCheckProblems(
       goodScript({
         pulse_take: {
           label: "THE VERDICT",
-          narration: "You can wait. Pulse check: steady.",
+          narration: "You can wait. My verdict: wait for reviews.",
           on_screen: "nothing changes",
         },
       }),
@@ -106,6 +132,8 @@ test("the rule keeps the word limit, the loop line and the desk order, and scrip
   assert.match(rule, /loop_line still follows/);
   assert.match(rule, /answer the desk question/);
   assert.match(rule, /rumor/);
+  assert.match(rule, /Never say "Pulse check" aloud/);
+  assert.match(rule, /My verdict:/);
   assert.doesNotMatch(rule.replace(/is_rumour/g, ""), /rumour/);
   assert.doesNotMatch(rule, /—/);
 });

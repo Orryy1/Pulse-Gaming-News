@@ -382,6 +382,12 @@ export interface LongPlanInput {
   movingFirst?: boolean;
   /** LONG_ACCENT_STILL_SECONDS in frames: the longest a still holds while footage is left (movingFirst only). */
   accentStillFrames?: number;
+  /**
+   * LONG_CLIP_REMAINDERS (13 Nov 2026): a clip used for a shorter slot is not spent. Its unseen remainder (at least
+   * REMAINDER_MIN_FRAMES) stays free for a later shot, which starts where the first stopped (LongMedia.from), after
+   * every unplayed clip and never straight after itself. Off: one shot spends a clip, as before.
+   */
+  clipRemainders?: boolean;
 }
 
 const PREVIEW_STOP = new Set(
@@ -468,7 +474,15 @@ export type LongMedia = {
   type: "image" | "clip" | "plate" | "filler";
   index: number;
   entry?: number;
+  /**
+   * LONG_CLIP_REMAINDERS: frames into the clip where this shot starts (its unseen remainder after an earlier shot
+   * played its first part). Unset: the clip's start.
+   */
+  from?: number;
 };
+
+/** LONG_CLIP_REMAINDERS: the shortest remainder of a clip worth keeping for a later shot (2 s). */
+export const REMAINDER_MIN_FRAMES = 60;
 
 export interface LongShot {
   start: number; // frame
@@ -533,11 +547,33 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const clipFrames = clips.map((c) => Math.floor(c.durationSeconds * LONG_FPS));
   const clipUsed = clips.map(() => false);
   const twins = overlappingClips(clips);
-  /** Marks a clip played, and every clip cut from the same moment of its source. */
-  const spend = (k: number) => {
+  // LONG_CLIP_REMAINDERS: frames of each clip already played; a used clip with enough left is a remainder.
+  const remainders = input.clipRemainders === true;
+  const clipOffset = clips.map(() => 0);
+  // Where the latest shot of each clip started in it.
+  const shotStart = clips.map(() => 0);
+  const leftover = (k: number) =>
+    remainders && clipUsed[k]! && clipOffset[k]! > 0 && clipFrames[k]! - clipOffset[k]! >= REMAINDER_MIN_FRAMES;
+  /** Where the next shot of a clip starts: after its played part when a remainder is left, else its start (a replay). */
+  const startOf = (k: number) => (leftover(k) ? clipOffset[k]! : 0);
+  const clipLeft = (k: number) => clipFrames[k]! - startOf(k);
+  /**
+   * Marks a clip played, and every clip cut from the same moment of its source. With `used` (LONG_CLIP_REMAINDERS) only
+   * that many frames are spent, and the rest stays for a later shot.
+   */
+  const spend = (k: number, used?: number) => {
+    const start = startOf(k);
+    shotStart[k] = start;
     clipUsed[k] = true;
     for (const j of twins[k] ?? []) clipUsed[j] = true;
+    clipOffset[k] = remainders && used !== undefined ? Math.min(clipFrames[k]!, start + used) : clipFrames[k]!;
   };
+  /** A clip shot's media once spent: where in the clip it starts when an earlier shot played the clip's first part. */
+  const fromOffset = (m: LongMedia): LongMedia =>
+    remainders && m.type === "clip" && shotStart[m.index]! > 0 ? { ...m, from: shotStart[m.index]! } : m;
+  /** LONG_CLIP_REMAINDERS: the first of `ks` with a remainder left, never the clip that just played. */
+  const remainderOf = (ks: number[]): number | undefined =>
+    remainders ? ks.find((k) => leftover(k) && !(last?.type === "clip" && last.index === k)) : undefined;
   const previewed = new Set<number>();
   const stillUses = images.map(() => 0);
   // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
@@ -595,7 +631,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       let len: number;
       const most = cap(at);
       if (media.type === "clip") {
-        len = Math.min(clipFrames[media.index]!, remaining, most.clip);
+        len = Math.min(clipLeft(media.index), remaining, most.clip);
         const left = remaining - len;
         if (left > 0 && left < MIN_CLIP_SHOT) len -= MIN_CLIP_SHOT - left;
         if (len < MIN_CLIP_SHOT) {
@@ -603,12 +639,12 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           // Stretching it as if it were a still froze it on its last frame and left it free to play again.
           let alt = fallback();
           if (alt.type === "clip") {
-            const l = Math.min(clipFrames[alt.index]!, remaining, most.clip);
+            const l = Math.min(clipLeft(alt.index), remaining, most.clip);
             const rest = remaining - l;
             if (l >= MIN_CLIP_SHOT && (rest === 0 || rest >= MIN_CLIP_SHOT)) {
               media = alt;
               len = l;
-              spend(alt.index);
+              spend(alt.index, l);
             } else alt = stillFallback?.() ?? { type: "plate", index: 0 };
           }
           if (alt.type !== "clip") {
@@ -624,7 +660,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             media = { type: "plate", index: 0 };
             len = remaining;
           }
-        } else spend(media.index);
+        } else spend(media.index, len);
       } else {
         len = Math.min(
           STILL_SHOT + ((shotIndex * 37 + variant * 11) % 60) - 30,
@@ -640,6 +676,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (remaining - len < MIN_SHOT) len = remaining;
       }
       if (media.type === "image") stillUses[media.index]!++;
+      media = fromOffset(media);
       shots.push({
         start: at,
         end: at + len,
@@ -765,13 +802,26 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (loose !== undefined) return loose;
         const gone = entryClips.find((k) => ok(k) && clips[k]!.moment !== undefined && clips[k]!.moment! < current);
         if (gone !== undefined) return gone;
-        return kinClips.find((k) => !clipUsed[k]);
+        const kin = kinClips.find((k) => !clipUsed[k]);
+        if (kin !== undefined) return kin;
+        // LONG_CLIP_REMAINDERS: then the unseen rest of a clip already cut short (its own sentence or one gone by).
+        return remainderOf([
+          ...entryClips.filter(
+            (k) =>
+              !clips[k]!.cutsceneMatch?.targetKey &&
+              !stockBarred(k, current) &&
+              (clips[k]!.moment === undefined || clips[k]!.moment! <= current),
+          ),
+          ...kinClips,
+        ]);
       };
       /** movingFirst: whether this chapter still has footage left to play (its own, or its game's from other chapters). */
       const footageLeft = input.movingFirst
         ? () =>
             entryClips.some((k) => !clipUsed[k] && !clips[k]!.cutsceneMatch?.targetKey && !clips[k]!.stock) ||
-            kinClips.some((k) => !clipUsed[k])
+            kinClips.some((k) => !clipUsed[k]) ||
+            entryClips.some((k) => leftover(k) && !clips[k]!.cutsceneMatch?.targetKey && !clips[k]!.stock) ||
+            kinClips.some((k) => leftover(k))
         : undefined;
       // The sentence being filled: filler never shows a picture chosen for another sentence (30 Oct 2026
       // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
@@ -787,6 +837,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           );
           if (fresh !== undefined) return { type: "clip", index: fresh };
           const game = entryClips.filter((k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
+          // LONG_CLIP_REMAINDERS: the unseen rest of the chapter's own footage before any replay or borrowed art.
+          const rest = remainderOf(game);
+          if (rest !== undefined) return { type: "clip", index: rest };
           if (!input.noRepeats && game.length)
             return {
               type: "clip",
@@ -972,6 +1025,17 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             : clips[k]!.beatIndex === entry) &&
           (seg.kind === "take" || !clipUsed[k]),
       );
+    // LONG_CLIP_REMAINDERS: the same pool's clips, played or not; remainderOf takes one with an unseen rest left.
+    const restClips = remainders
+      ? clips
+          .map((_, k) => k)
+          .filter(
+            (k) =>
+              (!clips[k]!.cutsceneMatch?.targetKey ||
+                (seg.kind === "beat" && clips[k]!.cutsceneMatch?.targetKey === `beat:${entry}`)) &&
+              (entry === undefined ? clips[k]!.beatIndex === undefined : clips[k]!.beatIndex === entry),
+          )
+      : [];
     // No sentence plays here (the intro, the outro, a chapter without a shot list): no real-world picture.
     const ownStills = images
       .map((_, k) => k)
@@ -1114,18 +1178,24 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       let len = 0;
       // Footage first: a still only when this entry's clips have run out (it once alternated, leaving half the video on stills).
       const wantClip = true;
+      // LONG_CLIP_REMAINDERS: with the fresh clips gone, the unseen rest of one already cut short (not in the outro,
+      // which replays its clips from their start).
       const clipIdx = wantClip
-        ? ownClips.find((k) => !clipUsed[k] || seg.kind === "take")
+        ? (ownClips.find((k) => !clipUsed[k] || seg.kind === "take") ??
+          (seg.kind === "take" ? undefined : remainderOf(restClips)))
         : undefined;
       const most = cap(at);
       if (clipIdx !== undefined) {
         // The clip plays only as long as it lasts; what it would leave behind must be a whole shot.
-        let clipLen = Math.min(clipFrames[clipIdx]!, remaining, most.clip);
+        const replay = seg.kind === "take" && clipUsed[clipIdx]!;
+        const startAt = replay ? 0 : startOf(clipIdx);
+        let clipLen = Math.min(clipFrames[clipIdx]! - startAt, remaining, most.clip);
         const left = remaining - clipLen;
         if (left > 0 && left < MIN_CLIP_SHOT) clipLen -= MIN_CLIP_SHOT - left;
         if (clipLen >= MIN_CLIP_SHOT) {
-          media = { type: "clip", index: clipIdx };
-          spend(clipIdx);
+          media = { type: "clip", index: clipIdx, ...(startAt > 0 ? { from: startAt } : {}) };
+          if (replay) spend(clipIdx);
+          else spend(clipIdx, clipLen);
           if (seg.kind === "take")
             ownClips.splice(ownClips.indexOf(clipIdx), 1);
           len = clipLen;

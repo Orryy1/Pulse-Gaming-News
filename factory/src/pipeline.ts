@@ -43,6 +43,7 @@ import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./ass
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
+import { hasUsableIndex } from "./sceneindex/footage.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
 import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import { checkFirstSeconds, chooseOpening } from "./openingstep.ts";
@@ -8463,6 +8464,106 @@ export async function gatherMedia(
       await logEvent(s.db, ep.id, "trailer_frames", { wanted: count, used: frames.length });
     }
   }
+  // Cutscenes are a separate opt-in and share the remaining budget with the footage already gathered.
+  // LONG_INDEX_FIRST (13 Nov 2026): a long video's chapters whose game has a scene index gather from the game's own
+  // movie first, before its trailers and generic gameplay below (the retrospective's chapter allowance was being
+  // spent on trailers first); the other chapters gather here after them, as before.
+  const cutscenesDone = new Set<number>();
+  const gatherCutscenes = async (indexedOnly: boolean): Promise<void> => {
+    if (!(s.cfg.cutsceneFootage && s.fetchCutscenes && !gatherBudget.over())) return;
+      const jobs: CutsceneJob[] = [];
+      // A retrospective (src/retrospective.ts): each chapter its own footage allowance, scaled from the publisher's
+      // per-Short cap, and a story chapter's lines looked for only inside its act of the scene index, in order.
+      const retroT = isRetrospective(ep.factcheck_json)
+        ? (ep.factcheck_json as unknown as { topic: DocTopic }).topic.retro
+        : undefined;
+      // LONG_CHAPTER_FOOTAGE: any long video's chapters get their own allowance the same way (longChapterFootageCaps).
+      const retroCaps = retroT
+        ? retroFootageCaps(s.cfg, script, script.game_title)
+        : s.cfg.longChapterFootage && isLongEpisode(ep) && script.entries?.length
+          ? longChapterFootageCaps(s.cfg, script)
+          : [];
+      const perChapter = retroCaps.length > 0;
+      const retroSpans = retroT ? retroFootageSpans(retroT, retroT.written ?? []) : [];
+      // RETRO_REMASTER_FOOTAGE: the reception and legacy chapters may take the remaster's footage, credited as such.
+      const remasterOk = retroT && s.cfg.retroRemasterFootage ? retroRemasterChapters(retroT, retroT.written ?? []) : [];
+      if (script.entries?.length) {
+        const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
+        for (const [beatIndex, entry] of entries.entries()) {
+          if (!entry.game_title || entry.year > s.now().getFullYear() ||
+              (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
+          // LONG_INDEX_FIRST: the first pass takes only the chapters whose game has a scene index; the second the rest.
+          if (cutscenesDone.has(beatIndex)) continue;
+          const recent = entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]);
+          if (indexedOnly && !(s.cfg.sceneIndex && (await hasUsableIndex(s.cfg.dataDir, entry.game_title, recent)))) continue;
+          cutscenesDone.add(beatIndex);
+          const eapp = await steamAppForEntry(s, entry).catch(() => undefined);
+          const shots = docShotTargets(entry, chapterSentences(script, beatIndex), beatIndex);
+          const want = script.beats[beatIndex]?.footage;
+          const targets: FootageTarget[] = shots.length ? shots : want?.want === "none" ? [] : [{
+            key: `beat:${beatIndex}`, text: script.beats[beatIndex]?.narration ?? entry.game_title,
+            want: want?.want ?? "cinematic", energy: "medium", keywords: want?.keywords ?? [entry.game_title],
+          }];
+          const span = retroSpans[beatIndex];
+          const placed = span
+            ? targets.map((t, k) => ({ ...t, within: { ...span, at: targets.length > 1 ? k / (targets.length - 1) : 0.5 } }))
+            : targets;
+          jobs.push({ gameTitle: entry.game_title, recentRelease: entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]), episodeDir: path.join(dir, `entry_${beatIndex}`),
+            // LONG_MOVING_FIRST: a retrospective's chapter may carry a clip for every line, not 24 at most.
+            ...(retroT && s.cfg.longMovingFirst ? { maxClips: Math.min(RETRO_MOVING_CLIPS, Math.max(24, targets.length)) } : {}),
+            pathPrefix: `entry_${beatIndex}`, beatIndex, targets: placed,
+            publisherNames: [...(eapp?.details?.publishers ?? []), ...(eapp?.details?.developers ?? [])],
+            ...(perChapter ? { ownSeconds: retroCaps[beatIndex] ?? 0 } : {}) });
+        }
+      } else if (script.game_title && !indexedOnly) {
+        jobs.push({ gameTitle: script.game_title, episodeDir: dir, targets: topicTargets,
+          // A Short about the remake says so; then the remake's cutscenes are the right ones, not the original's.
+          recentRelease: /\b(remake|remaster(?:ed)?|reimagined)\b/i.test([script.headline, script.hook, ...script.beats.map((b) => b.narration)].join(" ")),
+          publisherNames: [...(app?.details?.publishers ?? []), ...(app?.details?.developers ?? []), ...(official.trailer ? [official.trailer.publisher] : [])] });
+      }
+      if (!jobs.length) return;
+      const added = await gatherCutsceneSources({
+        enabled: true,
+        videoLimit: perChapter
+          ? retroCaps.reduce((n, x) => n + x, 0)
+          : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
+        jobs, existing: clips, shouldStop: () => gatherBudget.over(),
+        fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
+          targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
+          maxSeconds: job.maxSeconds, publisher: job.publisher,
+          // A weekly guide never shows late story, warning or not (src/longguide.ts).
+          long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
+      });
+      clips.push(
+        ...added.map((c) => {
+          // A remaster's footage in a chapter that allows it says which edition it is, on screen and in the record.
+          const edition = c.beatIndex !== undefined && remasterOk[c.beatIndex] ? editionOf(c.youtubeSource?.title ?? "") : undefined;
+          const game = jobs.find((j) => j.beatIndex === c.beatIndex)?.gameTitle ?? script.game_title;
+          return {
+            ...c,
+            durationSeconds: c.durationSeconds ?? 4.8,
+            ...(edition
+              ? { credit: `${edition} FOOTAGE: ${game.toUpperCase().slice(0, 40)} / YOUTUBE`, provenance: `${c.provenance}, ${edition.toLowerCase()} footage` }
+              : {}),
+          };
+        }),
+      );
+      // SCENE_MATCH: a stills-only publisher's game (Nintendo) plays no cutscene, so each named moment comes as a
+      // checked still of that exact scene, on the name as it is said. A Short about one game only.
+      const job = jobs.length === 1 && !script.entries?.length && !indexedOnly ? jobs[0] : undefined;
+      if (s.cfg.sceneMatch && s.fetchSceneStills && job && cutscenePublisher(job.gameTitle, job.publisherNames).seconds === 0) {
+        const stills = await s
+          .fetchSceneStills({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: dir, targets: job.targets,
+            max: job.targets.length, long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) })
+          .catch((err) => {
+            log("warn", "scene stills failed", { episode: ep.id, error: errorMessage(err) });
+            return [] as VisualAsset[];
+          });
+        if (stills.length) await logEvent(s.db, ep.id, "scene_stills", { count: stills.length, lines: stills.map((a) => a.reason) });
+        images.push(...stills);
+      }
+  };
+  if (s.cfg.longIndexFirst && isLongEpisode(ep) && script.entries?.length) await gatherCutscenes(true);
   // Ranking Shorts: each entry brings its own box art and one trailer moment, tagged with its line.
   if (script.entries?.length) {
     const sorted = [...script.entries].sort((a, b) => b.rank - a.rank);
@@ -8772,94 +8873,8 @@ export async function gatherMedia(
   }
   // SCENE_INDEX: every game a video is about gets its scene index built in the background (src/sceneindex/job.ts).
   if (s.cfg.sceneIndex) void requestSceneIndexes(s.cfg, gamesOfScript(script, s.now()), "a video about it");
-  // Cutscenes are a separate opt-in and share the remaining budget with the footage already gathered.
-  if (s.cfg.cutsceneFootage && s.fetchCutscenes && !gatherBudget.over()) {
-    const jobs: CutsceneJob[] = [];
-    // A retrospective (src/retrospective.ts): each chapter its own footage allowance, scaled from the publisher's
-    // per-Short cap, and a story chapter's lines looked for only inside its act of the scene index, in order.
-    const retroT = isRetrospective(ep.factcheck_json)
-      ? (ep.factcheck_json as unknown as { topic: DocTopic }).topic.retro
-      : undefined;
-    // LONG_CHAPTER_FOOTAGE: any long video's chapters get their own allowance the same way (longChapterFootageCaps).
-    const retroCaps = retroT
-      ? retroFootageCaps(s.cfg, script, script.game_title)
-      : s.cfg.longChapterFootage && isLongEpisode(ep) && script.entries?.length
-        ? longChapterFootageCaps(s.cfg, script)
-        : [];
-    const perChapter = retroCaps.length > 0;
-    const retroSpans = retroT ? retroFootageSpans(retroT, retroT.written ?? []) : [];
-    // RETRO_REMASTER_FOOTAGE: the reception and legacy chapters may take the remaster's footage, credited as such.
-    const remasterOk = retroT && s.cfg.retroRemasterFootage ? retroRemasterChapters(retroT, retroT.written ?? []) : [];
-    if (script.entries?.length) {
-      const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
-      for (const [beatIndex, entry] of entries.entries()) {
-        if (!entry.game_title || entry.year > s.now().getFullYear() ||
-            (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
-        const eapp = await steamAppForEntry(s, entry).catch(() => undefined);
-        const shots = docShotTargets(entry, chapterSentences(script, beatIndex), beatIndex);
-        const want = script.beats[beatIndex]?.footage;
-        const targets: FootageTarget[] = shots.length ? shots : want?.want === "none" ? [] : [{
-          key: `beat:${beatIndex}`, text: script.beats[beatIndex]?.narration ?? entry.game_title,
-          want: want?.want ?? "cinematic", energy: "medium", keywords: want?.keywords ?? [entry.game_title],
-        }];
-        const span = retroSpans[beatIndex];
-        const placed = span
-          ? targets.map((t, k) => ({ ...t, within: { ...span, at: targets.length > 1 ? k / (targets.length - 1) : 0.5 } }))
-          : targets;
-        jobs.push({ gameTitle: entry.game_title, recentRelease: entry.year >= s.now().getFullYear() - 1 || Boolean(remasterOk[beatIndex]), episodeDir: path.join(dir, `entry_${beatIndex}`),
-          // LONG_MOVING_FIRST: a retrospective's chapter may carry a clip for every line, not 24 at most.
-          ...(retroT && s.cfg.longMovingFirst ? { maxClips: Math.min(RETRO_MOVING_CLIPS, Math.max(24, targets.length)) } : {}),
-          pathPrefix: `entry_${beatIndex}`, beatIndex, targets: placed,
-          publisherNames: [...(eapp?.details?.publishers ?? []), ...(eapp?.details?.developers ?? [])],
-          ...(perChapter ? { ownSeconds: retroCaps[beatIndex] ?? 0 } : {}) });
-      }
-    } else if (script.game_title) {
-      jobs.push({ gameTitle: script.game_title, episodeDir: dir, targets: topicTargets,
-        // A Short about the remake says so; then the remake's cutscenes are the right ones, not the original's.
-        recentRelease: /\b(remake|remaster(?:ed)?|reimagined)\b/i.test([script.headline, script.hook, ...script.beats.map((b) => b.narration)].join(" ")),
-        publisherNames: [...(app?.details?.publishers ?? []), ...(app?.details?.developers ?? []), ...(official.trailer ? [official.trailer.publisher] : [])] });
-    }
-    const added = await gatherCutsceneSources({
-      enabled: true,
-      videoLimit: perChapter
-        ? retroCaps.reduce((n, x) => n + x, 0)
-        : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
-      jobs, existing: clips, shouldStop: () => gatherBudget.over(),
-      fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
-        targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
-        maxSeconds: job.maxSeconds, publisher: job.publisher,
-        // A weekly guide never shows late story, warning or not (src/longguide.ts).
-        long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
-    });
-    clips.push(
-      ...added.map((c) => {
-        // A remaster's footage in a chapter that allows it says which edition it is, on screen and in the record.
-        const edition = c.beatIndex !== undefined && remasterOk[c.beatIndex] ? editionOf(c.youtubeSource?.title ?? "") : undefined;
-        const game = jobs.find((j) => j.beatIndex === c.beatIndex)?.gameTitle ?? script.game_title;
-        return {
-          ...c,
-          durationSeconds: c.durationSeconds ?? 4.8,
-          ...(edition
-            ? { credit: `${edition} FOOTAGE: ${game.toUpperCase().slice(0, 40)} / YOUTUBE`, provenance: `${c.provenance}, ${edition.toLowerCase()} footage` }
-            : {}),
-        };
-      }),
-    );
-    // SCENE_MATCH: a stills-only publisher's game (Nintendo) plays no cutscene, so each named moment comes as a
-    // checked still of that exact scene, on the name as it is said. A Short about one game only.
-    const job = jobs.length === 1 && !script.entries?.length ? jobs[0] : undefined;
-    if (s.cfg.sceneMatch && s.fetchSceneStills && job && cutscenePublisher(job.gameTitle, job.publisherNames).seconds === 0) {
-      const stills = await s
-        .fetchSceneStills({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: dir, targets: job.targets,
-          max: job.targets.length, long: isLongEpisode(ep), spoilerWarned: hasSpoilerWarning([script.hook, script.beats[0]?.narration]) })
-        .catch((err) => {
-          log("warn", "scene stills failed", { episode: ep.id, error: errorMessage(err) });
-          return [] as VisualAsset[];
-        });
-      if (stills.length) await logEvent(s.db, ep.id, "scene_stills", { count: stills.length, lines: stills.map((a) => a.reason) });
-      images.push(...stills);
-    }
-  }
+  // The cutscene pass for the chapters the index-first pass left (gatherCutscenes above).
+  await gatherCutscenes(false);
   // A story about a person shows the person: a freely licensed photo from Wikimedia Commons,
   // credited on screen, on the first line that names them (else wherever a still is needed).
   if (script.person?.trim())
@@ -10195,7 +10210,8 @@ function allowedEpisodeCutscenes(cfg: Config, script: Script, assets: EpisodeAss
     : long
     ? cutsceneBudgetSeconds(cfg.cutsceneMaxSeconds, assets.durationSeconds ?? 45)
     : cfg.cutsceneMaxSeconds;
-  return reconcileCutsceneBudgets(assets.clips ?? [], jobs, limit);
+  // LONG_INDEX_FIRST: the game's own scenes keep a chapter's allowance; its trailers and gameplay give way instead.
+  return reconcileCutsceneBudgets(assets.clips ?? [], jobs, limit, { cutscenesFirst: long && cfg.longIndexFirst && perChapter });
 }
 
 /** The long-form 16:9 render: its own plan, composition, QA band and thumbnail. */
@@ -10596,6 +10612,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       // Footage before stills, stills as brief accents (LONG_MOVING_FIRST, LONG_ACCENT_STILL_SECONDS).
       movingFirst: s.cfg.longMovingFirst,
       accentStillFrames: Math.round(s.cfg.longAccentStillSeconds * LONG_FPS),
+      // A clip cut short keeps its unseen rest for a later shot (LONG_CLIP_REMAINDERS).
+      clipRemainders: s.cfg.longClipRemainders,
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();

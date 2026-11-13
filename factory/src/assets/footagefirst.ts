@@ -27,6 +27,7 @@ import { log, errorMessage } from "../lib/util.ts";
 import type { SegmentLook } from "./localvision.ts";
 import { clipJumps, gameplayCredit, wrongEntry } from "./gameplay.ts";
 import { trailerMatchesGame } from "./commons.ts";
+import { titleNamesGame } from "../sceneindex/gamenames.ts";
 import { normTitle } from "./igdb.ts";
 import { editionOf, junkTitleReason, notOutYet } from "./junk.ts";
 
@@ -158,6 +159,9 @@ export function namesGame(
     trailerMatchesGame(shortForm(title), shortForm(game), shortForm(franchise))
   )
     return true;
+  // Fans' aliases ("GTA SA", "GTA:SA", "San Andreas", "GTAV", "RDR2"), whatever the caller gave as the series: a
+  // retrospective's series is its own game, which left no distinguishing words and refused 41 of 75 uploads.
+  if (titleNamesGame(title, game)) return true;
   const t = ` ${normTitle(shortForm(title))} `;
   const g = normTitle(shortForm(game));
   if (g.length < 3 || !t.includes(` ${g} `)) return false;

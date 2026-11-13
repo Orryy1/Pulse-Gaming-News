@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runCapped } from "../lib/child.ts";
+import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { orchClientUrl } from "../platform.ts";
@@ -749,7 +750,8 @@ async function downloadSection(
 ): Promise<SpeechSpan[] | undefined> {
   const downloaded = `${file}.download.mp4`;
   try {
-    await runCapped(
+    // A 403 on the stream link is tried again with fresh formats, then another format (src/lib/ytsection.ts).
+    await downloadSectionRetrying(
       ytdlp,
       cutsceneDownloadArgs(upload, from, to, downloaded, hear),
       {
@@ -900,6 +902,11 @@ export function reconcileCutsceneBudgets<
   clips: T[],
   jobs: Array<Pick<CutsceneJob, "gameTitle" | "beatIndex" | "publisherNames" | "ownSeconds">>,
   videoLimit: number,
+  /**
+   * LONG_INDEX_FIRST: in a chapter with its own allowance the game's own scenes are kept first and its other publisher
+   * footage (trailers first, then gameplay, the latest gathered first) gives way to fit, instead of the other way round.
+   */
+  o: { cutscenesFirst?: boolean } = {},
 ): T[] {
   // A retrospective's chapters each carry their own allowance (CutsceneJob.ownSeconds).
   const ownByBeat = new Map(
@@ -950,7 +957,7 @@ export function reconcileCutsceneBudgets<
     const own = clip.beatIndex === undefined ? undefined : ownByBeat.get(clip.beatIndex);
     const allowed =
       own !== undefined
-        ? cutsceneAllowance(videoLimit, videoUsed, own, chapterFootageUsed([...other, ...kept.values()], clip.beatIndex))
+        ? cutsceneAllowance(videoLimit, videoUsed, own, chapterFootageUsed(o.cutscenesFirst ? [...kept.values()] : [...other, ...kept.values()], clip.beatIndex))
         : cutsceneAllowance(videoLimit, videoUsed, owner.seconds, used);
     const next = capFootage([clip], allowed, 4.8, true)[0];
     if (!next) continue;
@@ -961,9 +968,25 @@ export function reconcileCutsceneBudgets<
     kept.set(clip, adjusted);
     videoUsed += duration;
   }
-  return clips.flatMap((clip) =>
+  const out = clips.flatMap((clip) =>
     isCutscene(clip) ? (kept.has(clip) ? [kept.get(clip)!] : []) : [clip],
   );
+  if (!o.cutscenesFirst) return out;
+  const dropped = new Set<T>();
+  for (const [beat, own] of ownByBeat) {
+    let used = chapterFootageUsed(out, beat);
+    if (used <= own + 0.01) continue;
+    const yielding = out
+      .map((clip, i) => ({ clip, i }))
+      .filter(({ clip }) => clip.beatIndex === beat && !isCutscene(clip) && !clip.stock && !/^Pulse's own gameplay capture/.test(clip.provenance))
+      .sort((a, b) => Number(/trailer/i.test(b.clip.provenance)) - Number(/trailer/i.test(a.clip.provenance)) || b.i - a.i);
+    for (const { clip } of yielding) {
+      if (used <= own + 0.01) break;
+      dropped.add(clip);
+      used -= clip.durationSeconds;
+    }
+  }
+  return dropped.size ? out.filter((clip) => !dropped.has(clip)) : out;
 }
 
 /** The episode-level allowance is shared by every game and every clip already gathered for its publisher. */
@@ -1186,12 +1209,15 @@ export async function cutsceneMedia(
     let sectionNumber = 0;
     let pass = 0;
     const maxSections = Math.max(12, o.targets.length * 3);
+    // An upload whose stream YouTube refused on every retry, twice over, is passed over for the rest of this video.
+    const refusals = new Map<string, number>();
     const runPlans = async (plans: SectionPlan[], targets: FootageTarget[], fill = false) => {
       const batch: TrailerFile[] = [];
       const remaining = o.maxSeconds - clean.reduce((sum, clip) => sum + (clip.durationSeconds ?? 0), 0);
       if (!plans.length || clean.length >= o.maxClips || remaining < 1.6) return;
       for (const plan of plans) {
         if (sectionNumber >= maxSections) break;
+        if ((refusals.get(plan.upload.videoId) ?? 0) >= 2) continue;
         const length = Math.min(30, plan.upload.duration);
         // A chapter's moment follows its start (a second earlier allows for a late timestamp); a caption's or a
         // guess's sits in the middle of the section. Centring a chapter put half the section in the one before.
@@ -1216,6 +1242,7 @@ export async function cutsceneMedia(
           batch.push({ file, sectionId: path.basename(file), name: plan.upload.title, url: `https://www.youtube.com/watch?v=${plan.upload.videoId}`, total: length,
             ...(plan.targetKey ? { targetKey: plan.targetKey, anchor: plan.time - from, sceneMethod: plan.how as "chapter" | "caption" | "scene upload" } : {}) });
       } catch (err) {
+        if (streamRefused(err)) refusals.set(plan.upload.videoId, (refusals.get(plan.upload.videoId) ?? 0) + 1);
         log("warn", "cutscene section rejected", {
             videoId: plan.upload.videoId,
           error: errorMessage(err),

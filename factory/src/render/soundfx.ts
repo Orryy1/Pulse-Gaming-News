@@ -86,7 +86,7 @@ export function jlCuts(
   shots: ReadonlyArray<{
     start: number;
     end: number;
-    media: { type: string; index: number };
+    media: { type: string; index: number; from?: number };
   }>,
   clips: ReadonlyArray<{ durationSeconds: number; audio?: boolean }>,
   fps: number,
@@ -96,6 +96,8 @@ export function jlCuts(
   const max = Math.round(JL_MAX_SECONDS * fps);
   shots.forEach((s, i) => {
     if (s.media.type !== "clip") return;
+    // A clip's remainder (LONG_CLIP_REMAINDERS) starts partway in: its sound stays with its picture.
+    if (s.media.from) return;
     const c = clips[s.media.index];
     if (!c?.audio) return;
     const len = s.end - s.start;

@@ -46,6 +46,22 @@ const JUNK_TITLE: Array<[RegExp, string]> = [
   ],
 ];
 
+/** The words of an official remaster, remake or Definitive Edition (never a fan build): RETRO_REMASTER_FOOTAGE. */
+export const OFFICIAL_EDITION =
+  /\bremaster(ed)?\b|\bdefinitive( edition)?\b|\bremake\b/i;
+
+/**
+ * The edition a title names, for its on-screen credit ("DEFINITIVE EDITION", "REMASTER", "REMAKE"), or undefined
+ * when it names none (pure).
+ */
+export function editionOf(title: string): string | undefined {
+  if (/\bdefinitive\b/i.test(title) || /\bDE\b/.test(title))
+    return "DEFINITIVE EDITION";
+  if (/\bremaster(ed)?\b/i.test(title)) return "REMASTER";
+  if (/\bremake\b/i.test(title)) return "REMAKE";
+  return undefined;
+}
+
 /** Channels whose uploads are kids' or mod content whatever the title says. */
 const JUNK_CHANNEL =
   /\b(kids?|toys?|cartoon|superhero|spider|funny|mods?|gta ?6 ?domination)\b/i;
@@ -65,14 +81,26 @@ export function junkTitleReason(
   title: string,
   channel: string,
   game: string,
+  /** RETRO_REMASTER_FOOTAGE: an official remaster's or Definitive Edition's footage is allowed (never a fan build). */
+  o: { remasterOk?: boolean } = {},
 ): string | undefined {
   const own = norm(game);
   for (const [re, why] of JUNK_TITLE) {
     const m = title.match(re);
-    if (m && !own.includes(norm(m[0]))) return why;
+    if (!m || own.includes(norm(m[0]))) continue;
+    // Allowed editions: the rule is looked at again with their words taken out, so a fan build still fails.
+    if (o.remasterOk && OFFICIAL_EDITION.test(m[0])) {
+      const rest = title.replace(
+        new RegExp(OFFICIAL_EDITION.source, "gi"),
+        " ",
+      );
+      const again = rest.match(re);
+      if (!again || own.includes(norm(again[0]))) continue;
+    }
+    return why;
   }
   // "GTA Vice City DE": the Definitive Edition, as its uploaders shorten it.
-  if (/\bDE\b/.test(title) && !/definitive/i.test(game))
+  if (/\bDE\b/.test(title) && !/definitive/i.test(game) && !o.remasterOk)
     return "remaster, remake or fan build";
   if (JUNK_CHANNEL.test(channel)) return "kids or mod channel";
   return undefined;

@@ -175,3 +175,124 @@ export async function clipBigText(
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
 }
+
+// ---------------------------------------------------------------- LONG_INWORLD_TEXT
+// A long video shows the whole 16:9 picture, and the game's own footage is full of writing that belongs to it: shop
+// signs ("THE WELL STACKED PIZZA CO." refused most of San Andreas's full-story movie on 13 Nov 2026), the HUD, mission
+// cards, the game's subtitles. None of that is a fault. What is: writing the uploader put on top of the game, a
+// channel name or handle, a link, a "subscribe", the upload's own title words, and a fixed caption parked at the
+// frame's edge for the whole clip (a watermark in text). Each OCR word is judged by what it says and where it sits.
+
+/** Words only an uploader puts on a game's picture (one OCR word each; links and handles by their marks). */
+export const OVERLAY_WORD =
+  /^(subscribe[ds]?|subscribers?|patreon|twitch|youtube|discord|instagram|tiktok|twitter|facebook|walkthrough|playthrough|longplay|gameplay|commentary|cutscenes?|1080p|1440p|2160p|720p|60fps|30fps|50fps|4k|8k|remastered)$/i;
+/** A link, a handle or a tag, wherever it sits. */
+export const OVERLAY_MARK = /(^www\.|https?:|\.(com|net|org|tv|gg|io|co)\b|^@\w{3,}|^#\w{3,})/i;
+/** Lettering that is the game's own HUD: money, a clock, a score, ammo (digits and their marks). */
+export const HUD_LIKE = /^[\d$£€:.,/%+\-x×]+$/i;
+/** A word's centre this near the frame's edge (share of the width or height) is in the edge band. */
+export const EDGE_BAND = 0.13;
+/** A word at the same place in this share of a clip's samples is fixed there. */
+export const FIXED_SHARE = 0.8;
+/** How far a fixed word may wander between samples, as a share of the width and height. */
+export const FIXED_TOLERANCE = 0.02;
+
+/** An uploader's name split into the words a channel mark would spell ("ThirstyHyena": thirsty, hyena, thirstyhyena). */
+export function uploaderWords(uploader: string | undefined): string[] {
+  if (!uploader?.trim()) return [];
+  const whole = uploader.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const parts = uploader
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 5);
+  return [...new Set([whole, ...parts].filter((w) => w.length >= 4))];
+}
+
+const letters = (t: string) => t.replace(/[^\p{L}\p{N}]/gu, "");
+const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * The words on a clip's sampled pages that are not from the game (pure), and which samples carry one. In-world text
+ * (signs, the HUD, mission titles, the game's subtitles) passes; a word fails when it is an uploader's word, a link or
+ * handle, the uploader's own name, or when it sits fixed at the frame's edge in nearly every sample (FIXED_SHARE)
+ * while not reading like the HUD (digits and money). A clip of one or two samples is judged on its words alone.
+ */
+export function overlayWords(
+  pages: readonly OcrPage[],
+  o: { uploader?: string } = {},
+): { faulted: boolean[]; words: string[] } {
+  const mine = uploaderWords(o.uploader);
+  const words: string[] = [];
+  const faulted = pages.map(() => false);
+  const fixed = new Map<string, Array<{ page: number; cx: number; cy: number }>>();
+  for (const [i, page] of pages.entries()) {
+    if (!page.width || !page.height) continue;
+    for (const w of page.words) {
+      const l = letters(w.text);
+      if (l.length < 2) continue;
+      const n = norm(w.text);
+      if (OVERLAY_WORD.test(l) || OVERLAY_MARK.test(w.text.trim()) || (n.length >= 4 && mine.includes(n))) {
+        faulted[i] = true;
+        words.push(w.text);
+        continue;
+      }
+      if (HUD_LIKE.test(w.text.trim()) || l.length < 3) continue;
+      const cx = (w.x + w.w / 2) / page.width;
+      const cy = (w.y + w.h / 2) / page.height;
+      const edge = cx < EDGE_BAND || cx > 1 - EDGE_BAND || cy < EDGE_BAND || cy > 1 - EDGE_BAND;
+      if (!edge) continue;
+      const seen = fixed.get(n) ?? [];
+      seen.push({ page: i, cx, cy });
+      fixed.set(n, seen);
+    }
+  }
+  const sampled = pages.filter((p) => p.width && p.height).length;
+  if (sampled >= 3)
+    for (const [n, seen] of fixed) {
+      const first = seen[0]!;
+      const still = seen.filter((s) => Math.abs(s.cx - first.cx) <= FIXED_TOLERANCE && Math.abs(s.cy - first.cy) <= FIXED_TOLERANCE);
+      const at = new Set(still.map((s) => s.page));
+      if (at.size / sampled < FIXED_SHARE) continue;
+      for (const k of at) faulted[k] = true;
+      words.push(n);
+    }
+  return { faulted, words };
+}
+
+/**
+ * LONG_INWORLD_TEXT: a long video's clip of the game's own footage read for text that is not from the game
+ * (overlayWords). Reads like clipBigText and, like it, says clean on any failure: a missing OCR never costs a clip.
+ */
+export async function clipOverlayText(
+  file: string,
+  seconds: number,
+  o: { uploader?: string } = {},
+): Promise<ClipTextResult> {
+  const clean = (): ClipTextResult => ({ clean: true, words: [], run: { start: 0, length: seconds } });
+  const work = `${file}.ocr`;
+  try {
+    await fs.mkdir(work, { recursive: true });
+    await runCapped(FFMPEG, ["-hide_banner", "-loglevel", "error", "-i", file, "-vf", `fps=${1 / TEXT_SAMPLE_STEP},scale=960:-2`, "-q:v", "3", path.join(work, "f%03d.jpg")]);
+    const frames = (await fs.readdir(work))
+      .filter((f) => f.endsWith(".jpg"))
+      .sort()
+      .map((f) => path.join(work, f));
+    if (!frames.length) return clean();
+    const pages = await readText(frames);
+    if (!pages.size) return clean();
+    const read = overlayWords(
+      frames.map((f) => pages.get(f) ?? { width: 0, height: 0, words: [] }),
+      o,
+    );
+    return {
+      clean: !read.faulted.some(Boolean),
+      words: read.words,
+      run: longestCleanRun(read.faulted, TEXT_SAMPLE_STEP, seconds),
+    };
+  } catch {
+    return clean();
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
+  }
+}

@@ -28,7 +28,7 @@ import type { SegmentLook } from "./localvision.ts";
 import { clipJumps, gameplayCredit, wrongEntry } from "./gameplay.ts";
 import { trailerMatchesGame } from "./commons.ts";
 import { normTitle } from "./igdb.ts";
-import { junkTitleReason, notOutYet } from "./junk.ts";
+import { editionOf, junkTitleReason, notOutYet } from "./junk.ts";
 
 export { junkTitleReason, notOutYet };
 
@@ -114,8 +114,9 @@ export function junkSourceReason(
   game: string,
   franchise: string,
   year?: number,
+  o: { remasterOk?: boolean } = {},
 ): string | undefined {
-  const junk = junkTitleReason(title, channel, game);
+  const junk = junkTitleReason(title, channel, game, o);
   if (junk) return junk;
   // Plain gameplay says so: essays, sketches and "what happens if" videos are edited, with overlays and effects.
   if (!GAMEPLAY_WORD.test(title)) return "not plain gameplay";
@@ -828,6 +829,11 @@ export interface FootageChapter {
     keywords?: string[];
   }>;
   sentences: string[];
+  /**
+   * RETRO_REMASTER_FOOTAGE: a retrospective's reception or legacy chapter, where the remaster is part of the subject,
+   * may take an official remaster's or Definitive Edition's gameplay, credited as that edition on screen.
+   */
+  remasterOk?: boolean;
 }
 
 export interface FootageClip {
@@ -1029,6 +1035,7 @@ export async function prefetchChapter(
               ch.game,
               ch.franchise,
               ch.year,
+              { remasterOk: ch.remasterOk },
             );
         if (why)
           report.sourcesRejected.push({
@@ -1347,14 +1354,18 @@ export async function finishChapter(
       }
       const abs = s.from + g.at;
       const moment = pins.get(g.id);
+      // An allowed edition says so on screen: the viewer is never shown the remaster as the original.
+      const edition = ch.remasterOk ? editionOf(s.title) : undefined;
       out.push({
         file: path.join(relDir, "assets", name),
         sourceUrl: s.url,
-        provenance: `Gameplay "${s.title.slice(0, 80)}" by ${s.channel}, Creative Commons Attribution licence (CC BY) (${s.url}), ${len.toFixed(1)}s at ${abs.toFixed(1)}s of the video, muted; footage-first segment: ${label}`,
+        provenance: `Gameplay "${s.title.slice(0, 80)}" by ${s.channel}, Creative Commons Attribution licence (CC BY) (${s.url}), ${len.toFixed(1)}s at ${abs.toFixed(1)}s of the video, muted${edition ? `, ${edition.toLowerCase()} footage` : ""}; footage-first segment: ${label}`,
         durationSeconds: Math.min(len, SEGMENT_MAX_SECONDS + 1),
         beatIndex: ch.entry,
         moment,
-        credit: gameplayCredit({ channelTitle: s.channel, kind: "cc" }),
+        credit: edition
+          ? `${edition} FOOTAGE: ${s.channel.toUpperCase().slice(0, 30)} / CC BY`
+          : gameplayCredit({ channelTitle: s.channel, kind: "cc" }),
         label,
         startSeconds: abs,
         motion: 0.5,

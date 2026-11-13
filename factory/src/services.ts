@@ -450,6 +450,8 @@ export function createServices(db: Db, cfg: Config): Services {
           quotes: cfg.cutsceneQuotes,
           ytdlp: cfg.ytdlpPath,
       soundTags: cfg.appleSoundTags,
+          // LONG_WATERMARK_CROP: a long video's section with one small corner mark is cropped clear of it.
+          ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep } : {}),
           llm: cfg.clipRanking === "llm" ? llm : undefined,
         }),
       ),

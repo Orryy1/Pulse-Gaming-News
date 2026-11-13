@@ -1045,6 +1045,31 @@ export interface Config {
   /** RETRO_SANDBOX_CHAPTERS: a sandbox writes only these ("1,story:1": chapter numbers or a section's k-th). */
   retroSandboxChapters: string;
   /**
+   * Moving footage in long videos (owner, 12 Nov 2026: "nearly all moving footage from start to finish"). Each is off
+   * by default and measured in a sandbox first:
+   * - LONG_INWORLD_TEXT: a long video's clips of the game's own footage keep in-world text (signs, HUD, the game's
+   *   subtitles); only text that is not from the game is refused (src/assets/cliptext.ts overlayWords): channel and
+   *   uploader marks, links, burned-in uploader captions, a fixed caption at the frame's edge.
+   * - LONG_WATERMARK_CROP: a clip refused for a small fixed corner mark is cut again cropped away from that corner when
+   *   the crop keeps at least LONG_WATERMARK_CROP_KEEP of the picture (src/assets/cutscenes.ts overlayCornerCrop).
+   * - RETRO_REMASTER_FOOTAGE: a retrospective's reception and legacy chapters may show remaster or Definitive Edition
+   *   footage, credited as such on screen; story chapters never do.
+   * - LONG_MOVING_FIRST: the long planner shows any unplayed clip of the chapter before a still, and a still with
+   *   footage still to come stays up LONG_ACCENT_STILL_SECONDS at most (src/render/longplan.ts).
+   */
+  longInWorldText: boolean;
+  longWatermarkCrop: boolean;
+  longWatermarkCropKeep: number;
+  retroRemasterFootage: boolean;
+  longMovingFirst: boolean;
+  longAccentStillSeconds: number;
+  /**
+   * LONG_CHAPTER_FOOTAGE: every long video's chapters each get their own publisher footage allowance, as a
+   * retrospective's do (src/retrostep.ts longChapterFootageCaps, RETRO_FOOTAGE_SCALE, RETRO_CHAPTER_FOOTAGE_MAX), in
+   * place of one per-Short allowance for the whole video. A rights dial: the owner's call.
+   */
+  longChapterFootage: boolean;
+  /**
    * The Shorts-to-long funnel test (src/funnel.ts, upgrade queue item 18): FUNNEL_TEST turns it on (off by default).
    * Each weekly guide gets FUNNEL_SHORTS Shorts cut from it, one a day in the cutdown slot within FUNNEL_DAYS of its
    * release; FUNNEL_SHARE of them (by episode id) say and show the link in their last 5 seconds and get the related
@@ -1837,6 +1862,13 @@ export function loadConfig(): Config {
     retroChapterFootageMax: Math.max(0, int("RETRO_CHAPTER_FOOTAGE_MAX", 150)),
     retroOwnFirst: bool("RETRO_OWN_FIRST", true),
     retroSandboxChapters: str("RETRO_SANDBOX_CHAPTERS", ""),
+    longInWorldText: bool("LONG_INWORLD_TEXT", false),
+    longWatermarkCrop: bool("LONG_WATERMARK_CROP", false),
+    longWatermarkCropKeep: Math.min(0.95, Math.max(0.5, Number(str("LONG_WATERMARK_CROP_KEEP", "0.78")) || 0.78)),
+    retroRemasterFootage: bool("RETRO_REMASTER_FOOTAGE", false),
+    longMovingFirst: bool("LONG_MOVING_FIRST", false),
+    longAccentStillSeconds: Math.min(8, Math.max(1.3, Number(str("LONG_ACCENT_STILL_SECONDS", "2.5")) || 2.5)),
+    longChapterFootage: bool("LONG_CHAPTER_FOOTAGE", false),
     funnelTest: bool("FUNNEL_TEST", false),
     funnelShare: Math.min(1, Math.max(0, Number(str("FUNNEL_SHARE", "0.5")) || 0)),
     funnelShorts: Math.min(3, Math.max(0, int("FUNNEL_SHORTS", 3))),

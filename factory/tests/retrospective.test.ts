@@ -723,10 +723,11 @@ test("footage spans: a story chapter its act, chapters before the story the firs
     acts,
     chapters: [{ section: "history" as const }, { section: "story" as const, act: 2 }, { section: "reception" as const }],
   };
+  // The chapters about the game rather than its story take B-roll (brollShotAtPlace); the story chapter its own act.
   assert.deepEqual(retroFootageSpans(retro, [0, 1, 2]), [
-    { from: acts[0]!.from, to: acts[0]!.to },
+    { from: acts[0]!.from, to: acts[0]!.to, broll: true },
     { from: acts[1]!.from, to: acts[1]!.to },
-    { from: 0, to: 3 * 3600 },
+    { from: 0, to: 3 * 3600, broll: true },
   ]);
   assert.deepEqual(retroFootageSpans({ ...retro, acts: [] }, [0]), [undefined]);
 });

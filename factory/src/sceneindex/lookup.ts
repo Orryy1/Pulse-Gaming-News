@@ -167,6 +167,36 @@ export function shotAtPlace(
   return best?.id;
 }
 
+/** Shots near the line's place a B-roll pick chooses among (the nearest by time). */
+export const BROLL_NEIGHBOURS = 8;
+
+/**
+ * A B-roll shot for a line about the game rather than a scene of its story (pure): a retrospective's history, making,
+ * reception or legacy chapter shows the game's world moving, not whichever cutscene happens to sit at that point.
+ * Among the BROLL_NEIGHBOURS shots nearest the place, clean and long enough, the liveliest with the least dialogue
+ * over it (driving, the city, the open world move; two people talking mostly do not). Undefined when none.
+ */
+export function brollShotAtPlace(
+  index: SceneIndex,
+  within: { from: number; to: number; at?: number },
+  minSeconds = 0,
+): number | undefined {
+  const at = within.from + Math.min(1, Math.max(0, within.at ?? 0.5)) * (within.to - within.from);
+  const near = index.shots
+    .filter((s) => !s.blank && !s.menu && s.start >= within.from && s.end <= within.to && s.end - s.start >= minSeconds)
+    .map((s) => ({ s, d: Math.abs((s.start + s.end) / 2 - at) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, BROLL_NEIGHBOURS);
+  if (!near.length) return undefined;
+  const talk = (s: SceneShot) => {
+    let t = 0;
+    for (const l of index.lines) t += Math.max(0, Math.min(l.end, s.end) - Math.max(l.start, s.start));
+    return Math.min(1, t / Math.max(0.1, s.end - s.start));
+  };
+  const score = (s: SceneShot) => Math.min(1, (s.motion ?? 0) / 40) - 0.6 * talk(s) + (s.text ? -0.1 : 0);
+  return near.reduce((best, x) => (score(x.s) > score(best.s) ? x : best)).s.id;
+}
+
 /** Every stemmed word of the game's cast and place names: a target word among them is a name. */
 function nameWords(index: SceneIndex): Set<string> {
   const out = new Set<string>();

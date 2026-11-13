@@ -13,7 +13,9 @@ const { planIndexedClips } = await import("../../src/sceneindex/footage.ts");
 const { loadSceneIndex } = await import("../../src/sceneindex/schema.ts");
 const { retroChapterSpans } = await import("../../src/retrostep.ts");
 const { clock } = await import("../../src/editorial/retrospective.ts");
-const { FFMPEG } = await import("../../src/lib/bin.ts");
+const { FFMPEG: BASE } = await import("../../src/lib/bin.ts");
+// drawtext needs the full build on the Mac.
+const FFMPEG = fs.existsSync("/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg") ? "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg" : BASE;
 const script = JSON.parse(fs.readFileSync(path.join(OUT!, "script_full.json"), "utf8"));
 const fc = JSON.parse(fs.readFileSync(path.join(OUT!, "factcheck_full.json"), "utf8"));
 const retro = fc.topic.retro;
@@ -33,7 +35,7 @@ for (const [j, p] of picks.entries()) {
   const t = targets.find((x: any) => x.key === p.key);
   const sentence = t?.text.replace(/ \(show:.*$/, "") ?? "";
   const frame = path.join(tmp, `${String(j).padStart(3, "0")}.jpg`);
-  const label = `${clock(p.from)}  conf ${p.confidence}  ${sentence.slice(0, 70)}`.replace(/[:'\\%]/g, (c) => `\\${c}`);
+  const label = `${clock(p.from).replace(/:/g, ".")}  conf ${p.confidence}  ${sentence.slice(0, 70)}`.replace(/[^A-Za-z0-9 .-]/g, " ");
   execFileSync(FFMPEG, ["-v", "error", "-y", "-ss", (p.from + Math.min(1, p.seconds / 2)).toFixed(2), "-i", proxy, "-frames:v", "1", "-vf", `scale=480:270,drawbox=y=ih-28:w=iw:h=28:color=black@0.7:t=fill,drawtext=text='${label}':x=6:y=h-21:fontsize=13:fontcolor=white`, frame]);
   rows.push({ key: p.key, at: clock(p.from), from: p.from, seconds: p.seconds, confidence: p.confidence, sentence });
 }

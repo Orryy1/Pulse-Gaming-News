@@ -714,3 +714,19 @@ test("an outline that talks about its own material is sent back, title or descri
   assert.match(problems, /talks about the material/);
   assert.match(problems, /Not for the viewer/);
 });
+
+test("footage spans: a story chapter its act, chapters before the story the first act, after it the whole movie", async () => {
+  const { retroFootageSpans } = await import("../src/retrostep.ts");
+  const acts = storyActs(movie(), 3);
+  const retro = {
+    ...retroTopic(plan(), plan().games[0]!).retro!,
+    acts,
+    chapters: [{ section: "history" as const }, { section: "story" as const, act: 2 }, { section: "reception" as const }],
+  };
+  assert.deepEqual(retroFootageSpans(retro, [0, 1, 2]), [
+    { from: acts[0]!.from, to: acts[0]!.to },
+    { from: acts[1]!.from, to: acts[1]!.to },
+    { from: 0, to: 3 * 3600 },
+  ]);
+  assert.deepEqual(retroFootageSpans({ ...retro, acts: [] }, [0]), [undefined]);
+});

@@ -587,7 +587,7 @@ import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./
 import {
   retroChapterProblems,
   retroChapterSource,
-  retroChapterSpans,
+  retroFootageSpans,
   retroFootageCaps,
   retroIndex,
   retroOutlineFor,
@@ -8470,7 +8470,7 @@ export async function gatherMedia(
       ? (ep.factcheck_json as unknown as { topic: DocTopic }).topic.retro
       : undefined;
     const retroCaps = retroT ? retroFootageCaps(s.cfg, script, script.game_title) : [];
-    const retroSpans = retroT ? retroChapterSpans(retroT, retroT.written ?? []) : [];
+    const retroSpans = retroT ? retroFootageSpans(retroT, retroT.written ?? []) : [];
     if (script.entries?.length) {
       const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
       for (const [beatIndex, entry] of entries.entries()) {

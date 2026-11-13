@@ -18,6 +18,7 @@ import {
   outlineRetro,
   RETRO_CHAPTER_WORDS,
   RETRO_SECTION_INFO,
+  RETRO_SECTIONS,
   retroChapterBudget,
   retroChapterFootageSeconds,
   retroDocOutline,
@@ -220,6 +221,30 @@ export function retroChapterSpans(
       ? retro.acts?.find((a) => a.act === retro.chapters![i]!.act)
       : undefined;
     return act ? { from: act.from, to: act.to } : undefined;
+  });
+}
+
+/**
+ * Where each written chapter's footage comes from in the scene index's movie (pure): a story chapter from its own act;
+ * a chapter before the story (history, making of, innovations) from the first act, so its pictures spoil nothing the
+ * story has not reached; a chapter after it (moments, reception, legacy) from the whole movie. Each sentence then
+ * gets the movie's scene at its own place in that stretch when its words match nothing more exact (the 13 Nov proof:
+ * with shot descriptions paused, a history chapter matched no scene and fell to a watermarked upload).
+ */
+export function retroFootageSpans(
+  retro: Retro,
+  written: readonly number[],
+): Array<{ from: number; to: number } | undefined> {
+  const acts = retro.acts ?? [];
+  const story = retroChapterSpans(retro, written);
+  if (!acts.length) return story;
+  const whole = { from: acts[0]!.from, to: acts.at(-1)!.to };
+  const first = { from: acts[0]!.from, to: acts[0]!.to };
+  return written.map((i, k) => {
+    const section = retro.chapters?.[i]?.section;
+    if (!section) return undefined;
+    if (section === "story") return story[k];
+    return RETRO_SECTIONS.indexOf(section) < RETRO_SECTIONS.indexOf("story") ? first : whole;
   });
 }
 

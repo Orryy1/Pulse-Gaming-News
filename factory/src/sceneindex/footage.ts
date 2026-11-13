@@ -241,6 +241,12 @@ export interface IndexedOptions {
   /** SCENE_MATCH: how many next-best shots a named line may try after its first. */
   alternates?: number;
   /**
+   * SCENE_INDEX_CROP_RETRY: a clip the screen refuses is cut once more pushed in by CROP_RETRY_ZOOM (its edges, where an
+   * uploader's mark sits, cropped away) and screened again. The San Andreas movie carries a small "TH" in its corner,
+   * so every clip of it was refused as a persistent corner overlay.
+   */
+  cropRetry?: boolean;
+  /**
    * SCENE_MATCH: a cheap first look at a shot on the index's own low-resolution proxy, before anything is downloaded;
    * a shot it refuses is skipped (the clip itself is still checked after the cut). Unset: every shot is fetched.
    */
@@ -259,6 +265,8 @@ export interface IndexedOptions {
       at: number,
       seconds: number,
       file: string,
+      /** The crop retry's filter (SCENE_INDEX_CROP_RETRY); absent: the usual cut. */
+      vf?: string,
     ) => Promise<void>;
     /** True when the finished clip may be used (no overlay, not blank, not dark). */
     screen?: (file: string, seconds: number) => Promise<boolean>;
@@ -284,11 +292,21 @@ async function download(
   );
 }
 
+/** How far a crop retry pushes in: 7% off every edge, past an uploader's corner mark and clear of the subtitles' ends. */
+export const CROP_RETRY_ZOOM = 1.16;
+
+/** The crop retry's filter (pure): the centre of the frame, its edges gone, at the clip's usual size. */
+export function cropRetryFilter(zoom = CROP_RETRY_ZOOM): string {
+  const k = (1 / zoom).toFixed(4);
+  return `crop=trunc(iw*${k}/2)*2:trunc(ih*${k}/2)*2,scale=-2:1080,fps=30`;
+}
+
 async function cut(
   section: string,
   at: number,
   seconds: number,
   file: string,
+  vf = "scale=-2:1080,fps=30",
 ): Promise<void> {
   await runCapped(
     FFMPEG,
@@ -306,7 +324,7 @@ async function cut(
       "-sn",
       "-dn",
       "-vf",
-      "scale=-2:1080,fps=30",
+      vf,
       "-c:v",
       "libx264",
       "-crf",
@@ -382,6 +400,7 @@ export async function indexedCutsceneClips(
   await fs.mkdir(assets, { recursive: true });
   const work = await fs.mkdtemp(path.join(o.episodeDir, "sceneindex_work_"));
   const out: CutsceneClip[] = [];
+  const cropped = new Set<string>();
   try {
     let n = 0;
     const lineOf = new Map(o.targets.map((t) => [t.key, t.text]));
@@ -413,11 +432,19 @@ export async function indexedCutsceneClips(
             section,
           );
           await (o.deps?.cut ?? cut)(section, lead, c.seconds, file);
-          if (
-            !(await (
-              o.deps?.screen ?? ((f, s) => screen(f, s, o.textCheck !== false))
-            )(file, c.seconds))
-          ) {
+          const screened = (f: string) =>
+            (o.deps?.screen ?? ((x, s) => screen(x, s, o.textCheck !== false)))(f, c.seconds);
+          let passed = await screened(file);
+          // SCENE_INDEX_CROP_RETRY: refused, perhaps for an uploader's corner mark: pushed in once and screened again.
+          if (!passed && o.cropRetry) {
+            await (o.deps?.cut ?? cut)(section, lead, c.seconds, file, cropRetryFilter());
+            passed = await screened(file);
+            if (passed) {
+              cropped.add(rel);
+              log("info", "scene index: clip kept once its edges were cropped", { game: o.gameTitle, at: c.from });
+            }
+          }
+          if (!passed) {
             await fs.rm(file, { force: true }).catch(() => undefined);
             log("info", "scene index: clip screened out", {
               game: o.gameTitle,
@@ -474,7 +501,7 @@ export async function indexedCutsceneClips(
         luma: shot.luma,
         label: p.label,
         reason: `scene index: ${p.quote ? `the line "${p.quote.slice(0, 60)}"` : p.label} (confidence ${p.confidence}${confirmed ? `, ${p.names!.join(", ")} seen by the picture check` : ""})`,
-        provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted; chosen for ${p.key} by the scene index (${p.label})`,
+        provenance: `Cutscenes for "${label(o.gameTitle)}" from YouTube video "${label(src.title)}" by ${label(src.uploader)}, video ID: ${src.videoId}${o.publisher ? `, publisher: ${o.publisher}` : ""} (${url}), ${p.seconds}s, section start: ${(p.from - lead).toFixed(2)}s, source time: ${p.from.toFixed(2)}s, muted${cropped.has(rel) ? ", edges cropped" : ""}; chosen for ${p.key} by the scene index (${p.label})`,
         audio: false,
         credit: `FOOTAGE: ${o.gameTitle.toUpperCase()} CUTSCENES / YOUTUBE`,
         youtubeSource: {
@@ -669,6 +696,7 @@ export async function indexFirstCutscenes<
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
+    Partial<Pick<Config, "sceneIndexCropRetry">> &
     Partial<Pick<Config, "spoilerGuard" | "sceneMatch">>,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
@@ -717,6 +745,7 @@ export async function indexFirstCutscenes<
         minConfidence: cfg.sceneIndexMinConfidence,
         ytdlp: cfg.ytdlpPath,
         publisher: o.publisher,
+        ...(cfg.sceneIndexCropRetry ? { cropRetry: true } : {}),
         // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
         ...(cfg.sceneMatch
           ? {

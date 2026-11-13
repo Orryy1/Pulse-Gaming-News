@@ -730,3 +730,41 @@ test("footage spans: a story chapter its act, chapters before the story the firs
   ]);
   assert.deepEqual(retroFootageSpans({ ...retro, acts: [] }, [0]), [undefined]);
 });
+
+test("SCENE_INDEX_CROP_RETRY: a clip refused for an uploader's corner mark is cut again pushed in, and kept", async () => {
+  const { indexedCutsceneClips, cropRetryFilter } = await import("../src/sceneindex/footage.ts");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "retro-crop-"));
+  const index = movie();
+  const run = async (cropRetry: boolean) => {
+    const cuts: Array<string | undefined> = [];
+    const clips = await indexedCutsceneClips({
+      index,
+      gameTitle: index.game,
+      episodeDir: dir,
+      targets: [{ key: "beat:0#m0", text: "Something the index has never heard of", want: "gameplay", energy: "medium", keywords: [], within: { from: 0, to: 3600, at: 0.5 } }],
+      maxClips: 1,
+      maxSeconds: 10,
+      minConfidence: 0.45,
+      ytdlp: "yt-dlp",
+      cropRetry,
+      deps: {
+        download: async (_id, _a, _b, f) => fs.writeFileSync(f, "x"),
+        cut: async (_s, _at, _sec, f, vf) => {
+          cuts.push(vf);
+          fs.writeFileSync(f, vf ? "cropped" : "plain");
+        },
+        screen: async (f) => fs.readFileSync(f, "utf8") === "cropped",
+      },
+    });
+    return { clips, cuts };
+  };
+  const off = await run(false);
+  assert.equal(off.clips.length, 0);
+  const on = await run(true);
+  assert.equal(on.clips.length, 1);
+  assert.deepEqual(on.cuts, [undefined, cropRetryFilter()]);
+  assert.match(on.clips[0]!.provenance, /edges cropped/);
+  assert.match(cropRetryFilter(), /^crop=trunc\(iw\*0\.862\d\/2\)\*2/);
+});

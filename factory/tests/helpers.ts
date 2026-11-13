@@ -453,6 +453,7 @@ export function testConfig(
     sceneIndexMaxHours: 12,
     sceneIndexTurnSteps: 3,
     sceneIndexMinConfidence: 0.45,
+    sceneIndexCropRetry: false,
     gameFetch: false,
     gameFetchTitles: "",
     gameFetchSignals: "",

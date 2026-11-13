@@ -792,6 +792,7 @@ export interface Config {
   sceneIndexMaxHours: number; // SCENE_INDEX_MAX_HOURS: no source longer than this
   sceneIndexTurnSteps: number; // SCENE_INDEX_TURN_STEPS: pieces of work in one background turn
   sceneIndexMinConfidence: number; // SCENE_INDEX_MIN_CONFIDENCE: a lookup below this falls back to the cutscene search
+  sceneIndexCropRetry: boolean; // SCENE_INDEX_CROP_RETRY: a refused index clip is cut again with its edges cropped (an uploader's corner mark)
   /** GAME_FETCH: full movies and no-commentary playthroughs of every big release fetched into the scene index (src/sceneindex/gamefetch.ts); needs SCENE_INDEX. */
   gameFetch: boolean;
   gameFetchTitles: string; // GAME_FETCH_TITLES: "Title@release~window end; Title2", always fetched first
@@ -1655,6 +1656,7 @@ export function loadConfig(): Config {
     sceneIndexMaxHours: Math.max(1, int("SCENE_INDEX_MAX_HOURS", 12)),
     sceneIndexTurnSteps: Math.max(1, int("SCENE_INDEX_TURN_STEPS", 3)),
     sceneIndexMinConfidence: Math.min(1, Math.max(0, Number(str("SCENE_INDEX_MIN_CONFIDENCE", "0.45")) || 0.45)),
+    sceneIndexCropRetry: bool("SCENE_INDEX_CROP_RETRY", false),
     gameFetch: bool("GAME_FETCH", false),
     gameFetchTitles: str("GAME_FETCH_TITLES", ""),
     gameFetchSignals: str("GAME_FETCH_SIGNALS", ""),

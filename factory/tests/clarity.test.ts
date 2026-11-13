@@ -303,4 +303,5 @@ test("the facts guard reads short forms, possessives and a verdict's capital as 
   );
   assert.deepEqual(factDrift("It costs $80. My Pulse check? Faint.", "It costs $80. My verdict: Don't buy it yet."), []);
   assert.match(factDrift("Sony makes it.", "Sony and Nintendo make it.").join(" "), /adds the name Nintendo/);
+  assert.deepEqual(factDrift("It is cleared for South Korean shelves.", "It is cleared for sale in South Korea."), []);
 });

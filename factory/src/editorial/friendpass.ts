@@ -231,8 +231,13 @@ export function factDrift(before: string, after: string): string[] {
       .filter((run) => run.length > 1)
       .map((run) => run.map((x) => x[0]).join("").toUpperCase()),
   );
+  // A name whose other form is already there is the same name: "Korea" after "South Korean", "Japan" after "Japanese".
+  const sameStem = (n: string) => {
+    const l = n.toLowerCase();
+    return l.length >= 4 && [...wb].some((w) => w.length >= 4 && (w.startsWith(l) || l.startsWith(w)));
+  };
   const newNames = [...namesOf(after)].filter(
-    (n) => !wb.has(n.toLowerCase()) && !initials.has(n),
+    (n) => !wb.has(n.toLowerCase()) && !initials.has(n) && !sameStem(n),
   );
   const named = namesOf(before);
   const afterInitials = new Set(

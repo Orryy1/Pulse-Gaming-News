@@ -11,6 +11,7 @@ import type { Db } from "./db.ts";
 import { dayKey, weekday } from "./lanes.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
 import { filedLines, readFiled } from "./sceneindex/gamefetch.ts";
+import { archiveLines, readArchive } from "./sceneindex/archive.ts";
 import { shortStats, type ShortStat } from "./experiments.ts";
 import { searchReachRows, searchShareLine } from "./searchq/report.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -256,7 +257,7 @@ export async function gameAudioSides(
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">>,
   now: Date,
   /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
   retention?: RetentionStudy,
@@ -273,6 +274,8 @@ export async function growthReport(
             : []),
           // GAME_FETCH: what the footage library has filed (src/sceneindex/gamefetch.ts).
           ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
+          // ARCHIVE_BACKLOG: the curated archive, games archived, queued and failed (src/sceneindex/archive.ts).
+          ...(cfg.archiveBacklog && cfg.dataDir ? archiveLines(await readArchive(cfg.dataDir)) : []),
           // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
           ...(cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : []),
           // SEARCH_SHORTS: the search Shorts' share of views from YouTube search against the other Shorts' (src/searchq).

@@ -123,6 +123,7 @@ import { searchHarvestTick } from "./searchq/job.ts";
 import { searchDir, searchKey } from "./searchq/store.ts";
 import { asksKey } from "./streamasks/page.ts";
 import { gameFetchPass } from "./sceneindex/gamefetch.ts";
+import { archiveTick } from "./sceneindex/archive.ts";
 import { releaseRadar, type RadarGame } from "./discovery/weekly.ts";
 import { currentStories } from "./bigstories.ts";
 import { readLaunches as sceneLaunches } from "./discovery/launches.ts";
@@ -1873,6 +1874,23 @@ async function main(): Promise<void> {
       );
     setTimeout(pass, 2 * 60_000);
     setInterval(pass, 10 * 60_000);
+  }
+  // The curated archive (ARCHIVE_BACKLOG, src/sceneindex/archive.ts): one light index or one upload check a turn,
+  // at night, behind the Mac's turn-taker; the full indexes of the top games go through the scene index job above.
+  if (cfg.archiveBacklog && cfg.sceneIndex) {
+    const archivePass = () =>
+      void archiveTick(cfg, {
+        coverage: async () =>
+          (
+            await db.query<{ game: string | null; n: number | string; views: number | string | null }>(
+              `SELECT COALESCE(NULLIF(e.script_json->>'game_title', ''), e.story_json->>'gameHint') AS game, count(*) AS n, COALESCE(sum(m.v), 0) AS views
+                 FROM episodes e LEFT JOIN (SELECT episode_id, max(views) AS v FROM video_metrics GROUP BY episode_id) m ON m.episode_id = e.id
+                WHERE e.lane <> 'twin' GROUP BY 1`,
+            )
+          ).flatMap((r) => (r.game ? [{ game: r.game, n: Number(r.n), views: Number(r.views ?? 0) }] : [])),
+      });
+    setTimeout(archivePass, 7 * 60_000);
+    setInterval(archivePass, 10 * 60_000);
   }
   // The living list of things to test on stream (STREAM_ASKS) and the VOD moment miner (VOD_MINER): src/streamasks.
   if (cfg.streamAsks.enabled) {

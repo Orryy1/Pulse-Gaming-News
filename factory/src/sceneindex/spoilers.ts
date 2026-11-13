@@ -169,7 +169,7 @@ export function lateTerms(index: SceneIndex, share: number): string[] {
   // dialogue also uses in lower case is a common word, not a late-story name (12 Nov 2026: they blocked an Ocarina Short).
   const lower = new Set<string>();
   for (const l of index.lines)
-    for (const w of l.text.match(/[a-z][a-z'-]+/g) ?? []) lower.add(w);
+    for (const w of l.text.match(/\b[a-z][a-z'-]+\b/g) ?? []) lower.add(w);
   const out: string[] = [];
   for (const name of names) {
     const n = name.trim();

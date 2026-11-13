@@ -327,3 +327,17 @@ test("LONG_INDEX_FIRST passes: the index pass never runs the slow search, the se
   await indexFirstCutscenes(cfg, { ...base, mode: "search" as const }, search);
   assert.equal(searched, 1);
 });
+
+test("LONG_INDEX_FIRST never trims licensed Creative Commons gameplay to fit the publisher's allowance", () => {
+  const clip = (provenance: string, durationSeconds: number) => ({ provenance, durationSeconds, beatIndex: 0 });
+  const clips = [
+    clip("Official trailer: Rockstar Games", 10),
+    clip('Gameplay "x" by someone, Creative Commons Attribution licence (CC BY)', 40),
+    clip('Cutscenes for "GTA SA" from YouTube video "movie" by x', 30),
+    clip('Cutscenes for "GTA SA" from YouTube video "movie" by x', 30),
+  ];
+  const after = reconcileCutsceneBudgets(clips, [{ gameTitle: SA, beatIndex: 0, ownSeconds: 60 }], 60, { cutscenesFirst: true });
+  assert.equal(after.filter((c) => c.provenance.startsWith("Cutscenes")).length, 2);
+  assert.ok(after.some((c) => /Creative Commons/.test(c.provenance)), "the CC gameplay stays");
+  assert.equal(after.some((c) => /trailer/i.test(c.provenance)), false, "the trailer gives way");
+});

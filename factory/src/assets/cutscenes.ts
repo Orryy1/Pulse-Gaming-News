@@ -906,7 +906,8 @@ export function reconcileCutsceneBudgets<
   videoLimit: number,
   /**
    * LONG_INDEX_FIRST: in a chapter with its own allowance the game's own scenes are kept first and its other publisher
-   * footage (trailers first, then gameplay, the latest gathered first) gives way to fit, instead of the other way round.
+   * footage (trailers first, the latest gathered first) gives way to fit, instead of the other way round. Licensed
+   * Creative Commons gameplay is never trimmed here: it never was (the allowance only ever shortened cutscenes).
    */
   o: { cutscenesFirst?: boolean } = {},
 ): T[] {
@@ -980,7 +981,14 @@ export function reconcileCutsceneBudgets<
     if (used <= own + 0.01) continue;
     const yielding = out
       .map((clip, i) => ({ clip, i }))
-      .filter(({ clip }) => clip.beatIndex === beat && !isCutscene(clip) && !clip.stock && !/^Pulse's own gameplay capture/.test(clip.provenance))
+      .filter(
+        ({ clip }) =>
+          clip.beatIndex === beat &&
+          !isCutscene(clip) &&
+          !clip.stock &&
+          !/^Pulse's own gameplay capture/.test(clip.provenance) &&
+          !/Creative Commons/i.test(clip.provenance),
+      )
       .sort((a, b) => Number(/trailer/i.test(b.clip.provenance)) - Number(/trailer/i.test(a.clip.provenance)) || b.i - a.i);
     for (const { clip } of yielding) {
       if (used <= own + 0.01) break;

@@ -13,6 +13,7 @@ const { planIndexedClips } = await import("../../src/sceneindex/footage.ts");
 const { loadSceneIndex } = await import("../../src/sceneindex/schema.ts");
 const { retroChapterSpans } = await import("../../src/retrostep.ts");
 const { clock } = await import("../../src/editorial/retrospective.ts");
+const { FFMPEG } = await import("../../src/lib/bin.ts");
 const script = JSON.parse(fs.readFileSync(path.join(OUT!, "script_full.json"), "utf8"));
 const fc = JSON.parse(fs.readFileSync(path.join(OUT!, "factcheck_full.json"), "utf8"));
 const retro = fc.topic.retro;
@@ -33,10 +34,10 @@ for (const [j, p] of picks.entries()) {
   const sentence = t?.text.replace(/ \(show:.*$/, "") ?? "";
   const frame = path.join(tmp, `${String(j).padStart(3, "0")}.jpg`);
   const label = `${clock(p.from)}  conf ${p.confidence}  ${sentence.slice(0, 70)}`.replace(/[:'\\%]/g, (c) => `\\${c}`);
-  execFileSync("ffmpeg", ["-v", "error", "-y", "-ss", (p.from + Math.min(1, p.seconds / 2)).toFixed(2), "-i", proxy, "-frames:v", "1", "-vf", `scale=480:270,drawbox=y=ih-28:w=iw:h=28:color=black@0.7:t=fill,drawtext=text='${label}':x=6:y=h-21:fontsize=13:fontcolor=white`, frame]);
+  execFileSync(FFMPEG, ["-v", "error", "-y", "-ss", (p.from + Math.min(1, p.seconds / 2)).toFixed(2), "-i", proxy, "-frames:v", "1", "-vf", `scale=480:270,drawbox=y=ih-28:w=iw:h=28:color=black@0.7:t=fill,drawtext=text='${label}':x=6:y=h-21:fontsize=13:fontcolor=white`, frame]);
   rows.push({ key: p.key, at: clock(p.from), from: p.from, seconds: p.seconds, confidence: p.confidence, sentence });
 }
-execFileSync("ffmpeg", ["-v", "error", "-y", "-pattern_type", "glob", "-i", path.join(tmp, "*.jpg"), "-vf", "tile=4x8:padding=4", "-frames:v", "1", path.join(OUT!, "story_chapter_scenes.jpg")]);
+execFileSync(FFMPEG, ["-v", "error", "-y", "-pattern_type", "glob", "-i", path.join(tmp, "*.jpg"), "-vf", "tile=4x8:padding=4", "-frames:v", "1", path.join(OUT!, "story_chapter_scenes.jpg")]);
 fs.rmSync(tmp, { recursive: true, force: true });
 const res = { chapter: k + 1, act: retro.chapters[written[k]!].act, span: { from: clock(span.from), to: clock(span.to) }, sentences: sentences.length, targets: targets.length, picked: picks.length, inside_act: picks.filter((p) => p.from >= span.from - 2 && p.from <= span.to + 2).length, in_order: picks.every((p, j) => j === 0 || p.from >= picks[j - 1]!.from - 120), picks: rows };
 fs.writeFileSync(path.join(OUT!, "story_chapter_scenes.json"), JSON.stringify(res, null, 2));

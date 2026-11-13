@@ -28,7 +28,7 @@ export interface LiveClipsSettings {
   bufferMinutes: number;
   /** LIVE_CLIPS_MAX_HEIGHT: the stream quality recorded (1080 by default; 720 halves the download). */
   maxHeight: number;
-  /** LIVE_CLIPS_WAIT_MINUTES: how long a cut waits behind Pulse's renders (~/orch/macrun.sh) before trying again. */
+  /** LIVE_CLIPS_WAIT_MINUTES: how long a cut waits while Pulse renders before trying again (three tries). */
   waitMinutes: number;
   /** LIVE_CLIPS_PUBLISH_NOW: an approved live Short goes out at the next free gap, not the evening gameplay slot. */
   publishNow: boolean;

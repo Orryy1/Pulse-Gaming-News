@@ -1,8 +1,11 @@
 // The live stream's last few minutes on disk (LIVE_CLIPS), and the cut from them. yt-dlp reads the stream (it keeps
 // Twitch's access token fresh) and ffmpeg copies it, untouched, into 10-second pieces named by the wall clock in UTC
 // ("seg_20261118T113005.ts"), so any moment's window is a handful of files. Copying costs almost nothing; both run at
-// macOS background priority. The cut (a re-encode of 40 seconds, and eight frames) waits its turn behind Pulse's own
-// renders through ~/orch/macrun.sh. Its pieces are copied aside first, so a long wait never loses the moment.
+// macOS background priority. The cut (a re-encode of 40 seconds, and eight frames) waits while Pulse renders, then runs
+// at background priority. Its pieces are copied aside first, so a long wait never loses the moment.
+// Not through ~/orch/macrun.sh's turn lock: on 12-13 Nov 2026 a 40-second cut waited over 30 minutes there while a
+// looping archive job retook the lock each minute (macrun has no queue, and a waiter only looks once a minute). The
+// lock is for long helper jobs; this cut is seconds of work that must not miss its topic. Pulse's renders still win.
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
@@ -245,16 +248,27 @@ export async function measure(
   }));
 }
 
-/** A job behind the Mac's turn-taker (Pulse's renders first), at background priority where it is not installed. */
-export function behindRenders(
-  name: string,
-  cmd: string,
-  args: string[],
-): [string, string[]] {
-  const macrun = path.join(os.homedir(), "orch", "macrun.sh");
-  return fs.existsSync(macrun)
-    ? ["/bin/bash", [macrun, name, cmd, ...args]]
-    : background(cmd, args);
+/** True while Pulse renders (macrun.sh's own test: a Remotion or headless Chrome process). */
+export async function pulseRendering(): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  return run("pgrep", ["-f", "remotion|chrome-headless-shell"]).then(
+    () => true,
+    () => false,
+  );
+}
+
+/** Waits while Pulse renders, looking every 10 s, for at most the given minutes; false when it gave up. */
+export async function afterRenders(
+  minutes: number,
+  rendering: () => Promise<boolean> = pulseRendering,
+  pause = (ms: number) => new Promise((r) => setTimeout(r, ms)),
+): Promise<boolean> {
+  const until = Date.now() + minutes * 60_000;
+  while (await rendering()) {
+    if (Date.now() >= until) return false;
+    await pause(10_000);
+  }
+  return true;
 }
 
 /** The cut: the pieces joined, 40 seconds from offset re-encoded to clip.mp4, and eight frames for the reviewer. */
@@ -272,8 +286,9 @@ export async function cutClip(o: {
     process.platform === "darwin"
       ? ["libx264", "-preset", "fast", "-crf", "15"]
       : ["libx264", "-preset", "veryfast", "-crf", "17"];
-  const env = { ...process.env, MACRUN_WAIT_MIN: String(o.waitMinutes) };
-  const [c, a] = behindRenders("pulse-liveclip", o.ffmpeg, [
+  if (!(await afterRenders(o.waitMinutes)))
+    throw new Error(`Pulse was still rendering after ${o.waitMinutes} min`);
+  const [c, a] = background(o.ffmpeg, [
     "-hide_banner",
     "-loglevel",
     "error",
@@ -300,7 +315,7 @@ export async function cutClip(o: {
     "+faststart",
     clip,
   ]);
-  await run(c, a, { env, timeout: (o.waitMinutes + 10) * 60_000 });
+  await run(c, a, { timeout: 10 * 60_000 });
   const [fc, fa] = background(o.ffmpeg, [
     "-hide_banner",
     "-loglevel",

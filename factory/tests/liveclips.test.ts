@@ -426,3 +426,12 @@ test("liveclips: a moment twice as strong may come before the gap is out; the ho
   assert.match(rateCheck(T0, [T0 - 300_000], o, 2.5, 1.4) ?? "", /within 10 min/);
   assert.match(rateCheck(T0, [T0 - 600_000, T0 - 300_000], o, 6, 1) ?? "", /2 already this hour/);
 });
+
+test("liveclips: the cut waits while Pulse renders, and gives up after its minutes", async () => {
+  const { afterRenders } = await import("../src/liveclips/recorder.ts");
+  let checks = 0;
+  const twice = async () => ++checks <= 2;
+  assert.equal(await afterRenders(5, twice, async () => undefined), true);
+  assert.equal(checks, 3);
+  assert.equal(await afterRenders(0, async () => true, async () => undefined), false);
+});

@@ -5,7 +5,7 @@
 //   - the stream's last LIVE_CLIPS_BUFFER_MINUTES are kept on disk in 10-second pieces (src/liveclips/recorder.ts);
 //   - each finished piece is measured for sound and action, the chat is read anonymously, viewers' clips are listed,
 //     and the detector (src/liveclips/detect.ts) says when a moment is worth it, within the hourly and daily caps;
-//   - the moment's pieces are copied aside at once, cut behind Pulse's renders (~/orch/macrun.sh), and the 40-second
+//   - the moment's pieces are copied aside at once, cut once Pulse is not rendering, and the 40-second
 //     clip goes into the gameplay lane's inbox as "twitch_live", first in the queue. From there it is the lane as
 //     ever: heard, looked at, the spoiler guard, the friend voice, game sound, the graphics audit, and the owner's
 //     one-tap card in Discord. Nothing publishes without that tap.
@@ -370,6 +370,7 @@ async function cutToInbox(
   held: string,
   need: { names: string[]; offset: number },
   state: LiveState,
+  attempt = 1,
 ) {
   // One cut at a time; the next waits its turn here.
   while (cutting) await new Promise((r) => setTimeout(r, 5_000));
@@ -388,10 +389,18 @@ async function cutToInbox(
     await fsp.rm(held, { recursive: true, force: true });
   } catch (err) {
     await fsp.rm(tmp, { recursive: true, force: true }).catch(() => undefined);
-    log("warn", "live clips: the cut failed; its pieces are kept", {
+    // Tried again in five minutes, three times in all (a long render, a busy disk); the pieces wait in held/.
+    const again = attempt < 3;
+    log("warn", `live clips: the cut failed; ${again ? "trying again in 5 min" : "giving up, its pieces are kept"}`, {
       held,
+      attempt,
       error: errorMessage(err),
     });
+    if (again)
+      setTimeout(
+        () => void cutToInbox(cfg, stream, m, held, need, state, attempt + 1),
+        5 * 60_000,
+      );
   } finally {
     cutting = false;
   }

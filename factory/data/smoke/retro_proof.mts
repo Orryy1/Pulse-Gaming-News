@@ -132,6 +132,19 @@ if (PHASE === "script") {
   save("script_render.json", script);
   const words = [script.hook, ...script.beats.map((b: any) => b.narration), script.pulse_take?.narration ?? ""].join(" ").split(/\s+/).filter(Boolean).length;
   console.log("TRIMMED", JSON.stringify({ beats: script.beats.length, quotes: script.character_quotes.length, words, minutes: Math.round((words / 150) * 10) / 10 }));
+} else if (PHASE === "regather") {
+  // The voice kept (no new ElevenLabs credits), the media and the plan dropped, so the next render gathers afresh.
+  const id = fs.readFileSync(idFile, "utf8").trim();
+  const ep = (await getEpisode(db, id))!;
+  const a = structuredClone(ep.assets_json) as any;
+  for (const k of ["images", "clips", "longPlan", "plan", "video", "poster", "thumbnail", "thumbs"]) delete a[k];
+  await db.query(
+    `UPDATE episodes SET status = 'voiced', assets_json = $2, qa_json = NULL, attempts = 0, last_error = NULL, next_attempt_at = NULL WHERE id = $1`,
+    [id, JSON.stringify(a)],
+  );
+  const dir = path.join(SB, "episodes", id);
+  for (const f of fs.readdirSync(dir)) if (/^entry_\d+$/.test(f)) fs.renameSync(path.join(dir, f), path.join(dir, `old_${f}_${Date.now()}`));
+  console.log("REGATHER", id, Object.keys(a).join(","));
 } else if (PHASE === "render") {
   const id = fs.readFileSync(idFile, "utf8").trim();
   const ep = await run(id, ["rendered", "approved", "awaiting_approval", "scheduled", "qa"], 8);

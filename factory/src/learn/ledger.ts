@@ -152,7 +152,7 @@ export function gitCommitsBetween(
           "60",
           `${from}..${to}`,
           "--",
-          "factory/",
+          ":(top)factory/",
         ],
         { timeout: 5000, stdio: ["ignore", "pipe", "ignore"] },
       ).toString();
@@ -374,4 +374,52 @@ export async function ingestIntents(
     ],
   );
   return n;
+}
+
+// ---- Backfill from the proof tool (src/tools/learn-proof.ts) ---------------------------------------
+
+export const BACKFILL_STAMPS = "learn-backfill-stamps.json";
+export const BACKFILL_LEDGER = "learn-backfill-ledger.json";
+
+/**
+ * Loads the reconstructed stamps and ledger the proof tool wrote (copied to data/admin), once each: a stamp only for
+ * an episode with none, every ledger line marked as backfill. The files are renamed ".done" afterwards.
+ */
+export async function ingestBackfill(db: Db, dataDir: string): Promise<{ stamps: number; ledger: number }> {
+  const out = { stamps: 0, ledger: 0 };
+  const stampsFile = path.join(dataDir, "admin", BACKFILL_STAMPS);
+  if (fs.existsSync(stampsFile)) {
+    const rows = JSON.parse(fs.readFileSync(stampsFile, "utf8")) as Array<{
+      episode_id: string;
+      code_commit: string | null;
+      codex_sites: string[] | null;
+      arms: Record<string, unknown>;
+      confidence: string;
+    }>;
+    for (const r of rows) {
+      const res = await db.query(
+        `INSERT INTO episode_stamps (episode_id, code_commit, steps, source, confidence)
+         VALUES ($1, $2, $3, 'backfill', $4) ON CONFLICT (episode_id) DO NOTHING RETURNING episode_id`,
+        [r.episode_id, r.code_commit, JSON.stringify({ backfill: { codex_sites: r.codex_sites, arms: r.arms } }), r.confidence],
+      );
+      out.stamps += res.length;
+    }
+    fs.renameSync(stampsFile, `${stampsFile}.done`);
+  }
+  const ledgerFile = path.join(dataDir, "admin", BACKFILL_LEDGER);
+  if (fs.existsSync(ledgerFile)) {
+    const rows = JSON.parse(fs.readFileSync(ledgerFile, "utf8")) as Array<{ at: string; kind: string; commit?: string; summary: string }>;
+    for (const r of rows) {
+      await recordChange(db, {
+        at: new Date(r.at),
+        kind: (r.kind === "restart" ? "note" : r.kind) as ChangeKind,
+        commit: r.commit,
+        summary: r.summary,
+        source: "backfill",
+      });
+      out.ledger++;
+    }
+    fs.renameSync(ledgerFile, `${ledgerFile}.done`);
+  }
+  return out;
 }

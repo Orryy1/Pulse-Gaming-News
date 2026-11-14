@@ -25,8 +25,8 @@ import {
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./subslearn/settings.ts";
-import { learnSettings, learnSummary, type LearnSettings } from "./learn/settings.ts";
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
+import { learnSettings, learnSummary, type LearnSettings } from "./learn/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
@@ -893,11 +893,11 @@ export interface Config {
   /** SUBS_LEARN and its settings: subscribers per 1,000 views by format, and one slot a week moved towards the formats
    * that win subscribers (src/subslearn). Off by default; SUBS_LEARN_APPLY=false reports without moving. */
   subsLearn: SubsLearnSettings;
+  /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
+  liveClips: LiveClipsSettings;
   /** The shared learning core (src/learn): version stamps, the change ledger, the holdout, the judge ledger, the bandit,
    * the lesson playbook, hook breadth and the weekly summary, each behind its own LEARN_* setting, all off by default. */
   learn: LearnSettings;
-  /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
-  liveClips: LiveClipsSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
@@ -1822,8 +1822,8 @@ export function loadConfig(): Config {
     // Facts files resolve against the factory folder the server runs in, like SHORT_RUN_FILE.
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
-    learn: learnSettings(process.env),
     liveClips: liveClipsSettings(process.env),
+    learn: learnSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
@@ -2076,8 +2076,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     streamAsks: streamAsksSummary(c.streamAsks),
     searchShorts: searchShortsSummary(c.searchShorts),
     subsLearn: subsLearnSummary(c.subsLearn),
-    learn: learnSummary(c.learn),
     liveClips: liveClipsSummary(c.liveClips),
+    learn: learnSummary(c.learn),
     whySerial: c.whySerialEnabled
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",

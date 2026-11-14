@@ -6,7 +6,7 @@ import type { Config } from "../config.ts";
 import type { DiscordMessage } from "../approval/discord.ts";
 import { log, errorMessage } from "../lib/util.ts";
 import { learnAny } from "./settings.ts";
-import { ingestIntents, observeChanges } from "./ledger.ts";
+import { ingestBackfill, ingestIntents, observeChanges } from "./ledger.ts";
 import { maybeRepin } from "./holdout.ts";
 import { learnJobs } from "./weekly.ts";
 import type { Llm } from "../editorial/llm.ts";
@@ -45,6 +45,7 @@ export async function learnTick(s: LearnTickHost): Promise<void> {
   if (ls.stamps) {
     await safely("change ledger", () => observeChanges(s.db, s.cfg, now));
     await safely("intents", () => ingestIntents(s.db, s.cfg.dataDir, now));
+    await safely("backfill", () => ingestBackfill(s.db, s.cfg.dataDir));
   }
   if (ls.holdoutShare > 0)
     await safely("holdout pin", () =>

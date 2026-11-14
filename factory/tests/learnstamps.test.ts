@@ -477,3 +477,25 @@ test("holdout side is sticky and the baseline re-pins on schedule", async () => 
   const pins = await db.query(`SELECT * FROM change_ledger WHERE kind = 'pin'`);
   assert.equal(pins.length, 2);
 });
+
+test("backfill files load once: stamps only where none exist, ledger marked as backfill", async () => {
+  const { ingestBackfill } = await import("../src/learn/ledger.ts");
+  const db = await testDb();
+  const dir = await tmpDir();
+  fs.mkdirSync(path.join(dir, "admin"), { recursive: true });
+  await db.query(`INSERT INTO episode_stamps (episode_id, code_commit) VALUES ('live1', 'abc')`);
+  fs.writeFileSync(
+    path.join(dir, "admin", "learn-backfill-stamps.json"),
+    JSON.stringify([
+      { episode_id: "old1", code_commit: "c1", codex_sites: ["clarity"], arms: { voice_test: "personal" }, confidence: "reconstructed" },
+      { episode_id: "live1", code_commit: "zzz", codex_sites: null, arms: {}, confidence: "partial" },
+    ]),
+  );
+  fs.writeFileSync(path.join(dir, "admin", "learn-backfill-ledger.json"), JSON.stringify([{ at: "2026-11-05T23:22:13Z", kind: "deploy", commit: "c1", summary: "code ? to c1" }]));
+  assert.deepEqual(await ingestBackfill(db, dir), { stamps: 1, ledger: 1 });
+  assert.deepEqual(await ingestBackfill(db, dir), { stamps: 0, ledger: 0 });
+  const [live] = await db.query<{ code_commit: string }>(`SELECT code_commit FROM episode_stamps WHERE episode_id = 'live1'`);
+  assert.equal(live!.code_commit, "abc", "a live stamp is never overwritten");
+  const [l] = await db.query<{ source: string }>(`SELECT source FROM change_ledger`);
+  assert.equal(l!.source, "backfill");
+});

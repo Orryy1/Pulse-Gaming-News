@@ -32,7 +32,7 @@ import {
 export interface WriterHost {
   db: Db;
   llm: Llm;
-  cfg: { learn: LearnSettings };
+  cfg: { learn: LearnSettings; dataDir?: string };
   now(): Date;
 }
 
@@ -157,6 +157,7 @@ export async function pickHook(
   const ls = s.cfg.learn;
   if (ls.hooks === "off") return script;
   try {
+    if (s.cfg.dataDir) await adoptPackagingScorer(s.cfg.dataDir);
     const briefs = briefsFor(ep.id, ls.hookCandidates);
     const cands = await writeHookCandidates(s.llm, {
       script,
@@ -227,4 +228,34 @@ export async function pickHook(
 /** Plugs a packaging scorer in (claude/packaginglab): the breadth step then ranks candidates by it. */
 export function usePackagingScorer(name: string, fn: HookScorer | undefined): void {
   setHookScorer(name, fn);
+}
+
+let packagingTried = false;
+/** The packaging lab's module, when it is merged (claude/packaginglab: src/packaging/score.ts). */
+const PACKAGING_MODULE = "../packaging/score.ts";
+
+/**
+ * Plugs claude/packaginglab's hook scorer in by itself once that branch is merged: its model's "viewed" head scores
+ * each candidate hook. Until then (or if its model cannot load) the channel's own hook model stands in. Tried once.
+ */
+export async function adoptPackagingScorer(dataDir: string): Promise<boolean> {
+  if (hookScorerName()) return true;
+  if (packagingTried) return false;
+  packagingTried = true;
+  try {
+    const spec: string = PACKAGING_MODULE;
+    const mod = (await import(spec)) as {
+      loadModel?: (dir?: string) => unknown;
+      hookScore?: (model: unknown, text: string, game?: string) => number;
+    };
+    if (!mod.loadModel || !mod.hookScore) return false;
+    const { loadModel, hookScore } = mod;
+    usePackagingScorer("packaging lab", async (c) => {
+      const model = loadModel(dataDir);
+      return model ? hookScore(model, c.hook, c.game) : undefined;
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }

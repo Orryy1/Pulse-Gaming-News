@@ -170,7 +170,7 @@ for (let i = 0; i < boots.length; i++) {
           "60",
           `${prev.commit}..${b.commit}`,
           "--",
-          "factory/",
+          ":(top)factory/",
         ],
         { stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 },
       ).toString();
@@ -199,14 +199,11 @@ for (const c of env?.changed ?? [])
     summary: `${c.k}: ${c.before ?? "unset"} to ${c.after ?? "unset"}`,
   });
 ledger.sort((a, b) => a.at.localeCompare(b.at));
+// The files the factory loads once (data/admin/learn-backfill-*.json, src/learn/ledger.ts ingestBackfill): no settings
+// values in them, only the commit, the Codex routing and the arms.
 fs.writeFileSync(
-  path.join(outDir, "backfill_stamps.json"),
-  JSON.stringify(
-    backfill.map((b) => ({
-      ...b,
-      settings: b.settings ? Object.keys(b.settings).length : null,
-    })),
-  ),
+  path.join(outDir, "learn-backfill-stamps.json"),
+  JSON.stringify(backfill.map(({ settings: _s, settings_from: _f, ...b }) => b)),
 );
 fs.writeFileSync(
   path.join(outDir, "backfill_ledger.json"),

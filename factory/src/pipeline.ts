@@ -381,10 +381,6 @@ import {
   storyWeight,
 } from "./loopfeedback.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
-import { withLearn } from "./learn/scope.ts";
-import { holdoutOf } from "./learn/holdout.ts";
-import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
-import { learnTick } from "./learn/tick.ts";
 import {
   REPLY_LIMITS,
   factsText as replyFacts,
@@ -426,6 +422,10 @@ import {
   growthVerdict,
   pinnedGrowthDefaults,
 } from "./growth.ts";
+import { withLearn } from "./learn/scope.ts";
+import { holdoutOf } from "./learn/holdout.ts";
+import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
+import { learnTick } from "./learn/tick.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
   refreshChatter,

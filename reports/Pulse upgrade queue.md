@@ -282,3 +282,11 @@ Owner: massive retrospectives with full game histories, the making of, innovatio
 - 30. Retention-curve learning into the lessons loop (RETENTION_LEARN, claude/retention).
 - 31. Video replies to the best viewer question daily (COMMENT_REPLY_SHORTS, claude/retention).
 Aim: ready before 18 Nov; risky switches wait out the 18-21 Nov freeze unless proven.
+
+## 32. Deploys must never cut off a long render (found 14 Nov)
+
+The "Fairgames Is Finished. Haven Isn't." documentary started its render at about 13:50, 14:10 and 14:30 on 14 Nov. The deploys at 14:03 and 14:25 (and the restart at 15:30) almost certainly restarted the factory mid-render. mac/deploy.sh waits for a quiet moment, but it went ahead while a long render was running. Build: deploy.sh and `--restart` refuse while any long render or upload is in progress, read from /health or the leases table, unless DEPLOY_FORCE=1. Add a flight-simulator invariant for it. Check that the documentary finished and got its slot.
+
+## 33. Shorts yield: 6 of 30 published on 13 to 14 Nov (being fixed on claude/qayield)
+
+Final QA rejected GTA 6 Rockstar footage frames (nightclubs, swimwear), misread prices and an unreadable wordmark. Fact checks rejected invented credits. The fix is to pre-screen footage before it is chosen and to swap a failing shot instead of failing the whole Short.

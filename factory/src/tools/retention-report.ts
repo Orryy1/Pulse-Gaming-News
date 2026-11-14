@@ -143,7 +143,7 @@ small,.m{color:#aaa}a{color:#ffa060}table{border-collapse:collapse;margin:.6rem 
 <h2>In plain English</h2>
 <ul>
 <li>The factory now has a model that reads a Short's plan before it renders and predicts where viewers will leave. It learnt from the real YouTube retention curves of every Pulse Short.</li>
-<li>It is a <b>modest</b> predictor, and this page says so with numbers. It is clearly better than guessing at <b>where a Short will lose people</b>, and at the overall shape of the curve. It is not good enough to promise how a single Short will do.</li>
+<li>It is a <b>modest</b> predictor, and this page says so with numbers. It is somewhat better than guessing at <b>which moments of a Short are weak</b>, and clearly better than our usual curve at the overall shape. It is not good enough to promise how a single Short will do.</li>
 <li>When it flags a moment, that moment is a real drop about ${pc(ld.hit / Math.max(1, ld.flagged))} of the time, against ${pc(ld.chanceHit / Math.max(1, ld.flagged))} for a random guess. It misses more drops than it finds: it caught ${ld.caught} of ${ld.real} real drops in the newest ${bt.n} Shorts (chance: about ${Math.round(ld.chanceCaught)}).</li>
 <li>The director only makes small, safe changes the model scores as gains (fresh footage over a still, the strongest picture first, a shorter card label). The predicted gains are small: a fraction of a point to two points of average watch.</li>
 </ul>

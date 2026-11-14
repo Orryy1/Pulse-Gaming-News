@@ -102,6 +102,15 @@ export function claimKind(
   return o.official ? "reported" : "preview";
 }
 
+/** Feed boilerplate the asks list sometimes keeps ("The post ... appeared first on ..."): never a claim. */
+const BOILERPLATE = /\b(appeared first on|the post\b.*\bappeared)\b/i;
+
+/** The outlet a fact names in its own words: "Game Informer's cover story reports ..." -> "Game Informer". */
+const NAMED_OUTLET = /\b(Game Informer|IGN|Edge|GamesRadar|Eurogamer|Polygon|Kotaku|Bloomberg|Insider Gaming|TechRadar|Dexerto|GTABase|GTA BOOM|Rockstar(?: Support| Newswire| Games)?|Take-Two)\b/;
+export function factSource(fact: string): string | undefined {
+  return fact.match(NAMED_OUTLET)?.[1];
+}
+
 /** Testable on stream: the stream-asks list's own idea of a test (a known topic, or not sales or launch news). */
 export function testable(text: string, game: string): boolean {
   return !!topicOf(text, game) || !isNewsy(text);
@@ -160,7 +169,7 @@ export function claimsFromAsks(asks: StreamAsk[], game: string): LabClaim[] {
     if (a.game !== game) continue;
     if (a.kind !== "claim" && a.kind !== "myth" && !a.rumour) continue;
     const text = `${a.question} ${a.claim}`;
-    if (!testable(text, game)) continue;
+    if (!testable(text, game) || BOILERPLATE.test(text)) continue;
     const m = creditedMention(a);
     const seedOnly = a.mentions.every((x) => x.source === "seed");
     out.push({
@@ -182,7 +191,8 @@ export function claimsFromAsks(asks: StreamAsk[], game: string): LabClaim[] {
       origin: seedOnly ? "seed" : "stream_ask",
       askId: a.id,
       ...(a.topic ? { topic: a.topic } : {}),
-      status: a.spoiler || a.status === "held" ? "held" : "open",
+      // A story question (or one only answerable weeks in) waits: it is never graded during the launch weeks.
+      status: a.spoiler || a.status === "held" || !a.earlyGame ? "held" : "open",
     });
   }
   return out;
@@ -197,7 +207,9 @@ export function claimsFromGtaFile(run: RunEntry[], game: string): LabClaim[] {
       const topic = topicOf(fact, game);
       if (!topic) continue; // only facts a known stream test can check
       const named = fact.match(/\(([^)]{2,60})\)\s*\.?$/)?.[1];
-      const src = e.sources[0];
+      // The source the fact itself names ("Game Informer's cover story") before the part's first link.
+      const src = e.sources.find((x) => fact.toLowerCase().includes(x.source.toLowerCase())) ?? e.sources.find((x) => !x.official) ?? e.sources[0];
+      const credit = named ?? factSource(fact) ?? src?.source;
       out.push({
         id: claimId(game, `file:${topic.id}:${fact.slice(0, 60)}`),
         game,
@@ -205,10 +217,10 @@ export function claimsFromGtaFile(run: RunEntry[], game: string): LabClaim[] {
         claim: fact.slice(0, 280),
         kind: claimKind(fact, {
           official: e.sources.some((s) => s.official),
-          sourceName: named ?? src?.source,
+          sourceName: credit,
         }),
         source: {
-          name: named ?? src?.source ?? "The GTA File",
+          name: credit ?? "The GTA File",
           ...(src?.url ? { url: src.url } : {}),
         },
         origin: "gta_file",

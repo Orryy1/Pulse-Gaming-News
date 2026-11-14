@@ -1545,3 +1545,17 @@ test("a claim card shows the claim as made and the source by a short name", asyn
     '1440p at 30 fps. An unofficial preview figure, not confirmed by PlayStation or Rockstar.',
   );
 });
+
+test("GTA File facts are credited to the outlet they name; later-game myths and feed boilerplate stay out of the open list", async () => {
+  const { factSource } = await import("../src/pulselab/ledger.ts");
+  assert.equal(factSource("Game Informer's cover story reports Leonida is about twice the size"), "Game Informer");
+  const run = [{ kind: "file", part: 2, date: "2026-11-23", title: "t", question: "q", angle: "a", recap: "r", next_teaser: "",
+    facts: ["Game Informer's cover story reports Leonida is about twice the size of GTA V's map, as TechRadar relays it."],
+    sources: [{ url: "https://r.example", source: "Rockstar Newswire", official: true }, { url: "https://t.example", source: "TechRadar", official: false }] }] as unknown as RunEntry[];
+  const [c] = claimsFromGtaFile(run, GAME);
+  assert.equal(c!.source.name, "Game Informer");
+  assert.equal(c!.kind, "reported");
+  const late = claimsFromAsks([ask({ id: "s", topic: "story-length", kind: "myth", question: "How long is the story really?", claim: '"80-hour story."', earlyGame: false })], GAME);
+  assert.equal(late[0]!.status, "held");
+  assert.equal(claimsFromAsks([ask({ id: "b", rumour: true, question: "Is it true the post New GTA 6 Map Locations appeared first on Insider Gaming?", claim: "The post New GTA 6 Map Locations Spotted appeared first on Insider Gaming." })], GAME).length, 0);
+});

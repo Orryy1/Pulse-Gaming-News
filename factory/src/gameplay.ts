@@ -62,6 +62,8 @@ export interface GameplayMeta {
     /** SPOILER_GUARD: held from Shorts as a story cutscene until the game's spoiler window closes (ISO). */
     spoiler_held_until?: string;
   };
+  /** RADIO_STRIP: the radio music separated out (src/assets/radiostrip.ts), and whether what is left is clean. */
+  strip?: import("./assets/radiostrip.ts").StripRecord;
   /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
   sound?: { speech_share?: number };
   /** LIVE_CLIPS: found while the owner was live (src/liveclips): what gave it away, and the stream ask it seems to answer. */
@@ -536,6 +538,16 @@ export function gameplayScript(
       ...(live ? { live: true } : {}),
     },
   };
+}
+
+/** Whether the clip's radio music was removed and what is left passed the residue check (pure). */
+export function radioStripped(meta: Pick<GameplayMeta, "strip">): boolean {
+  return meta.strip?.verdict === "clean" && Boolean(meta.strip.file);
+}
+
+/** The file the lane cuts from, relative to the clip's folder: the radio-free copy when there is one (pure). */
+export function clipSourceFile(meta: Pick<GameplayMeta, "clip" | "strip">): string {
+  return radioStripped(meta) ? meta.strip!.file! : meta.clip.file || "clip.mp4";
 }
 
 /** Whisper's words inside the window, moved to start at zero. */

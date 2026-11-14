@@ -32,8 +32,15 @@ export type GameplayShortProps = {
   payoffAt: number;
   /** The narrator's stretches, where the game's sound drops under the voice. */
   voiced: Array<{ start: number; end: number }>;
+  /** INSTANT_REPLAY: where the slowed replay of the outcome plays (seconds); a REPLAY tag shows over it. */
+  replay?: { from: number; to: number };
   accent: string;
 };
+
+/** Whether the REPLAY tag shows at a time (pure): over the replay, never in its last few frames' fade. */
+export function replayTagOn(t: number, replay?: { from: number; to: number }): boolean {
+  return !!replay && t >= replay.from && t < replay.to - 0.15;
+}
 
 export const SAMPLE_GAMEPLAY_SHORT: GameplayShortProps = {
   videoSrc: "",
@@ -187,6 +194,29 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
       >
         @PulseGMG
       </div>
+      {replayTagOn(t, props.replay) ? (
+        <div
+          style={{
+            position: "absolute",
+            right: SAFE.left,
+            top: 160,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "8px 18px",
+            borderRadius: 10,
+            background: "rgba(0,0,0,0.55)",
+            fontFamily: DISPLAY,
+            fontSize: 44,
+            letterSpacing: 2,
+            color: COLOUR.paper,
+            opacity: Math.min(1, (t - props.replay!.from) * 5),
+          }}
+        >
+          <span style={{ width: 16, height: 16, borderRadius: 8, background: props.accent }} />
+          REPLAY · ¼ SPEED
+        </div>
+      ) : null}
     </AbsoluteFill>
   );
 };

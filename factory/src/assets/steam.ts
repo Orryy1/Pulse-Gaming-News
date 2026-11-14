@@ -42,6 +42,7 @@ export interface VisualAsset {
   then?: boolean; // the old version of a game whose remake is the story: shown only where a line speaks of the old one
   stock?: boolean; // licensed stock footage, shown with an ILLUSTRATIVE tag
   audio?: boolean; // gameplay that keeps its game sound (no talk over it), mixed low under the narrator
+  radioStripped?: boolean; // RADIO_STRIP: cut from a recording whose radio music was removed (src/assets/radiostrip.ts)
   startSeconds?: number;
   motion?: number; // 0-1
   luma?: number; // 0-255

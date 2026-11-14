@@ -77,6 +77,8 @@ export interface EpisodeAssets {
     payoffAt: number;
     answerAt: number;
     voiced: Array<{ start: number; end: number }>;
+    /** INSTANT_REPLAY: the slowed replay's place on the Short's clock (seconds), for its REPLAY tag. */
+    replay?: { from: number; to: number };
   };
   audio?: string;
   words?: Array<{ text: string; start: number; end: number }>;
@@ -156,6 +158,8 @@ export interface EpisodeAssets {
     credit?: string;
     /** Where in its source video the clip was cut (seconds): the planner never plays one moment twice in a chapter. */
     span?: { source: string; from: number; to: number };
+    /** RADIO_STRIP: cut from a recording whose radio music was removed; the upload waits for a copyright check. */
+    radioStripped?: boolean;
     /** APPLE_SMART_CROP: the subject-following upright crop (src/render/smartcrop.ts), made once on the Mac. */
     crop?: import("./render/smartcrop.ts").ClipCrop;
   }>;

@@ -12,6 +12,7 @@ import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { trailerMatchesGame } from "./commons.ts";
 import type { VisualAsset } from "./steam.ts";
 import { keepGameSound } from "./talk.ts";
+import { isRadioFree } from "./radiostrip.ts";
 
 export interface LibraryFile {
   game: string; // the folder name, which the recorder sets to the game's name
@@ -53,7 +54,9 @@ export async function libraryFiles(root: string): Promise<LibraryFile[]> {
 
 /**
  * The gameplay lane's inbox clips (Pulse Gameplay\inbox\<id>\clip.mp4) whose reviewer named the game, newest
- * first. A clip with licensed radio audible stays out (Content ID), and so does one not yet looked at.
+ * first. A clip with licensed radio audible stays out (Content ID), and so does one not yet looked at, unless
+ * RADIO_STRIP made a radio-free copy that passed the residue check (src/assets/radiostrip.ts): then that copy is
+ * the file, and every clip cut from it is marked radioStripped so the upload waits for a copyright check.
  */
 export async function inboxFiles(root: string): Promise<LibraryFile[]> {
   const out: LibraryFile[] = [];
@@ -65,10 +68,15 @@ export async function inboxFiles(root: string): Promise<LibraryFile[]> {
       .then((t) => JSON.parse(t.trimStart()))
       .catch(() => undefined);
     const game = meta?.review?.game;
-    if (typeof game !== "string" || !game.trim() || meta.review.radio === true)
-      continue;
+    if (typeof game !== "string" || !game.trim()) continue;
+    const stripped =
+      meta.strip?.verdict === "clean" &&
+      typeof meta.strip.file === "string" &&
+      isRadioFree(meta.strip.file) &&
+      path.basename(meta.strip.file) === meta.strip.file;
+    if (meta.review.radio === true && !stripped) continue;
     if (meta.status === "new" || meta.status === "reviewing") continue;
-    const file = path.join(dir, meta.clip?.file || "clip.mp4");
+    const file = path.join(dir, stripped ? meta.strip.file : meta.clip?.file || "clip.mp4");
     const st = await fs.stat(file).catch(() => undefined);
     if (st?.isFile())
       out.push({ game, file, mtimeMs: st.mtimeMs, bytes: st.size });
@@ -189,6 +197,7 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
     out.push({
       ...c,
       audio,
+      ...(isRadioFree(c.provenance) || isRadioFree(c.sourceUrl) ? { radioStripped: true } : {}),
       provenance: audio
         ? c.provenance.replace(/, muted$/, ", with game sound")
         : c.provenance,

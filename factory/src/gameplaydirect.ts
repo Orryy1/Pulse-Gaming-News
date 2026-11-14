@@ -269,6 +269,62 @@ export interface DirectTiming {
   seconds: number;
   /** Seconds of the cut's ending shown again slowed, when the answer needs more time than the footage has. */
   replaySource: number;
+  /** The replay's speed (DIRECT_REPLAY_SPEED unless INSTANT_REPLAY set its own). */
+  replaySpeed?: number;
+}
+
+/** INSTANT_REPLAY: seconds of the key moment replayed, and the speed it plays at (a quarter). */
+export const INSTANT_REPLAY_SECONDS = 1.4;
+export const INSTANT_REPLAY_SPEED = 0.25;
+/** The longest a gameplay Short may run with its replay. */
+export const DIRECT_LONGEST = 58;
+
+/**
+ * INSTANT_REPLAY's timing (pure): the outcome always plays again at a quarter speed straight after the cut, a human
+ * editor's "money moment" replay, and the answer take lands over it. Shorter than INSTANT_REPLAY_SECONDS when the
+ * cut is short or the Short would run past DIRECT_LONGEST; no replay at all when not even half a second fits.
+ */
+export function instantReplayTiming(
+  cutSeconds: number,
+  payoffAt: number,
+  questionSeconds: number,
+  answerSeconds: number,
+  keySeconds = INSTANT_REPLAY_SECONDS,
+  speed = INSTANT_REPLAY_SPEED,
+): DirectTiming {
+  const room = (DIRECT_LONGEST - cutSeconds) * speed;
+  // Rounded down, so the Short never runs past DIRECT_LONGEST.
+  const replaySource = Math.floor(Math.min(keySeconds, Math.max(0, cutSeconds - 0.1), room) * 100) / 100;
+  if (replaySource < 0.5) return directTiming(cutSeconds, payoffAt, questionSeconds, answerSeconds);
+  const seconds = round(cutSeconds + replaySource / speed);
+  const earliest = Math.max(payoffAt + DIRECT_PAYOFF_BREATH, questionSeconds + 0.1);
+  return {
+    answerAt: round(Math.max(earliest, seconds - answerSeconds - 0.1)),
+    seconds,
+    replaySource,
+    replaySpeed: speed,
+  };
+}
+
+/** Where the replay comes from in the joined cut (pure): the outcome itself, not whatever came last. */
+export function replayWindow(
+  cut: Pick<DirectCut, "seconds" | "payoffAt">,
+  replaySource: number,
+): { from: number; to: number } {
+  const from = round(Math.max(0, Math.min(cut.payoffAt - 0.7, cut.seconds - replaySource)));
+  return { from, to: round(from + replaySource) };
+}
+
+/** atempo filters for a speed (pure): one stage only reaches down to 0.5, so a quarter is two of them. */
+export function atempoChain(speed: number): string {
+  const out: string[] = [];
+  let left = speed;
+  while (left < 0.5 - 1e-9) {
+    out.push("atempo=0.5");
+    left /= 0.5;
+  }
+  out.push(`atempo=${Number(left.toFixed(4))}`);
+  return out.join(",");
 }
 
 /**
@@ -327,8 +383,13 @@ export function directFilter(
     focusStart: number;
     focusPayoff: number;
     replaySource: number;
+    /** The replay's speed; DIRECT_REPLAY_SPEED when not given. */
+    replaySpeed?: number;
+    /** Crop to 9:16 at the source's own size, not scaled to 1080x1920 (the upscaler takes it from there). */
+    native?: boolean;
   },
 ): string {
+  const speed = o.replaySpeed ?? DIRECT_REPLAY_SPEED;
   const parts: string[] = [];
   const labels: string[] = [];
   cut.segments.forEach((s, i) => {
@@ -346,24 +407,23 @@ export function directFilter(
   let total = cut.seconds;
   if (o.replaySource > 0) {
     // The replay shows the outcome itself again, not whatever came last.
-    const from = round(
-      Math.max(0, Math.min(cut.payoffAt - 0.7, cut.seconds - o.replaySource)),
-    );
-    const to = round(from + o.replaySource);
+    const { from, to } = replayWindow(cut, o.replaySource);
     parts.push(
       "[jv]split[jv1][jv2]",
       "[ja]asplit[ja1][ja2]",
-      `[jv2]trim=start=${from}:end=${to},setpts=(PTS-STARTPTS)/${DIRECT_REPLAY_SPEED}[rv]`,
-      `[ja2]atrim=start=${from}:end=${to},asetpts=PTS-STARTPTS,atempo=${DIRECT_REPLAY_SPEED}[ra]`,
+      `[jv2]trim=start=${from}:end=${to},setpts=(PTS-STARTPTS)/${speed}[rv]`,
+      `[ja2]atrim=start=${from}:end=${to},asetpts=PTS-STARTPTS,${atempoChain(speed)}[ra]`,
       "[jv1][rv]concat=n=2:v=1:a=0[jr]",
       "[ja1][ra]concat=n=2:v=0:a=1[ar]",
     );
     v = "[jr]";
     a = "[ar]";
-    total += o.replaySource / DIRECT_REPLAY_SPEED;
+    total += o.replaySource / speed;
   }
   parts.push(
-    `${v}${o.tone}scale=-2:1920,crop=1080:1920:x='${cropX(o.focusStart, o.focusPayoff, cut.payoffAt)}':y=0,fps=30,format=yuv420p[vout]`,
+    o.native
+      ? `${v}${o.tone}crop=trunc(ih*9/32)*2:ih:x='${cropX(o.focusStart, o.focusPayoff, cut.payoffAt)}':y=0,fps=30,format=yuv420p[vout]`
+      : `${v}${o.tone}scale=-2:1920,crop=1080:1920:x='${cropX(o.focusStart, o.focusPayoff, cut.payoffAt)}':y=0,fps=30,format=yuv420p[vout]`,
     `${a}afade=t=out:st=${Math.max(0, round(total - 0.08))}:d=0.08[aout]`,
   );
   return parts.join(";");

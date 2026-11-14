@@ -221,6 +221,8 @@ import {
   directFrames,
   directProblems,
   directTiming,
+  instantReplayTiming,
+  DIRECT_REPLAY_SPEED,
   DIRECT_MIN_WPM,
   fitLines,
   loopLeadIn,
@@ -739,9 +741,17 @@ import {
   worthPosting,
   writeManifest,
   writeMeta,
+  clipSourceFile,
+  radioStripped,
   type GameplayStatus,
   type GameplayMeta,
 } from "./gameplay.ts";
+import { stripInboxClip, stripCardLine } from "./assets/radiostrip.ts";
+import { enhanceDirectCut } from "./assets/avtools.ts";
+import {
+  copyrightCheckNeeded,
+  copyrightChecks,
+} from "./youtube/copyrightgate.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
 import { pruneForSpace } from "./retention.ts";
 import { finishChapters } from "./youtube/chapters.ts";
@@ -5339,6 +5349,7 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       resultLine: g.result_line,
       payoffAt: timing.payoffAt,
       voiced: timing.voiced,
+      ...(timing.replay ? { replay: timing.replay } : {}),
       accent: "#FF6B1A",
     },
     outFile: raw,
@@ -5551,6 +5562,29 @@ export async function ingestGameplay(
           await logEvent(db, null, "gameplay_spoiler_held", { id: meta.id, reason: held.reason, until: held.until });
         }
       }
+      // RADIO_STRIP (src/assets/radiostrip.ts): a clip with licensed radio has the music separated out. It is used
+      // (as a Short, and as footage through library.ts) only when the residue check finds no music left.
+      let stripFailed: string | undefined;
+      if (review.radio_audible && cfg.avTools.radioStrip.enabled && review.game_title?.trim()) {
+        const strip =
+          meta.strip?.verdict === "clean"
+            ? meta.strip
+            : await stripInboxClip(cfg.avTools, dir, meta.id, meta.clip.file || "clip.mp4", s.now());
+        meta.strip = strip;
+        await writeMeta(dir, { strip });
+        await logEvent(db, null, "radio_strip", {
+          id: meta.id,
+          verdict: strip.verdict,
+          reasons: strip.reasons,
+          music_before: strip.before?.musicShare,
+          music_after: strip.after?.musicShare,
+          fingerprint: strip.fingerprint?.matchShare,
+        });
+        if (strip.verdict !== "clean") {
+          stripFailed = strip.reasons.join("; ") || strip.verdict;
+          keep = false;
+        }
+      }
       const [made_before] = await db.query<{ id: string }>(
         `SELECT id FROM episodes WHERE story_hash = $1`,
         [`gameplay:${meta.id}`],
@@ -5601,7 +5635,11 @@ export async function ingestGameplay(
         review: {
           at: s.now().toISOString(),
           keep: Boolean(keep && episode),
-          reason: spoilerHeld ? `held for spoilers until ${spoilerHeld.slice(0, 10)}: ${review.reason}` : review.reason,
+          reason: spoilerHeld
+            ? `held for spoilers until ${spoilerHeld.slice(0, 10)}: ${review.reason}`
+            : stripFailed
+              ? `radio music left after stripping (${stripFailed}): ${review.reason}`
+              : review.reason,
           ...(spoilerHeld ? { spoiler_held_until: spoilerHeld } : {}),
           episode,
           radio: review.radio_audible,
@@ -5638,7 +5676,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
   const clipDir = gameplayDir(s.cfg, ref.id);
   const meta = await readMeta(clipDir);
   if (!meta) throw new FatalError("the gameplay clip is gone from the inbox");
-  const source = path.join(clipDir, meta.clip.file || "clip.mp4");
+  const source = path.join(clipDir, clipSourceFile(meta));
   const run = promisify(execFile);
   // Dead air out and the payoff in (cleanWindow): a failed look at the clip keeps the reviewer's window.
   const blacks = await run(
@@ -5681,6 +5719,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     const cut = directCut(direction, blacks, meta.clip.seconds);
     const lines = fitLines(direction, cut.payoffAt);
     const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg), ref.live);
+    if (radioStripped(meta)) script.gameplay!.radio_stripped = true;
     script.hook = lines.hook;
     script.beats = [
       {
@@ -5796,6 +5835,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     await gameplayExperiments(s.cfg),
     ref.live,
   );
+  if (radioStripped(meta)) script.gameplay!.radio_stripped = true;
   await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
@@ -7703,20 +7743,40 @@ async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> 
     voice,
     { minWpm: DIRECT_MIN_WPM },
   );
-  const timing = directTiming(
+  // INSTANT_REPLAY: the outcome always plays again at a quarter speed, the answer over it (src/assets/avtools.ts).
+  const timing = (s.cfg.avTools.replay.enabled ? instantReplayTiming : directTiming)(
     d.seconds,
     d.payoff_at,
     question.durationSeconds,
     answer.durationSeconds,
   );
   const run = promisify(execFile);
-  const source = path.join(clipDir, meta.clip.file || "clip.mp4");
+  const source = path.join(clipDir, clipSourceFile(meta));
   const tone = hdrFilter(
     await run(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", source])
       .then((r) => r.stdout.trim())
       .catch(() => ""),
   );
-  await run(
+  const replaySpeed = timing.replaySpeed ?? DIRECT_REPLAY_SPEED;
+  const cutSpec = { segments: d.segments, seconds: d.seconds, payoffAt: d.payoff_at };
+  // INSTANT_REPLAY and CROP_UPSCALE: RIFE frames for the replay and an upscaled crop; any failure makes the plain cut.
+  const enhanced =
+    s.cfg.avTools.replay.enabled || s.cfg.avTools.upscale.enabled
+      ? await enhanceDirectCut({
+          s: s.cfg.avTools,
+          source,
+          workDir: dir,
+          out: path.join(dir, "cut.mp4"),
+          cut: cutSpec,
+          tone,
+          focusStart: d.focus_start,
+          focusPayoff: d.focus_payoff,
+          replaySource: timing.replaySource,
+          replaySpeed,
+        })
+      : undefined;
+  if (enhanced) await logEvent(s.db, ep.id, "gameplay_enhanced", { ...enhanced });
+  if (!enhanced) await run(
     FFMPEG,
     [
       "-v",
@@ -7726,12 +7786,13 @@ async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> 
       source,
       "-filter_complex",
       directFilter(
-        { segments: d.segments, seconds: d.seconds, payoffAt: d.payoff_at },
+        cutSpec,
         {
           tone,
           focusStart: d.focus_start,
           focusPayoff: d.focus_payoff,
           replaySource: timing.replaySource,
+          replaySpeed,
         },
       ),
       "-map",
@@ -7809,6 +7870,10 @@ async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> 
         hookEnd: Math.round(hookEnd * 100) / 100,
         payoffAt: d.payoff_at,
         answerAt: timing.answerAt,
+        // INSTANT_REPLAY: where the slowed replay plays, for its REPLAY tag.
+        ...(timing.replaySpeed && timing.replaySource > 0
+          ? { replay: { from: d.seconds, to: timing.seconds } }
+          : {}),
         voiced: [
           { start: 0, end: question.durationSeconds },
           {
@@ -13171,9 +13236,12 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
         `**Result:** ${g.result}`,
         `**Game:** ${script.game_title}${g.experiment_number ? `  ·  test #${g.experiment_number} on the list` : "  ·  a fresh test"}`,
         `**Why it was picked:** ${ep.story_json.gameplay?.review.reason ?? "n/a"} (score ${ep.story_json.gameplay?.review.score ?? "?"}/10)`,
-        g.radio
-          ? "⚠️ **Radio or licensed music may be audible.** That can trigger a Content ID claim; reject if you would rather not risk it."
-          : "No licensed music heard.",
+        g.radio_stripped
+          ? (stripCardLine((await readMeta(gameplayDir(s.cfg, g.inbox_id)).catch(() => undefined))?.strip) ??
+            "🎵 Radio music removed. It uploads private first and only goes public after a clean copyright check.")
+          : g.radio
+            ? "⚠️ **Radio or licensed music may be audible.** That can trigger a Content ID claim; reject if you would rather not risk it."
+            : "No licensed music heard.",
         "",
         `▶️ [Watch preview](${links.preview})  ·  ✅ [Approve](${tap.approve})  ·  ❌ [Reject](${tap.reject})`,
         when,
@@ -13882,14 +13950,17 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       } as Episode;
     }
   }
+  // COPYRIGHT_CHECK_GATE (src/youtube/copyrightgate.ts): sound whose radio music was removed uploads private with no
+  // publish time, and goes public only after a clean copyright check. The planned slot stays on the episode.
+  const copyrightHold = s.cfg.avTools.radioStrip.copyrightGate && copyrightCheckNeeded(ep);
   let session = ep.upload_session_uri;
   if (!session) {
     const size = (await fs.stat(file)).size;
     session = await yt.createSession(
       buildResource(
         videoMetadata(
-          ep,
-          s.cfg.youtubePrivacy,
+          copyrightHold ? ({ ...ep, publish_at: null } as Episode) : ep,
+          copyrightHold ? "private" : s.cfg.youtubePrivacy,
           ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
             ? false
             : s.cfg.syntheticMedia,
@@ -13914,6 +13985,11 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       youtube_video_id: videoId,
     });
     await logEvent(s.db, ep.id, "uploaded", { videoId });
+    if (copyrightHold)
+      await logEvent(s.db, ep.id, "copyright_hold", {
+        videoId,
+        planned: ep.publish_at,
+      });
     await localizeMetadata(s, ep, videoId, yt);
   } catch (err) {
     if (err instanceof SessionGone) {
@@ -14034,6 +14110,8 @@ export async function confirmPublished(s: Services): Promise<void> {
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.publish_at IS NOT NULL
         AND e.publish_at < $1::timestamptz - interval '10 minutes' AND e.publish_at > $1::timestamptz - interval '72 hours'
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('public_confirmed','made_public'))
+        AND NOT (EXISTS (SELECT 1 FROM events h WHERE h.episode_id = e.id AND h.kind = 'copyright_hold')
+                 AND NOT EXISTS (SELECT 1 FROM events c WHERE c.episode_id = e.id AND c.kind = 'copyright_cleared'))
         AND NOT (e.publish_at < $1::timestamptz - interval '2 hours'
                  AND EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind = 'public_pending' AND v.created_at > $1::timestamptz - interval '55 minutes'))`,
     [s.now()],
@@ -14314,8 +14392,9 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   // upload cost pay for a fifth daily video (the deals Short) instead.
   if (ep.assets_json?.srt && ep.script_json?.runtime === "long")
     await addCaptions(s, ep);
-  // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public.
-  if (!ep.publish_at || new Date(ep.publish_at) <= s.now())
+  // YouTube refuses comments on a video that is still private: a scheduled one is commented once it is public, and
+  // one held for its copyright check (privacyStatus private) once it has been released and gone public.
+  if (st.privacyStatus !== "private" && (!ep.publish_at || new Date(ep.publish_at) <= s.now()))
     await addPinnedComment(s, ep);
   if (ep.assets_json?.thumb) {
     await setThumbnail(s, ep);
@@ -14723,6 +14802,17 @@ export async function tick(
         log("warn", "twin metrics capture failed", {
           error: errorMessage(err),
         }),
+      );
+    // COPYRIGHT_CHECK_GATE: held videos with stripped radio, looked at until a claim shows or the owner clears them.
+    if (!s.cfg.dryRun)
+      await copyrightChecks({
+        db: s.db,
+        cfg: s.cfg,
+        youtube: (account) => s.youtube(account),
+        notify: (m) => s.notify(m),
+        now: () => s.now(),
+      }).catch((err) =>
+        log("warn", "copyright gate failed", { error: errorMessage(err) }),
       );
     // After each scheduled slot: confirm the video went public and post its first comment, or tell the owner it did not.
     if (!s.cfg.dryRun && s.cfg.youtubePrivacy === "public")

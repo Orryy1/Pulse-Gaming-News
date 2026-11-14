@@ -332,6 +332,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     experiment_number: number;
     experiment_slug: string | null;
     radio: boolean;
+    /** RADIO_STRIP: the clip's radio music was removed (src/assets/radiostrip.ts); the upload waits for a copyright check. */
+    radio_stripped?: boolean;
     /** The clip really tests its question for GTA 6's players (src/gameplay.ts articleFields); older Shorts lack it. */
     real_test?: boolean;
     /** Cut from the live stream minutes after it happened (LIVE_CLIPS): one-tap card, out on approval. */

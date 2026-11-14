@@ -8,6 +8,7 @@ import type { Config } from "../src/config.ts";
 import { streamAsksSettings } from "../src/streamasks/settings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
+import { avToolsSettings } from "../src/assets/avtools/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
 import type { FeedItem } from "../src/discovery/rss.ts";
 import type { Script } from "../src/editorial/schema.ts";
@@ -492,6 +493,7 @@ export function testConfig(
     searchShorts: searchShortsSettings({}),
     subsLearn: subsLearnSettings({}),
     liveClips: liveClipsSettings({}),
+    avTools: avToolsSettings({}, () => false),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
     characterQuotes: false,

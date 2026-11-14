@@ -318,7 +318,10 @@ export class YouTubeClient {
 
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
   /** The newest comment threads across every video on a channel (one quota unit a page of 50). */
-  async listChannelComments(channelId: string, pages = 1): Promise<
+  async listChannelComments(
+    channelId: string,
+    pages = 1,
+  ): Promise<
     Array<{
       id: string;
       videoId: string;
@@ -372,7 +375,9 @@ export class YouTubeClient {
    * Viewer comments YouTube is holding for the channel's review (commentThreads.list with moderationStatus, one
    * quota unit; needs the comment scope of the factory's stored login). Read only: nothing here approves or rejects.
    */
-  async heldForReview(channelId: string): Promise<
+  async heldForReview(
+    channelId: string,
+  ): Promise<
     Array<{ id: string; videoId: string; text: string; publishedAt: string }>
   > {
     const q = new URLSearchParams({
@@ -518,9 +523,12 @@ export class YouTubeClient {
 
   /** The channel's subscriber count (channels.list, one quota unit); YouTube rounds it. */
   async subscriberCount(): Promise<number | undefined> {
-    const res = await this.fetchFn(`${API}/channels?part=statistics&mine=true`, {
-      headers: await this.auth(),
-    });
+    const res = await this.fetchFn(
+      `${API}/channels?part=statistics&mine=true`,
+      {
+        headers: await this.auth(),
+      },
+    );
     if (!res.ok) throw await apiError(res, "channels.list");
     const n = ((await res.json()) as any).items?.[0]?.statistics
       ?.subscriberCount;
@@ -972,6 +980,70 @@ export class YouTubeClient {
     });
     if (!put.ok) throw await apiError(put, "videos.update (description)");
     return changed;
+  }
+
+  /**
+   * What the Data API can say about copyright on a video (one unit): a rejected upload and its reason, any
+   * countries blocked (a claim's block policy shows up as a region restriction) and the licensedContent flag.
+   * The claims themselves (Studio's Checks) are only visible to Content ID partners, never through this API.
+   */
+  async copyrightProbe(videoId: string): Promise<
+    | {
+        uploadStatus: string;
+        privacyStatus: string;
+        rejectionReason?: string;
+        processingStatus?: string;
+        regionBlocked: string[];
+        licensedContent?: boolean;
+      }
+    | undefined
+  > {
+    const res = await this.fetchFn(
+      `${API}/videos?part=status,contentDetails,processingDetails&id=${videoId}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list (copyright)");
+    const v = ((await res.json()) as any).items?.[0];
+    if (!v) return undefined;
+    const blocked = v.contentDetails?.regionRestriction?.blocked;
+    return {
+      uploadStatus: v.status?.uploadStatus,
+      privacyStatus: v.status?.privacyStatus,
+      rejectionReason: v.status?.rejectionReason,
+      processingStatus: v.processingDetails?.processingStatus,
+      regionBlocked: Array.isArray(blocked) ? blocked.map(String) : [],
+      licensedContent:
+        typeof v.contentDetails?.licensedContent === "boolean"
+          ? v.contentDetails.licensedContent
+          : undefined,
+    };
+  }
+
+  /** Schedules a private video to go public at `publishAt` (videos.update, 50 units), keeping its other status fields. */
+  async schedulePublish(videoId: string, publishAt: Date): Promise<void> {
+    const res = await this.fetchFn(`${API}/videos?part=status&id=${videoId}`, {
+      headers: await this.auth(),
+    });
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const st = ((await res.json()) as any).items?.[0]?.status;
+    if (!st) throw new Error(`video ${videoId} not found`);
+    const put = await this.fetchFn(`${API}/videos?part=status`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({
+        id: videoId,
+        status: {
+          privacyStatus: "private",
+          publishAt: publishAt.toISOString(),
+          embeddable: st.embeddable,
+          license: st.license,
+          publicStatsViewable: st.publicStatsViewable,
+          selfDeclaredMadeForKids: st.madeForKids ?? false,
+          containsSyntheticMedia: st.containsSyntheticMedia,
+        },
+      }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update (schedule)");
   }
 
   /** Makes a video public now, keeping its other status fields as they are. */

@@ -91,6 +91,7 @@ import {
 import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
+import { releaseHeldVideo } from "./youtube/copyrightgate.ts";
 import {
   consentUrl,
   exchangeCode,
@@ -519,6 +520,40 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         .writeHead(200, { "content-type": "application/json" })
         .end(JSON.stringify(rows));
       return;
+    }
+    // COPYRIGHT_CHECK_GATE: the owner's "Checks are clean" tap for a video with stripped radio (src/youtube/copyrightgate.ts).
+    // GET shows a button (link unfurlers never act), POST releases it.
+    const clear = url.pathname.match(/^\/episodes\/([\w-]+)\/copyright-clear$/);
+    if (clear) {
+      const id = clear[1]!;
+      const token = url.searchParams.get("t") ?? "";
+      if (!verifyToken(`copyright:${id}:clear`, token, cfg.appSecret))
+        return send(403, page("Link expired", "<h1>This link has expired or is invalid.</h1>"));
+      if (req.method !== "POST")
+        return send(
+          200,
+          page(
+            "Copyright check",
+            `<h1>Checks in YouTube Studio show no copyright claim?</h1>
+<p>Only tap this after Studio's Checks say "No issues found" for copyright.</p>
+<form method="post"><input type="hidden" name="t" value="${esc(token)}">
+<button class="ok" type="submit">Checks are clean: release it</button></form>`,
+          ),
+        );
+      const form = await readForm(req);
+      if (!verifyToken(`copyright:${id}:clear`, form.get("t") ?? "", cfg.appSecret))
+        return send(403, page("Link expired", "<h1>Invalid form token.</h1>"));
+      const r = await releaseHeldVideo(
+        {
+          db,
+          cfg,
+          youtube: (account) => services.youtube(account),
+          notify: (m) => services.notify(m),
+          now: () => new Date(),
+        },
+        id,
+      ).catch((err) => ({ ok: false, message: errorMessage(err) }));
+      return send(r.ok ? 200 : 409, page("Copyright check", `<h1>${esc(r.message)}</h1>`));
     }
     const ep = url.pathname.match(
       /^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4)$/,

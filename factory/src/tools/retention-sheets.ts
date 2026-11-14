@@ -21,8 +21,16 @@ const FONT = [
   "/System/Library/Fonts/Helvetica.ttc",
   "C:/Windows/Fonts/arial.ttf",
 ].find((f) => fs.existsSync(f));
+// Labels need ffmpeg's drawtext (not in every build); without it the page names the times instead.
+const DRAWTEXT = (() => {
+  try {
+    return execFileSync("ffmpeg", ["-hide_banner", "-filters"]).toString().includes(" drawtext ");
+  } catch {
+    return false;
+  }
+})();
 const label = (t: string) =>
-  FONT
+  FONT && DRAWTEXT
     ? `,drawtext=fontfile='${FONT}':text='${t.replace(/[':\\]/g, " ")}':x=10:y=10:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.6`
     : "";
 

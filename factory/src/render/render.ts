@@ -244,7 +244,7 @@ async function withPcTurn<T>(
 }
 
 /** renderMedia inside a PC turn; the frame cache is sized from the memory free once the turn starts. */
-async function renderWithTurn(
+export async function renderWithTurn(
   job: string,
   options: Omit<
     Parameters<typeof renderMedia>[0],

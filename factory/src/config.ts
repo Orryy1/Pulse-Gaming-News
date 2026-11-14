@@ -28,6 +28,7 @@ import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./s
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
+import { streamWeeklySettings, streamWeeklySummary, type StreamWeeklySettings } from "./streamweekly/settings.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
 
 // Local installs keep settings in factory/.env (never committed).
@@ -894,6 +895,8 @@ export interface Config {
   subsLearn: SubsLearnSettings;
   /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
   liveClips: LiveClipsSettings;
+  /** STREAM_WEEKLY: the owner's week of streams as one 15 to 25 minute long video, "GTA 6 Week N" (src/streamweekly). Off by default. */
+  streamWeekly: StreamWeeklySettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
@@ -1819,6 +1822,7 @@ export function loadConfig(): Config {
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
     liveClips: liveClipsSettings(process.env),
+    streamWeekly: streamWeeklySettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
@@ -2077,6 +2081,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : "off",
     gtaFile: gtaFileSummary(c),
     gtaDaily: gtaDailySummary(c),
+    streamWeekly: streamWeeklySummary(c.streamWeekly),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

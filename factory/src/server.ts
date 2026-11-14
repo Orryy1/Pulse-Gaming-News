@@ -117,6 +117,7 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
+import { streamWeeklyTick } from "./streamweekly/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -1929,6 +1930,17 @@ async function main(): Promise<void> {
   if (cfg.streamAsks.vodMiner) {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);
     setInterval(() => void vodMinerTick(cfg), 10 * 60_000);
+  }
+  // The week of streams as one long video (STREAM_WEEKLY): src/streamweekly/job.ts, checked every half hour.
+  if (cfg.streamWeekly.enabled) {
+    const weeklyPass = () =>
+      void streamWeeklyTick(cfg, {
+        db,
+        llm: services.llm,
+        youtubeToken: () => accessToken(db, oauthConfig(cfg)),
+      });
+    setTimeout(weeklyPass, 8 * 60_000);
+    setInterval(weeklyPass, 30 * 60_000);
   }
   // The highlight finder and the TinoTV download on the Mac (MAC_GAMEPLAY).
   if (cfg.macGameplay) {

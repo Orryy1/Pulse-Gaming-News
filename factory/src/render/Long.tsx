@@ -2094,7 +2094,7 @@ const CalloutCard: React.FC<{
  * arrives full screen (its number, its title, the game and year, and a line from the chapter if it has
  * a quote) over its first picture, then clears for the narration.
  */
-const ChapterInterlude: React.FC<{
+export const ChapterInterlude: React.FC<{
   number: number;
   title: string;
   game: string;

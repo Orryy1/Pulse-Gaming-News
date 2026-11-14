@@ -233,7 +233,7 @@ function rewriteContent(
 }
 
 /** Edits from one call applied to the lines; throws when none land, so the version before stands. */
-async function rewriteLines(
+export async function rewriteLines(
   llm: Llm,
   format: ClarityFormat,
   lines: Record<string, string>,

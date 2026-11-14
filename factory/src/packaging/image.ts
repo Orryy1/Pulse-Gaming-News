@@ -243,3 +243,40 @@ export async function imageDistance(a: string, b: string): Promise<number | unde
   for (let i = 0; i < x.length; i++) d += Math.abs(x[i]! - y[i]!);
   return d / x.length / 255;
 }
+
+/**
+ * Many pictures' pixel features from one ffmpeg run (the concat demuxer reads each picture as one frame), which is
+ * what makes a corpus of thousands practical on a busy PC. When the frame count does not match the list (a picture
+ * ffmpeg could not read), the batch falls back to one run per picture so no feature lands on the wrong picture.
+ */
+export async function imageFeaturesBatch(
+  files: string[],
+  format: "short" | "long",
+  tmpDir: string,
+): Promise<Array<ImageFeatureVector | undefined>> {
+  if (!files.length) return [];
+  const { w, h } = gridFor(format);
+  const fsMod = await import("node:fs");
+  const pathMod = await import("node:path");
+  const list = pathMod.join(tmpDir, `concat-${process.pid}-${Date.now()}.txt`);
+  const quote = (f: string) => pathMod.resolve(f).split("\\").join("/").split("'").join("'\\''");
+  fsMod.writeFileSync(list, files.map((f) => `file '${quote(f)}'`).join("\n"));
+  try {
+    const { stdout } = await run(
+      FFMPEG,
+      ["-v", "error", "-f", "concat", "-safe", "0", "-i", list, "-vf", `scale=${w}:${h}:flags=area,format=rgb24`, "-fps_mode", "passthrough", "-f", "rawvideo", "-"],
+      { encoding: "buffer", maxBuffer: files.length * w * h * 3 + (1 << 20), windowsHide: true },
+    );
+    const buf = new Uint8Array(stdout as unknown as Buffer);
+    const size = w * h * 3;
+    if (buf.length === size * files.length)
+      return files.map((_, i) => pixelFeatures(buf.subarray(i * size, (i + 1) * size), w, h));
+  } catch {
+    // fall through to one at a time
+  } finally {
+    fsMod.rmSync(list, { force: true });
+  }
+  const out: Array<ImageFeatureVector | undefined> = [];
+  for (const f of files) out.push(await imageFeatures(f, format));
+  return out;
+}

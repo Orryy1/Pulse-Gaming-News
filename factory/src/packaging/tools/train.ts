@@ -13,7 +13,7 @@ import {
   type StudyRow,
 } from "../corpus.ts";
 import { trainImageModel, trainPackagingModel } from "../train.ts";
-import { IMAGE_FEATURES, imageFeatures } from "../image.ts";
+import { IMAGE_FEATURES, imageFeaturesBatch } from "../image.ts";
 
 const arg = (name: string, fallback?: string): string | undefined => {
   const i = process.argv.indexOf(`--${name}`);
@@ -63,18 +63,29 @@ fs.mkdirSync(report, { recursive: true });
 // Thumbnails (and Shorts' first frames), when a folder of <videoId>.jpg files is given: features read at tile size.
 let imageReports: unknown[] = [];
 if (thumbs) {
-  const feats = new Map<string, Record<string, number>>();
+  // Features are cached in the report folder, so a run cut short resumes where it stopped; 400 pictures to an ffmpeg run.
+  const cacheFile = path.join(report, "image_features.json");
+  const feats = new Map<string, Record<string, number>>(
+    fs.existsSync(cacheFile) ? Object.entries(JSON.parse(fs.readFileSync(cacheFile, "utf8"))) : [],
+  );
   const want = [
     ...study.map((r) => ({ id: r.id, format: r.format })),
     ...pulse.map((r) => ({ id: r.videoId, format: r.format })),
-  ];
-  for (const w of want) {
-    const file = path.join(thumbs, `${w.id}.jpg`);
-    if (feats.has(w.id) || !fs.existsSync(file)) continue;
-    const f = await imageFeatures(file, w.format);
-    if (f && Object.keys(f).length)
-      feats.set(w.id, f as Record<string, number>);
+  ].filter((w, i, all) => !feats.has(w.id) && all.findIndex((x) => x.id === w.id) === i && fs.existsSync(path.join(thumbs, `${w.id}.jpg`)));
+  for (const fmt of ["short", "long"] as const) {
+    const mine = want.filter((w) => w.format === fmt);
+    for (let k = 0; k < mine.length; k += 400) {
+      const chunk = mine.slice(k, k + 400);
+      const got = await imageFeaturesBatch(chunk.map((w) => path.join(thumbs, `${w.id}.jpg`)), fmt, report);
+      chunk.forEach((w, i) => {
+        const f = got[i];
+        if (f && Object.keys(f).length) feats.set(w.id, f as Record<string, number>);
+      });
+      fs.writeFileSync(cacheFile, JSON.stringify(Object.fromEntries(feats)));
+      console.log(`pictures read: ${feats.size}`);
+    }
   }
+  fs.writeFileSync(cacheFile, JSON.stringify(Object.fromEntries(feats)));
   const names = IMAGE_FEATURES.filter((k) => !k.startsWith("v_"));
   const r = trainImageModel(study, pulse, feats, names);
   (model as { image?: unknown }).image = r.image;

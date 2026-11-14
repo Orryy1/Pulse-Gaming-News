@@ -841,3 +841,26 @@ test("the game must be the episode's own, a name in capitals is not shouting, an
   const h2 = hookCandidates({ title: "Xbox adds 21 PC classics free for owners" });
   assert.ok(h2.every((x) => !/ (OF|THE|FOR)$/.test(x.text)), "never ends on a small word");
 });
+
+test("pictures read in one ffmpeg batch match the one-at-a-time reading, and a bad file falls back safely", async () => {
+  const { imageFeatures, imageFeaturesBatch, imageDistance } = await import("../src/packaging/image.ts");
+  const { FFMPEG } = await import("../src/lib/bin.ts");
+  const { execFileSync } = await import("node:child_process");
+  const dir = await tmpDir();
+  const a = path.join(dir, "a.jpg");
+  const b = path.join(dir, "b.jpg");
+  execFileSync(FFMPEG, ["-v", "error", "-f", "lavfi", "-i", "color=c=orange:s=320x180", "-frames:v", "1", a]);
+  execFileSync(FFMPEG, ["-v", "error", "-f", "lavfi", "-i", "testsrc=s=320x180", "-frames:v", "1", b]);
+  const batch = await imageFeaturesBatch([a, b], "long", dir);
+  const one = await imageFeatures(b, "long");
+  assert.ok(Math.abs(batch[1]!.lum_mean! - one!.lum_mean!) < 0.02);
+  assert.ok(batch[0]!.warm! > batch[1]!.warm! || batch[0]!.sat_mean! > 0.5);
+  const bad = path.join(dir, "bad.jpg");
+  fs.writeFileSync(bad, "not a picture");
+  const mixed = await imageFeaturesBatch([a, bad, b], "long", dir);
+  assert.equal(mixed.length, 3);
+  assert.equal(mixed[1], undefined, "the unreadable one gets nothing");
+  assert.ok(mixed[2] && Math.abs(mixed[2].lum_mean! - one!.lum_mean!) < 0.02, "no feature lands on the wrong picture");
+  assert.equal(await imageDistance(a, a), 0);
+  assert.ok((await imageDistance(a, b))! > 0.05);
+});

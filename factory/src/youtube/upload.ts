@@ -318,10 +318,7 @@ export class YouTubeClient {
 
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
   /** The newest comment threads across every video on a channel (one quota unit a page of 50). */
-  async listChannelComments(
-    channelId: string,
-    pages = 1,
-  ): Promise<
+  async listChannelComments(channelId: string, pages = 1): Promise<
     Array<{
       id: string;
       videoId: string;
@@ -375,9 +372,7 @@ export class YouTubeClient {
    * Viewer comments YouTube is holding for the channel's review (commentThreads.list with moderationStatus, one
    * quota unit; needs the comment scope of the factory's stored login). Read only: nothing here approves or rejects.
    */
-  async heldForReview(
-    channelId: string,
-  ): Promise<
+  async heldForReview(channelId: string): Promise<
     Array<{ id: string; videoId: string; text: string; publishedAt: string }>
   > {
     const q = new URLSearchParams({
@@ -523,12 +518,9 @@ export class YouTubeClient {
 
   /** The channel's subscriber count (channels.list, one quota unit); YouTube rounds it. */
   async subscriberCount(): Promise<number | undefined> {
-    const res = await this.fetchFn(
-      `${API}/channels?part=statistics&mine=true`,
-      {
-        headers: await this.auth(),
-      },
-    );
+    const res = await this.fetchFn(`${API}/channels?part=statistics&mine=true`, {
+      headers: await this.auth(),
+    });
     if (!res.ok) throw await apiError(res, "channels.list");
     const n = ((await res.json()) as any).items?.[0]?.statistics
       ?.subscriberCount;

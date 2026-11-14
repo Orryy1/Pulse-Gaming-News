@@ -546,6 +546,8 @@ import {
   passDecision,
 } from "./qa/graphicscheck.ts";
 import { releaseGateStep } from "./qa/releaseGate.ts";
+import { criticStep, dropCriticFaulted } from "./criticstep.ts";
+import { applyCriticHolds } from "./qa/critictimeline.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
 import { guardScript, stopForWriterNotes } from "./writerguard.ts";
 import { planSlate } from "./qa/slate.ts";
@@ -10629,6 +10631,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  // CRITIC (src/criticstep.ts): pictures the finished-video critic faulted never come back into a new plan.
+  if (!assets.longPlan && dropCriticFaulted(assets))
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   // Which long-video craft this format gets (src/longformat.ts), each behind its own setting.
   const craft = longCraft(script, s.cfg);
   const kind = longKindLabel(craft.format);
@@ -12289,6 +12294,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(assets),
     ]);
   }
+  // CRITIC (src/criticstep.ts): pictures the finished-video critic faulted never come back into a new plan.
+  if (!assets.plan && dropCriticFaulted(assets))
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   if (assets.clips?.some((c) => /^Cutscenes for "/.test(c.provenance))) {
     const allowed = allowedEpisodeCutscenes(s.cfg, script, assets, false);
     if (JSON.stringify(allowed) !== JSON.stringify(assets.clips)) {
@@ -12794,6 +12802,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // GRAPHICS_AUDIT (src/qa/gfxaudit.ts, src/gfxauditstep.ts): every overlay measured as it will be drawn; in fix mode
   // cards are moved onto their words, held, trimmed or dropped, repeats and unreadable strips go, and a wrong graphic
   // that cannot be dropped fails the render. What it returns is what renders.
+  // CRITIC (src/criticstep.ts): cards the finished-video critic asked to hold for their full reading time.
+  applyCriticHolds(segments, assets.criticHolds);
   const gfxIn = () =>
     gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
@@ -13070,6 +13080,23 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     });
     if (found.length) await stopForWriterNotes(s, ep, "at release", found);
   }
+  // CRITIC (src/criticstep.ts): the finished video watched end to end against its words and graphics before it may
+  // go out; in fix mode one timeline fix pass sends it back to render, or it waits for the owner with the reasons.
+  if (
+    s.cfg.critic.mode !== "off" &&
+    (await criticStep(
+      {
+        db: s.db,
+        cfg: s.cfg,
+        notify: (m) => s.notify(m),
+        now: () => s.now(),
+        episodeDir: (id) => episodeDir(s.cfg, id),
+      },
+      ep,
+      { links, timeline: { segmentInputs, stampsFor } },
+    ))
+  )
+    return;
   // The release gate (src/qa/releaseGate.ts): every long video's shots (documentary, ranking, recap) are
   // scored against the words spoken over them before it may go out on its own, with the same thresholds.
   // A held one waits here for the owner like a manual approval.

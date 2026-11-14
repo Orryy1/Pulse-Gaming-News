@@ -46,6 +46,14 @@ export interface Episode {
 export interface EpisodeAssets {
   /** GRAPHICS_FRAME_CHECK faulted these cards ("card3") on a render: the next plan's audit leaves them out. */
   gfxMuted?: string[];
+  /** CRITIC (src/criticstep.ts): timeline fix passes the finished-video critic has run on this episode. */
+  criticPass?: number;
+  /** CRITIC: Short cards to hold longer, "card3" to their span [from, to) in seconds (visual.span). */
+  criticHolds?: Record<string, [number, number]>;
+  /** CRITIC: why the critic blocked the last render, for the owner and the shot picker. */
+  criticBlocked?: string[];
+  /** CRITIC: pictures it took out (files), so no later gather offers them again. */
+  criticDropped?: string[];
   /** Media was gathered a second time, richer, after a red media rubric. */
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */

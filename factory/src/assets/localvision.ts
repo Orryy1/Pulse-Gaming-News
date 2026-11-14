@@ -66,6 +66,10 @@ const SCHEMA = {
   ],
 };
 
+/** The frame screen's question and answer shape, for the vision model A/B (data/smoke/critic_ab.mts). */
+export const FRAME_FLAGS_PROMPT = PROMPT;
+export const FRAME_FLAGS_SCHEMA = SCHEMA;
+
 /** Whether a frame is unusable as footage, and why. Text alone is reported separately: it also marks where a clip must stop. */
 /**
  * Room for the model's reasoning before its answer. Ollama 0.40 runs qwen3-vl's thinking even with

@@ -29,6 +29,7 @@ import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./l
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
+import { criticMode, DEFAULT_BIG_MODELS } from "./qa/criticsettings.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -808,6 +809,13 @@ export interface Config {
   /** Full re-renders the post-render graphics check may ask for; past that it accepts the video with the faults muted. */
   graphicsRerenderPasses: number;
   graphicsPostcheckMax: number; // graphics sampled from the finished video, at most
+  /**
+   * CRITIC (src/criticstep.ts): the finished-video critic between the render and the upload. "off"; "report" scores
+   * every finished video (pictures against the words, graphics readable in time, dead air, frozen pictures, black
+   * flashes, watermarks, other games, the first 7 seconds for advertisers) and logs it; "fix" also runs one timeline
+   * fix pass (swap a shot, hold a card) or holds the video for the owner with the reasons.
+   */
+  critic: import("./qa/criticsettings.ts").CriticSettings;
   /** The release gate for documentaries (src/qa/releaseGate.ts): every shot scored against the words over it. */
   releaseGate: boolean;
   releaseGateMinMean: number; // 0-3, the time-weighted mean a documentary needs to go out on its own
@@ -1754,6 +1762,22 @@ export function loadConfig(): Config {
     graphicsFit: bool("GRAPHICS_FIT", true),
     graphicsSecondLook: bool("GRAPHICS_SECOND_LOOK", false),
     graphicsAudit: graphicsAuditMode(process.env.GRAPHICS_AUDIT),
+    critic: {
+      mode: criticMode(process.env.CRITIC),
+      model: str("CRITIC_VISION_MODEL", ""),
+      bigModels: str("CRITIC_BIG_MODELS", DEFAULT_BIG_MODELS.join(","))
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean),
+      leaseVram: Number(str("CRITIC_LEASE_VRAM", "21")) || 21,
+      everySeconds: Number(str("CRITIC_EVERY_SECONDS", "2")) || 2,
+      maxFrames: int("CRITIC_MAX_FRAMES", 1200),
+      minMatch: Number(str("CRITIC_MIN_MATCH", "1.4")) || 1.4,
+      maxZeroShare: Number(str("CRITIC_MAX_ZERO", "0.2")) || 0.2,
+      maxSilence: Number(str("CRITIC_MAX_SILENCE", "1")) || 1,
+      maxNarrationGap: Number(str("CRITIC_MAX_NARRATION_GAP", "1.6")) || 1.6,
+      maxFrozen: Number(str("CRITIC_MAX_FROZEN", "2")) || 2,
+    },
     graphicsFrameCheck: bool("GRAPHICS_FRAME_CHECK", false),
     graphicsPrepassMax: int("GRAPHICS_PREPASS_MAX", 200),
     graphicsRerenderPasses: int("GRAPHICS_RERENDER_PASSES", 1),

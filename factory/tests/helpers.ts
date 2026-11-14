@@ -6,6 +6,7 @@ import type { Db } from "../src/db.ts";
 import { migrate } from "../src/db.ts";
 import type { Config } from "../src/config.ts";
 import { streamAsksSettings } from "../src/streamasks/settings.ts";
+import { DEFAULT_CRITIC } from "../src/qa/criticsettings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
@@ -420,6 +421,7 @@ export function testConfig(
     graphicsFit: true,
     graphicsSecondLook: false,
     graphicsAudit: "off",
+    critic: { ...DEFAULT_CRITIC },
     graphicsFrameCheck: false,
     graphicsPrepassMax: 200,
     graphicsRerenderPasses: 1,

@@ -131,11 +131,13 @@ export function factsText(
 export function screenQuestion(
   c: FiledComment,
   facts: string,
+  /** RULE_OF_TWO: a comment that reads as instructions is never put in front of the writer. */
+  ruleOfTwo = false,
 ): { ok: boolean; why: string; overlap: string[] } {
   const no = (why: string) => ({ ok: false, why, overlap: [] as string[] });
   const text = c.text.trim();
-  if (screenComment(text).screen !== "ok")
-    return no(screenComment(text).reason);
+  const screen = screenComment(text, { ruleOfTwo });
+  if (screen.screen !== "ok") return no(screen.reason);
   if (!/question/i.test(c.kind))
     return no(`filed as ${c.kind || "unjudged"}, not a question`);
   if (/hostile|criticism|spam|promo|off.topic|political|profan/i.test(c.kind))
@@ -159,13 +161,14 @@ export function pickQuestion(
   comments: FiledComment[],
   factsOf: (episodeId: string) => string | undefined,
   used: Set<string>,
+  ruleOfTwo = false,
 ): (FiledComment & { overlap: string[] }) | undefined {
   const ok = comments
     .filter((c) => !used.has(c.commentId))
     .map((c) => {
       const facts = factsOf(c.episodeId);
       const v = facts
-        ? screenQuestion(c, facts)
+        ? screenQuestion(c, facts, ruleOfTwo)
         : { ok: false, why: "no facts", overlap: [] };
       return { ...c, overlap: v.overlap, ok: v.ok };
     })

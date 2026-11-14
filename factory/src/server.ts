@@ -151,6 +151,7 @@ import {
 } from "./analyticsloop.ts";
 import {
   growthReport,
+  growthReportMessages,
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
@@ -2150,6 +2151,8 @@ async function main(): Promise<void> {
         now: () => new Date(),
         perDay: cfg.communityRepliesPerDay,
         perPass: cfg.communityRepliesPerPass,
+        openingGuard: cfg.replyOpeningGuard,
+        ruleOfTwo: cfg.ruleOfTwo,
       }).catch((err) =>
         log("warn", "community engine pass failed", {
           error: errorMessage(err),
@@ -2484,9 +2487,11 @@ async function main(): Promise<void> {
       const key = await growthReportDue(db, cfg, new Date());
       if (!key) return;
       await markGrowthReportSent(db, key);
-      await services.notify(
-        await growthReport(db, cfg, new Date(), await retentionStudy(db, cfg, new Date(), segmentInputs)),
-      );
+      const study = await retentionStudy(db, cfg, new Date(), segmentInputs);
+      // GROWTH_REPORT_SPLIT: the whole report over as many messages as it needs, in order; else one, cut at 3,900.
+      if (cfg.growthReportSplit)
+        for (const m of await growthReportMessages(db, cfg, new Date(), study)) await services.notify(m);
+      else await services.notify(await growthReport(db, cfg, new Date(), study));
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),

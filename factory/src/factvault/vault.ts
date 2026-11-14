@@ -128,7 +128,8 @@ export function vaultBrief(
       : body;
   return `PULSE FACT VAULT (facts verified against their primary sources; use these numbers, dates and names as written, and credit the source named, never Wikipedia):
 ${capped}
-Quotation rule: words in quotation marks must be one of the review quotes above, word for word, credited to that outlet. Anything else a critic said is paraphrased without quotation marks, and never credited to an outlet whose review is not listed here.`;
+Quotation rule: words in quotation marks must be one of the review quotes above, word for word, credited to that outlet. Anything else a critic said is paraphrased without quotation marks, and never credited to an outlet whose review is not listed here.
+Credit rule: name only sources you were actually given (the facts above and the story's own sources). Never credit a guide, walkthrough, manual, wiki, panel, update notes or an outlet you were not given; say the fact plainly instead. In our fact checks, invented credits like these are a common reason a video is dropped.`;
 }
 
 export interface Enforcement<T> {

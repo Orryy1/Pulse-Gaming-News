@@ -1,0 +1,71 @@
+{
+  "_comment": "ComfyUI API-format workflow for one concept sketch on this PC's FLUX.1 dev (C:/Users/MORR/ComfyUI/models). src/assets/illustrate.ts substitutes exactly three inputs before queueing it: node 6 inputs.text (the positive prompt), node 7 inputs.text (the fixed negative prompt) and node 3 inputs.seed. Everything else is fixed here. The negative is wired into the sampler so a model that honours one (an SDXL checkpoint) can be swapped in by editing this file; FLUX dev at cfg 1 ignores it, which is why the style rules are also written into the positive prompt.",
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 0,
+      "steps": 20,
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1.0,
+      "model": ["30", 0],
+      "positive": ["26", 0],
+      "negative": ["7", 0],
+      "latent_image": ["5", 0]
+    }
+  },
+  "5": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": { "width": 1280, "height": 720, "batch_size": 1 }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "PROMPT", "clip": ["11", 0] }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "NEGATIVE", "clip": ["11", 0] }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["3", 0], "vae": ["10", 0] }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": { "filename_prefix": "pulse/sketch", "images": ["8", 0] }
+  },
+  "10": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "ae.safetensors" }
+  },
+  "11": {
+    "class_type": "DualCLIPLoader",
+    "inputs": {
+      "clip_name1": "t5xxl_fp8_e4m3fn.safetensors",
+      "clip_name2": "clip_l.safetensors",
+      "type": "flux"
+    }
+  },
+  "12": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux1-dev.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    }
+  },
+  "26": {
+    "class_type": "FluxGuidance",
+    "inputs": { "conditioning": ["6", 0], "guidance": 3.5 }
+  },
+  "30": {
+    "class_type": "ModelSamplingFlux",
+    "inputs": {
+      "max_shift": 1.15,
+      "base_shift": 0.5,
+      "width": 1280,
+      "height": 720,
+      "model": ["12", 0]
+    }
+  }
+}

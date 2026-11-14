@@ -1,0 +1,91 @@
+{
+  "_comment": "ComfyUI API-format image-to-video workflow on this PC's Wan 2.2 TI2V 5B (C:/Users/MORR/ComfyUI/models: diffusion_models/wan2.2_ti2v_5B_fp16.safetensors, vae/wan2.2_vae.safetensors, text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors), all native ComfyUI nodes (0.18.1), no custom nodes. The settings are the ones a run on this PC already proved in June 2026 (ComfyUI/output/done_pretending_wan22_hq: 81 frames at 1280x704, 16 steps, about 2.5 minutes a clip). src/assets/localvideo.ts substitutes exactly five inputs before queueing it: node 1 inputs.image (the uploaded start picture, 'subfolder/name'), node 6 inputs.text (the motion prompt), node 7 inputs.text (the fixed negative), node 9 inputs.seed and node 12 inputs.filename_prefix. Everything else is fixed here. length must be 4n+1; 81 frames at 16 fps is 5.06 s. The model's native rate is 24 fps (121 frames for 5 s), about 1.6x the time; 16 fps is smooth enough for a slow push-in under narration and Remotion plays it at the composition's 30 fps.",
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": { "image": "IMAGE" }
+  },
+  "2": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": ["1", 0],
+      "upscale_method": "lanczos",
+      "width": 1280,
+      "height": 704,
+      "crop": "center"
+    }
+  },
+  "3": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "wan2.2_ti2v_5B_fp16.safetensors",
+      "weight_dtype": "default"
+    }
+  },
+  "4": {
+    "class_type": "VAELoader",
+    "inputs": { "vae_name": "wan2.2_vae.safetensors" }
+  },
+  "5": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "PROMPT", "clip": ["5", 0] }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "NEGATIVE", "clip": ["5", 0] }
+  },
+  "8": {
+    "class_type": "Wan22ImageToVideoLatent",
+    "inputs": {
+      "vae": ["4", 0],
+      "width": 1280,
+      "height": 704,
+      "length": 81,
+      "batch_size": 1,
+      "start_image": ["2", 0]
+    }
+  },
+  "9": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": ["13", 0],
+      "seed": 0,
+      "steps": 16,
+      "cfg": 4.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["8", 0],
+      "denoise": 1.0
+    }
+  },
+  "10": {
+    "class_type": "VAEDecode",
+    "inputs": { "samples": ["9", 0], "vae": ["4", 0] }
+  },
+  "11": {
+    "class_type": "CreateVideo",
+    "inputs": { "images": ["10", 0], "fps": 16.0 }
+  },
+  "12": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["11", 0],
+      "filename_prefix": "pulse/localvideo",
+      "format": "mp4",
+      "codec": "h264"
+    }
+  },
+  "13": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": { "model": ["3", 0], "shift": 8.0 }
+  }
+}

@@ -1,0 +1,121 @@
+[
+  {
+    "name": "cal_classic_orbit_day",
+    "style": "Pulse/PulseCalendar",
+    "g": { "kind": "date", "primary": "September 17, 2013", "secondary": "GTA V launches", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 2013
+  },
+  {
+    "name": "cal_slim_droid_day",
+    "style": "Pulse/PulseCalendar",
+    "g": { "kind": "date", "primary": "October 26, 2018", "secondary": "Red Dead Redemption 2 launches", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2018
+  },
+  {
+    "name": "cal_edge_orbit_month",
+    "style": "Pulse/PulseCalendar",
+    "g": { "kind": "date", "primary": "December 2023", "secondary": "First GTA VI trailer", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 2023
+  },
+  {
+    "name": "cal_edge_droid_lateday",
+    "style": "Pulse/PulseCalendar",
+    "g": { "kind": "date", "primary": "May 26, 2026", "secondary": "GTA VI new release date", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2026
+  },
+  {
+    "name": "calpaper_print_month",
+    "style": "Pulse/PulseCalendarPaper",
+    "g": { "kind": "date", "primary": "October 1997", "secondary": "Grand Theft Auto released", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 1997,
+    "src": "entry_0/assets/header_2.jpg"
+  },
+  {
+    "name": "calpaper_band_day",
+    "style": "Pulse/PulseCalendarPaper",
+    "g": { "kind": "date", "primary": "October 22, 2001", "secondary": "GTA III reaches shops", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2001,
+    "src": "entry_0/assets/header_2.jpg"
+  },
+  {
+    "name": "calpaper_gloss_day_nosrc",
+    "style": "Pulse/PulseCalendarPaper",
+    "g": { "kind": "date", "primary": "April 29, 2008", "secondary": "GTA IV launches", "items": [] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 2008
+  },
+  {
+    "name": "maps_classic_orbit_one",
+    "style": "Pulse/PulseMaps",
+    "g": { "kind": "map", "primary": "Where Rockstar North works", "secondary": "", "items": ["Edinburgh"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 2013
+  },
+  {
+    "name": "maps_slim_droid_two",
+    "style": "Pulse/PulseMaps",
+    "g": { "kind": "map", "primary": "From Edinburgh to Manhattan", "secondary": "", "items": ["Edinburgh", "New York City"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2016
+  },
+  {
+    "name": "maps_edge_orbit_three",
+    "style": "Pulse/PulseMaps",
+    "g": { "kind": "map", "primary": "Rockstar's studios across the Atlantic", "secondary": "", "items": ["Edinburgh", "Lincoln", "New York City"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 2024
+  },
+  {
+    "name": "maps_edge_droid_dateline",
+    "style": "Pulse/PulseMaps",
+    "g": { "kind": "map", "primary": "From Tokyo to Los Angeles", "secondary": "", "items": ["Tokyo", "Los Angeles"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2021
+  },
+  {
+    "name": "mappaper_one",
+    "style": "Pulse/PulseMapsPaper",
+    "g": { "kind": "map", "primary": "Where DMA Design began", "secondary": "", "items": ["Dundee"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 0,
+    "year": 1998
+  },
+  {
+    "name": "mappaper_three",
+    "style": "Pulse/PulseMapsPaper",
+    "g": { "kind": "map", "primary": "The cities behind San Andreas", "secondary": "", "items": ["Los Angeles", "San Francisco", "Las Vegas"] },
+    "frames": [90, 200],
+    "len": 240,
+    "variant": 1,
+    "year": 2004
+  }
+]

@@ -61,6 +61,12 @@ for (const ID of IDS) {
   }
   const ep0 = (await getEpisode(db, ID))!;
   const a = { ...(ep0.assets_json as any) };
+  // The control renders the plan as it was before any director run (kept by the first proof run).
+  const firstRun = path.join(SB, `proof-${ID}.json`);
+  if (CONTROL && fs.existsSync(firstRun)) {
+    const [p] = JSON.parse(fs.readFileSync(firstRun, "utf8"));
+    if (p?.beforePlan) a.plan = p.beforePlan;
+  }
   const beforePlan = structuredClone(a.plan);
   delete a.retention;
   // Only this episode moves; everything else in the sandbox stays put.

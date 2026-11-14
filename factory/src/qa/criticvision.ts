@@ -219,13 +219,13 @@ export function chooseCriticModel(
   return {
     model: want,
     big,
-    why: big ? `${want} under an orchestrator gpu turn` : `${want}`,
+    why: big ? `${want} under an orchestrator heavy turn` : `${want}`,
   };
 }
 
-/** Runs `fn` with the critic's model ready: a big one inside a gpu turn (everyday model unloaded first) and unloaded after. */
+/** Runs `fn` with the critic's model ready: a big one inside a heavy turn (everyday model unloaded first) and unloaded after. */
 export async function withCriticModel<T>(
-  s: Pick<CriticSettings, "model" | "bigModels" | "leaseVram">,
+  s: Pick<CriticSettings, "model" | "bigModels" | "leaseVram" | "leaseRam">,
   o: { job: string; est: number; priority?: number },
   fn: (choice: ModelChoice) => Promise<T>,
 ): Promise<T> {
@@ -239,14 +239,15 @@ export async function withCriticModel<T>(
   if (!choice.big) return fn(choice);
   let release: () => void = () => undefined;
   try {
-    release = (await orch!.lease("gpu", {
+    // A heavy turn, not a gpu one: with mmap off the model also takes its whole size in system RAM.
+    release = (await orch!.lease("heavy", {
       job: o.job,
       project: "pulse",
       priority: o.priority ?? 60,
       kind: "pulse:critic",
       est: o.est,
       vram: s.leaseVram,
-      ram: 8,
+      ram: s.leaseRam,
       maxWait: 90,
       onWait: (why: string) =>
         log("info", "critic waiting for the GPU", { why }),

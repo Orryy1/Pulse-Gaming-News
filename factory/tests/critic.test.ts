@@ -1020,3 +1020,13 @@ test("long videos keep the house rule: a graphic is muted only when gone in unde
   assert.equal(hook.length, 1);
   assert.equal(hook[0]!.level, "warn");
 });
+
+test("any tag of 20B or more is big, listed or not; small ones are not", () => {
+  assert.equal(isBigModel("qwen3-vl:32b-instruct-q8_0", []), true);
+  assert.equal(isBigModel("llava:34b", []), true);
+  assert.equal(isBigModel("qwen3-vl:30b-a3b-instruct-q4_K_M", []), true);
+  assert.equal(isBigModel("qwen3.5:9b", []), false);
+  assert.equal(isBigModel("qwen3-vl:8b", []), false);
+  assert.equal(isBigModel("gemma3:4b", []), false);
+  assert.equal(DEFAULT_CRITIC.leaseRam, 22);
+});

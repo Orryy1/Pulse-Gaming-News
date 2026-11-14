@@ -1770,6 +1770,7 @@ export function loadConfig(): Config {
         .map((x) => x.trim())
         .filter(Boolean),
       leaseVram: Number(str("CRITIC_LEASE_VRAM", "21")) || 21,
+      leaseRam: Number(str("CRITIC_LEASE_RAM", "22")) || 22,
       everySeconds: Number(str("CRITIC_EVERY_SECONDS", "2")) || 2,
       maxFrames: int("CRITIC_MAX_FRAMES", 1200),
       minMatch: Number(str("CRITIC_MIN_MATCH", "1.4")) || 1.4,

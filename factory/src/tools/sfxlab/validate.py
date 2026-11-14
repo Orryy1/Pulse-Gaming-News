@@ -26,6 +26,13 @@ LEVEL = {"sting": 0.436, "swell": 0.218, "land": 0.195, "air": 0.195, "tick": 0.
 # Limits: a sound may lift the mix this much (dB) before it reads as intrusive.
 RISE_MAX = {"sting": 4.5, "swell": 3.0, "land": 3.0, "air": 2.0, "tick": 1.5}
 JOLT_MAX = 7.0
+# Series-signature stings (public/sfx/signature, src/render/signature.ts) are matched like the brand sting and
+# held to its limits: they replace it at the same level.
+SIGNATURE = "public/sfx/signature"
+
+
+def role_of(name):
+    return "sting" if name.startswith("sig:") else next(r for r in RISE_MAX if name.startswith(r))
 
 
 def kw(y):
@@ -57,19 +64,23 @@ def planned(video, cues_file):
     hits = []
     for c in spec["cues"]:
         name = c["file"].split("/")[-1][:-4]
-        path = f"public/sfx/v3/{name}-{key}.mp3"
-        path = path if os.path.exists(path) else f"public/sfx/v3/{name}.mp3"
+        if "/signature/" in c["file"]:
+            path = os.path.join(SIGNATURE, f"{name}.mp3")
+        else:
+            path = f"public/sfx/v3/{name}-{key}.mp3"
+            path = path if os.path.exists(path) else f"public/sfx/v3/{name}.mp3"
         t = librosa.load(path, sr=SR, mono=True)[0].astype(np.float64)
         at = int(c["frame"] / 30 * SR)
         best = max(range(max(0, at - SR // 10), at + SR // 10, 24), key=lambda p: x[p: p + len(t)] @ t if p + len(t) <= len(x) else -1)
-        hits.append((best, os.path.basename(path)[:-4], float(x[best: best + len(t)] @ t / (np.linalg.norm(x[best: best + len(t)]) * np.linalg.norm(t) + 1e-12)), t, c["volume"]))
+        label = ("sig:" if "/signature/" in c["file"] else "") + os.path.basename(path)[:-4]
+        hits.append((best, label, float(x[best: best + len(t)] @ t / (np.linalg.norm(x[best: best + len(t)]) * np.linalg.norm(t) + 1e-12)), t, c["volume"]))
     return report(video, x, hits)
 
 
 def check(video):
     x = audio_of(video)
     hits = []
-    for path in sorted(glob.glob("public/sfx/v3/*.mp3")):
+    for path in sorted(glob.glob("public/sfx/v3/*.mp3")) + sorted(glob.glob(os.path.join(SIGNATURE, "*.mp3"))):
         t, _ = librosa.load(path, sr=SR, mono=True)
         t = t.astype(np.float64)
         # Normalised cross-correlation: correlation over the template's energy times the local energy.
@@ -82,8 +93,8 @@ def check(video):
         med = np.median(ncc)
         mad = np.median(np.abs(ncc - med)) + 1e-9
         peaks, _ = sg.find_peaks(ncc, height=max(0.05, med + 12 * 1.4826 * mad), distance=SR)
-        name = os.path.basename(path)[:-4]
-        role = next(r for r in RISE_MAX if name.startswith(r))
+        name = ("sig:" if SIGNATURE in path.replace("\\", "/") else "") + os.path.basename(path)[:-4]
+        role = role_of(name)
         for p in peaks:
             # A real cue sits at its mix gain; a chance likeness (a consonant that resembles the tap) does not.
             g = float(x[p: p + len(t)] @ t / (t @ t))
@@ -117,10 +128,10 @@ def report(video, x, kept):
         rise = float(np.max(loud(mix, 0.4) - loud(base, 0.4)))
         jolt = float(np.max(loud(mix, 0.05) - loud(base, 0.05)))
         vs = float(loud(g * t, 0.2).max() - np.percentile(loud(base, 0.4), 80))
-        role = next(r for r in RISE_MAX if name.startswith(r))
+        role = role_of(name)
         bad = rise > RISE_MAX[role] or jolt > JOLT_MAX or missing
         ok &= not bad
-        print(f"  {p / SR:6.2f}s  {name:9} match {score:.2f}  gain {g:.3f}  rise {rise:4.1f} dB  jolt {jolt:4.1f} dB  vs mix {vs:+5.1f} dB  {'CHECK' if bad else 'ok'}")
+        print(f"  {p / SR:6.2f}s  {name:14} match {score:.2f}  gain {g:.3f}  rise {rise:4.1f} dB  jolt {jolt:4.1f} dB  vs mix {vs:+5.1f} dB  {'CHECK' if bad else 'ok'}")
     return ok
 
 

@@ -8,6 +8,12 @@
 // same thing for every sound. Pitched sounds come tuned to each music bed's key.
 
 import type { Mood } from "./musicplan.ts";
+import { SIGNATURE_LIBRARY } from "./signaturelib.ts";
+
+/** The series-signature beds (src/render/signature.ts), by file name: their key and bar grid. */
+const SIGNATURE_BEDS = Object.values(SIGNATURE_LIBRARY).flatMap((e) =>
+  e?.bed ? [{ name: e.bed.split("/").pop()!, key: e.key, grid: e.grid }] : [],
+);
 
 export const SFX = {
   air: ["v3/air-1", "v3/air-2", "v3/air-3"],
@@ -103,8 +109,10 @@ export const BED_GRID: Record<
   "mood_tense_2.wav": { bar: 2.4, first: 0.0306, loop: 134.4 },
   "mood_triumph_1.wav": { bar: 2.0, first: 0.0209, loop: 136.0 },
 };
-export const bedGridOf = (src: string | null | undefined) =>
-  BED_GRID[(src ?? "").split(/[\\/]/).pop() ?? ""];
+export const bedGridOf = (src: string | null | undefined) => {
+  const name = (src ?? "").split(/[\\/]/).pop() ?? "";
+  return BED_GRID[name] ?? SIGNATURE_BEDS.find((b) => b.name === name)?.grid;
+};
 
 // ---------------------------------------------------------------- era beds (30 Oct 2026)
 /**
@@ -187,6 +195,7 @@ const MUSIC_KEY: Record<string, "D" | "E"> = {
   "music_2.mp3": "D",
   "music_3.mp3": "E",
   "music_4.mp3": "E",
+  ...Object.fromEntries(SIGNATURE_BEDS.map((b) => [b.name, b.key])),
 };
 const TUNED = new Set<string>([
   SFX.sting,

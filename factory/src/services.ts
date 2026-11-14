@@ -289,6 +289,7 @@ export function createServices(db: Db, cfg: Config): Services {
         voice,
         // The long narrator's take check lands in the episode's log (data/episodes/<id>/voice.mp3).
         {
+          hookTakes: opts?.hookTakes,
           onEvent: (kind, detail) => {
             const id = episodeIdOf(cfg.dataDir, out);
             return id

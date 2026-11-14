@@ -9,6 +9,7 @@
 // Steps 3 and 4 are separate on purpose: reading and listening need only this machine, looking needs the PC's GPU.
 
 import { execFile } from "node:child_process";
+import { guardedYt } from "../lib/ytguard.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -52,19 +53,23 @@ import { DESCRIBE_RECHECK, describeGate } from "./describegate.ts";
 import { groundedCast, tidyIndex } from "./tidy.ts";
 
 const exec = promisify(execFile);
+// yt-dlp calls to YouTube go through the YouTube guard (budget, spacing, bot-check pause); the scene-index child
+// runs with YT_CLASS=background, so its calls take the background share.
 const run = (
   cmd: string,
   args: string[],
   o: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv } = {},
 ) =>
-  exec(cmd, args, {
-    cwd: o.cwd,
-    env: o.env,
-    timeout: o.timeout ?? 30 * 60_000,
-    maxBuffer: 64 * 1024 * 1024,
-    windowsHide: true,
-    killSignal: "SIGKILL",
-  });
+  guardedYt(cmd, args, () =>
+    exec(cmd, args, {
+      cwd: o.cwd,
+      env: o.env,
+      timeout: o.timeout ?? 30 * 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
+      killSignal: "SIGKILL",
+    }),
+  );
 
 /** Frames a second the cut scan looks at: enough to place a cut within a tenth of a second, a third of the decoding. */
 export const SCAN_FPS = 10;

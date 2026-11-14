@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
-import { YTDLP_TEXT } from "../lib/bin.ts";
+import { FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { stillBigText } from "./cliptext.ts";
 import type { VisualAsset } from "./steam.ts";
@@ -647,17 +647,10 @@ export async function downloadTrailer(
     }
     throw err;
   }
+  // The length is read off the file, not asked of YouTube: one request less per trailer (the YouTube guard, 14 Nov).
   const { stdout } = await run(
-    ytdlp,
-    [
-      "--no-playlist",
-      "--no-warnings",
-      "--print",
-      "duration",
-      /^https?:/.test(videoId)
-        ? videoId
-        : `https://www.youtube.com/watch?v=${videoId}`,
-    ],
+    FFPROBE,
+    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", dest],
     { timeout: 60_000 },
   ).catch(() => ({ stdout: "0" }));
   const d = Number(String(stdout).trim());

@@ -6,6 +6,7 @@
 
 import { execFile, type ExecFileOptions } from "node:child_process";
 import { promisify } from "node:util";
+import { guardedYt } from "./ytguard.ts";
 
 const exec = promisify(execFile);
 
@@ -33,12 +34,21 @@ export function timedOut(err: unknown): boolean {
 
 /**
  * execFile with the cap applied and SIGKILL on overrun (Windows has no gentler signal anyway). Resolves with
- * the child's stdout and stderr as text, like promisify(execFile).
+ * the child's stdout and stderr as text, like promisify(execFile). A yt-dlp call to YouTube goes through the
+ * YouTube guard (src/lib/ytguard.ts): a kept answer first, then the hourly budget, spacing and any bot-check pause.
  */
-export async function runCapped(
+export function runCapped(
   cmd: string,
   args: readonly string[],
   opts: ExecFileOptions = {},
+): Promise<{ stdout: string; stderr: string }> {
+  return guardedYt(cmd, args, () => runCappedRaw(cmd, args, opts));
+}
+
+async function runCappedRaw(
+  cmd: string,
+  args: readonly string[],
+  opts: ExecFileOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   const timeout = cappedTimeout(opts.timeout);
   try {

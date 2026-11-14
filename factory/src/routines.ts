@@ -16,6 +16,7 @@ import http from "node:http";
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { guardedYt } from "./lib/ytguard.ts";
 import { fileURLToPath } from "node:url";
 import type { Config } from "./config.ts";
 import type { Db } from "./db.ts";
@@ -225,24 +226,29 @@ export interface RelatedItem {
 
 /** Long videos on the channel, newest first (the factory's own episodes miss older uploads). No API quota: yt-dlp reads the public page. */
 export async function channelLongs(): Promise<LongVideo[]> {
-  const { stdout } = await run(
-    process.env.YTDLP_PATH || "yt-dlp",
-    [
-      ...YTDLP_TEXT.args,
-      "--no-warnings",
-      "--flat-playlist",
-      "--playlist-end",
-      "30",
-      "--print",
-      "%(id)s\t%(duration)s\t%(title)s",
-      "https://www.youtube.com/channel/UCvgNDjtTezrpxL8oUe6mYwA/videos",
-    ],
-    {
-      encoding: "utf8",
-      env: YTDLP_TEXT.env,
-      timeout: 120_000,
-      maxBuffer: 4 << 20,
-    },
+  const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
+  const args = [
+    ...YTDLP_TEXT.args,
+    "--no-warnings",
+    "--flat-playlist",
+    "--playlist-end",
+    "30",
+    "--print",
+    "%(id)s\t%(duration)s\t%(title)s",
+    "https://www.youtube.com/channel/UCvgNDjtTezrpxL8oUe6mYwA/videos",
+  ];
+  // Through the YouTube guard as background work: a kept listing for twelve hours, then the background share.
+  const { stdout } = await guardedYt(
+    ytdlp,
+    args,
+    () =>
+      run(ytdlp, args, {
+        encoding: "utf8",
+        env: YTDLP_TEXT.env,
+        timeout: 120_000,
+        maxBuffer: 4 << 20,
+      }),
+    { cls: "background" },
   );
   return stdout
     .split("\n")
@@ -502,7 +508,10 @@ export async function handleRoutine(
 ): Promise<boolean> {
   const posting =
     req.method === "POST" && url.pathname === "/routine/tiktok-stats";
-  if (!url.pathname.startsWith("/routine/") || (req.method !== "GET" && !posting))
+  if (
+    !url.pathname.startsWith("/routine/") ||
+    (req.method !== "GET" && !posting)
+  )
     return false;
   if (!routineAllowed(req)) return false;
   // A page on some other site could make this PC's browser send the body: only a page on this PC may.
@@ -558,7 +567,9 @@ export async function handleRoutine(
             ? Promise.all([
                 recentPublished(db, 3),
                 (ctx.channelLongs ?? channelLongs)(),
-                cfg.funnelClearDays > 0 ? recentPublished(db, cfg.funnelClearDays) : Promise.resolve([]),
+                cfg.funnelClearDays > 0
+                  ? recentPublished(db, cfg.funnelClearDays)
+                  : Promise.resolve([]),
               ]).then(([rows, longs, older]) =>
                 planFunnel(
                   rows,
@@ -569,9 +580,9 @@ export async function handleRoutine(
                 ),
               )
             : Promise.all([
-            recentPublished(db, 3),
-            (ctx.channelLongs ?? channelLongs)(),
-          ]).then(([rows, longs]) => planRelated(rows, longs));
+                recentPublished(db, 3),
+                (ctx.channelLongs ?? channelLongs)(),
+              ]).then(([rows, longs]) => planRelated(rows, longs));
           relatedCache = { at: now.getTime(), plan };
           plan.catch(() => {
             if (relatedCache?.plan === plan) relatedCache = undefined;
@@ -583,7 +594,9 @@ export async function handleRoutine(
         // A "clear" item (funnel test) is done when its Short is in the clear ledger; a "set" one when in the related one.
         const items = planned
           .filter((p) =>
-            "action" in p && p.action === "clear" ? !cleared.has(p.short) : !done.has(p.short),
+            "action" in p && p.action === "clear"
+              ? !cleared.has(p.short)
+              : !done.has(p.short),
           )
           .slice(0, max);
         json(res, 200, {
@@ -623,8 +636,10 @@ export async function handleRoutine(
         const there = await filesForBrowser(
           req,
           ctx,
-          (cfg.routineFilesTo === "pc" ? waiting : waiting.filter(ready))
-            .flatMap(thumbsOf),
+          (cfg.routineFilesTo === "pc"
+            ? waiting
+            : waiting.filter(ready)
+          ).flatMap(thumbsOf),
         );
         json(res, 200, {
           now: now.toISOString(),
@@ -800,7 +815,10 @@ export async function handleRoutine(
         try {
           body = JSON.parse(await readBody(req, 512 * 1024));
         } catch (err) {
-          json(res, 400, { ok: false, error: `not JSON: ${errorMessage(err)}` });
+          json(res, 400, {
+            ok: false,
+            error: `not JSON: ${errorMessage(err)}`,
+          });
           return true;
         }
         try {

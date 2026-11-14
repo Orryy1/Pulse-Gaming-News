@@ -98,15 +98,13 @@ export function scoreHandCheck(
     const s = raw.samples.reduce((a, b) =>
       Math.abs(b.t - l.t) < Math.abs(a.t - l.t) ? b : a,
     );
-    mark("state", s.state === l.state, l.t, l.state, s.state);
-    if (l.state === "hud" && s.state === "hud" && l.stars !== undefined)
-      mark(
-        "stars",
-        (s.stars ?? 0) === l.stars,
-        l.t,
-        String(l.stars),
-        String(s.stars ?? 0),
-      );
+    // What matters downstream is live play or not (menus, loading and black screens are all skipped alike).
+    mark("state", (s.state === "hud") === (l.state === "hud"), l.t, l.state, s.state);
+    if (l.state === "hud" && s.state === "hud" && l.stars !== undefined) {
+      // Grey stars (the search phase) are the level too.
+      const level = (s.stars ?? 0) > 0 ? s.stars! : (s.dim ?? 0);
+      mark("stars", level === l.stars, l.t, String(l.stars), String(level));
+    }
     if (l.banner !== undefined) {
       const read = textsNear(raw, l.t, ["banner", "centre"]);
       mark(

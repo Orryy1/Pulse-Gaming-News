@@ -57,6 +57,7 @@ import {
   readArgs,
 } from "../src/hudreader/run.ts";
 import { profileFor } from "../src/hudreader/job.ts";
+import { scoreHandCheck, textMatches } from "../src/hudreader/evaluate.ts";
 import { LiveDetector, type DetectOptions } from "../src/liveclips/detect.ts";
 import { servedHud } from "../src/render/render.ts";
 import { starsAt } from "../src/render/components/hud/HudOverlay.tsx";
@@ -774,4 +775,31 @@ test("a stream title picks the right profile, GTA VI never read as GTA V", () =>
   assert.equal(profileFor("Grand Theft Auto VI"), "gta6");
   assert.equal(profileFor("GTA 6 launch"), "gta6");
   assert.equal(profileFor("Silent Hill f"), undefined);
+});
+
+// ------------------------------------------------------------------ the hand check
+
+test("the hand check scores each field only where it applies, live play or not for the screen", () => {
+  const r = raw([
+    hud(10, { stars: 0, texts: { area: ["Banning"] } }),
+    { t: 20, state: "menu" },
+    { t: 30, state: "black" },
+    hud(40, { dim: 4 }),
+    hud(50, { texts: { banner: ["UndeR the bRidge", "22 / 50 Bridges flown under"] } }),
+  ]);
+  const s = scoreHandCheck(r, [
+    { t: 10, state: "hud", stars: 0, banner: "", area: "Banning", position: "right" },
+    { t: 20, state: "menu" },
+    { t: 30, state: "other" }, // an alert on black: not live play either way
+    { t: 40, state: "hud", stars: 4, banner: "", area: "" },
+    { t: 50, state: "hud", stars: 0, banner: "under the bridge 22 / 50 Bridges flown under", area: "", position: "wrong" },
+  ]);
+  assert.equal(s.fields.state.accuracy, 1);
+  assert.equal(s.fields.stars.accuracy, 1, "grey stars are the level in the search phase");
+  assert.equal(s.fields.banner.right, 3);
+  assert.equal(s.fields.area.accuracy, 1);
+  assert.equal(s.fields.position.checked, 2);
+  assert.equal(s.fields.position.right, 1);
+  assert.ok(textMatches("Los Santos International Airport", "Los Santos International Airport"));
+  assert.ok(!textMatches("East Vinewood", "Vinewood"));
 });

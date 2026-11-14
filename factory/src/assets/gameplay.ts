@@ -635,6 +635,7 @@ export async function cropEdge(
 export type FrameVerdict =
   | "facecam"
   | "gore"
+  | "suggestive"
   | "text-top"
   | "text-bottom"
   | "text-both"
@@ -694,6 +695,8 @@ export async function frameProblem(file: string): Promise<FrameVerdict> {
     const flags = await screenFrames(frames);
     if (flags.some((f) => f?.webcam)) return "facecam";
     if (flags.some((f) => f?.gore)) return "gore";
+    // FOOTAGE_AD_SCREEN: what the final visual check fails outright drops this clip (not the channel).
+    if (flags.some((f) => f?.suggestive)) return "suggestive";
     // Only writing in the centre of the top or bottom band counts: the whole-frame text flag also
     // fires on objective markers and HUD.
     const texty = frames.filter((_, k) => flags[k]?.text);

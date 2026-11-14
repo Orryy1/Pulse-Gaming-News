@@ -12,7 +12,8 @@ import { z } from "zod";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
-import { screenFrames, type FrameFlags } from "./localvision.ts";
+import { adUnsafe, screenFrames, type FrameFlags } from "./localvision.ts";
+import { frameKey, sourceKey } from "./screencache.ts";
 import { isVisionPaused } from "./visionrelay.ts";
 import { clipBigText } from "./cliptext.ts";
 import type { Script } from "../editorial/schema.ts";
@@ -539,7 +540,7 @@ async function fetchTrailer(variantUrl: string, dest: string): Promise<number> {
 }
 
 /** One ffmpeg pass: a 320 px keyframe every CANDIDATE_STEP seconds plus brightness and motion per frame. */
-async function analyseTrailer(
+export async function analyseTrailer(
   raw: string,
   movie: number,
   dir: string,
@@ -849,9 +850,21 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     const anchored = o.targets.flatMap((t) => sceneCandidates(t, candidates, o.trailers));
     const screened = [...new Map([...anchored, ...spread(candidates, LOCAL_SCREEN_MAX)]
       .map((candidate) => [candidate.index, candidate])).values()];
-    const flags = await screenFrames(screened.map((c) => c.frame));
+    // FOOTAGE_SCREEN_CACHE: each keyframe is remembered by its source and time, so a trailer is screened once.
+    const keyOf = (c: Candidate) => {
+      const t = o.trailers[c.movie];
+      const src = t && sourceKey(t.url, t.sectionId);
+      return src ? frameKey(src, c.time) : undefined;
+    };
+    const flags = await screenFrames(
+      screened.map((c) => c.frame),
+      2,
+      screened.map(keyOf),
+    );
     let base = candidates;
     const wordyFrames = new Set<number>();
+    // Keyframes the final check would fail outright (gore, anything suggestive): no clip may run into one.
+    const unsafeFrames = new Set<number>();
     if (flags.some(Boolean)) {
       // Unusable whatever happens: a webcam, gore, a black frame. Text only blocks a frame while there are clean ones.
       const never = new Set<number>();
@@ -865,7 +878,8 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
           wordy.add(c.index);
           wordyFrames.add(c.index);
         }
-        if (f.webcam || f.gore || f.dark) never.add(c.index);
+        if (f.webcam || f.gore || f.dark || f.suggestive) never.add(c.index);
+        if (adUnsafe(f)) unsafeFrames.add(c.index);
         const m = webcamByMovie.get(c.movie) ?? { cam: 0, all: 0 };
         m.all++;
         if (f.webcam) m.cam++;
@@ -956,6 +970,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         )
         .map((x) => x.time - c.time);
       if (textAt.length) span = Math.min(span, Math.min(...textAt) - 0.2);
+      span = stopBeforeUnsafe(c, span, candidates, unsafeFrames);
       if (span < MIN_CLIP_SECONDS) continue;
       let at = c.time;
       let seconds = Math.round(Math.max(MIN_CLIP_SECONDS, span) * 30) / 30;
@@ -1021,13 +1036,20 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
     if (o.fillSeconds) {
       const extra = spread(fastCut, 60);
       const seen = extra.length
-        ? await screenFrames(extra.map((c) => c.frame))
+        ? await screenFrames(
+            extra.map((c) => c.frame),
+            2,
+            extra.map(keyOf),
+          )
         : [];
+      extra.forEach((c, i) => {
+        if (adUnsafe(seen[i])) unsafeFrames.add(c.index);
+      });
       const fine = extra.filter((_, i) => {
         const f = seen[i];
-        return !f || !(f.webcam || f.gore || f.dark || f.text);
+        return !f || !(f.webcam || f.gore || f.dark || f.text || f.suggestive);
       });
-      await fillClips(o, [...base, ...fine].filter((c) => !o.trailers[c.movie]?.targetKey), wordyFrames, textFrames, out, clipSeconds, prefix);
+      await fillClips(o, [...base, ...fine].filter((c) => !o.trailers[c.movie]?.targetKey), wordyFrames, textFrames, out, clipSeconds, prefix, [...candidates, ...fastCut], unsafeFrames);
     }
     log("info", "beat-matched clips", {
       count: out.length,
@@ -1080,6 +1102,30 @@ async function keepCleanRun(
   }
 }
 
+/**
+ * How long a clip from `c` may run (pure): it stops half a keyframe step before the first later keyframe of the same
+ * source the screen found ad-unsafe (anything suggestive, gore), so a clip never runs into a moment the final visual
+ * check fails. 13 Nov 2026: clips chosen on a clean first frame ran on into a bent-over shot two seconds later.
+ */
+export function stopBeforeUnsafe(
+  c: { movie: number; time: number },
+  span: number,
+  candidates: ReadonlyArray<{ index: number; movie: number; time: number }>,
+  unsafe: ReadonlySet<number>,
+): number {
+  if (!unsafe.size) return span;
+  const at = candidates
+    .filter(
+      (x) =>
+        x.movie === c.movie &&
+        x.time > c.time &&
+        x.time < c.time + span + CANDIDATE_STEP / 2 &&
+        unsafe.has(x.index),
+    )
+    .map((x) => x.time - c.time - CANDIDATE_STEP / 2);
+  return at.length ? Math.max(0, Math.min(span, ...at)) : span;
+}
+
 /** No two fill clips (or a line's moment and a fill clip) closer than this in one trailer. */
 export const FILL_SPACING = 5;
 const FILL_MIN_MOTION = 2;
@@ -1119,13 +1165,15 @@ async function fillClips(
   out: VisualAsset[],
   clipSeconds: number,
   prefix: string,
+  all: Candidate[] = pool,
+  unsafe: Set<number> = new Set(),
 ): Promise<void> {
   const movieOf = (c: VisualAsset) =>
     o.trailers.findIndex((t) => t.url === c.sourceUrl);
   const taken = out.map((c) => ({ movie: movieOf(c), time: c.startSeconds ?? 0 }));
   let total = out.reduce((n, c) => n + (c.durationSeconds ?? 0), 0);
   // The whole clean pool, not the model's spread of 32: this step spends nothing.
-  const skip = new Set([...wordy, ...textFrames]);
+  const skip = new Set([...wordy, ...textFrames, ...unsafe]);
   for (let tries = 0; total < o.fillSeconds! && tries < 24; tries++) {
     const c = fillCandidates(pool, taken, skip)[0];
     if (!c) break;
@@ -1134,10 +1182,14 @@ async function fillClips(
     if (!r) continue;
     const file = path.join("assets", `${prefix}_fill_${tries}.mp4`);
     const full = path.join(o.episodeDir, file);
-    let seconds =
-      Math.round(
-        Math.max(MIN_CLIP_SECONDS, o.continuous ? clipSeconds : shotLength(c, clipSeconds)) * 30,
-      ) / 30;
+    const room = stopBeforeUnsafe(
+      c,
+      o.continuous ? clipSeconds : shotLength(c, clipSeconds),
+      all,
+      unsafe,
+    );
+    if (room < MIN_CLIP_SECONDS) continue;
+    let seconds = Math.round(room * 30) / 30;
     let at = c.time;
     try {
       await cutClip(r.file, at, seconds, full);

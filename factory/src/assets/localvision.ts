@@ -11,6 +11,7 @@ import { z } from "zod";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
 import type { Llm, LlmContent } from "../editorial/llm.ts";
 import { createVisionRelay } from "./visionrelay.ts";
+import { cachedVerdicts, storeVerdicts } from "./screencache.ts";
 import {
   chooseVisionHost,
   MAC_VISION_URL,
@@ -27,6 +28,17 @@ export interface FrameFlags {
   letterbox: boolean;
   dark: boolean;
   blurry: boolean;
+  /**
+   * A sexualised or suggestive person or character (FOOTAGE_AD_SCREEN, default on): the same rule the final visual QA
+   * fails a Short for (src/qa/vision.ts VISION_PROMPT), asked before a moment is chosen instead of after the render.
+   * Optional so verdicts written before 14 Nov 2026 still read.
+   */
+  suggestive?: boolean;
+}
+
+/** FOOTAGE_AD_SCREEN (default on): the local screen also asks the final check's ad-safety question. */
+export function adScreenOn(): boolean {
+  return process.env.FOOTAGE_AD_SCREEN !== "off";
 }
 
 export const LOCAL_VISION_URL = (
@@ -43,6 +55,14 @@ gore: blood sprays, wounds, dead bodies, executions.
 letterbox: black bars covering more than a third of the frame.
 dark: the frame is mostly black or so dark that a viewer cannot tell what is happening.
 blurry: the frame is heavily blurred, smeared or an unreadable close-up of a texture.`;
+
+/**
+ * The final visual QA's ad-safety rule in substance (src/qa/vision.ts VISION_PROMPT: "any sexualised or suggestive
+ * character or person, drawn or real, and any crop dominated by a chest, groin or underwear"), asked of the whole frame
+ * and of the tall middle slice a vertical Short shows of it. As strict as the final check: a moment it would fail must
+ * not be chosen in the first place (14 Nov 2026: 32 renders failed on GTA VI nightclub and beach shots).
+ */
+export const SUGGESTIVE_RULE = `suggestive: true when any person or character, drawn or real, is sexualised or suggestive anywhere in the frame, including in the background: nudity; underwear, lingerie or a bikini on show; visible cleavage or a low-cut or revealing top; a bent-over, twerking, pole or strip-club dancing or otherwise provocative pose; a nightclub or party shot that dwells on bodies; or a picture whose main subject is a chest, bare torso, hips, buttocks, groin or thighs. A vertical Short shows only the tall middle third of this frame, enlarged: answer true when that slice would be dominated by such a body part. When unsure, answer true.`;
 
 const SCHEMA = {
   type: "object",
@@ -65,6 +85,22 @@ const SCHEMA = {
     "blurry",
   ],
 };
+
+/** The screen's schema, with the ad-safety question when FOOTAGE_AD_SCREEN is on. */
+function screenSchema() {
+  return adScreenOn()
+    ? {
+        ...SCHEMA,
+        properties: { ...SCHEMA.properties, suggestive: { type: "boolean" } },
+        required: [...SCHEMA.required, "suggestive"],
+      }
+    : SCHEMA;
+}
+
+/** The screen's prompt, with the ad-safety question when FOOTAGE_AD_SCREEN is on. */
+export function screenPrompt(): string {
+  return adScreenOn() ? `${PROMPT}\n${SUGGESTIVE_RULE}` : PROMPT;
+}
 
 /** Whether a frame is unusable as footage, and why. Text alone is reported separately: it also marks where a clip must stop. */
 /**
@@ -103,27 +139,56 @@ export function frameFlagsFromAnswer(body: {
   message?: { content?: string; thinking?: string };
 }): FrameFlags | undefined {
   const parsed = visionAnswer(body);
-  const keys = ["text", "hud_only", "webcam", "gore", "letterbox", "dark", "blurry"];
-  if (!parsed || typeof parsed !== "object" || keys.some((key) => typeof parsed[key] !== "boolean")) return undefined;
+  const keys = [
+    "text",
+    "hud_only",
+    "webcam",
+    "gore",
+    "letterbox",
+    "dark",
+    "blurry",
+  ];
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    keys.some((key) => typeof parsed[key] !== "boolean")
+  )
+    return undefined;
   const hud = parsed.text && parsed.hud_only;
-  return { hud, text: parsed.text && !hud, webcam: parsed.webcam, gore: parsed.gore,
-    letterbox: parsed.letterbox, dark: parsed.dark, blurry: parsed.blurry };
+  return {
+    hud,
+    text: parsed.text && !hud,
+    webcam: parsed.webcam,
+    gore: parsed.gore,
+    letterbox: parsed.letterbox,
+    dark: parsed.dark,
+    blurry: parsed.blurry,
+    ...(typeof parsed.suggestive === "boolean"
+      ? { suggestive: parsed.suggestive }
+      : {}),
+  };
 }
+
+/** What the final check fails a Short for outright, so never usable however short the footage is (pure). */
+export const adUnsafe = (f: FrameFlags | undefined): boolean =>
+  Boolean(f && (f.gore || f.suggestive));
 
 export const rejectReason = (f: FrameFlags): string | undefined =>
   f.webcam
     ? "webcam or overlay"
     : f.gore
       ? "gore"
-      : f.letterbox
-        ? "letterboxed"
-        : f.dark
-          ? "too dark"
-          : f.blurry
-            ? "blurred"
-            : f.text
-              ? "text on screen"
-              : undefined;
+      : f.suggestive
+        ? "suggestive"
+        : f.letterbox
+          ? "letterboxed"
+          : f.dark
+            ? "too dark"
+            : f.blurry
+              ? "blurred"
+              : f.text
+                ? "text on screen"
+                : undefined;
 
 let downUntil = 0;
 
@@ -138,7 +203,9 @@ export function relayModels(body: unknown): string[] {
   const models = (body as { models?: unknown } | null)?.models;
   if (!Array.isArray(models)) return [];
   return models.flatMap((m) =>
-    [m?.name, m?.model].filter((x): x is string => typeof x === "string" && x.length > 0),
+    [m?.name, m?.model].filter(
+      (x): x is string => typeof x === "string" && x.length > 0,
+    ),
   );
 }
 
@@ -162,7 +229,11 @@ export const MODEL_CHECK_MS = 3 * 60_000;
  * counts exactly as down. Cached for `ttlMs` either way, so frame work does not ask before every call.
  */
 export function createModelCheck(opts: {
-  fetchTags: () => Promise<{ ok: boolean; status?: number; json: () => Promise<unknown> }>;
+  fetchTags: () => Promise<{
+    ok: boolean;
+    status?: number;
+    json: () => Promise<unknown>;
+  }>;
   model: string;
   now?: () => number;
   ttlMs?: number;
@@ -174,7 +245,8 @@ export function createModelCheck(opts: {
   const ask = async (): Promise<string | undefined> => {
     try {
       const res = await opts.fetchTags();
-      if (!res.ok) return `the relay's model list answered ${res.status ?? "an error"}`;
+      if (!res.ok)
+        return `the relay's model list answered ${res.status ?? "an error"}`;
       const models = relayModels(await res.json());
       if (hasVisionModel(models, opts.model)) return undefined;
       return `the relay does not list ${opts.model} (it has ${models.slice(0, 6).join(", ") || "no models"}): another server may be on its port`;
@@ -320,14 +392,14 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
         model: (await visionTarget()).model,
         stream: false,
         think: false,
-        format: SCHEMA,
+        format: screenSchema(),
         keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
         options: {
           temperature: 0,
-          num_predict: 120 + THINK_ROOM,
+          num_predict: 140 + THINK_ROOM,
           num_ctx: NUM_CTX,
         },
-        messages: [{ role: "user", content: PROMPT, images: [image] }],
+        messages: [{ role: "user", content: screenPrompt(), images: [image] }],
       }),
     },
     90_000,
@@ -343,36 +415,54 @@ async function checkOne(file: string): Promise<FrameFlags | undefined> {
   return frameFlagsFromAnswer(body);
 }
 
+/** A verdict complete enough to remember: with the ad screen on it must have answered the ad-safety question (pure). */
+export function cacheableVerdict(f: FrameFlags | undefined): f is FrameFlags {
+  return Boolean(f) && (!adScreenOn() || typeof f!.suggestive === "boolean");
+}
+
 /**
  * Flags for each frame, in order; undefined for a frame the model could not
  * judge (or for all of them when the local model is not running), which
  * callers treat as "let Claude decide" (only while the relay answers, or with
  * VISION_PAID_FALLBACK on: src/assets/visionrelay.ts).
+ *
+ * `keys` (src/assets/screencache.ts frameKey, one per file, undefined where the source is unknown): a frame screened
+ * before, by any Short or the PC batch, is answered from the cache without the model, and so is still judged while
+ * the relay is down; a new verdict is remembered.
  */
 export async function screenFrames(
   files: string[],
   concurrency = 2,
+  keys?: Array<string | undefined>,
 ): Promise<Array<FrameFlags | undefined>> {
   const out: Array<FrameFlags | undefined> = new Array(files.length).fill(
     undefined,
   );
+  const cached = keys ? cachedVerdicts(keys) : [];
+  for (const [i, c] of cached.entries()) if (c) out[i] = c;
   if (
     !files.length ||
-    (await pcPaused()) ||
     process.env.LOCAL_VISION === "off" ||
-    Boolean(process.env.NODE_TEST_CONTEXT) // tests never reach the GPU
+    Boolean(process.env.NODE_TEST_CONTEXT) || // tests never reach the GPU
+    (await pcPaused())
   )
     return out;
+  const todo = files.map((_, i) => i).filter((i) => !out[i]);
+  if (!todo.length) return out;
   // A relay without the expected model is down: nothing is screened by another server's model.
   if (await relayNotReady()) return out;
   let next = 0;
   let failures = 0;
+  const fresh: Array<{ key: string; flags: FrameFlags }> = [];
   const worker = async () => {
-    while (next < files.length && failures < 3) {
-      const i = next++;
+    while (next < todo.length && failures < 3) {
+      const i = todo[next++]!;
       try {
         const mac = (await visionTarget()).mac;
         out[i] = await checkOne(files[i]!);
+        const key = keys?.[i];
+        if (key && cacheableVerdict(out[i]))
+          fresh.push({ key, flags: out[i]! });
         if (!mac) visionRelay.report(true);
       } catch (err) {
         failures++;
@@ -387,8 +477,9 @@ export async function screenFrames(
     }
   };
   await Promise.all(
-    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+    Array.from({ length: Math.min(concurrency, todo.length) }, worker),
   );
+  storeVerdicts(fresh);
   return out;
 }
 
@@ -479,8 +570,7 @@ export function heroLookAnswer(parsed: any): HeroLook | undefined {
   const sized = box && box[2] > box[0] && box[3] > box[1];
   return {
     // A "face" too small to read on a phone is only a body.
-    kind:
-      k === "face" && sized && box![3] - box![1] < 0.15 ? "body" : k,
+    kind: k === "face" && sized && box![3] - box![1] < 0.15 ? "body" : k,
     ...(sized ? { box } : {}),
     realPerson: parsed.real_photo === true,
   };
@@ -964,20 +1054,29 @@ export function subjectAnswer(parsed: any): SubjectLook | undefined {
   const c = Number(parsed.confidence);
   return {
     shows: parsed.shows,
-    confidence: Number.isFinite(c) ? Math.min(1, Math.max(0, c > 1 ? c / 100 : c)) : 0,
+    confidence: Number.isFinite(c)
+      ? Math.min(1, Math.max(0, c > 1 ? c / 100 : c))
+      : 0,
     seen: typeof parsed.seen === "string" ? parsed.seen.slice(0, 160) : "",
   };
 }
 
 /** The question for one frame (pure): the game, the line and the names it must show. */
-export function subjectPrompt(o: { game: string; line: string; names: string[] }): string {
+export function subjectPrompt(o: {
+  game: string;
+  line: string;
+  names: string[];
+}): string {
   const names = o.names.length ? o.names.join(", ") : "what the line describes";
   return `This is one frame of a cutscene from the video game ${o.game}. A narration line will play over it: "${o.line}"
 Does this frame visibly show this moment: at least one of ${names}? It need not show all of them: one named character on screen in the scene the line describes is enough. A named character counts only when that character is on screen and recognisable by their known look in this game (not someone else, not an empty room, not a face you cannot identify). A named place or object counts when it is clearly visible. When the line names a character and a place, the character matters most.
 Answer shows (true or false), confidence from 0 to 1 that shows is right, and seen: what the frame shows in under 15 words.`;
 }
 
-async function subjectOne(file: string, prompt: string): Promise<SubjectLook | undefined> {
+async function subjectOne(
+  file: string,
+  prompt: string,
+): Promise<SubjectLook | undefined> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/chat`,
@@ -998,14 +1097,27 @@ async function subjectOne(file: string, prompt: string): Promise<SubjectLook | u
           required: ["shows", "confidence", "seen"],
         },
         keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
-        options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: NUM_CTX },
+        options: {
+          temperature: 0,
+          num_predict: 120 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
         messages: [{ role: "user", content: prompt, images: [image] }],
       }),
     },
     90_000,
   );
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return subjectAnswer(visionAnswer((await res.json()) as { message?: { content?: string; thinking?: string } }));
+  if (!res.ok)
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  return subjectAnswer(
+    visionAnswer(
+      (await res.json()) as {
+        message?: { content?: string; thinking?: string };
+      },
+    ),
+  );
 }
 
 /**
@@ -1018,7 +1130,9 @@ export async function subjectFrames(
   ask: { game: string; line: string; names: string[] },
   concurrency = 2,
 ): Promise<Array<SubjectLook | undefined>> {
-  const out: Array<SubjectLook | undefined> = new Array(files.length).fill(undefined);
+  const out: Array<SubjectLook | undefined> = new Array(files.length).fill(
+    undefined,
+  );
   if (
     !files.length ||
     Date.now() < downUntil ||
@@ -1045,7 +1159,9 @@ export async function subjectFrames(
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+  );
   return out;
 }
 
@@ -1055,7 +1171,9 @@ export async function subjectFrames(
 // a few side-by-side frames a call; never Claude, never a paid API (src/services.ts builds a Codex-only client).
 
 /** Looks at segment frames: one answer per file, undefined where it could not judge. */
-export type SegmentLooker = (files: string[]) => Promise<Array<SegmentLook | undefined>>;
+export type SegmentLooker = (
+  files: string[],
+) => Promise<Array<SegmentLook | undefined>>;
 
 let segmentFallback: SegmentLooker | undefined;
 
@@ -1065,7 +1183,9 @@ export function setSegmentLookFallback(look?: SegmentLooker): void {
 }
 
 /** lookFrames, then the fallback looker (FOOTAGE_LOOK_CODEX) for every frame the local model left unjudged. */
-export async function lookFramesOrFallback(files: string[]): Promise<Array<SegmentLook | undefined>> {
+export async function lookFramesOrFallback(
+  files: string[],
+): Promise<Array<SegmentLook | undefined>> {
   const out = await lookFrames(files);
   const missing = out.flatMap((l, i) => (l ? [] : [i]));
   if (!missing.length || !segmentFallback) return out;
@@ -1108,7 +1228,11 @@ export function codexSegmentLook(llm: Llm, max = 30, batch = 6): SegmentLooker {
         content.push({ type: "text", text: `Segment ${i + 1}` });
         content.push({
           type: "image",
-          source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(file)).toString("base64") },
+          source: {
+            type: "base64",
+            media_type: "image/jpeg",
+            data: (await fs.readFile(file)).toString("base64"),
+          },
         });
       }
       content.push({
@@ -1119,14 +1243,18 @@ export function codexSegmentLook(llm: Llm, max = 30, batch = 6): SegmentLooker {
         const r = await llm.structured({
           tier: "mid",
           site: "footagelook",
-          system: "You screen video game footage for a documentary. Answer only from what is visible.",
+          system:
+            "You screen video game footage for a documentary. Answer only from what is visible.",
           content,
           schema: CodexSegmentLooks,
           effort: "low",
         });
-        for (const [i] of part.entries()) if (r.segments[i]) out[at + i] = lookAnswer(r.segments[i]);
+        for (const [i] of part.entries())
+          if (r.segments[i]) out[at + i] = lookAnswer(r.segments[i]);
       } catch (err) {
-        log("warn", "footage looks: Codex did not answer", { error: errorMessage(err) });
+        log("warn", "footage looks: Codex did not answer", {
+          error: errorMessage(err),
+        });
         break;
       }
     }

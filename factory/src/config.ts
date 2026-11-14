@@ -463,6 +463,17 @@ export interface Config {
   /** SHORT_AD_SAFE_GATE: a Short whose first 7 s or cover frame shows a graphic kill, gore or the like fails QA (src/openingstep.ts). */
   shortAdSafeGate: boolean;
   /**
+   * QA_AD_SWAP (default on, a bug fix): a frame the final visual check fails for ad safety (suggestive, nudity, gore) swaps
+   * its shot for the retry like a text fault does, and the moment is remembered in the footage screen cache so no later
+   * gather picks it (src/qa/retry.ts, src/assets/screencache.ts). Off: those faults drop nothing, as before 14 Nov 2026.
+   */
+  qaAdSwap: boolean;
+  /**
+   * CREDIT_SCRUB (default on): before a Short's fact check, a credit to an outlet or document the writer was not given
+   * ("GameSpot's 2021 coverage says", "Bethesda's update notes say") is taken off and the fact kept (src/editorial/credits.ts).
+   */
+  creditScrub: boolean;
+  /**
    * The 11 Nov research upgrades (src/strandframe.ts, src/whydied.ts, src/reviewer.ts, src/stance.ts), each off by default:
    * STRAND_FRAMES: one title shape and one thumbnail layout per long strand, 0 to 4 thumbnail words;
    * SHORT_TITLE_GAME_FIRST: a Short's title names the game first, then the why or how (applied before upload);
@@ -1620,6 +1631,8 @@ export function loadConfig(): Config {
     shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
     shortOpenWords: Math.min(2, Math.max(0, int("SHORT_OPEN_WORDS", 0))),
     shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
+    qaAdSwap: bool("QA_AD_SWAP", true),
+    creditScrub: bool("CREDIT_SCRUB", true),
     strandFrames: bool("STRAND_FRAMES", false),
     shortTitleGameFirst: bool("SHORT_TITLE_GAME_FIRST", false),
     longChapterCadence: bool("LONG_CHAPTER_CADENCE", false),

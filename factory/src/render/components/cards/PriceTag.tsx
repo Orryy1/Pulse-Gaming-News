@@ -6,13 +6,13 @@ import { CARD_WIDTH } from "../../layout.ts";
 import { SPRING, ease, FRAMES } from "../../motion.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 
-function countTo(value: string, p: number): string {
-  const m = value.match(/^([^\d]*)([\d,]+)(\.\d+)?(.*)$/);
-  if (!m) return value;
-  const target = Number(m[2]!.replace(/,/g, ""));
-  if (!Number.isFinite(target)) return value;
-  const v = Math.round(target * p);
-  return `${m[1]}${m[2]!.includes(",") ? v.toLocaleString("en-US") : String(v)}${m[3] ?? ""}${m[4]}`;
+/**
+ * The price as it is shown at count progress `p` (pure). A price never counts up any more: a frame caught mid-count
+ * read "$395.99" while the line said $399.99 (the integer part counted, the cents stayed), and the final check failed
+ * the Short for a wrong price five times on 13-14 Nov 2026 ($395.99, $68 for $69). It lands whole, as it is said.
+ */
+export function countTo(value: string, _p: number): string {
+  return value;
 }
 
 /** Price card: the old price is struck through, the new one lands big, the region label snaps in. */
@@ -22,7 +22,7 @@ export const PriceTag: React.FC<{ price: string; was?: string; region?: string; 
   const t = frame - FRAMES.ruleLead;
   const strike = interpolate(t, [0, 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out });
   const bigIn = spring({ frame: t - 4, fps, config: SPRING.ENTER });
-  const count = interpolate(t, [4, 28], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out });
+  const count = 1;
   const regionIn = spring({ frame: t - 26, fps, config: SPRING.SNAP });
   return (
     <div style={{ position: "relative", width: CARD_WIDTH, minHeight: 300 }}>

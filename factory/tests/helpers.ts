@@ -42,6 +42,8 @@ export function testConfig(
   return {
     shortOpenWords: 0,
     shortAdSafeGate: false,
+    qaAdSwap: true,
+    creditScrub: true,
     strandFrames: false,
     shortTitleGameFirst: false,
     longChapterCadence: false,

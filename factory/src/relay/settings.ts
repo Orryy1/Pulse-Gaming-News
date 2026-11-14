@@ -33,6 +33,10 @@ export interface RelaySettings {
   dailyStart: string;
   /** TIMEZONE: the owner's day. */
   timeZone: string;
+  /** CHALLENGE_SERIES (src/challenge.ts): read "[CHALLENGE: rule]" in the live title and file the challenge. */
+  challengeSeries: boolean;
+  /** CHALLENGE_END_DAYS: days without the tag that end a challenge. */
+  challengeQuietDays: number;
   /** VOD_MINER_DIR: where the stream index looks for recordings (the Twitch VOD downloader's folder). */
   vodDir: string;
   dataDir: string;
@@ -84,6 +88,8 @@ export function relaySettings(
     musicStripCmd: env.RELAY_MUSIC_STRIP_CMD || "",
     dailyStart: env.GTA_DAILY_START || "2026-11-19",
     timeZone: env.TIMEZONE || "Europe/London",
+    challengeSeries: bool(env, "CHALLENGE_SERIES", false),
+    challengeQuietDays: num(env, "CHALLENGE_END_DAYS", 7, 1, 60),
     vodDir:
       env.VOD_MINER_DIR || path.join(os.homedir(), "Videos", "TinoTV VODs"),
     dataDir: path.resolve(env.DATA_DIR || "./data"),

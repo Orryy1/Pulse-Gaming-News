@@ -28,6 +28,7 @@ import { planFunnel } from "./funnel.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { pollPlan, readPoll, recordPollResult } from "./social/poll.ts";
 import { recordTikTokStats, tiktokStatus } from "./social/metrics.ts";
+import { markPremiereSet, premieresToSet, readPremieres } from "./premiere.ts";
 
 const run = promisify(execFile);
 
@@ -756,6 +757,23 @@ export async function handleRoutine(
           done: readList(doneFile(cfg, "poll")).includes(today),
           ...plan,
         });
+        return true;
+      }
+      // PREMIERE_DOCS (src/premiere.ts): documentaries uploaded private for a Premiere, with the countdown posts
+      // drafted; reports/Premiere steps.md says what the Brave task does with them.
+      case "/routine/premieres": {
+        const all = readPremieres(cfg.dataDir);
+        json(res, 200, { now: now.toISOString(), toSet: premieresToSet(all, now), all });
+        return true;
+      }
+      // The Premiere is set in Studio and the countdown posts are out: ?video=<id>.
+      case "/routine/premiere-done": {
+        const video = url.searchParams.get("video") ?? "";
+        if (!/^[\w-]{6,20}$/.test(video)) {
+          json(res, 400, { ok: false, error: "bad video id" });
+          return true;
+        }
+        json(res, 200, { ok: markPremiereSet(cfg.dataDir, video, now), video });
         return true;
       }
       // Records progress: one or more keys (repeat &key=) for one routine's ledger.

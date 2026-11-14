@@ -349,6 +349,10 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   sources?: Array<{ url: string; source: string; official?: boolean }>;
   /** A search-led planned entry (src/plannedoc.ts): its search, thumbnail words, chapters and facts file. */
   planned?: import("../plannedoc.ts").PlannedDoc;
+  /** PREMIERE_DOCS: released as a YouTube Premiere (src/premiere.ts). */
+  premiere?: boolean;
+  /** STORY_RECAP: a full-spoiler recap from the owner's own play (src/storyrecap.ts): the recordings it is told from. */
+  recap?: { game: string; vods: string[] };
   /** A weekly guide (src/longguide.ts): its key, fixed title and thumbnail words, facts file and the owner's play notes. */
   guide?: {
     key: string;
@@ -378,6 +382,8 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
     /** The outline indexes of the chapters as written, in on-screen order (a chapter can be dropped). */
     written?: number[];
     acts?: import("./retrospective.ts").StoryAct[];
+    /** STORY_RECAP (src/storyrecap.ts): only story chapters, one per act, in story order. */
+    storyOnly?: boolean;
   };
 };
 

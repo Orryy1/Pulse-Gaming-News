@@ -20,6 +20,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { dayNumber } from "../gtadaily.ts";
+import { challengeSeriesTitle, closeQuiet, editRegistry, noteStream } from "../challenge.ts";
 import { dayKey } from "../lanes.ts";
 import { streamDescription, streamTitle } from "../liveclips/simulcast.ts";
 import type { LiveStream } from "../liveclips/twitch.ts";
@@ -75,6 +76,8 @@ export interface Current {
   pipeAlertedAt?: number;
   /** YouTube cut it off too often: Twitch carries on, the mirror stops for this stream. */
   givenUp?: boolean;
+  /** The Twitch title as last seen (the owner's "[CHALLENGE: rule]" tag lives there). */
+  twitchTitle?: string;
 }
 
 export interface RelayState {
@@ -205,6 +208,7 @@ export class RelayJob {
       });
     }
     const cur = this.state.current;
+    if (s.challengeSeries) await this.challenges(live === "unknown" ? undefined : live);
     if (live && live !== "unknown") {
       if (!cur) await this.begin(live);
       else {
@@ -240,6 +244,7 @@ export class RelayJob {
       date,
       part: 1,
       restarts: 0,
+      twitchTitle: live.title,
     };
     this.state.current = cur;
     this.d.log("info", "relay: the owner is live on Twitch", {
@@ -248,6 +253,52 @@ export class RelayJob {
       day: cur.day,
     });
     await this.setup(cur);
+  }
+
+  /**
+   * CHALLENGE_SERIES (src/challenge.ts): the live title's tag files the challenge (new, still going, or ended with
+   * "done"/"failed"), and challenges whose tag has not been seen for CHALLENGE_END_DAYS are closed. Discord hears of
+   * each start and end once. A failure is logged and changes nothing else.
+   */
+  private async challenges(live: LiveStream | undefined): Promise<void> {
+    const s = this.d.settings;
+    try {
+      const now = new Date(this.d.now());
+      if (live) {
+        if (this.state.current) this.state.current.twitchTitle = live.title;
+        const r = editRegistry(s.dataDir, (reg) =>
+          noteStream(
+            reg,
+            {
+              id: live.id,
+              title: live.title,
+              date: dayKey(now, s.timeZone),
+              startedAt: live.startedAt,
+              game: live.game || s.fallbackGame,
+            },
+            now,
+          ),
+        );
+        const c = r.challenge;
+        if (c && r.started)
+          await this.d.notify(
+            `🎯 New challenge spotted in the stream title: "${challengeSeriesTitle(c.rule, c.game)}" (challenge ${c.number}). Clips from these streams become numbered episodes with the running count on screen.`,
+          );
+        if (c && r.ended)
+          await this.d.notify(
+            `🏁 The "${c.rule}" challenge is marked ${c.ended?.outcome ?? "over"} in the stream title. Its next clip becomes the final "did I make it" episode.`,
+          );
+      }
+      const q = editRegistry(s.dataDir, (reg) => closeQuiet(reg, now, s.challengeQuietDays));
+      for (const c of q.closed)
+        await this.d.notify(
+          `🏁 No "[CHALLENGE: ${c.rule}]" stream for ${s.challengeQuietDays} days, so that challenge is closed. Its next clip becomes the final episode. To carry on, just use the tag again.`,
+        );
+    } catch (err) {
+      this.d.log("warn", "relay: challenge check failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /** Makes (or remakes) the broadcast, binds it and makes sure the pipe runs. */

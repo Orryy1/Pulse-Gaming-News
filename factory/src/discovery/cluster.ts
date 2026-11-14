@@ -61,6 +61,8 @@ export interface StoryCluster {
   gtaFile?: import("../gtafile.ts").GtaFileStory;
   /** An episode of "GTA 6 Day N" (src/gtadaily.ts): its day, date, slot, theme, the ask it answers and its links. */
   gtaDaily?: import("../gtadaily.ts").GtaDailyStory;
+  /** An episode of a "Can I beat GTA 6 without...?" challenge (src/challenge.ts): its series, number, count and links. */
+  challenge?: import("../challenge.ts").ChallengeStory;
   /** A search Short (SEARCH_SHORTS, src/searchq): the one query it answers, titled in the searcher's words, and its facts. */
   search?: import("../searchq/brief.ts").SearchStory;
   /** A video reply to a viewer's question (COMMENT_REPLY_SHORTS, src/commentreply.ts): the comment, its handle and video. */

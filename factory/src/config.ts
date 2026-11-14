@@ -30,6 +30,7 @@ import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./s
 import { packagingSettings, packagingSummary, type PackagingSettings } from "./packaging/settings.ts";
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
 import { learnSettings, learnSummary, type LearnSettings } from "./learn/settings.ts";
+import { hudSettings, hudSummary, type HudSettings } from "./hudreader/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
@@ -976,6 +977,8 @@ export interface Config {
   /** The shared learning core (src/learn): version stamps, the change ledger, the holdout, the judge ledger, the bandit,
    * the lesson playbook, hook breadth and the weekly summary, each behind its own LEARN_* setting, all off by default. */
   learn: LearnSettings;
+  /** HUD_READER: the GTA HUD and minimap reader for the owner's streams (src/hudreader), every output off by default. */
+  hud: HudSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
@@ -1942,6 +1945,7 @@ export function loadConfig(): Config {
     packaging: packagingSettings(process.env),
     liveClips: liveClipsSettings(process.env),
     learn: learnSettings(process.env),
+    hud: hudSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
@@ -2201,6 +2205,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     packaging: packagingSummary(c.packaging),
     liveClips: liveClipsSummary(c.liveClips),
     learn: learnSummary(c.learn),
+    hud: hudSummary(c.hud),
     whySerial: c.whySerialEnabled
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",

@@ -1283,6 +1283,29 @@ export async function renderCutdown(input: {
   }
 }
 
+/** The HUD overlay's pictures (episode-folder paths) as served URLs (pure). */
+export function servedHud(
+  hud: NonNullable<GameplayShortProps["hud"]>,
+  base: string,
+): NonNullable<GameplayShortProps["hud"]> {
+  const url = (p: string) =>
+    /^(https?:|data:|blob:)/.test(p) ? p : `${base}/${webPath(p)}`;
+  return {
+    ...hud,
+    ...(hud.pin
+      ? {
+          pin: {
+            ...hud.pin,
+            ...(hud.pin.mapImage ? { mapImage: url(hud.pin.mapImage) } : {}),
+          },
+        }
+      : {}),
+    ...(hud.endMap
+      ? { endMap: { ...hud.endMap, image: url(hud.endMap.image) } }
+      : {}),
+  };
+}
+
 /** Renders the rebuilt gameplay Short (src/render/GameplayShort.tsx), with a poster on the outcome. */
 export async function renderGameplayShort(input: {
   episodeDir: string;
@@ -1304,6 +1327,7 @@ export async function renderGameplayShort(input: {
       ...rest,
       videoSrc: `${files.url}/${webPath(videoFile)}`,
       voiceSrc: `${files.url}/${webPath(voiceFile)}`,
+      ...(rest.hud ? { hud: servedHud(rest.hud, files.url) } : {}),
     };
     const browserExecutable = input.browserExecutable || undefined;
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;

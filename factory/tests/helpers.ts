@@ -9,6 +9,7 @@ import { streamAsksSettings } from "../src/streamasks/settings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
 import { learnSettings } from "../src/learn/settings.ts";
+import { hudSettings } from "../src/hudreader/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
 import { packagingSettings } from "../src/packaging/settings.ts";
 import type { FeedItem } from "../src/discovery/rss.ts";
@@ -524,6 +525,7 @@ export function testConfig(
     packaging: packagingSettings({}),
     liveClips: liveClipsSettings({}),
     learn: learnSettings({}),
+    hud: hudSettings({}),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
     characterQuotes: false,

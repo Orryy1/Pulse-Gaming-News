@@ -19,6 +19,8 @@ import { Captions } from "./components/Overlays.tsx";
 import { displayWords, pageCaptions } from "./timeline.ts";
 import { CONTENT_WIDTH, SAFE } from "./layout.ts";
 import type { Word } from "../voice/elevenlabs.ts";
+import type { HudOverlayProps } from "../hudreader/overlay.ts";
+import { HudOverlay } from "./components/hud/HudOverlay.tsx";
 
 export type GameplayShortProps = {
   videoSrc: string; // full-screen 1080x1920, with the game's own sound
@@ -33,6 +35,8 @@ export type GameplayShortProps = {
   /** The narrator's stretches, where the game's sound drops under the voice. */
   voiced: Array<{ start: number; end: number }>;
   accent: string;
+  /** GTA 6 Day N (HUD_PIN, HUD_TICKER, HUD_END_MAP): the location pin, wanted ticker and end map, when measured. */
+  hud?: HudOverlayProps;
 };
 
 export const SAMPLE_GAMEPLAY_SHORT: GameplayShortProps = {
@@ -166,6 +170,7 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
           </div>
         </div>
       ) : null}
+      {props.hud ? <HudOverlay hud={props.hud} /> : null}
       <Captions
         pages={pages}
         accent={props.accent}

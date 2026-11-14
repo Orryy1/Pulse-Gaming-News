@@ -119,6 +119,7 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
+import { hudVodTick } from "./hudreader/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -1937,6 +1938,11 @@ async function main(): Promise<void> {
   if (cfg.macGameplay) {
     void macGameplayTick(cfg);
     setInterval(() => void macGameplayTick(cfg), 5 * 60_000);
+  }
+  // The GTA HUD and minimap reader over the owner's recordings (HUD_READER): src/hudreader/job.ts.
+  if (cfg.hud.enabled) {
+    setTimeout(() => void hudVodTick(cfg), 8 * 60_000);
+    setInterval(() => void hudVodTick(cfg), 15 * 60_000);
   }
   // Near-live clips while the owner streams (LIVE_CLIPS): src/liveclips/job.ts.
   if (cfg.liveClips.enabled) {

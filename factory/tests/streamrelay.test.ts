@@ -4,6 +4,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { tmpDir } from "./helpers.ts";
 import { relaySettings, relaySummary } from "../src/relay/settings.ts";
+import { readRegistry } from "../src/challenge.ts";
 import {
   backoff,
   joinArgs,
@@ -581,4 +582,27 @@ test("relay YouTube calls: finds its own stream, builds the ingest, asks for the
       e instanceof YouTubeApiError &&
       e.reasons[0] === "liveStreamingNotEnabled",
   );
+});
+
+test("relay: with CHALLENGE_SERIES on, the live title's tag files the challenge once and its outcome ends it", async () => {
+  const r = await rig({ CHALLENGE_SERIES: "true" });
+  r.setLive({ id: "T9", startedAt: "2026-11-21T17:59:00Z", title: "GTA 6 [CHALLENGE: no cars]", game: "Grand Theft Auto VI", viewers: 3 });
+  await r.job.tick();
+  await r.job.tick();
+  const reg = readRegistry(r.dir);
+  assert.equal(reg.challenges.length, 1);
+  assert.equal(reg.challenges[0]!.rule, "no cars");
+  assert.equal(r.notes.filter((n) => /New challenge spotted/.test(n)).length, 1);
+  assert.ok(r.notes.some((n) => n.includes("Can I Beat GTA 6 Without Cars?")));
+  r.setLive({ id: "T9", startedAt: "2026-11-21T17:59:00Z", title: "GTA 6 [CHALLENGE: no cars, failed]", game: "Grand Theft Auto VI", viewers: 3 });
+  await r.job.tick();
+  assert.equal(readRegistry(r.dir).challenges[0]!.ended?.outcome, "failed");
+  assert.ok(r.notes.every((n) => !/[–—]/.test(n)));
+});
+
+test("relay: CHALLENGE_SERIES off leaves the registry alone", async () => {
+  const r = await rig();
+  r.setLive({ id: "T9", startedAt: "2026-11-21T17:59:00Z", title: "GTA 6 [CHALLENGE: no cars]", game: "Grand Theft Auto VI", viewers: 3 });
+  await r.job.tick();
+  assert.equal(readRegistry(r.dir).challenges.length, 0);
 });

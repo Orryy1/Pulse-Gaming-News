@@ -516,6 +516,26 @@ import {
   type GtaDailyStory,
 } from "./gtadaily.ts";
 import {
+  applyChallenge,
+  challengeCounter,
+  challengeShelf,
+  linkChallenge,
+  nextEpisodeMade,
+  refreshChallengeLinks,
+} from "./challengestep.ts";
+import { challengeCommentLine, challengeDescriptionLines } from "./challenge.ts";
+import { addPremiere, isPremiereDoc, premiereNotice, premierePrivacy } from "./premiere.ts";
+import {
+  recapDue,
+  recapHeldUntil,
+  recapProblems,
+  recapTitleProblems,
+  recapTopic,
+  recapWindows,
+  streamedStory,
+} from "./storyrecap.ts";
+import { sceneSlug as recapSlug } from "./sceneindex/schema.ts";
+import {
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
@@ -1402,6 +1422,8 @@ export function seriesFor(
   const tag = cfg.seriesPlaylists ? seriesTagOf(sc, ep.story_hash) : undefined;
   if (tag === "gta_file") out.push(SERIES.gtaFile);
   else if (tag === "verdict") out.push(SERIES.verdict);
+  // A challenge episode (src/challenge.ts): its own challenge's shelf, in order.
+  else if (ep.story_json?.challenge) out.push(challengeShelf(ep.story_json.challenge));
   // GTA 6 Day N (src/gtadaily.ts): every episode on the daily's own shelf, in order.
   else if (ep.story_json?.gtaDaily) out.push(dailySeries());
   // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
@@ -3831,6 +3853,9 @@ export async function maybeSelectDocumentary(
   // A full game retrospective (src/retrospective.ts, RETRO_ENABLED): its slot's game, once its spoiler window has
   // ended and its full-story movie is filed in the scene index.
   if (!plannedDoc && cfg.retroEnabled) plannedDoc = await retrospectiveDue(s, now);
+  // The story recap from the owner's own play (src/storyrecap.ts, STORY_RECAP): after the spoiler window, once the
+  // story has been streamed.
+  if (!plannedDoc && cfg.storyRecap.enabled) plannedDoc = await storyRecapDue(s, now);
   // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
   // not run at all, once told, and the slot goes back to the usual lanes.
   if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
@@ -4095,6 +4120,45 @@ async function retrospectiveDue(
   return { at: due.at, topic: due.topic, entry };
 }
 
+/** The story recap (src/storyrecap.ts) when its making window is open, the window closed and the story streamed. */
+async function storyRecapDue(
+  s: Services,
+  now: Date,
+): Promise<{ at: Date; topic: DocTopic; entry: RunDoc } | undefined> {
+  const { db, cfg } = s;
+  const entries = readRun(cfg.shortRunFile).filter((e): e is RunDoc => e.kind === "doc" && Boolean(e.story_recap));
+  const taken = await takenSlots(db);
+  for (const entry of entries) {
+    const r = entry.story_recap!;
+    const key = `recap-${recapSlug(r.game)}`;
+    const [made] = await db.query(
+      `SELECT 1 FROM episodes WHERE lane = 'longform' AND factcheck_json->'topic'->'retro'->>'key' = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+      [key],
+    );
+    let story: Awaited<ReturnType<typeof streamedStory>> | undefined;
+    const due = recapDue(entry, now, taken, cfg.timezone, Boolean(made), () => ({
+      windows: recapWindows(spoilerWindows(), cfg.gameFetchTitles, r.game, cfg.spoilerWindowDays),
+      problems: [],
+    }));
+    let waiting = due.waiting;
+    if (due.at) {
+      story = await streamedStory(cfg.dataDir, r.game);
+      const problems = [
+        ...recapProblems(story.index, cfg.storyRecap),
+        ...recapTitleProblems(entry.title, r.short),
+      ];
+      if (!problems.length) {
+        log("info", "story recap due", { title: entry.title, at: due.at.toISOString(), streams: story.vods.length });
+        return { at: due.at, topic: recapTopic(entry, story.vods, due.at.getUTCFullYear()), entry };
+      }
+      waiting = problems.join("; ");
+    }
+    if (waiting && !(await weeklyTried(db, `recap_wait:${key}:${dayKey(now, cfg.timezone)}`)))
+      await s.notify({ level: "info", content: `"${entry.title}" is waiting: ${waiting.slice(0, 900)}.` });
+  }
+  return undefined;
+}
+
 /**
  * More to write from: the chapter's own article at greater length, the story's main article and the other articles
  * the outline names. A chapter short of evidence gets this rather than a tighter restriction.
@@ -4142,7 +4206,7 @@ async function stepScriptDocumentary(
   // from the scene index's acts, and each chapter's own sources (its section's reading, its press, its act's lines).
   const retro = topic.format === "retro" ? topic.retro : undefined;
   if (retro) s = retroServices(s);
-  const retroIdx = retro ? await retroIndex(s.cfg, topic.franchise) : undefined;
+  const retroIdx = retro ? await retroIndex(s.cfg, topic.franchise, topic.recap) : undefined;
   // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
@@ -5516,6 +5580,10 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       voiced: timing.voiced,
       accent: "#FF6B1A",
       ...(hud ? { hud } : {}),
+      // CHALLENGE_SERIES: the episode, the rule and the measured running count (src/challenge.ts).
+      ...(s.cfg.challenge.enabled && ep.story_json.challenge
+        ? { challenge: challengeCounter(ep.story_json.challenge, timing.hookEnd, duration) }
+        : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -5883,7 +5951,8 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_start: direction.focus_start,
       focus_payoff: direction.focus_payoff,
     };
-    await applyGtaDaily(s, ep, script, meta);
+    // CHALLENGE_SERIES (src/challenge.ts): a tagged stream's clip is a challenge episode, and then never a Day N.
+    if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -5978,7 +6047,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     await gameplayExperiments(s.cfg),
     ref.live,
   );
-  await applyGtaDaily(s, ep, script, meta);
+  if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -6122,6 +6191,19 @@ export async function applyGtaDaily(
   ep.story_json.gtaDaily = story;
   ep.slot_at = target.at.toISOString();
   await logEvent(s.db, ep.id, "gta_daily_numbered", { day: target.day, slot_at: target.at.toISOString(), title });
+}
+
+/** A public challenge episode's links (src/challengestep.ts), never during the owner's publishing hold. */
+async function linkChallengePublic(s: Services, ep: Episode): Promise<void> {
+  if (await publishHeld(s.db)) return;
+  await linkChallenge(
+    s,
+    ep,
+    s.youtube(accountOf(ep)) as Partial<{
+      rewriteDescriptions: (id: string, fn: (d: string, lang: string) => string) => Promise<number>;
+    }>,
+    (n) => quotaAdd(s.db, s.now(), n),
+  );
 }
 
 /** With GTA_DAILY on, the daily slot on the run's days is kept for the day's episode: other gameplay Shorts go elsewhere. */
@@ -13949,6 +14031,8 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   }
   // GTA 6 Day N: the day before and the playlist, for the description's links.
   if (ep.story_json.gtaDaily) ep = await refreshGtaDailyLinks(s, ep);
+  // A challenge episode: the one before and the playlist (src/challenge.ts).
+  if (ep.story_json.challenge) ep = await refreshChallengeLinks(s, ep);
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
@@ -13957,7 +14041,9 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   );
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
-  const holdUpload = publishAt && s.cfg.youtubePrivacy !== "public";
+  // A Premiere documentary (PREMIERE_DOCS) uploads private as soon as it is made, for the Studio premiere step.
+  const holdUpload =
+    publishAt && s.cfg.youtubePrivacy !== "public" && !isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json);
   await transition(s.db, ep.id, "approved", "uploading", {
     publish_at: publishAt ?? null,
     ...(holdUpload ? { next_attempt_at: publishAt } : {}),
@@ -14182,6 +14268,8 @@ export function videoMetadata(
       leonida ? `\n${leonida}` : "",
       // GTA 6 Day N (src/gtadaily.ts): the day before and the whole run, in order.
       ep.story_json.gtaDaily ? `\n${dailyDescriptionLines(ep.story_json.gtaDaily).join("\n")}` : "",
+      // A challenge episode (src/challenge.ts): the one before, the series in order and the count so far.
+      ep.story_json.challenge ? `\n${challengeDescriptionLines(ep.story_json.challenge).join("\n")}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
         : "",
@@ -14288,6 +14376,21 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.`,
     });
     return;
+  }
+  // STORY_RECAP (src/storyrecap.ts): a full-spoiler recap never goes out while its game's spoiler window is open,
+  // whatever happened before; it waits for the window's end.
+  const recapGame = (ep.factcheck_json as { topic?: DocTopic } | null)?.topic?.recap?.game;
+  if (recapGame) {
+    const at = ep.publish_at ? new Date(ep.publish_at) : s.now();
+    const until = recapHeldUntil(
+      recapWindows(spoilerWindows(), s.cfg.gameFetchTitles, recapGame, s.cfg.spoilerWindowDays),
+      [s.now(), at],
+    );
+    if (until) {
+      await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, new Date(until)]);
+      await logEvent(s.db, ep.id, "recap_spoiler_hold", { until });
+      return;
+    }
   }
   // The owner's publishing hold: wait, and look again in a quarter of an hour.
   if (await publishHeld(s.db)) {
@@ -14415,7 +14518,8 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       buildResource(
         videoMetadata(
           ep,
-          s.cfg.youtubePrivacy,
+          // PREMIERE_DOCS (src/premiere.ts): a Premiere documentary goes up private and unscheduled; Studio sets it.
+          premierePrivacy(isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json), s.cfg.youtubePrivacy),
           // The altered-content flag: the AI voice, or a kept AI picture under AI_IMAGE_GATE (src/reviewer.ts).
           syntheticMediaFor(
             ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
@@ -14593,6 +14697,7 @@ export async function confirmPublished(s: Services): Promise<void> {
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
       if (live?.story_json.gtaDaily) await linkGtaDaily(s, live);
+      if (live?.story_json.challenge) await linkChallengePublic(s, live);
       // Now it is public it can join its series playlist (SERIES_PLAYLISTS; off, it joined at upload).
       if (live && s.cfg.seriesPlaylists) await addToSeries(s, live, "public");
     } else if (st?.privacyStatus === "private") {
@@ -14659,7 +14764,11 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "comment_posted", { id, text: q });
       return;
     }
-    const daily = ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "";
+    const daily = ep.story_json.gtaDaily
+      ? await gtaDailyComment(s, ep)
+      : ep.story_json.challenge
+        ? challengeCommentLine(ep.story_json.challenge, await nextEpisodeMade(s.db, ep.story_json.challenge))
+        : "";
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
       const q = [shortComment(script), daily].filter(Boolean).join("\n\n");
       if (!q) {
@@ -14890,6 +14999,22 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   });
   if (st.privacyStatus === "public") await gameplayLive(s, ep);
   if (st.privacyStatus === "public" && ep.story_json.gtaDaily) await linkGtaDaily(s, ep);
+  if (st.privacyStatus === "public" && ep.story_json.challenge) await linkChallengePublic(s, ep);
+  // PREMIERE_DOCS: on the premiere list for the browser task, and Discord told (src/premiere.ts).
+  if (isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json) && st.privacyStatus === "private" && ep.youtube_video_id) {
+    const entry = addPremiere(
+      s.cfg.dataDir,
+      {
+        episode: ep.id,
+        videoId: ep.youtube_video_id,
+        title: ep.script_json!.youtube.title,
+        at: new Date(ep.publish_at ?? ep.slot_at ?? s.now()),
+      },
+      s.now(),
+    );
+    await logEvent(s.db, ep.id, "premiere_pending", { video: entry.videoId, at: entry.at });
+    await s.notify({ content: premiereNotice(entry), ping: true });
+  }
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const longVideo = ep.script_json?.runtime === "long";
   // A documentary's community post and poll (COMMUNITY_DRAFTS, src/social/community.ts): drafted now from

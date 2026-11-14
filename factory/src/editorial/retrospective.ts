@@ -127,8 +127,19 @@ export function retroMinutes(minutes: number): number {
 /** Chapters per section for a target length (pure): every section at least its minimum, the rest by share. */
 export function retroChapterBudget(
   minutes: number,
+  /** STORY_RECAP (src/storyrecap.ts): every chapter a story chapter. */
+  storyOnly = false,
 ): Record<RetroSection, number> {
   const m = retroMinutes(minutes);
+  if (storyOnly) {
+    const story = Math.max(
+      RETRO_SECTION_INFO.story.min,
+      Math.round(((m - RETRO_BOOKEND_MINUTES) * RETRO_WPM) / RETRO_CHAPTER_WORDS),
+    );
+    return Object.fromEntries(
+      RETRO_SECTIONS.map((s) => [s, s === "story" ? story : 0]),
+    ) as Record<RetroSection, number>;
+  }
   const total = Math.max(
     RETRO_SECTIONS.reduce((n, s) => n + RETRO_SECTION_INFO[s].min, 0),
     Math.round(((m - RETRO_BOOKEND_MINUTES) * RETRO_WPM) / RETRO_CHAPTER_WORDS),
@@ -406,6 +417,8 @@ export interface RetroOutlineInput {
   /** Other Wikipedia articles a chapter may name as its source (the studio, a controversy, a remaster). */
   also?: string[];
   feedback?: string[];
+  /** STORY_RECAP: a story recap, told only through the story's acts (src/storyrecap.ts). */
+  storyOnly?: boolean;
 }
 
 const HOUSE = `You plan long retrospectives for Pulse Gaming News, a YouTube channel about video games. British English, no serial comma. The narrator is the viewer's friend who knows this game inside out: warm, sure of his takes, a little dry; he says "I" rarely.`;
@@ -415,10 +428,16 @@ export function retroOutlineSystem(
   budget: Record<RetroSection, number>,
 ): string {
   const total = budgetTotal(budget);
-  const sections = RETRO_SECTIONS.map(
-    (s, i) =>
-      `${i + 1}. ${s} (${RETRO_SECTION_INFO[s].label}): exactly ${budget[s]} chapter${budget[s] === 1 ? "" : "s"}. ${RETRO_SECTION_INFO[s].brief}`,
-  ).join("\n");
+  const sections = RETRO_SECTIONS.filter((s) => budget[s] > 0)
+    .map(
+      (s, i) =>
+        `${i + 1}. ${s} (${RETRO_SECTION_INFO[s].label}): exactly ${budget[s]} chapter${budget[s] === 1 ? "" : "s"}. ${RETRO_SECTION_INFO[s].brief}`,
+    )
+    .join("\n");
+  const recap =
+    total === budget.story
+      ? "\nThis is a story recap: every chapter is a story chapter, in story order, from the first scene to the last; nothing about how the game was made or received."
+      : "";
   return `${HOUSE}
 
 Plan a full retrospective of one game in ${total} chapters, each about ${Math.round(RETRO_CHAPTER_WORDS / RETRO_WPM)} minutes of narration, in this order of sections:
@@ -427,14 +446,14 @@ ${sections}
 The story section tells the whole story with full spoilers, ending included: story chapter k tells act k of the act list, in order, so "act" is 1, 2, 3 ... across the story chapters and every act is told once. Its title names that act's turning point. The other sections have act 0. An act with few or no lines listed is planned from the overview's plot, in story order, as if it were complete: the list is only a guide to where the game's scenes fall, and nothing in the plan ever mentions what the list lacks.
 Chapter titles are mini-headlines with a verb or a conflict, each searchable on its own ("The Riot That Ended It", "How Rockstar Built a State"), never a topic label ("Reception", "Gameplay") and never "Part 2". No two alike.
 Plan only what the overview or an act's lines document: a chapter built on something neither mentions can't be written. "wiki_title" is the article that documents the chapter (usually the game's own).
-Write the question the retrospective answers.`;
+Write the question the retrospective answers.${recap}`;
 }
 
 export async function outlineRetro(
   llm: Llm,
   input: RetroOutlineInput,
 ): Promise<RetroOutline> {
-  const budget = retroChapterBudget(input.minutes);
+  const budget = retroChapterBudget(input.minutes, input.storyOnly);
   const acts = input.acts
     .map(
       (a) =>
@@ -480,7 +499,8 @@ export function validateRetroOutline(
     }
   for (const s of RETRO_SECTIONS) {
     const n = outline.chapters.filter((c) => c.section === s).length;
-    if (n < RETRO_SECTION_INFO[s].min)
+    // A section the budget leaves out (a story recap's) has no minimum.
+    if (budget[s] > 0 && n < RETRO_SECTION_INFO[s].min)
       out.push(
         `The ${s} section has ${n} chapters; it needs at least ${RETRO_SECTION_INFO[s].min}.`,
       );

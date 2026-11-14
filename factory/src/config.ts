@@ -283,6 +283,24 @@ export interface Config {
   gtaDailySlot: string;
   /** How many days the run is numbered for (GTA_DAILY_DAYS, 28). */
   gtaDailyDays: number;
+  /**
+   * "Can I beat GTA 6 without...?" (src/challenge.ts): numbered challenge series from the owner's streams, started by a
+   * "[CHALLENGE: rule]" tag in his Twitch title (CHALLENGE_SERIES, off by default). quietDays (CHALLENGE_END_DAYS, 7):
+   * days without the tag that end a challenge. ideasFile (CHALLENGE_IDEAS_FILE): the ranked ideas report.
+   */
+  challenge: { enabled: boolean; quietDays: number; ideasFile: string };
+  /**
+   * PREMIERE_DOCS (src/premiere.ts, off by default): a run documentary marked "premiere" uploads private with all its
+   * metadata and is flagged for the Studio premiere step (the YouTube Data API cannot schedule a Premiere).
+   */
+  premiereDocs: boolean;
+  /**
+   * STORY_RECAP (src/storyrecap.ts, off by default): the full-spoiler story recap from the owner's own play, a dated run
+   * entry that waits for the spoiler window to end and enough of the story to be streamed. minHours
+   * (STORY_RECAP_MIN_HOURS, 15), minLines (STORY_RECAP_MIN_LINES, 400) and needEnd (STORY_RECAP_NEED_END, true: the
+   * end credits must have been seen on stream).
+   */
+  storyRecap: { enabled: boolean; minHours: number; minLines: number; needEnd: boolean };
   /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,gta_file=45-55"; empty = the old 25-40 s for every Short. */
   shortLengths: ShortLengths;
   /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
@@ -1463,6 +1481,18 @@ export function loadConfig(): Config {
     gtaDailyStart: str("GTA_DAILY_START", "2026-11-19"),
     gtaDailySlot: str("GTA_DAILY_SLOT", "21:00"),
     gtaDailyDays: Math.max(1, int("GTA_DAILY_DAYS", 28)),
+    challenge: {
+      enabled: bool("CHALLENGE_SERIES", false),
+      quietDays: Math.max(1, int("CHALLENGE_END_DAYS", 7)),
+      ideasFile: str("CHALLENGE_IDEAS_FILE", ""),
+    },
+    premiereDocs: bool("PREMIERE_DOCS", false),
+    storyRecap: {
+      enabled: bool("STORY_RECAP", false),
+      minHours: Math.max(1, int("STORY_RECAP_MIN_HOURS", 15)),
+      minLines: Math.max(0, int("STORY_RECAP_MIN_LINES", 400)),
+      needEnd: bool("STORY_RECAP_NEED_END", true),
+    },
     shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
     instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
@@ -2232,6 +2262,11 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : "off",
     gtaFile: gtaFileSummary(c),
     gtaDaily: gtaDailySummary(c),
+    challengeSeries: c.challenge.enabled ? `on, ends after ${c.challenge.quietDays} quiet days` : "off",
+    premiereDocs: c.premiereDocs ? "on: marked documentaries upload private for the Studio premiere step" : "off",
+    storyRecap: c.storyRecap.enabled
+      ? `on: ${c.storyRecap.minHours}h of story streamed, ${c.storyRecap.minLines} heard lines${c.storyRecap.needEnd ? ", the end credits seen" : ""}`
+      : "off",
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

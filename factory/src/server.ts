@@ -102,6 +102,16 @@ import {
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { vaultHousekeeping } from "./factvault/nightly.ts";
+import { challengeHousekeeping } from "./challengestep.ts";
+import {
+  challengeSeriesTitle,
+  editRegistry,
+  endByHand,
+  readRegistry,
+  startByHand,
+  type ChallengeOutcome,
+} from "./challenge.ts";
+import { dayKey as localDay } from "./lanes.ts";
 import {
   lanRequestAllowed,
   macReservationsDoc,
@@ -499,6 +509,31 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
 </script>`,
         ),
       );
+    }
+    // The challenge series by hand (admin key, src/challenge.ts): ?start=no cars[&game=...] opens one as the stream
+    // title's tag would, ?end=<slug>&outcome=made|failed closes it; no parameters lists them. The tag in the Twitch
+    // title is the usual way; this is for a stream whose title was set without it.
+    if (url.pathname === "/admin/challenge" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const now = new Date();
+      const start = url.searchParams.get("start")?.trim();
+      const end = url.searchParams.get("end")?.trim();
+      let note = "";
+      if (start) {
+        const r = editRegistry(cfg.dataDir, (reg) =>
+          startByHand(reg, start, url.searchParams.get("game") || "Grand Theft Auto VI", now, localDay(now, cfg.timezone)),
+        );
+        note = r.challenge ? `started: ${challengeSeriesTitle(r.challenge.rule, r.challenge.game)}` : "not a rule";
+      } else if (end) {
+        const o = url.searchParams.get("outcome");
+        const outcome: ChallengeOutcome = o === "made" ? "made it" : o === "failed" ? "failed" : "unknown";
+        const r = editRegistry(cfg.dataDir, (reg) => endByHand(reg, end, outcome, now));
+        note = r.challenge ? `ended: ${r.challenge.rule} (${outcome})` : "no such challenge";
+      }
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ note, on: cfg.challenge.enabled, ...readRegistry(cfg.dataDir) }, null, 2));
+      return;
     }
     // The publishing hold (admin key): ?set=on stops every upload, cross-post, reply and post until ?set=off.
     if (url.pathname === "/admin/hold" && req.method === "GET") {
@@ -1943,6 +1978,16 @@ async function main(): Promise<void> {
   if (cfg.hud.enabled) {
     setTimeout(() => void hudVodTick(cfg), 8 * 60_000);
     setInterval(() => void hudVodTick(cfg), 15 * 60_000);
+  }
+  // The challenge series (CHALLENGE_SERIES, src/challenge.ts): tagged recordings filed, quiet challenges closed and
+  // the ranked ideas report written, every three hours.
+  if (cfg.challenge.enabled) {
+    const challengePass = () =>
+      void challengeHousekeeping(cfg, db, (m) => services.notify(m), new Date()).catch((err) =>
+        log("warn", "challenge pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(challengePass, 9 * 60_000);
+    setInterval(challengePass, 3 * 3_600_000);
   }
   // Near-live clips while the owner streams (LIVE_CLIPS): src/liveclips/job.ts.
   if (cfg.liveClips.enabled) {

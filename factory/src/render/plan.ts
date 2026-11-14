@@ -162,7 +162,7 @@ export interface RenderPlan {
   scenes?: PlannedScene[];
 }
 
-const QUIET_KINDS = new Set([
+export const QUIET_KINDS = new Set([
   "report",
   "versus",
   "specs",

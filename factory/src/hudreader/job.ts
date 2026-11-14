@@ -187,3 +187,24 @@ export async function readClip(
   const profile = await loadProfile(o.game);
   return { raw, track: buildTrack(raw, profile) };
 }
+
+/**
+ * HUD_FACTS: what the reader measures in a gameplay clip, as lines for the reviewer (measured facts and the HUD's
+ * own moments). Undefined when off, not a GTA clip, not calibrated or unreadable.
+ */
+export async function clipFacts(
+  s: HudSettings,
+  dataDir: string,
+  o: { file: string; title: string; work: string },
+): Promise<{ facts: string[]; events: string[] } | undefined> {
+  if (!s.enabled || !s.facts) return undefined;
+  const game = profileFor(o.title);
+  if (!game || !s.games.includes(game)) return undefined;
+  const profile = await loadProfile(game).catch(() => undefined);
+  if (!profile?.calibrated) return undefined;
+  const read = await readClip(s, dataDir, { file: o.file, game, out: path.join(o.work, "hud_raw.json") }).catch(() => undefined);
+  if (!read || read.track.quality.hudShare < 0.3) return undefined;
+  const facts = measuredFacts(read.track, { metresPerUnit: profile.metresPerUnit ?? null, minConfidence: s.minConfidence }).map((f) => f.text);
+  const events = hudSignals(read.track.events).map((e) => `${e.detail} at ${Math.round(e.t)} s`);
+  return { facts, events };
+}

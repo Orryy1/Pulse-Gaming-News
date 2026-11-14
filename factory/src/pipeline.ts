@@ -228,7 +228,7 @@ import {
   loopRepeatsHook,
 } from "./gameplaydirect.ts";
 import { dayNOverlay } from "./hudreader/dayn.ts";
-import { profileFor } from "./hudreader/job.ts";
+import { clipFacts, profileFor } from "./hudreader/job.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
   cutdownRanks,
@@ -5576,6 +5576,12 @@ export async function ingestGameplay(
       if (prior) review = prior;
       else {
         const clip = path.join(dir, meta.clip.file || "clip.mp4");
+        // HUD_FACTS: the clip's HUD measured first, so the reviewer can use a measured figure.
+        const hud = await clipFacts(cfg.hud, cfg.dataDir, { file: clip, title: `${meta.source.title} ${meta.review?.game ?? ""}`, work: dir }).catch(() => undefined);
+        if (hud) {
+          meta.hud = hud;
+          await writeMeta(dir, { hud });
+        }
         const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
         await writeWhole(path.join(dir, "words.json"), JSON.stringify(words));
         review = await reviewClip(

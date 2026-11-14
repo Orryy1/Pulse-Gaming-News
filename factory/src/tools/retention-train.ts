@@ -24,6 +24,7 @@ import {
   trainModel,
   type BaselineItem,
   type DatasetVideo,
+  type RetentionModel,
   type TrainItem,
 } from "../retentionmodel.ts";
 
@@ -84,7 +85,9 @@ const learnRows = bt.perVideo.map((h) => {
 console.log("backtest against RETENTION_LEARN's drops:", JSON.stringify(learnScore));
 // The director on the backtest Shorts, as it would have run before each went out (the model that had not seen it).
 const byVideo = new Map(ds.videos.map((v) => [v.videoId, v]));
-const director = items.slice(cut).map((it) => {
+// Every Short, directed by the cross-validation model that had not seen it (the backtest's newest ones by the
+// time-ordered model): the pool the before-and-after proof picks from.
+const directorFor = (it: TrainItem, m: RetentionModel) => {
   const ep = byVideo.get(it.video)!.episode!;
   const a = ep.assets;
   const words = a.words;
@@ -100,9 +103,11 @@ const director = items.slice(cut).map((it) => {
     gameAudio: ep.gameAudio,
     desk: Boolean(a.desk),
   };
-  const r = directShort(btModel, input, "fix", segmentInputs);
-  return { video: it.video, episode: ep.id, title: titles.get(it.video), report: r, plan: r?.fixes.length ? input.plan : undefined };
-});
+  const r = directShort(m, input, "fix", segmentInputs);
+  return { video: it.video, episode: ep.id, title: titles.get(it.video), publishedAt: it.publishedAt, model: m === btModel ? "backtest-model.json" : `fold-${cv.models.indexOf(m)}.json`, report: r, plan: r?.fixes.length ? input.plan : undefined };
+};
+const director = items.slice(cut).map((it) => directorFor(it, btModel));
+const directorAll = items.map((it, k) => (k >= cut ? directorFor(it, btModel) : directorFor(it, cv.models[cv.foldOf[k]!]!)));
 console.log("director on the backtest Shorts:", director.map((d) => `${d.video} ${d.report?.predicted}->${d.report?.after ?? "-"} fixes ${d.report?.fixes.length}`).join("; "));
 const model = trainModel(items, extra, new Date());
 model.validation = cv.validation;
@@ -117,6 +122,8 @@ fs.writeFileSync(
 );
 fs.writeFileSync(path.join(outDir, "backtest-model.json"), JSON.stringify(btModel));
 fs.writeFileSync(path.join(outDir, "director-backtest.json"), JSON.stringify(director, null, 1));
+fs.writeFileSync(path.join(outDir, "director-all.json"), JSON.stringify(directorAll, null, 1));
+cv.models.forEach((m, k) => fs.writeFileSync(path.join(outDir, `fold-${k}.json`), JSON.stringify(m)));
 fs.writeFileSync(
   path.join(outDir, "validation.json"),
   JSON.stringify(

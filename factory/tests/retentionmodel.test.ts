@@ -24,6 +24,7 @@ import {
   shortFrame,
   smoothCurve,
   spearman,
+  stableFindings,
   trainGbm,
   trainModel,
   trainRidge,
@@ -34,6 +35,7 @@ import {
   type TrainItem,
 } from "../src/retentionmodel.ts";
 import {
+  TRIM_SECONDARY,
   directorMode,
   directShort,
   freshFootage,
@@ -599,4 +601,30 @@ test("datasetItems: Shorts with records train, the rest teach the baseline", () 
     actualWeakMoments(curve, 30, hazardBaseline([{ curve, duration: 30 }]))
       .length <= 3,
   );
+});
+
+test("stable findings keep only directions the fold models agree on", () => {
+  const items = synthetic(40, 9);
+  const cv = crossValidate(items, [], 4, { trees: 40 });
+  assert.equal(cv.models.length, 4);
+  assert.equal(cv.foldOf.length, items.length);
+  const full = trainModel(items, [], new Date(0), { trees: 40 });
+  const rows = items.flatMap((i) => samplesOf(i.video, i.frame, full.baseline, i.curve).map((s) => s.x));
+  const stable = stableFindings(full, cv.models, rows);
+  const plate = stable.find((f) => f.feature === "shot_plate");
+  assert.ok(plate && plate.points > 0, "the plate effect is stable");
+  // A model that disagrees on everything leaves nothing standing.
+  const flipped = { ...full, gbm: { ...full.gbm, trees: full.gbm.trees.map((t) => t.map((n) => ({ ...n, value: -n.value }))), init: -full.gbm.init }, level: undefined };
+  assert.ok(stableFindings(full, [flipped, flipped], rows).length < modelFindings(full, rows).length);
+});
+
+test("the director never trims a stat, quote or report label", () => {
+  const { model: m } = model();
+  const inp = directorInput(["plate", "plate", "plate", "plate", "plate"], "A very long label that explains the figure on the card");
+  const k = inp.segments.findIndex((g) => g.kind === "beat" && g.visual && g.visual.kind !== "none");
+  inp.segments[k]!.visual!.kind = "stat";
+  const r = directShort(m, inp, "fix", segmentInputs)!;
+  assert.ok(!r.fixes.some((f) => f.kind === "card_text"));
+  assert.equal(TRIM_SECONDARY.has("quote"), false);
+  assert.equal(TRIM_SECONDARY.has("title"), true);
 });

@@ -1347,7 +1347,7 @@ export function crossValidate(
     .map((_, k) => ({ k, r: rand() }))
     .sort((a, b) => a.r - b.r);
   const fold = new Map(order.map((x, i) => [x.k, i % folds]));
-  return evaluateSplit(items, extra, (_, k) => fold.get(k)!, folds, o);
+  return { ...evaluateSplit(items, extra, (_, k) => fold.get(k)!, folds, o), foldOf: items.map((_, k) => fold.get(k)!) };
 }
 
 // ---------------------------------------------------------------- findings for the writers and editors

@@ -120,8 +120,11 @@ export interface DirectorReport {
 export const MIN_GAIN = 0.15;
 /** A card's text is long from this many characters (a 1080-wide card fits about two short lines). */
 export const LONG_CARD = 34;
-/** Cards whose second line is a source or a name (a quote's speaker, a report's outlet, a rank's game): never trimmed. */
-export const KEEP_SECONDARY = new Set(["quote", "report", "rank", "versus", "compare"]);
+/**
+ * Cards whose small second line is a subtitle the card reads without (a title's tag, a timeline's or a date's caption):
+ * the only ones trimmed. A stat, price or score needs its label; a quote, report or rank names its source.
+ */
+export const TRIM_SECONDARY = new Set(["title", "timeline", "date", "milestones", "platforms", "chapter", "specs"]);
 /** A pause this long (s) inside a weak moment is a slow line. */
 export const SLOW_PAUSE = 0.45;
 /** Narration slower than this (words a second) inside a weak moment is a slow line. */
@@ -423,7 +426,7 @@ export function directShort(
         !v ||
         v.kind === "none" ||
         !v.secondary ||
-        KEEP_SECONDARY.has(v.kind) ||
+        !TRIM_SECONDARY.has(v.kind) ||
         cardText(v).length < LONG_CARD
       )
         continue;

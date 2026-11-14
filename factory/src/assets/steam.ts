@@ -79,6 +79,8 @@ export interface SteamFacts {
   /** A short background from the game's Wikipedia article (development, release, sales, reception, legacy). */
   background?: string;
   backgroundUrl?: string;
+  /** The Pulse Fact Vault's verified facts for this game, with their primary sources (FACT_VAULT, src/factvault). */
+  vault?: string;
 }
 
 const ROMAN: Record<string, number> = {
@@ -289,6 +291,7 @@ export function factsText(f: SteamFacts): string {
     `Data fetched: ${f.fetchedAt}`,
     f.background &&
       `Background notes: ${f.background.replace(/\s+/g, " ").trim()}`,
+    f.vault,
   ];
   return lines.filter(Boolean).join("\n");
 }

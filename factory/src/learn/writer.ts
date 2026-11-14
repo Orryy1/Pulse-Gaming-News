@@ -22,6 +22,7 @@ import {
   briefsFor,
   choose,
   hookScorer,
+  HOOK_MODEL_MIN_SKILL,
   hookScorerName,
   predictHook,
   writeHookCandidates,
@@ -122,7 +123,10 @@ async function hookModel(db: Db): Promise<number[] | undefined> {
     [HOOK_MODEL_KEY],
   );
   try {
-    return row ? (JSON.parse(row.value) as { w: number[] }).w : undefined;
+    if (!row) return undefined;
+    const m = JSON.parse(row.value) as { w: number[]; skill?: number | null };
+    // A model that cannot rank unseen hooks better than chance never ranks candidates.
+    return (m.skill ?? 0) >= HOOK_MODEL_MIN_SKILL ? m.w : undefined;
   } catch {
     return undefined;
   }
@@ -133,10 +137,11 @@ export async function saveHookModel(
   w: number[],
   n: number,
   now: Date,
+  skill?: number,
 ): Promise<void> {
   await db.query(
     `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
-    [HOOK_MODEL_KEY, JSON.stringify({ w, n, at: now.toISOString() })],
+    [HOOK_MODEL_KEY, JSON.stringify({ w, n, skill: skill ?? null, at: now.toISOString() })],
   );
 }
 

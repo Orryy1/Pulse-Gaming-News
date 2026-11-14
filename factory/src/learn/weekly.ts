@@ -35,7 +35,7 @@ import {
   retireLessons,
   type CurateResult,
 } from "./playbook.ts";
-import { fitHookModel } from "./breadth.ts";
+import { fitHookModel, hookModelSkill } from "./breadth.ts";
 import { saveHookModel } from "./writer.ts";
 import { changesBetween, type LedgerRow } from "./ledger.ts";
 import { bootstrapProb, mean } from "./stats.ts";
@@ -315,16 +315,11 @@ export async function runWeekly(
       [outcomes.filter((o) => o.hold3 !== undefined).map((o) => o.episodeId)],
     );
     const byId = new Map(outcomes.map((o) => [o.episodeId, o]));
-    const w = fitHookModel(
-      rows
-        .filter((r) => r.hook)
-        .map((r) => ({
-          hook: r.hook!,
-          game: r.game ?? undefined,
-          y: byId.get(r.id)!.hold3!,
-        })),
-    );
-    if (w) await saveHookModel(s.db, w, rows.length, now);
+    const train = rows
+      .filter((r) => r.hook)
+      .map((r) => ({ hook: r.hook!, game: r.game ?? undefined, y: byId.get(r.id)!.hold3! }));
+    const w = fitHookModel(train);
+    if (w) await saveHookModel(s.db, w, train.length, now, hookModelSkill(train));
     const picks = await s.db.query<{ chosen_idx: number }>(
       `SELECT idx AS chosen_idx FROM hook_candidates WHERE chosen AND created_at > $1`,
       [new Date(now.getTime() - 7 * DAY).toISOString()],

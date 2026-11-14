@@ -10,7 +10,7 @@
 import { z } from "zod";
 import type { Llm } from "../editorial/llm.ts";
 import type { Script } from "../editorial/schema.ts";
-import { rng, seedOf } from "./stats.ts";
+import { rng, seedOf, spearman } from "./stats.ts";
 
 /** The angle briefs: deliberately different ways into the same story. */
 export const ANGLE_BRIEFS: Array<{ id: string; brief: string }> = [
@@ -161,6 +161,19 @@ export function fitHookModel(
   }
   return A.map((row) => row[k]!);
 }
+
+/** Leave-one-out rank correlation of the hook model with what held (pure): its honest out-of-sample skill. */
+export function hookModelSkill(rows: Array<{ hook: string; game?: string; y: number }>): number | undefined {
+  if (rows.length < 21) return undefined;
+  const preds = rows.map((r, i) => {
+    const w = fitHookModel(rows.filter((_, j) => j !== i));
+    return w ? predictHook(w, r.hook, r.game) : 0;
+  });
+  return spearman(preds, rows.map((r) => r.y));
+}
+
+/** The skill a hook model needs before it may rank candidates (below it, the clarity judge alone decides). */
+export const HOOK_MODEL_MIN_SKILL = 0.15;
 
 export const predictHook = (w: number[], hook: string, game?: string): number =>
   hookFeatures(hook, game).reduce((s, x, i) => s + x * (w[i] ?? 0), 0);

@@ -110,7 +110,7 @@ ${curveSvg(
 )}
 <p class="m">Orange: the predicted weak moments. Black-frame scan (frames darker than 16/255): ${s.darkFrames.before} before, ${s.darkFrames.after} after. Length ${s.seconds.before.toFixed(2)} s before, ${s.seconds.after.toFixed(2)} s after.</p>
 ${s.advice?.length ? `<p class="m">Advice recorded for the writers and the shot picker:</p><ul class="m">${s.advice.map((a: string) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
-<p class="m">Frames, two pairs a row, each pair published (left) then re-rendered (right), at ${s.times.map((t: number) => `${t.toFixed(1)} s`).join(", ")}.</p><img src="${esc(s.sheet)}" alt="before and after frames" loading="lazy"></section>`;
+<p class="m">Frames, two pairs a row, each pair ${s.base === "control.mp4" ? "the same plan rendered today with the director off (left)" : "the published file (left)"} then the director's render (right), at ${s.times.map((t: number) => `${t.toFixed(1)} s`).join(", ")}.</p><img src="${esc(s.sheet)}" alt="before and after frames" loading="lazy"></section>`;
   })
   .join("");
 
@@ -154,7 +154,7 @@ ${row("Worst moments caught (model / chance)", `${pc(cv.drops.recall)} / ${pc(cv
 <table><tr><th>Feature</th><th>Points of a Short's audience, all else equal</th></tr>${(v.findings as any[]).map((f) => `<tr><td>${esc(f.what)}</td><td>${f.points > 0 ? "costs" : "holds"} ${Math.abs(f.points).toFixed(1)}</td></tr>`).join("")}</table>
 <p class="m">These are associations in 108 Shorts, not experiments: a trait common to one kind of story can carry that story's audience with it. The lessons the writers receive are the strongest of these, each with its sample size.</p>
 <h2>Five real Shorts, before and after the director</h2>
-<p>Each Short was rendered again in a sandbox from its own stored plan, voice and media with <code>RETENTION_DIRECTOR=fix</code>; nothing else changed and nothing was uploaded. Left of each pair: the published frame; right: the re-render, at each changed shot and each predicted weak moment.</p>
+<p>Each Short was rendered again in a sandbox from its own stored plan, voice and media with <code>RETENTION_DIRECTOR=fix</code>; nothing else changed and nothing was uploaded. Each was also rendered with the director off from the same plan in the same sandbox (the control), so the pairs differ only by what the director changed, not by other factory changes since the Short was published. Frames are taken at each changed shot and each predicted weak moment.</p>
 ${proofCards || "<p>No proof renders yet.</p>"}
 <h2>Settings</h2>
 <ul><li><code>RETENTION_DIRECTOR=off</code> (default): nothing runs.</li><li><code>advise</code>: each Short's predicted curve, weak moments, proposed fixes and advice are recorded on the episode (event <code>retention_director</code>, <code>assets.retention</code>); the plan is untouched. The model retrains weekly and its findings join the writers' lessons.</li><li><code>fix</code>: as advise, and the fixes the model scores as gains of at least ${0.15} points are applied to the plan before the one render, so no re-render is needed.</li></ul>

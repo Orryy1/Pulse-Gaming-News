@@ -8,7 +8,10 @@
 import fs from "node:fs";
 import path from "node:path";
 process.loadEnvFile(path.join(process.env.HOME!, "PulseFactory/factory/.env"));
-const [SB, ...IDS] = process.argv.slice(2);
+// --control: the same render with the director off (control.mp4), so a before-and-after differs only by the director,
+// not by whatever else changed in the factory since the Short was published.
+const CONTROL = process.argv.includes("--control");
+const [SB, ...IDS] = process.argv.slice(2).filter((a) => a !== "--control");
 if (!SB || !IDS.length)
   throw new Error(
     "usage: retention-proof.ts <sandbox data dir> <episode id>...",
@@ -17,7 +20,7 @@ Object.assign(process.env, {
   DATA_DIR: SB,
   DATABASE_URL: "",
   DRY_RUN: "true",
-  RETENTION_DIRECTOR: "fix",
+  RETENTION_DIRECTOR: CONTROL ? "off" : "fix",
   LONGFORM_ENABLED: "false",
   EVERGREEN_ENABLED: "false",
   WEEKLY_ENABLED: "false",
@@ -84,7 +87,7 @@ for (const ID of IDS) {
     );
   }
   const ep = await getEpisode(db, ID);
-  const after = path.join(dir, "after.mp4");
+  const after = path.join(dir, CONTROL ? "control.mp4" : "after.mp4");
   if (fs.existsSync(short)) fs.renameSync(short, after);
   const ret = (ep?.assets_json as any)?.retention;
   results.push({
@@ -99,6 +102,6 @@ for (const ID of IDS) {
     `${ID}: ${fs.existsSync(after) ? "after.mp4 rendered" : "no render"}; director: ${JSON.stringify(ret?.report?.fixes ?? ret?.skipped ?? null).slice(0, 400)}`,
   );
 }
-fs.writeFileSync(path.join(SB, "proof.json"), JSON.stringify(results, null, 1));
+fs.writeFileSync(path.join(SB, CONTROL ? "control.json" : "proof.json"), JSON.stringify(results, null, 1));
 await db.close();
 process.exit(0);

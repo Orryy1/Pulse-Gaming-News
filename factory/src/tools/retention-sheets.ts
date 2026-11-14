@@ -45,6 +45,8 @@ for (const f of fs
     continue;
   }
   const dir = path.join(SB, "episodes", r.id);
+  // The director-off render of the same plan when there is one (only the director differs); else the published file.
+  const base = fs.existsSync(path.join(dir, "control.mp4")) ? path.join(dir, "control.mp4") : path.join(dir, "before.mp4");
   const report = r.retention?.report;
   const fps = r.afterPlan?.fps ?? 30;
   const times = new Set<number>();
@@ -63,7 +65,7 @@ for (const f of fs
       "-ss",
       String(t),
       "-i",
-      path.join(dir, "before.mp4"),
+      base,
       "-frames:v",
       "1",
       "-vf",
@@ -155,6 +157,7 @@ for (const f of fs
   summary.push({
     id: r.id,
     sheet: path.basename(sheet),
+    base: path.basename(base),
     times: list,
     fixes: report?.fixes ?? [],
     predicted: report?.predicted,
@@ -165,11 +168,11 @@ for (const f of fs
     weak: report?.weak,
     advice: report?.advice,
     darkFrames: {
-      before: flashes(path.join(dir, "before.mp4")),
+      before: flashes(base),
       after: flashes(path.join(dir, "after.mp4")),
     },
     seconds: {
-      before: durationOf(path.join(dir, "before.mp4")),
+      before: durationOf(base),
       after: durationOf(path.join(dir, "after.mp4")),
     },
   });

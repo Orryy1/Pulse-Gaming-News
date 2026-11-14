@@ -14,12 +14,15 @@ import {
   SAMPLE_GAMEPLAY_SHORT,
   type GameplayShortProps,
 } from "./GameplayShort.tsx";
+import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import {
   ConceptAvatar,
   ConceptBanner,
   SeriesBanner,
   SERIES_BANNER,
+  DailyBanner,
+  DAILY_BANNER,
   BroadcastCover,
 } from "./BrandConcepts.tsx";
 import {
@@ -274,6 +277,21 @@ export const RemotionRoot: React.FC = () => (
       width={800}
       height={800}
       defaultProps={{ concept: "signal" as const }}
+    />
+    <Still
+      id="DailyBanner"
+      component={DailyBanner}
+      width={2560}
+      height={1440}
+      defaultProps={DAILY_BANNER}
+    />
+    <Composition
+      id="ChannelTrailer"
+      component={ChannelTrailer}
+      durationInFrames={Math.round(TRAILER_SECONDS * TRAILER_FPS)}
+      fps={TRAILER_FPS}
+      width={TRAILER_W}
+      height={TRAILER_H}
     />
     <Still
       id="SeriesBanner"

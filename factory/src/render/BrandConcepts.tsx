@@ -660,3 +660,85 @@ export const SeriesBanner: React.FC<SeriesBannerProps> = ({ line, series }) => (
     />
   </AbsoluteFill>
 );
+
+// ------------------------------------------------------------------ the GTA 6 daily banner (channel page, 14 Nov 2026)
+
+/** The newcomer's reason to subscribe, in the words the channel trailer ends on. */
+export type DailyBannerProps = {
+  headline: string;
+  accent: string;
+  line: string;
+  ticker: string[];
+};
+
+export const DAILY_BANNER: DailyBannerProps = {
+  headline: "GTA 6",
+  accent: "EVERY DAY",
+  line: "+ THE STORIES BEHIND THE GAMES YOU LOVE",
+  ticker: ["GTA 6 DAY BY DAY", "THE WHY", "RANKINGS", "DOCUMENTARIES"],
+};
+
+/**
+ * Everything a phone shows sits in the centre safe box, stacked and centred: the lockup, the headline and the line,
+ * sized to read at phone width (the box is about 360 px wide there). The mark and the ticker sit outside it, for
+ * desktop and TV, where the whole banner shows.
+ */
+export const DailyBanner: React.FC<DailyBannerProps> = ({ headline, accent, line, ticker }) => (
+  <AbsoluteFill
+    style={{
+      background: `radial-gradient(70% 65% at 50% 46%, #23201e 0%, ${INK} 72%)`,
+      overflow: "hidden",
+    }}
+  >
+    <AbsoluteFill
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(255,255,255,0.03) 2px, transparent 2px), linear-gradient(90deg, rgba(255,255,255,0.03) 2px, transparent 2px)",
+        backgroundSize: "120px 120px",
+      }}
+    />
+    <PulseLine
+      width={2560}
+      height={260}
+      color={AMBER}
+      stroke={6}
+      style={{ position: "absolute", left: 0, top: SAFE.top - 230, opacity: 0.18 }}
+    />
+    <Mark size={400} style={{ position: "absolute", left: 60, top: (1440 - 400) / 2, opacity: 0.9 }} />
+    <Mark size={400} color={PAPER} style={{ position: "absolute", right: 60, top: (1440 - 400) / 2, opacity: 0.08 }} />
+    <Box style={{ flexDirection: "column", justifyContent: "center", gap: 18 }}>
+      <div style={{ display: "flex" }}>
+        <div style={{ background: PAPER, color: INK, fontFamily: DISPLAY, fontSize: 84, lineHeight: 1, padding: "6px 22px 0" }}>
+          PULSE
+        </div>
+        <div style={{ background: AMBER, color: INK, fontFamily: DISPLAY, fontSize: 84, lineHeight: 1, padding: "6px 22px 0" }}>
+          GAMING
+        </div>
+      </div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 168, lineHeight: 0.98, color: PAPER, letterSpacing: 2, whiteSpace: "nowrap" }}>
+        {headline} <span style={{ color: AMBER }}>{accent}</span>
+      </div>
+      <div style={{ fontFamily: DISPLAY, fontSize: 74, lineHeight: 1, color: PAPER, letterSpacing: 1.5, whiteSpace: "nowrap" }}>
+        {line}
+      </div>
+    </Box>
+    <div
+      style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        top: SAFE.top + SAFE.height + 40,
+        height: 78,
+        background: AMBER,
+        display: "flex",
+        alignItems: "center",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+      }}
+    >
+      <div style={{ fontFamily: DISPLAY, fontSize: 54, color: INK, letterSpacing: 2, paddingLeft: 40 }}>
+        {Array.from({ length: 4 }, () => ticker.join(" ◆ ")).join(" ◆ ")}
+      </div>
+    </div>
+  </AbsoluteFill>
+);

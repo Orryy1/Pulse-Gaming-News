@@ -29,6 +29,21 @@ import type { ThumbProps } from "./Brand.tsx";
 import type { EngageProps } from "./Engage.tsx";
 import type { CutdownProps } from "./Cutdown.tsx";
 import type { GameplayShortProps } from "./GameplayShort.tsx";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { FFMPEG, FFPROBE } from "../lib/bin.ts";
+import {
+  bundleHash,
+  chunkDirFor,
+  chunkKey,
+  concatList,
+  countArgs,
+  fileStamps,
+  joinArgs,
+  renderChunked,
+  servedFiles,
+} from "./chunked.ts";
+import { masterEncoder, type RenderSpeed } from "./renderspeed.ts";
 
 /**
  * A file name as a URL path: on Windows path.join writes backslashes, and inside a CSS url() a backslash
@@ -251,16 +266,16 @@ async function renderWithTurn(
     "offthreadVideoCacheSizeInBytes"
   >,
   yieldAfter?: number,
+  chunks?: ChunkSetup,
 ): Promise<void> {
   await withPcTurn(
     job,
     async (granted) => {
       rendersActive++;
       try {
-        await renderMediaWatched({
-          ...(await renderMemory(granted)),
-          ...options,
-        });
+        const all = { ...(await renderMemory(granted)), ...options };
+        if (chunks) await renderMediaChunked(all, chunks);
+        else await renderMediaWatched(all);
       } finally {
         rendersActive--;
       }
@@ -268,6 +283,148 @@ async function renderWithTurn(
     yieldAfter,
   );
 }
+
+/** RENDER_CHUNKED: how a render is split, and what its fingerprint must cover beyond the render options. */
+export interface ChunkSetup {
+  seconds: number;
+  keep: boolean;
+  /** The loopback server's address, taken out of the props before they are fingerprinted. */
+  filesUrl: string;
+  /** The folder the props' files are served from: their sizes and times join the fingerprint. */
+  episodeDir: string;
+}
+
+/** The chunk setup for a render, or undefined when chunking is off for this kind of video. */
+export function chunkSetupFor(
+  speed: RenderSpeed | undefined,
+  kind: "long" | "short",
+  filesUrl: string,
+  episodeDir: string,
+): ChunkSetup | undefined {
+  if (!speed || !(kind === "long" ? speed.chunkedLong : speed.chunkedShorts))
+    return undefined;
+  return {
+    seconds: speed.chunkSeconds,
+    keep: speed.keepChunks,
+    filesUrl,
+    episodeDir,
+  };
+}
+
+/**
+ * A render drawn as resumable chunks (src/render/chunked.ts): picture-only chunks through the same freeze-guarded
+ * renderMedia, the sound once for the whole range, then a stream-copy join into the requested output.
+ */
+async function renderMediaChunked(
+  options: Parameters<typeof renderMedia>[0],
+  setup: ChunkSetup,
+): Promise<void> {
+  const { composition, serveUrl, outputLocation } = options;
+  if (!outputLocation) throw new Error("chunked render needs an output file");
+  const fr = options.frameRange;
+  const range: [number, number] = Array.isArray(fr)
+    ? [
+        fr[0] as number,
+        (fr[1] as number | null) ?? composition.durationInFrames - 1,
+      ]
+    : typeof fr === "number"
+      ? [fr, fr]
+      : [0, composition.durationInFrames - 1];
+  const propsJson = JSON.stringify(options.inputProps ?? {});
+  const key = chunkKey({
+    composition: [
+      composition.id,
+      composition.width,
+      composition.height,
+      composition.fps,
+      composition.durationInFrames,
+    ],
+    props: propsJson.split(setup.filesUrl).join("@files"),
+    files: fileStamps(setup.episodeDir, servedFiles(propsJson, setup.filesUrl)),
+    bundle: bundleHash(serveUrl),
+    codec: options.codec,
+    crf: options.crf,
+    pixelFormat: options.pixelFormat,
+    x264Preset: options.x264Preset,
+    hw: options.hardwareAcceleration,
+    videoBitrate: options.videoBitrate,
+    audio: [options.audioCodec, options.audioBitrate],
+    gl: options.chromiumOptions?.gl,
+    jpegQuality: options.jpegQuality,
+  });
+  const chunkFrames = Math.max(1, Math.round(setup.seconds * composition.fps));
+  const report = options.onProgress;
+  const {
+    onProgress: _p,
+    audioCodec: _a,
+    audioBitrate: _b,
+    ...videoOptions
+  } = options;
+  const result = await renderChunked(
+    {
+      dir: chunkDirFor(outputLocation),
+      key,
+      range,
+      chunkFrames,
+      outFile: outputLocation,
+      keepChunks: setup.keep,
+      onProgress: (share) =>
+        report?.({ progress: share } as Parameters<
+          NonNullable<typeof report>
+        >[0]),
+    },
+    {
+      renderVideo: (from, to, file, onShare) =>
+        renderMediaWatched({
+          ...videoOptions,
+          muted: true,
+          frameRange: [from, to],
+          outputLocation: file,
+          onProgress: (p) => onShare(p.progress),
+        }),
+      renderAudio: (file) =>
+        renderMediaWatched({
+          composition,
+          serveUrl,
+          inputProps: options.inputProps,
+          codec: "aac",
+          audioBitrate: options.audioBitrate ?? "192k",
+          outputLocation: file,
+          frameRange: range,
+          concurrency: options.concurrency,
+          browserExecutable: options.browserExecutable,
+          chromiumOptions: options.chromiumOptions,
+          timeoutInMilliseconds: options.timeoutInMilliseconds,
+          offthreadVideoCacheSizeInBytes:
+            options.offthreadVideoCacheSizeInBytes,
+        }),
+      countFrames: async (file) => {
+        const { stdout } = await execFileP(FFPROBE, countArgs(file), {
+          timeout: 120_000,
+        });
+        return Number(stdout.trim()) || 0;
+      },
+      join: async (files, audio, out) => {
+        const list = `${out}.list.txt`;
+        await fsp.writeFile(list, concatList(files));
+        try {
+          await execFileP(FFMPEG, joinArgs(list, audio, out), {
+            timeout: 30 * 60_000,
+          });
+        } finally {
+          await fsp.rm(list, { force: true });
+        }
+      },
+      log: (msg, extra) => log("info", msg, extra ?? {}),
+    },
+  );
+  log("info", "chunked render joined", {
+    out: path.basename(outputLocation),
+    ...result,
+  });
+}
+
+const execFileP = promisify(execFile);
 
 /** Renders drawing frames right now (the wait for a PC turn does not count): the lane watchdog never acts during one. */
 let rendersActive = 0;
@@ -420,13 +577,23 @@ export interface RenderInput {
   episodeDir: string;
   props: Omit<
     ShortProps,
-    "audioSrc" | "images" | "clips" | "logoSrc" | "musicSrc" | "quotes" | "gameBed"
+    | "audioSrc"
+    | "images"
+    | "clips"
+    | "logoSrc"
+    | "musicSrc"
+    | "quotes"
+    | "gameBed"
   > & {
     audioFile: string | null;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
-    quoteFiles?: Array<Omit<import("./props.ts").ShortQuote, "src"> & { file: string }>;
+    quoteFiles?: Array<
+      Omit<import("./props.ts").ShortQuote, "src"> & { file: string }
+    >;
     /** GAME_AUDIO_BED: the footage's own sound, mixed (src/assets/gameaudio.ts), relative to the episode folder. */
-    gameBedFile?: Omit<import("./gamebed.ts").GameBed, "src"> & { file: string };
+    gameBedFile?: Omit<import("./gamebed.ts").GameBed, "src"> & {
+      file: string;
+    };
     imageFiles: Array<{
       file: string;
       kind: string;
@@ -460,9 +627,23 @@ export interface RenderInput {
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
   onProgress?: (p: number) => void;
+  /** Render speed and resume settings (cfg.renderSpeed); the old single-pass x264 render when absent. */
+  speed?: RenderSpeed;
 }
 
+/** Every render-speed setting off: the single-pass x264 render as before. */
+const NO_SPEED: RenderSpeed = {
+  chunkedLong: false,
+  chunkedShorts: false,
+  chunkSeconds: 60,
+  keepChunks: false,
+  hwMaster: false,
+  hwBitrate: "16M",
+};
+
 export interface LongRenderInput {
+  /** Render speed and resume settings (cfg.renderSpeed); the old single-pass x264 render when absent. */
+  speed?: RenderSpeed;
   episodeDir: string;
   props: Omit<
     LongProps,
@@ -508,7 +689,9 @@ export interface LongRenderInput {
     }>;
     musicFile: string | null;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
-    quoteFiles?: Array<Omit<import("./props.ts").ShortQuote, "src"> & { file: string }>;
+    quoteFiles?: Array<
+      Omit<import("./props.ts").ShortQuote, "src"> & { file: string }
+    >;
   };
   outFile: string;
   posterFile: string;
@@ -564,7 +747,12 @@ export function longProps(
   return {
     ...rest,
     ...(quoteFiles?.length
-      ? { quotes: quoteFiles.map(({ file, ...q }) => ({ ...q, src: `${filesUrl}/${webPath(file)}` })) }
+      ? {
+          quotes: quoteFiles.map(({ file, ...q }) => ({
+            ...q,
+            src: `${filesUrl}/${webPath(file)}`,
+          })),
+        }
       : {}),
     // The narration's texture slices (src/render/voicefx.ts), made in the episode's folder before the render.
     ...(voiceFxFiles?.length
@@ -821,7 +1009,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
         composition,
         serveUrl,
         codec: "h264",
-        crf: 20,
+        ...masterEncoder(input.speed ?? NO_SPEED, 20),
         pixelFormat: "yuv420p",
         audioCodec: "aac",
         audioBitrate: "192k",
@@ -836,6 +1024,7 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
         onProgress: ({ progress }) => input.onProgress?.(progress),
       },
       input.turnWaitMinutes,
+      chunkSetupFor(input.speed, "long", files.url, input.episodeDir),
     );
     await renderStill({
       composition,
@@ -891,7 +1080,12 @@ export async function renderShort(input: RenderInput): Promise<void> {
           }
         : {}),
       ...(quoteFiles?.length
-        ? { quotes: quoteFiles.map(({ file, ...q }) => ({ ...q, src: `${files.url}/${webPath(file)}` })) }
+        ? {
+            quotes: quoteFiles.map(({ file, ...q }) => ({
+              ...q,
+              src: `${files.url}/${webPath(file)}`,
+            })),
+          }
         : {}),
       heroCut: heroCutFile
         ? { fg: `${files.url}/${webPath(heroCutFile.fg)}`, x: heroCutFile.x }
@@ -931,23 +1125,28 @@ export async function renderShort(input: RenderInput): Promise<void> {
       inputProps: props,
       browserExecutable,
     });
-    await renderWithTurn(`short ${path.basename(input.outFile)}`, {
-      composition,
-      serveUrl,
-      codec: "h264",
-      crf: 19,
-      pixelFormat: "yuv420p",
-      audioCodec: "aac",
-      audioBitrate: "192k",
-      outputLocation: input.outFile,
-      inputProps: props,
-      concurrency: input.concurrency,
-      browserExecutable,
-      chromiumOptions: { gl: input.gl ?? "swangle" },
-      // A busy PC can take far longer than the 30 s default to decode a clip frame.
-      timeoutInMilliseconds: 180_000,
-      onProgress: ({ progress }) => input.onProgress?.(progress),
-    });
+    await renderWithTurn(
+      `short ${path.basename(input.outFile)}`,
+      {
+        composition,
+        serveUrl,
+        codec: "h264",
+        ...masterEncoder(input.speed ?? NO_SPEED, 19),
+        pixelFormat: "yuv420p",
+        audioCodec: "aac",
+        audioBitrate: "192k",
+        outputLocation: input.outFile,
+        inputProps: props,
+        concurrency: input.concurrency,
+        browserExecutable,
+        chromiumOptions: { gl: input.gl ?? "swangle" },
+        // A busy PC can take far longer than the 30 s default to decode a clip frame.
+        timeoutInMilliseconds: 180_000,
+        onProgress: ({ progress }) => input.onProgress?.(progress),
+      },
+      undefined,
+      chunkSetupFor(input.speed, "short", files.url, input.episodeDir),
+    );
     const posterFrame = Math.min(
       composition.durationInFrames - 1,
       Math.round(0.9 * composition.fps),

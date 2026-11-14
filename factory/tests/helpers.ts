@@ -606,6 +606,14 @@ export function testConfig(
     maxAttempts: 3,
     remotionConcurrency: 1,
     remotionGl: "swangle",
+    renderSpeed: {
+      chunkedLong: false,
+      chunkedShorts: false,
+      chunkSeconds: 60,
+      keepChunks: false,
+      hwMaster: false,
+      hwBitrate: "16M",
+    },
     browserExecutable: "",
     ...overrides,
   };

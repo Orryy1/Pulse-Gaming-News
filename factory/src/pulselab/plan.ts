@@ -219,7 +219,7 @@ export function planLab(i: LabInput): LabPlan {
       if (!grade && i.streamAsk)
         grade = gradeFor(
           claim,
-          i.streamAsk,
+          { result: i.streamAsk.verdict, confidence: i.streamAsk.confidence, reason: i.streamAsk.reason },
           s.minConfidence,
           i.owner
             ? {

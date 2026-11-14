@@ -37,12 +37,16 @@ export function creditFor(
   return viewers.length ? {} : undefined;
 }
 
+/** Words a handle may not carry on screen, beyond the voice's advertiser list: violence, sex, slurs, drugs. */
+const HANDLE_UNSAFE =
+  /(kill|murder|dead|death|gore|blood|nazi|hitler|porn|sex|nude|rape|cum|fuck|shit|bitch|cunt|dick|weed|cocaine|meth)/i;
+
 /** A handle that may go on screen (pure), or undefined. */
 export function safeHandle(raw: string | undefined): string | undefined {
   const h = publicHandle(raw);
   if (!h) return undefined;
   const words = h.replace(/^@/, "").replace(/[._-]+/g, " ");
-  if (advertiserProblems(words).length) return undefined;
+  if (advertiserProblems(words).length || HANDLE_UNSAFE.test(words)) return undefined;
   if (screenComment(words).screen !== "ok") return undefined;
   return h;
 }

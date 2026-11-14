@@ -303,9 +303,10 @@ export function measure(i: MeasureInput): Measurement | undefined {
       timing.segments,
     ) ?? 0,
   );
-  // 1. The HUD reader, in the stretch of the recording this clip covers (with a minute either side for long tests).
+  // 1. The HUD reader: a long test (losing the cops, a drive across the map) starts well before the clip, so the reading is
+  //    searched from 30 minutes before the outcome to just after it; the outcome itself is what the clip shows.
   if (i.track && spec.telemetry && timing.clipInSource !== undefined) {
-    const from = timing.clipInSource + timing.actionStart - 60;
+    const from = timing.clipInSource + timing.payoff - 1800;
     const to = timing.clipInSource + timing.payoff + 5;
     const r = measureTelemetry(i.track, spec.telemetry, { from, to });
     if (r) {

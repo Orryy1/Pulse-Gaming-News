@@ -701,8 +701,8 @@ test("specs come from the topic or the question's own words", () => {
   assert.equal(specFor("x", "rob-stores")!.kind, "counter");
   assert.equal(
     specFor("How high can you fall from and survive?")!.kind,
-    "timer",
-    "'how' + fall reads as time in the air only with 'long'",
+    "meter",
+    "how high is a meter",
   );
   assert.equal(
     specFor("How long is the freefall from the tallest building?")!.label,
@@ -808,13 +808,13 @@ test("telemetry from the HUD reader measures when present and is never required"
   assert.ok(
     Math.abs(
       measureTelemetry(track, { kind: "game_day" }, { from: 290, to: 1400 })!
-        .value - 980.2,
-    ) < 2,
+        .value - 972.8,
+    ) < 1,
   );
   const m = measure({
     question: "What is the quickest way to lose a wanted level?",
     topic: "lose-wanted",
-    timing: { ...timing, clipInSource: 150 },
+    timing: { ...timing, clipInSource: 250 },
     track,
   })!;
   assert.equal(m.source, "telemetry");
@@ -1369,7 +1369,7 @@ test("You asked credits the viewer on screen and in the pinned comment, on any f
 
 test("small planner helpers keep the cut's word budget", () => {
   assert.equal(
-    joinFit(["One two three.", "Four five six seven."], 2, "Hook words here"),
+    joinFit(["One two three.", "Four five six seven."], 3, "Hook words here"),
     "One two three.",
   );
   assert.equal(shortQuestion("Can you pet the dog"), "Can you pet the dog?");

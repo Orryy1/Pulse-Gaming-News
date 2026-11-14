@@ -81,16 +81,28 @@ export function shortMusic(
 }
 
 /**
- * The sound cues with the brand sting swapped for the series sting (pure, idempotent): the opening and the
- * closing sting. Their volumes stay: every sting file is matched to the same loudness.
+ * The closing series sting plays at this share of the brand sting's level. A musical sting peaks later than the
+ * brand's (its chord lands about a second in), so at the close its peak falls after the last word, over the bare
+ * bed, where validate.py measured it lifting the mix far past the sting's 4.5 dB limit at full level.
  */
-export function withSignatureSting<C extends { file: string }>(
-  cues: C[],
-  sting: string,
-): C[] {
+export const SIGNATURE_CLOSE_GAIN = 0.6;
+
+/**
+ * The sound cues with the brand sting swapped for the series sting (pure, idempotent): the opening one at the
+ * same level (every sting file is matched to the same loudness), the closing one at SIGNATURE_CLOSE_GAIN.
+ */
+export function withSignatureSting<
+  C extends { file: string; frame: number; volume: number },
+>(cues: C[], sting: string): C[] {
   const brand = sfxFile(SFX.sting);
   return cues.map((c) =>
-    c.file === brand ? { ...c, file: sfxFile(sting) } : c,
+    c.file === brand
+      ? {
+          ...c,
+          file: sfxFile(sting),
+          volume: c.frame > 0 ? c.volume * SIGNATURE_CLOSE_GAIN : c.volume,
+        }
+      : c,
   );
 }
 

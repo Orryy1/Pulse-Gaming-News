@@ -103,8 +103,8 @@ test("the brand sting is swapped at the open and the close, nothing else, idempo
   );
   assert.deepEqual(
     once.map((c) => c.volume),
-    [0.436, 0.195, 0.39],
-    "levels kept: the files are loudness-matched",
+    [0.436, 0.195, 0.39 * 0.6],
+    "the opening level kept (files are loudness-matched), the close lowered",
   );
   assert.deepEqual(withSignatureSting(once, "signature/why"), once);
   // The series sting is never re-keyed: it is already in its series' key.

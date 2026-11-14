@@ -169,8 +169,12 @@ def finish_sting(stereo, shift):
 
 
 def read(path):
-    y, sr = sf.read(path, always_2d=True)
-    y = y.T.astype(np.float64)
+    try:
+        y, sr = sf.read(path, always_2d=True)
+        y = y.T.astype(np.float64)
+    except Exception:  # an MP3 this libsndfile cannot read
+        y, sr = librosa.load(path, sr=SR, mono=False)
+        y = np.atleast_2d(y).astype(np.float64)
     if sr != SR:
         y = np.vstack([librosa.resample(ch, orig_sr=sr, target_sr=SR) for ch in y])
     if y.shape[0] == 1:
@@ -187,7 +191,13 @@ def master_music(src_wav, dest, key):
     chain = f"rubberband=pitch={2 ** (shift / 12):.6f}:transients=crisp" if shift else "anull"
     ff("-i", src_wav, "-af", chain, "-ar", str(SR), "-ac", "2", "-c:a", "pcm_s16le", tmp)
     gain = BED_LUFS - lufs(tmp)
-    ff("-i", tmp, "-af", f"volume={gain:.2f}dB,alimiter=limit=0.95:level=false", "-c:a", "pcm_s16le", dest)
+    # Twice: the limiter takes a little off a punchy take, so the second pass makes up what it took.
+    for _ in range(2):
+        ff("-i", tmp, "-af", f"volume={gain:.2f}dB,alimiter=limit=0.95:level=false", "-c:a", "pcm_s16le", dest)
+        off = BED_LUFS - lufs(dest)
+        if abs(off) < 0.2:
+            break
+        gain += off
     os.remove(tmp)
     after = chroma(read(dest).mean(axis=0)[: SR * 60])
     return shift, key_fit(after, key)

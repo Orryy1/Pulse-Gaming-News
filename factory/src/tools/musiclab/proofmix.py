@@ -19,6 +19,7 @@ SR = 48000
 FPS = 30
 LEVEL_STING = 0.436  # src/render/soundscape.ts LEVEL.sting
 UNDER_VOICE = 0.75
+CLOSE_GAIN = 0.6  # src/render/signature.ts SIGNATURE_CLOSE_GAIN
 BED_UNDER, BED_PAUSE = 0.085, 0.13
 PAUSE_S, RISE_S, FALL_S = 0.9, 0.8, 0.3
 
@@ -88,6 +89,9 @@ def main():
     bed_curve = per_sample(bed_envelope(speaking), total)
     under = per_sample(np.where(speaking, UNDER_VOICE, 1.0), total)
     rows = []
+    # The baseline: today's house music (bed_1, E major) and the brand sting in its key, mixed the same way, so a
+    # reading that comes from the mix itself (a closing sting over the bare bed) is seen for what it is.
+    lib = {"house": {"bed": "music/bed_1.wav", "sting": "v3/sting-E", "key": "E"}, **lib}
     for series, e in lib.items():
         if not e.get("sting"):
             continue
@@ -100,11 +104,13 @@ def main():
             mix += bed * bed_curve
         sting = load(os.path.join("public", "sfx", e["sting"] + ".mp3"))
         cues = []
-        for frame, vol in ((0, LEVEL_STING), (max(0, round((total / SR - 2.0) * FPS)), LEVEL_STING * 0.9)):
+        for frame, vol in ((0, LEVEL_STING), (max(0, round((total / SR - 2.0) * FPS)), LEVEL_STING * 0.9 * (1 if series == "house" else CLOSE_GAIN))):
             at = frame * SR // FPS
             n = min(sting.shape[1], total - at)
             mix[:, at: at + n] += sting[:, :n] * vol * under[at: at + n]
-            cues.append(dict(file=f"sfx/{e['sting']}.mp3", frame=frame, volume=vol))
+            # validate.py adds the bed's key itself for the brand sting; a signature sting is named as it is.
+            name = "v3/sting" if series == "house" else e["sting"]
+            cues.append(dict(file=f"sfx/{name}.mp3", frame=frame, volume=vol))
         peak = float(np.max(np.abs(mix)))
         dest = os.path.join(out, f"{series}.wav")
         sf.write(dest, (mix / max(1.0, peak / 0.98)).T.astype(np.float32), SR, subtype="PCM_16")

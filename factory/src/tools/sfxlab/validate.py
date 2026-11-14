@@ -71,6 +71,8 @@ def planned(video, cues_file):
             path = path if os.path.exists(path) else f"public/sfx/v3/{name}.mp3"
         t = librosa.load(path, sr=SR, mono=True)[0].astype(np.float64)
         at = int(c["frame"] / 30 * SR)
+        # A closing sting the video ends on is cut off with it: match what actually plays.
+        t = t[: max(SR // 10, len(x) - at - SR // 10)]
         best = max(range(max(0, at - SR // 10), at + SR // 10, 24), key=lambda p: x[p: p + len(t)] @ t if p + len(t) <= len(x) else -1)
         label = ("sig:" if "/signature/" in c["file"] else "") + os.path.basename(path)[:-4]
         hits.append((best, label, float(x[best: best + len(t)] @ t / (np.linalg.norm(x[best: best + len(t)]) * np.linalg.norm(t) + 1e-12)), t, c["volume"]))

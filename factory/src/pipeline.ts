@@ -548,6 +548,7 @@ import {
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
 import { guardScript, stopForWriterNotes } from "./writerguard.ts";
+import { pausesEveryLane, platformAlert } from "./faultclass.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
@@ -14393,9 +14394,7 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
 }
 
 /** True when a failure is about one video's own content (fact check, QA, clarity, spoilers), never the platform. */
-export function isContentFault(msg: string): boolean {
-  return /fact-?check|QA failed|clarity|spoiler|graphics audit|suggestive|word count/i.test(msg);
-}
+export { isContentFault } from "./faultclass.ts";
 
 /** On failure records it and backs off, alerting once it gives up. */
 async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
@@ -14436,16 +14435,10 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
     // a fatal error inside one episode's own content must not take the whole day with it.
     // 14 Nov 2026: a ranking whose fact check failed twice at "uploading" paused every lane for 12 hours
     // and told the owner YouTube had refused the upload; a fault in the video's own content drops that video only.
-    const platformFault =
-      fatal &&
-      !isContentFault(msg) &&
-      ep.lane !== "twin" && // the twin channel's login or quota must never pause the main channel
-      (["uploading", "uploaded"].includes(ep.status) ||
-        // "refused" alone caught an explainer part the writer refused for missing evidence and paused every lane
-        // for 12 hours (6 Nov 2026); only a platform's refusal of our login counts.
-        /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|(token|login|access|request) (was )?refused/i.test(
-          msg,
-        ));
+    // "refused" alone caught an explainer part the writer refused for missing evidence and paused every lane
+    // for 12 hours (6 Nov 2026); only a platform's refusal of our login counts (src/faultclass.ts), read outside
+    // the quoted words of the video itself (14 Nov 2026: "quotation" in a fact check matched "quota").
+    const platformFault = fatal && pausesEveryLane(msg, ep.status, ep.lane);
     if (platformFault) {
       await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
       // A pause stops every lane, so it is never silent (6 Nov 2026: a wrong one cost a day's Shorts unseen).
@@ -14471,12 +14464,12 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
           ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading."
           : "") +
         (platformFault
-          ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.`
+          ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until it is fixed and the factory unpaused).`
           : "");
       if (platformFault)
         await s.notify({
           ping: true,
-          content: `⚠️ Needs you: YouTube refused an upload (${msg.slice(0, 300)}). New stories are paused for ${FATAL_PAUSE_HOURS}h. Reconnect YouTube from the dashboard if it says the login expired.${where}`,
+          content: `${platformAlert(msg, ep.status, FATAL_PAUSE_HOURS)}${where}`,
         });
       else
         await s.notify({

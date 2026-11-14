@@ -360,6 +360,20 @@ export interface Config {
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
   elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
   elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
+  /** FORECAST_ENABLED: the dependency forecaster (src/forecast.ts): days-ahead warnings for quotas, logins, disks, backups. Off by default. */
+  forecastEnabled: boolean;
+  /** FORECAST_HORIZON_DAYS: warn when something runs out within this many days (default 3). */
+  forecastHorizonDays: number;
+  /** FORECAST_YOUTUBE_TOKEN_DAYS: the YouTube refresh token's lifetime (7 while the Google app is in Testing; 0 none known). */
+  forecastYoutubeTokenDays: number;
+  /** FORECAST_DISK_FLOOR_GB: the free space the disk forecast measures against (default 20). */
+  forecastDiskFloorGb: number;
+  /** FORECAST_PC_DISK_URL: where the PC says its free space as JSON {"freeGb": n} (empty: the PC disk is not forecast here). */
+  forecastPcDiskUrl: string;
+  /** CODEX_WEEKLY_CALLS: Codex's weekly allowance in answers (0: unknown, so only failures are watched). */
+  codexWeeklyCalls: number;
+  /** CODEX_WEEK_RESET_DAY: the weekday Codex's allowance resets, 0 Sunday to 6 Saturday (default 1, Monday). */
+  codexWeekResetDay: number;
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
   gameplayExperiments: string; // the numbered test list the reviewer matches clips against
@@ -1414,6 +1428,13 @@ export function loadConfig(): Config {
     routinePcDir: str("ROUTINE_PC_DIR", "C:\\PulseFactory\\routine-files"),
     elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
     elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
+    forecastEnabled: bool("FORECAST_ENABLED", false),
+    forecastHorizonDays: int("FORECAST_HORIZON_DAYS", 3),
+    forecastYoutubeTokenDays: int("FORECAST_YOUTUBE_TOKEN_DAYS", 0),
+    forecastDiskFloorGb: int("FORECAST_DISK_FLOOR_GB", 20),
+    forecastPcDiskUrl: str("FORECAST_PC_DISK_URL", ""),
+    codexWeeklyCalls: int("CODEX_WEEKLY_CALLS", 0),
+    codexWeekResetDay: int("CODEX_WEEK_RESET_DAY", 1),
     // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov
     // 2026, a sandbox Short took clips out of the live inbox because nothing told it not to.
     gameplayEnabled: bool("GAMEPLAY_ENABLED", !bool("DRY_RUN", false)),

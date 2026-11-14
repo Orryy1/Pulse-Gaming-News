@@ -26,6 +26,7 @@ import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
+import { gtaDailySummary } from "./gtadaily.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
 
 // Local installs keep settings in factory/.env (never committed).
@@ -268,6 +269,14 @@ export interface Config {
   seriesGtaFileSlot: string;
   /** Its planned parts, a src/shortrun.ts file of "file" entries (SERIES_GTA_FILE_RUN_FILE). */
   seriesGtaFileRunFile: string;
+  /** "GTA 6 Day N" (src/gtadaily.ts): the numbered daily launch series from the owner's streams (GTA_DAILY, off by default). */
+  gtaDaily: boolean;
+  /** Day 1, local YYYY-MM-DD (GTA_DAILY_START, the launch: 2026-11-19). */
+  gtaDailyStart: string;
+  /** Its slot, local "HH:MM": one of GAMEPLAY_SLOTS, so no slot is added (GTA_DAILY_SLOT, 21:00). */
+  gtaDailySlot: string;
+  /** How many days the run is numbered for (GTA_DAILY_DAYS, 28). */
+  gtaDailyDays: number;
   /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,gta_file=45-55"; empty = the old 25-40 s for every Short. */
   shortLengths: ShortLengths;
   /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
@@ -1332,6 +1341,10 @@ export function loadConfig(): Config {
     seriesGtaFileEnabled: bool("SERIES_GTA_FILE_ENABLED", false),
     seriesGtaFileSlot: str("SERIES_GTA_FILE_SLOT", "18:30"),
     seriesGtaFileRunFile: str("SERIES_GTA_FILE_RUN_FILE", ""),
+    gtaDaily: bool("GTA_DAILY", false),
+    gtaDailyStart: str("GTA_DAILY_START", "2026-11-19"),
+    gtaDailySlot: str("GTA_DAILY_SLOT", "21:00"),
+    gtaDailyDays: Math.max(1, int("GTA_DAILY_DAYS", 28)),
     shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
     instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
@@ -2057,6 +2070,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",
     gtaFile: gtaFileSummary(c),
+    gtaDaily: gtaDailySummary(c),
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

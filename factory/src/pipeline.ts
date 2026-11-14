@@ -460,6 +460,30 @@ import {
   type GtaFile,
 } from "./gtafile.ts";
 import {
+  askFirst,
+  claimDay,
+  dailyCommentLine,
+  dailyDescriptionLines,
+  dailySeries,
+  dailySpoilerProblems,
+  dailyTheme,
+  dailyTitle,
+  dailyTitleProblems,
+  dateOfDay,
+  dayOf,
+  gtaDailyFrom,
+  isGtaVi,
+  liveClaims,
+  nextDay,
+  previousDay,
+  slotOfDay,
+  targetDay,
+  withNextLink,
+  withPreviousLink,
+  GTA_DAILY_PLAYLIST,
+  type GtaDailyStory,
+} from "./gtadaily.ts";
+import {
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
@@ -715,6 +739,7 @@ import {
   writeManifest,
   writeMeta,
   type GameplayStatus,
+  type GameplayMeta,
 } from "./gameplay.ts";
 import { pruneCommentRecords } from "./youtube/replies.ts";
 import { pruneForSpace } from "./retention.ts";
@@ -1329,6 +1354,8 @@ export function seriesFor(
   const tag = cfg.seriesPlaylists ? seriesTagOf(sc, ep.story_hash) : undefined;
   if (tag === "gta_file") out.push(SERIES.gtaFile);
   else if (tag === "verdict") out.push(SERIES.verdict);
+  // GTA 6 Day N (src/gtadaily.ts): every episode on the daily's own shelf, in order.
+  else if (ep.story_json?.gtaDaily) out.push(dailySeries());
   // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
   else if (sc.recap || sc.explained) out.push(SERIES.weekly);
   else if (sc.runtime === "long")
@@ -5449,7 +5476,9 @@ export async function ingestGameplay(
   if (left <= 0) return [];
   const experiments = await gameplayExperiments(cfg);
   const made: string[] = [];
-  for (const { dir, meta } of await newClips(cfg.gameplayRoot)) {
+  const clips = await newClips(cfg.gameplayRoot);
+  // GTA_DAILY: a clip that answers a stream ask is looked at first, so the day's episode answers what people asked.
+  for (const { dir, meta } of gtaDailyFrom(cfg) ? askFirst(clips) : clips) {
     if (left-- <= 0) break;
     try {
       await writeMeta(dir, { status: "reviewing" });
@@ -5641,6 +5670,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_start: direction.focus_start,
       focus_payoff: direction.focus_payoff,
     };
+    await applyGtaDaily(s, ep, script, meta);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -5735,6 +5765,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     await gameplayExperiments(s.cfg),
     ref.live,
   );
+  await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -5802,6 +5833,168 @@ async function gameplayLive(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "gameplay_manifest", { clip: g.inbox_id });
 }
 
+// ------------------------------------------------------------------ GTA 6 Day N (src/gtadaily.ts)
+
+/**
+ * GTA_DAILY: a GTA VI gameplay Short becomes the next free "GTA 6 Day N", pinned to the daily slot (one of
+ * GAMEPLAY_SLOTS, so no volume is added) and titled for its day. A clip that is not GTA VI, a rehearsal, one that
+ * fails the no-story gate or one with no free day left stays an ordinary gameplay Short. The day is claimed in the
+ * settings table and kept on the story, so a restart or a retried step never renumbers it.
+ */
+export async function applyGtaDaily(
+  s: Services,
+  ep: Episode,
+  script: Script,
+  meta: Pick<GameplayMeta, "rehearsal" | "stream_ask" | "live" | "review">,
+): Promise<void> {
+  const daily = gtaDailyFrom(s.cfg);
+  const ref = ep.story_json.gameplay;
+  if (!daily || !ref || ref.rehearsal || meta.rehearsal) return;
+  const ask = meta.stream_ask?.question ?? meta.live?.ask;
+  const had = ep.story_json.gtaDaily;
+  if (had) {
+    // A retried step: the day is already this episode's.
+    script.series = "gta_daily";
+    script.youtube.title = dailyTitle(had.day, [script.youtube.title, ref.review.question], { ask: !!had.ask });
+    return;
+  }
+  if (ep.slot_at) return; // already given a time by something else
+  if (!isGtaVi(`${ref.review.game_title} ${script.game_title}`)) return;
+  const problems = dailySpoilerProblems(
+    daily,
+    [script.youtube.title, script.headline, ref.review.question, ref.review.result, ref.review.result_line, ref.review.description, ask],
+    s.now(),
+    {
+      reviewerSawStory: ref.review.spoiler,
+      spoilerHeld: !!meta.review?.spoiler_held_until,
+      live: s.cfg.spoilerGuard ? spoilerWindows() : [],
+    },
+  );
+  if (problems.length) {
+    await logEvent(s.db, ep.id, "gta_daily_skipped", { why: problems.slice(0, 4) });
+    return;
+  }
+  const rows = await s.db.query<{ at: string }>(
+    `SELECT COALESCE(publish_at, slot_at) AS at FROM episodes
+      WHERE COALESCE(publish_at, slot_at) IS NOT NULL AND COALESCE(publish_at, slot_at) > $1::timestamptz - interval '1 hour'
+        AND status NOT IN ('failed','rejected') AND id <> $2`,
+    [s.now(), ep.id],
+  );
+  const target = targetDay(
+    daily,
+    s.now(),
+    new Set(await liveClaims(s.db)),
+    rows.map((r) => new Date(r.at)),
+    s.cfg.minUploadGapMinutes,
+  );
+  if (!target || !(await claimDay(s.db, target.day, ep.id))) {
+    await logEvent(s.db, ep.id, "gta_daily_skipped", { why: ["no free day in the next days"] });
+    return;
+  }
+  let title = dailyTitle(target.day, [script.youtube.title, ref.review.question], { ask: !!ask });
+  if (dailyTitleProblems(title, target.day).length) title = dailyTitle(target.day, "", { ask: !!ask });
+  script.series = "gta_daily";
+  script.youtube.title = title;
+  const story: GtaDailyStory = {
+    day: target.day,
+    date: dateOfDay(daily.start, target.day),
+    slot: daily.slot,
+    theme: dailyTheme(`${ref.review.question} ${ref.review.result} ${ask ?? ""}`),
+    ...(ask ? { ask } : {}),
+  };
+  await s.db.query(
+    `UPDATE episodes SET slot_at = $2, story_json = story_json || jsonb_build_object('gtaDaily', $3::jsonb) WHERE id = $1`,
+    [ep.id, target.at, JSON.stringify(story)],
+  );
+  ep.story_json.gtaDaily = story;
+  ep.slot_at = target.at.toISOString();
+  await logEvent(s.db, ep.id, "gta_daily_numbered", { day: target.day, slot_at: target.at.toISOString(), title });
+}
+
+/** With GTA_DAILY on, the daily slot on the run's days is kept for the day's episode: other gameplay Shorts go elsewhere. */
+export function gtaDailyKept(cfg: Config): (at: Date) => boolean {
+  const daily = gtaDailyFrom(cfg);
+  if (!daily) return () => false;
+  return (at) => {
+    const day = dayOf(daily, at);
+    return day !== undefined && at.getTime() === slotOfDay(daily, day).getTime();
+  };
+}
+
+/** The daily playlist's id once it exists (made on the first add by addToSeries). */
+async function gtaDailyPlaylistId(s: Services): Promise<string | undefined> {
+  const [row] = await s.db.query<{ value: string }>(`SELECT value FROM settings WHERE key = $1`, [
+    `playlist:${GTA_DAILY_PLAYLIST}`,
+  ]);
+  return row?.value || undefined;
+}
+
+/** Just before upload: the day before (out or scheduled ahead of this one) and the playlist, for the description. */
+export async function refreshGtaDailyLinks(s: Services, ep: Episode): Promise<Episode> {
+  const story = ep.story_json.gtaDaily;
+  const daily = gtaDailyFrom(s.cfg);
+  if (!story || !daily) return ep;
+  const prev = await previousDay(s.db, story.day, slotOfDay(daily, story.day));
+  const playlistId = await gtaDailyPlaylistId(s);
+  const next: GtaDailyStory = {
+    ...story,
+    ...(prev ? { previous: { day: prev.day, videoId: prev.videoId, title: prev.title } } : {}),
+    ...(playlistId ? { playlistId } : {}),
+  };
+  await s.db.query(
+    `UPDATE episodes SET story_json = story_json || jsonb_build_object('gtaDaily', $2::jsonb) WHERE id = $1`,
+    [ep.id, JSON.stringify(next)],
+  );
+  return { ...ep, story_json: { ...ep.story_json, gtaDaily: next } };
+}
+
+/** The daily's line for the first comment: Day N+1 and its day when it is already made, and the playlist. */
+export async function gtaDailyComment(s: Services, ep: Episode): Promise<string> {
+  const story = ep.story_json.gtaDaily;
+  const daily = gtaDailyFrom(s.cfg);
+  if (!story || !daily) return "";
+  return dailyCommentLine(
+    story.day,
+    nextDay(daily, story.day, await liveClaims(s.db)),
+    await gtaDailyPlaylistId(s),
+  );
+}
+
+/**
+ * Once Day N is public: the day before gets its "Next:" line pointing here, and Day N's own "Previous:" line is put
+ * right if the day before went up after it was uploaded. One videos.update each (50 units, plus 1 to read), done
+ * once, never during the owner's publishing hold. A failure is logged and never blocks anything.
+ */
+export async function linkGtaDaily(s: Services, ep: Episode): Promise<void> {
+  const story = ep.story_json.gtaDaily;
+  if (!story || !ep.youtube_video_id || !gtaDailyFrom(s.cfg) || s.cfg.dryRun) return;
+  if (await publishHeld(s.db)) return;
+  const yt = s.youtube(accountOf(ep)) as Partial<{
+    rewriteDescriptions: (id: string, fn: (d: string, lang: string) => string) => Promise<number>;
+  }>;
+  if (!yt.rewriteDescriptions) return;
+  const [done] = await s.db.query(
+    `SELECT 1 FROM events WHERE episode_id = $1 AND kind = 'gta_daily_linked' LIMIT 1`,
+    [ep.id],
+  );
+  if (done) return;
+  const prev = await previousDay(s.db, story.day, s.now());
+  try {
+    if (prev) {
+      await yt.rewriteDescriptions(prev.videoId, (d) => withNextLink(d, { day: story.day, videoId: ep.youtube_video_id! }));
+      await quotaAdd(s.db, s.now(), QUOTA.localize + QUOTA.poll);
+      if (story.previous?.videoId !== prev.videoId) {
+        await yt.rewriteDescriptions(ep.youtube_video_id, (d) => withPreviousLink(d, prev));
+        await quotaAdd(s.db, s.now(), QUOTA.localize + QUOTA.poll);
+      }
+    }
+    await logEvent(s.db, ep.id, "gta_daily_linked", { day: story.day, previous: prev?.day ?? null });
+  } catch (err) {
+    log("warn", "gta daily link failed", { episode: ep.id, error: errorMessage(err) });
+    await logEvent(s.db, ep.id, "gta_daily_link_failed", { error: errorMessage(err).slice(0, 300) });
+  }
+}
+
 /** Rejected, expired or failed gameplay episodes mark their clip "skipped" so nobody wonders about it. */
 export async function syncGameplaySkips(s: Services): Promise<void> {
   if (!s.cfg.gameplayEnabled) return;
@@ -5828,6 +6021,8 @@ export function nextGameplaySlot(
   now: Date,
   scheduled: Date[],
   gameplayTaken: Date[],
+  /** Slots kept for something else: GTA 6 Day N keeps its daily slot on the run's days (src/gtadaily.ts). */
+  kept: (at: Date) => boolean = () => false,
 ): Date | undefined {
   const gap = cfg.minUploadGapMinutes * 60_000;
   const today = dayKey(now, cfg.timezone);
@@ -5835,6 +6030,7 @@ export function nextGameplaySlot(
     for (const hhmm of cfg.gameplaySlots) {
       const at = localTime(addDays(today, d), hhmm, cfg.timezone);
       if (at.getTime() - now.getTime() < 20 * 60_000) continue;
+      if (kept(at)) continue;
       if (gameplayTaken.some((t) => t.getTime() === at.getTime())) continue;
       if (scheduled.some((t) => Math.abs(t.getTime() - at.getTime()) < gap))
         continue;
@@ -13207,6 +13403,7 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
       s.now(),
       rows.filter((r) => r.lane !== "gameplay").map((r) => new Date(r.at)),
       rows.filter((r) => r.lane === "gameplay").map((r) => new Date(r.at)),
+      gtaDailyKept(s.cfg),
     );
     if (slot) {
       await s.db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [
@@ -13216,6 +13413,8 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
       ep = { ...ep, slot_at: slot.toISOString() };
     }
   }
+  // GTA 6 Day N: the day before and the playlist, for the description's links.
+  if (ep.story_json.gtaDaily) ep = await refreshGtaDailyLinks(s, ep);
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
@@ -13429,6 +13628,8 @@ export function videoMetadata(
       // A video reply to a viewer's question: who asked, and the video they asked under (src/commentreply.ts).
       ep.story_json.reply ? `\n${replyDescriptionLine(ep.story_json.reply)}` : "",
       leonida ? `\n${leonida}` : "",
+      // GTA 6 Day N (src/gtadaily.ts): the day before and the whole run, in order.
+      ep.story_json.gtaDaily ? `\n${dailyDescriptionLines(ep.story_json.gtaDaily).join("\n")}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
         : "",
@@ -13816,6 +14017,7 @@ export async function confirmPublished(s: Services): Promise<void> {
       });
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
+      if (live?.story_json.gtaDaily) await linkGtaDaily(s, live);
       // Now it is public it can join its series playlist (SERIES_PLAYLISTS; off, it joined at upload).
       if (live && s.cfg.seriesPlaylists) await addToSeries(s, live, "public");
     } else if (st?.privacyStatus === "private") {
@@ -13868,8 +14070,10 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     // A documentary's comment points at one chapter with its timestamp (DOC_PIN_MOMENT, src/youtube/pinned.ts).
     const script = ep.script_json!;
     // A Short gets the channel's comment only when it ends on its own real question (src/social/firstcomment.ts).
+    // GTA 6 Day N: the next day (when already made) and the playlist (src/gtadaily.ts).
+    const daily = ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "";
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
-      const q = shortComment(script);
+      const q = [shortComment(script), daily].filter(Boolean).join("\n\n");
       if (!q) {
         await logEvent(s.db, ep.id, "comment_skipped", { why: "no question of its own" });
         return;
@@ -13901,7 +14105,8 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
               s.now(),
             ).catch(() => ep.story_json.why?.follow),
           )
-        : "");
+        : "") +
+      (daily ? `\n\n${daily}` : "");
     const id = await s
       .youtube(accountOf(ep))
       .insertComment(ep.youtube_video_id!, text);
@@ -14094,6 +14299,7 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
     youtube_status: st.privacyStatus,
   });
   if (st.privacyStatus === "public") await gameplayLive(s, ep);
+  if (st.privacyStatus === "public" && ep.story_json.gtaDaily) await linkGtaDaily(s, ep);
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const longVideo = ep.script_json?.runtime === "long";
   // A documentary's community post and poll (COMMUNITY_DRAFTS, src/social/community.ts): drafted now from

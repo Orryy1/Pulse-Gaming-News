@@ -653,7 +653,7 @@ export const Short: React.FC<ShortProps> = (props) => {
           />
         ) : (
           <HookHeadline
-            headline={props.headline}
+            headline={props.openingWords ?? props.headline}
             accent={accent}
             gameTitle={props.gameTitle}
             durationInFrames={posterEnd}
@@ -682,7 +682,7 @@ export const Short: React.FC<ShortProps> = (props) => {
             />
           ) : (
             <HookHeadline
-              headline={props.headline}
+              headline={props.openingWords ?? props.headline}
               accent={accent}
               gameTitle={props.gameTitle}
               durationInFrames={Number.POSITIVE_INFINITY}

@@ -8,6 +8,8 @@
 // against them by a second pass and rewritten when a claim is not supported.
 // On-screen quotes and numbers must appear in the source text verbatim.
 
+import { CHAPTER_MARK_RULE, plainChapterLabel } from "../strandframe.ts";
+import { WHY_DIED_OUTLINE_RULE } from "../whydied.ts";
 import {
   advertiserProblems,
   phraseProblems,
@@ -341,6 +343,8 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   format?: "guide" | "everygame" | "retro";
   /** "everygame" (src/editorial/everygame.ts): the series' roster, one chapter per game in release order. */
   roster?: import("./everygame.ts").SeriesRoster;
+  /** A "why it died" film (src/whydied.ts, WHY_DIED_ENABLED): the game, the loss its title carries, its length. */
+  why_died?: import("../whydied.ts").WhyDiedMeta;
   /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
   sources?: Array<{ url: string; source: string; official?: boolean }>;
   /** A search-led planned entry (src/plannedoc.ts): its search, thumbnail words, chapters and facts file. */
@@ -531,7 +535,7 @@ export async function outlineDoc(
 ${GUIDE_OUTLINE_RULE}`
         : topic.kind === "story"
         ? `${HOUSE}
-
+${topic.why_died ? `\n${WHY_DIED_OUTLINE_RULE}\n` : ""}
 Plan a single-story documentary told in turning points, in time order, ${DOC_CHAPTERS_MIN + 2}-${DOC_CHAPTERS_MAX} chapters. Each chapter is one beat of the story (a decision, a reveal, a launch, a reversal) and names, in "wiki_title", the English Wikipedia article that best documents it (a game, a console, a company or a person); "game_title" is that chapter's subject. Chapter titles name the turning point in 2-5 words as a mini-headline with a verb or a conflict ("The Reveal That Backfired", "Sony Answers", "The Reversal"), never a topic label ("Market impact", "Early years"); the last may be a question. The title names one subject and its downfall, fight or hidden side: "How X Ruined Y", "The X That Never Was", "What Really Happened to X", "How Xbox Ended Up on PlayStation". In a study of 1,573 long gaming videos the strongest titles did exactly that, while "The History of", "Evolution", "changed gaming forever", years and "top 10" counts belonged to the weakest; keep numbers out of the title unless the number is the story. Never "Part 1". Plan only events the overview documents: a chapter built on something it doesn't mention can't be written. Write the question the documentary answers.`
         : `${HOUSE}
 
@@ -568,6 +572,10 @@ export const DocParagraphSchema = z.object({
       ),
   }),
   footage: FootageSchema,
+  mark: z
+    .string()
+    .optional()
+    .describe("Leave this out unless the brief asks for moment marks: then a plain 2-5 word label for the story moment this paragraph starts"),
 });
 
 export const DocChapterSchema = z.object({
@@ -595,6 +603,7 @@ export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
     rules.sentenceGate ? sentenceRule(rules.sentenceGate) : "",
     rules.namePayoff ? LOOP_NAME_RULE : "",
     rules.verdicts ? VERDICT_RULE : "",
+    rules.chapterMarks ? CHAPTER_MARK_RULE : "",
   ]
     .filter(Boolean)
     .map((x) => `\n${x}`)
@@ -1770,9 +1779,19 @@ export function docToScript(d: DocDraft): Script {
             }) as BeatVisual,
     })),
   );
+  // LONG_CHAPTER_CADENCE: the paragraphs the writer marked as new moments, by beat, in plain words (never a chapter's first).
+  const marks: Array<{ beat: number; label: string }> = [];
+  let at = 0;
+  for (const { chapter } of d.chapters)
+    for (const [pi, p] of chapter.paragraphs.entries()) {
+      const label = pi > 0 && p.mark ? plainChapterLabel(p.mark) : "";
+      if (label) marks.push({ beat: at, label });
+      at++;
+    }
   // The originals first (PRIMARY_SOURCES); Wikipedia only when a chapter had nothing else to credit.
   const sources = docSources(d);
   return {
+    ...(marks.length ? { moment_marks: marks } : {}),
     story_type: "other",
     game_title: d.topic.franchise,
     steam_search_term: "",

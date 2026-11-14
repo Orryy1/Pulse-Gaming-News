@@ -34,6 +34,8 @@ export interface ShortClip {
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.
 export type ShortProps = {
   headline: string;
+  /** SHORT_OPEN_WORDS: the one or two caption words over an opening on footage, in place of the headline ("" = none). */
+  openingWords?: string;
   storyType: string;
   gameTitle: string;
   gameSubtitle: string; // "RELEASED 2023 · BETHESDA" style line for the game card

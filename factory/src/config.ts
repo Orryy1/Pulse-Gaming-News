@@ -455,6 +455,34 @@ export interface Config {
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   /** SHORT_OPEN_FOOTAGE: every Short opens on the game's own moving footage, its first 7 s screened ad-safe (src/openingstep.ts). */
   shortOpenFootage: boolean;
+  /** SHORT_OPEN_WORDS: 1 or 2 caption words over an opening on footage, in place of the headline (0: the headline, as before). */
+  shortOpenWords: number;
+  /** SHORT_AD_SAFE_GATE: a Short whose first 7 s or cover frame shows a graphic kill, gore or the like fails QA (src/openingstep.ts). */
+  shortAdSafeGate: boolean;
+  /**
+   * The 11 Nov research upgrades (src/strandframe.ts, src/whydied.ts, src/reviewer.ts, src/stance.ts), each off by default:
+   * STRAND_FRAMES: one title shape and one thumbnail layout per long strand, 0 to 4 thumbnail words;
+   * SHORT_TITLE_GAME_FIRST: a Short's title names the game first, then the why or how (applied before upload);
+   * LONG_CHAPTER_CADENCE: chapter marks every 1 to 2 minutes with plain labels in long descriptions;
+   * FUNNEL_ALL_LONGS: the funnel test cuts its Shorts from every long strand, not only the weekly guide;
+   * WHY_DIED_ENABLED: the "why it died" documentary strand, its films proposed from the news desk (WHY_DIED_FILE,
+   *   at most one every WHY_DIED_EVERY_DAYS days);
+   * REVIEWER_PACK: the standard AI line, a sources link on the website and the private records for every upload;
+   * AI_IMAGE_GATE: no AI-made picture that could pass for official game material or a real photo;
+   * RANKING_STANCE: ranking titles argue a stance (no "top N" or year), and COMPLETE_CUT_MIN films of one series
+   *   make a "complete" compilation proposal.
+   */
+  strandFrames: boolean;
+  shortTitleGameFirst: boolean;
+  longChapterCadence: boolean;
+  funnelAllLongs: boolean;
+  whyDied: boolean;
+  whyDiedFile: string;
+  whyDiedEveryDays: number;
+  reviewerPack: boolean;
+  aiImageGate: boolean;
+  rankingStance: boolean;
+  completeCutMin: number;
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
   radarDays: string[];
   freeDays: string[];
@@ -1558,6 +1586,19 @@ export function loadConfig(): Config {
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
+    shortOpenWords: Math.min(2, Math.max(0, int("SHORT_OPEN_WORDS", 0))),
+    shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
+    strandFrames: bool("STRAND_FRAMES", false),
+    shortTitleGameFirst: bool("SHORT_TITLE_GAME_FIRST", false),
+    longChapterCadence: bool("LONG_CHAPTER_CADENCE", false),
+    funnelAllLongs: bool("FUNNEL_ALL_LONGS", false),
+    whyDied: bool("WHY_DIED_ENABLED", false),
+    whyDiedFile: str("WHY_DIED_FILE", ""),
+    whyDiedEveryDays: Math.max(1, int("WHY_DIED_EVERY_DAYS", 14)),
+    reviewerPack: bool("REVIEWER_PACK", false),
+    aiImageGate: bool("AI_IMAGE_GATE", false),
+    rankingStance: bool("RANKING_STANCE", false),
+    completeCutMin: Math.min(6, Math.max(4, int("COMPLETE_CUT_MIN", 4))),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon")
       .toLowerCase()

@@ -24,6 +24,8 @@ export interface LongRuleSettings {
   longVerdictStamps: boolean;
   longGuideFormat: boolean;
   guideChapterAction: boolean;
+  /** LONG_CHAPTER_CADENCE: the chapter writer marks the story's moments for the chapter list (src/strandframe.ts). */
+  longChapterCadence?: boolean;
 }
 
 export type LongRuleKind = "documentary" | "guide" | "ranking" | "explained";
@@ -51,6 +53,8 @@ export interface LongRules {
   chapterAction: boolean;
   /** A full game retrospective (src/editorial/retrospective.ts): its own chapter shape, full spoilers. */
   retro?: boolean;
+  /** LONG_CHAPTER_CADENCE: paragraphs that start a new moment carry a plain "mark" for the chapter list. */
+  chapterMarks?: boolean;
 }
 
 /** How a retrospective's chapter runs (the brief's section and focus say what it covers). */
@@ -101,6 +105,7 @@ export function longRulesFor(
     verdicts: guide && cfg.longVerdictStamps,
     guide,
     chapterAction: guide && cfg.guideChapterAction,
+    ...(cfg.longChapterCadence ? { chapterMarks: true } : {}),
   };
 }
 

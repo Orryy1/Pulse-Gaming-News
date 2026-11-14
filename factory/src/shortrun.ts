@@ -78,6 +78,21 @@ const RunDocSchema = z.object({
   format: z.literal("guide").optional(),
   /** Read at write time and added to every chapter's source, so a verdict can name who said it. */
   sources: z.array(SourceSchema).optional(),
+  /**
+   * A search-led long video (src/plannedoc.ts): the search it answers. The written title goes through the search title
+   * step and the planned title wins when the written one drops the search's words.
+   */
+  search_query: z.string().min(3).optional(),
+  /** The thumbnail's words, 0 to 4, kept as given. */
+  thumb: z.string().max(28).optional(),
+  /** The chapters, in order: the outline is told them and held to them. */
+  chapters: z
+    .array(z.object({ title: z.string().min(3).max(60), focus: z.string().min(10) }))
+    .min(5)
+    .max(10)
+    .optional(),
+  /** Confirmed facts with their primary sources (markdown, beside the run file), added to every chapter's source. */
+  facts_file: z.string().optional(),
 });
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
@@ -168,6 +183,17 @@ export function docRunDue(
         wiki: e.wiki,
         ...(e.format ? { format: e.format } : {}),
         ...(e.sources?.length ? { sources: e.sources } : {}),
+        ...(e.search_query || e.thumb || e.chapters || e.facts_file
+          ? {
+              planned: {
+                title: e.title,
+                ...(e.search_query ? { search_query: e.search_query } : {}),
+                ...(e.thumb ? { thumb: e.thumb } : {}),
+                ...(e.chapters ? { chapters: e.chapters } : {}),
+                ...(e.facts_file ? { facts_file: e.facts_file } : {}),
+              },
+            }
+          : {}),
       },
     };
   }

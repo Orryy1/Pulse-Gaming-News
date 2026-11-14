@@ -52,6 +52,7 @@ import {
 import { sentencesOf } from "./longform.ts";
 import { writerNoteProblems } from "./writernotes.ts";
 import { EVIDENCE_RULE } from "./evidence.ts";
+import { plannedOutlineBrief } from "../plannedoc.ts";
 import {
   GUIDE_OUTLINE_RULE,
   HookStackSchema,
@@ -342,6 +343,8 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   roster?: import("./everygame.ts").SeriesRoster;
   /** A planned entry's own sources, read and added to every chapter's source, beside its Wikipedia article. */
   sources?: Array<{ url: string; source: string; official?: boolean }>;
+  /** A search-led planned entry (src/plannedoc.ts): its search, thumbnail words, chapters and facts file. */
+  planned?: import("../plannedoc.ts").PlannedDoc;
   /** A weekly guide (src/longguide.ts): its key, fixed title and thumbnail words, facts file and the owner's play notes. */
   guide?: {
     key: string;
@@ -534,7 +537,7 @@ Plan a single-story documentary told in turning points, in time order, ${DOC_CHA
 
 Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
       loops,
-    content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (research notes):\n${franchiseNotes || "(not available)"}`,
+    content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}${plannedOutlineBrief(topic.planned)}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (research notes):\n${franchiseNotes || "(not available)"}`,
     schema: DocOutlineSchema,
     effort: "medium",
   });

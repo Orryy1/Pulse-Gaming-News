@@ -244,8 +244,8 @@ test("IGDB alternative names: initials are written-only, word runs are spoken, t
 test("roman numerals and fan abbreviations are said the way fans say them", () => {
   assert.equal(speakTitles("Civ VII and Civ V"), "Civ 7 and Civ 5");
   assert.equal(
-    sayAbbreviations("BG3 and KCD2"),
-    "Baldur's Gate 3 and Kingdom Come 2",
+    sayAbbreviations("BG3 and SF6"),
+    "Baldur's Gate 3 and Street Fighter 6",
   );
   assert.equal(
     sayAbbreviations("SF6, MK1 and HL2"),

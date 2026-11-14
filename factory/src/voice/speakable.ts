@@ -452,7 +452,6 @@ const SAID_AS_WORDS: Array<[RegExp, Said]> = [
   [/\bRDR\s?2\b/g, "Red Dead 2"],
   // Fan short forms said as the names fans say (the humaniser, 14 Nov 2026): typed as letters, spoken as words.
   [/\bBG\s?3\b/g, "Baldur's Gate 3"],
-  [/\bKCD\s?2\b/g, "Kingdom Come 2"],
   [/\bSF\s?6\b/g, "Street Fighter 6"],
   [/\bMK\s?1\b/g, "Mortal Kombat 1"],
   [/\bHL\s?2\b/g, "Half-Life 2"],

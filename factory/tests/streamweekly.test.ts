@@ -1015,3 +1015,15 @@ test("withSignOff: restores the sign-off a rewrite trimmed, never twice", async 
   assert.equal(withSignOff({ outro: `Done. ${full}` }).outro, `Done. ${full}`);
   assert.equal(withSignOff({ outro: "Done" }).outro, `Done. ${full}`);
 });
+
+test("parseSilences: ffmpeg's silencedetect log as stretches, short ones left out", async () => {
+  const { parseSilences } = await import("../src/streamweekly/render.ts");
+  const log = [
+    "[silencedetect @ 0x1] silence_start: 12.5",
+    "[silencedetect @ 0x1] silence_end: 16.25 | silence_duration: 3.75",
+    "[silencedetect @ 0x1] silence_start: 40",
+    "[silencedetect @ 0x1] silence_end: 41 | silence_duration: 1",
+  ].join("\n");
+  assert.deepEqual(parseSilences(log, 3), [{ start: 12.5, end: 16.25 }]);
+  assert.equal(parseSilences(log).length, 2);
+});

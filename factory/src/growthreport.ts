@@ -16,6 +16,8 @@ import { shortStats, type ShortStat } from "./experiments.ts";
 import { searchReachRows, searchShareLine } from "./searchq/report.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 import { movingShareLines } from "./qa/movingshare.ts";
+import { subsReportLines } from "./subslearn/learn.ts";
+import type { SubsLearnSettings } from "./subslearn/settings.ts";
 
 export type GrowthFormat =
   | "news"
@@ -280,7 +282,7 @@ export async function movingShareRows(
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">>,
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings },
   now: Date,
   /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
   retention?: RetentionStudy,
@@ -291,6 +293,8 @@ export async function growthReport(
         title: `🌱 Pulse growth report, week to ${new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, day: "numeric", month: "short" }).format(now)}`,
         description: [
           ...growthLines(await growthRows(db), now),
+          // SUBS_LEARN: subscribers per 1,000 views for every format over 7 and 28 days (src/subslearn).
+          ...(cfg.subsLearn?.enabled ? ["", ...(await subsReportLines(db, now, cfg.subsLearn).catch(() => []))] : []),
           ...(cfg.reachReport ? packagingLines(await ctrRows(db)) : []),
           ...(cfg.socialScoreboard
             ? scoreboardLines(await socialBoard(db, now))

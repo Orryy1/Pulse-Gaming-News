@@ -153,6 +153,12 @@ import {
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
+import {
+  markSubsLearnRun,
+  restoreSubsLearn,
+  runSubsLearn,
+  subsLearnDue,
+} from "./subslearn/learn.ts";
 import { graphicsDigest } from "./gfxauditstep.ts";
 import { readUnknown, unknownDigestLine, unknownFile } from "./voice/pronounce.ts";
 import {
@@ -1770,6 +1776,13 @@ async function main(): Promise<void> {
     migrationsApplied: applied,
   });
   const services = createServices(db, cfg);
+  // SUBS_LEARN (src/subslearn): the slots it moved, back into the running config before the first tick.
+  const slotsNow = await restoreSubsLearn(db, cfg).catch((err) => {
+    log("warn", "subscriber learning restore failed", { error: errorMessage(err) });
+    return undefined;
+  });
+  if (cfg.subsLearn.enabled && slotsNow)
+    log("info", "subscriber learning slots", { news: slotsNow.news, why: slotsNow.why, apply: cfg.subsLearn.apply });
   const state: {
     lastTick?: string;
     lastLongTick?: string;
@@ -2412,6 +2425,26 @@ async function main(): Promise<void> {
         content: `⚠️ This week's analytics report failed: ${errorMessage(err).slice(0, 200)}. Last week's report stays in place; Claude will look at it.`,
       });
     });
+  }, 5 * 60_000);
+  // Sunday 09:00 local: subscribers per 1,000 views by format over 7 and 28 days, and at most one slot a week moved
+  // towards the formats that win subscribers (SUBS_LEARN, src/subslearn). Read-only on YouTube: one Analytics report a window.
+  setInterval(() => {
+    void (async () => {
+      const key = await subsLearnDue(db, cfg, new Date());
+      if (!key) return;
+      await markSubsLearnRun(db, key);
+      const yt = cfg.dryRun ? undefined : services.youtube();
+      const out = await runSubsLearn({
+        db,
+        cfg,
+        now: new Date(),
+        report: yt ? (start, end) => yt.channelReport(start, end) : undefined,
+        notify: (m) => services.notify(m),
+      });
+      log("info", "subscriber learning ran", { week: key, source: out.windows.source, decision: out.decision.kind, applied: out.applied });
+    })().catch((err) =>
+      log("error", "subscriber learning failed", { error: errorMessage(err) }),
+    );
   }, 5 * 60_000);
   // Sunday 10:00 local: subscribers per 1,000 views by format, and what to back (GROWTH_REPORT).
   setInterval(() => {

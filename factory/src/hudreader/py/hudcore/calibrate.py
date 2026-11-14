@@ -165,24 +165,27 @@ def text_boxes(reader, frames, W, H, profile):
 
 
 def star_boxes(frame, W, H):
-    """Bright star-like blobs in the top right of a frame known to show stars: (box, height)."""
-    from .stars import _stars_in
+    """Star-like shapes in the top right of a frame known to show stars: (box, height, count)."""
+    from .stars import _peaks, _row
 
     x0, y0 = int(0.6 * W), 0
     c = frame[y0:int(0.25 * H), x0:W]
     hsv = cv2.cvtColor(c, cv2.COLOR_BGR2HSV)
-    med = int(np.median(hsv[..., 2]))
-    m = ((hsv[..., 1] < 70) & (hsv[..., 2] >= max(150, med + 35))).astype(np.uint8)
-    best = []
-    for px in range(int(0.015 * H), int(0.06 * H), 2):
-        s = _stars_in(m, px, 0.5)
-        if len(s) > len(best):
-            best = s
+    v = hsv[..., 2].astype(np.int16)
+    med = int(np.median(v))
+    grey = hsv[..., 1] < 70
+    masks = [(grey & (v >= max(150, med + 35))).astype(np.uint8), (grey & (v >= 55) & (np.abs(v - med) > 25)).astype(np.uint8)]
+    best, best_size = [], 0
+    for m in masks:
+        for px in range(int(0.015 * H), int(0.06 * H), 2):
+            s = _row(_peaks(m, px, 0.6), px)
+            if len(s) > len(best):
+                best, best_size = s, px
     if not best:
         return None
-    xs = [s[0] for s in best]
-    ys = [s[1] for s in best]
-    size = int(np.median([s[2] for s in best]))
+    xs = [p[0] for p in best]
+    ys = [p[1] for p in best]
+    size = best_size
     box = (x0 + min(xs) - 6 * size, y0 + max(0, min(ys) - 2 * size), min(W, x0 + max(xs) + 2 * size), y0 + max(ys) + 2 * size)
     return _frac(box, W, H), round(size / H, 4), len(best)
 

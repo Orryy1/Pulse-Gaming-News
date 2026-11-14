@@ -201,13 +201,18 @@ test("stars that come back during the search end the search without a new spell"
     hud(0, { stars: 3 }),
     hud(0.5, { stars: 3 }),
     hud(1, { dim: 3 }),
-    hud(1.5, { stars: 3 }),
-    hud(2, { stars: 3 }),
+    hud(1.5, { stars: 3 }), // the flash: white again, still the search
+    hud(2, { dim: 3 }),
+    hud(5, { stars: 3 }),
+    hud(5.5, { stars: 3 }),
   ]);
-  assert.deepEqual(
-    events.map((e) => e.kind),
-    ["wanted_start", "searching"],
-  );
+  assert.deepEqual(events.map((e) => e.kind), ["wanted_start", "searching"]);
+});
+
+test("a wanted level first seen in its grey search phase still counts (the owner's 2 Nov stream, 4 grey stars)", () => {
+  const { events, level } = wantedEvents([hud(552, { dim: 4 }), hud(552.5, { dim: 4 }), hud(553, { dim: 4 })]);
+  assert.deepEqual(events.map((e) => [e.kind, e.value]), [["wanted_start", 4], ["searching", 4]]);
+  assert.deepEqual(level.get(553), { stars: 4, searching: true });
 });
 
 // ------------------------------------------------------------------ banners, money, areas, flight

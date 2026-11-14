@@ -56,10 +56,21 @@
       0.17
     ],
     "max": 5,
-    "starHeight": 0.03,
-    "minScore": 0.6,
-    "edgeDrop": 50,
-    "filledLevel": 150
+    "slots": {
+      "x": [
+        0.90885,
+        0.92344,
+        0.93802,
+        0.95313,
+        0.96771
+      ],
+      "y": 0.03796,
+      "size": 0.03056
+    },
+    "starHeight": 0.03056,
+    "minScore": 0.7,
+    "filledLevel": 200,
+    "edgeDrop": 50
   },
   "money": {
     "box": [

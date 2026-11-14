@@ -21,7 +21,8 @@ PROFILE = {
         "trim": [0.042, 0.115, 0.042, 0.0],
         "playerMaskRadius": 0.0148,
     },
-    "wanted": {"box": [0.74, 0.02, 0.995, 0.17], "max": 5, "starHeight": 0.03, "minScore": 0.55, "filledLevel": 150},
+    "wanted": {"box": [0.74, 0.02, 0.995, 0.17], "max": 5, "minScore": 0.7,
+               "slots": {"x": [0.90885, 0.92344, 0.93802, 0.95313, 0.96771], "y": 0.03796, "size": 0.03056}},
 }
 
 
@@ -61,26 +62,32 @@ def render_radar(world, pos, heading, mm, zoom=1.0, W=1920, H=1080):
 
 
 def check_stars():
+    """GTA V's look: touching filled stars (white when seen, grey in the search), empty slots as outlines."""
     prof = Profile(PROFILE)
     out = []
     rng = np.random.default_rng(3)
+    size = 28
+    t = star_template(size)
+    xs = [1745, 1773, 1801, 1830, 1858]
+    edge = cv2.dilate(t, np.ones((3, 3), np.uint8)) - t
     for n in range(0, 6):
-        for bg in (30, 120, 200):
-            f = np.full((1080, 1920, 3), bg, np.uint8)
-            f = np.clip(f.astype(np.int16) + rng.integers(-12, 12, f.shape), 0, 255).astype(np.uint8)
-            t = star_template(32) * 255
-            for i in range(5):
-                x = 1870 - (5 - i) * 40
-                y = 110
-                lit = i >= 5 - n
-                col = 250 if lit else 95
-                patch = f[y - 16:y + 16, x - 16:x + 16]
-                patch[t > 0] = col
-                # GTA outlines its stars in black, so they read on a bright sky too.
-                edge = cv2.dilate(t, np.ones((3, 3), np.uint8)) - t
-                patch[edge > 0] = 0
-            r = read_wanted(f, prof)
-            out.append({"truth": n, "bg": bg, "read": r["stars"], "ok": r["stars"] == n})
+        for phase in ("white", "grey"):
+            for bg in (30, 120, 200):
+                f = np.full((1080, 1920, 3), bg, np.uint8)
+                f = np.clip(f.astype(np.int16) + rng.integers(-12, 12, f.shape), 0, 255).astype(np.uint8)
+                for i in range(5):
+                    x, y = xs[i], 41  # the slots, side by side and touching
+                    patch = f[y - size // 2:y + size // 2, x - size // 2:x + size // 2]
+                    if i < n:
+                        col = 245 if phase == "white" else (95 if bg > 140 else 160)
+                        patch[t > 0] = col
+                        patch[edge > 0] = 0
+                    else:
+                        patch[edge > 0] = 0 if bg > 90 else 230  # an empty slot: the outline only
+                r = read_wanted(f, prof)
+                got = r["stars"] if phase == "white" else r["dim"]
+                other = r["dim"] if phase == "white" else r["stars"]
+                out.append({"truth": n, "phase": phase, "bg": bg, "read": got, "other": other, "ok": got == n and other == 0})
     return out
 
 

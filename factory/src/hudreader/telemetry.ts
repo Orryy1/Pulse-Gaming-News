@@ -145,6 +145,7 @@ export interface HudTrack {
 
 export const STAR_HOLD = 2;
 export const CLEAR_SECONDS = 3;
+export const SEARCH_HOLD = 2.5;
 export const BANNER_GAP = 8;
 export const AREA_GAP = 20;
 export const AIR_HOLD = 3;
@@ -175,7 +176,12 @@ const compile = (p: string | undefined, flags = "i") => {
   }
 };
 
-/** The wanted level through the misreads (pure): debounced levels, the search phase and clearing. */
+/**
+ * The wanted level through the misreads (pure). The reader gives white filled stars (seen) and grey filled stars
+ * (the search phase, when GTA flashes the stars grey); either way the filled count is the level. A new level must
+ * hold STAR_HOLD samples; the search starts with the first grey star and ends after SEARCH_HOLD seconds of white
+ * only; the level is cleared after CLEAR_SECONDS with no filled star at all.
+ */
 export function wantedEvents(samples: RawSample[]): {
   events: HudEvent[];
   level: Map<number, { stars: number; searching: boolean }>;
@@ -185,58 +191,57 @@ export function wantedEvents(samples: RawSample[]): {
   let cur = 0;
   let searching = false;
   let lastSeen = -Infinity;
+  let lastGrey = -Infinity;
   let cand = -1;
   let candN = 0;
+  const plural = (n: number) => `${n} star${n === 1 ? "" : "s"}`;
   for (const s of samples) {
     if (s.state !== "hud") {
       level.set(s.t, { stars: cur, searching });
       continue;
     }
-    const bright = s.stars ?? 0;
-    const dim = s.dim ?? 0;
-    if (bright > 0 || dim > 0) lastSeen = s.t;
-    if (bright > 0) {
-      if (bright === cand) candN++;
+    const white = s.stars ?? 0;
+    const grey = s.dim ?? 0;
+    const count = white > 0 ? white : grey;
+    if (count > 0) {
+      lastSeen = s.t;
+      if (white === 0) lastGrey = s.t;
+      if (count === cand) candN++;
       else {
-        cand = bright;
+        cand = count;
         candN = 1;
       }
-      if (candN >= STAR_HOLD && bright !== cur) {
+      if (candN >= STAR_HOLD && count !== cur) {
         const kind: HudEventKind =
-          cur === 0
-            ? "wanted_start"
-            : bright > cur
-              ? "wanted_up"
-              : "wanted_down";
+          cur === 0 ? "wanted_start" : count > cur ? "wanted_up" : "wanted_down";
         events.push({
           kind,
           t: Math.round((s.t - (STAR_HOLD - 1) / 2) * 100) / 100,
-          value: bright,
+          value: count,
           from: cur,
-          detail: `${cur} to ${bright} star${bright === 1 ? "" : "s"}`,
+          detail: `${cur} to ${plural(count)}`,
         });
-        cur = bright;
+        cur = count;
       }
-      if (candN >= STAR_HOLD && searching) searching = false;
-    } else {
-      cand = -1;
-      candN = 0;
-      if (cur > 0 && dim > 0 && !searching) {
+      if (cur > 0 && !searching && white === 0 && grey > 0) {
         searching = true;
         events.push({
           kind: "searching",
           t: s.t,
           value: cur,
-          detail: `the police are searching (${cur} star${cur === 1 ? "" : "s"} flashing)`,
+          detail: `the police are searching (${plural(cur)} flashing)`,
         });
-      }
+      } else if (searching && white > 0 && s.t - lastGrey >= SEARCH_HOLD) searching = false;
+    } else {
+      cand = -1;
+      candN = 0;
       if (cur > 0 && s.t - lastSeen >= CLEAR_SECONDS) {
         events.push({
           kind: "wanted_clear",
           t: Math.round(lastSeen * 100) / 100,
           from: cur,
           value: 0,
-          detail: `lost the police at ${cur} star${cur === 1 ? "" : "s"}`,
+          detail: `lost the police at ${plural(cur)}`,
         });
         cur = 0;
         searching = false;

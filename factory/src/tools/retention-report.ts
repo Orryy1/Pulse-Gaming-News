@@ -110,7 +110,7 @@ ${curveSvg(
 )}
 <p class="m">Orange: the predicted weak moments. Black-frame scan (frames darker than 16/255): ${s.darkFrames.before} before, ${s.darkFrames.after} after. Length ${s.seconds.before.toFixed(2)} s before, ${s.seconds.after.toFixed(2)} s after.</p>
 ${s.advice?.length ? `<p class="m">Advice recorded for the writers and the shot picker:</p><ul class="m">${s.advice.map((a: string) => `<li>${esc(a)}</li>`).join("")}</ul>` : ""}
-<img src="${esc(s.sheet)}" alt="before and after frames" loading="lazy"></section>`;
+<p class="m">Frames, two pairs a row, each pair published (left) then re-rendered (right), at ${s.times.map((t: number) => `${t.toFixed(1)} s`).join(", ")}.</p><img src="${esc(s.sheet)}" alt="before and after frames" loading="lazy"></section>`;
   })
   .join("");
 

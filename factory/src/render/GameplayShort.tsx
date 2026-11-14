@@ -37,7 +37,14 @@ export type GameplayShortProps = {
   accent: string;
   /** GTA 6 Day N (HUD_PIN, HUD_TICKER, HUD_END_MAP): the location pin, wanted ticker and end map, when measured. */
   hud?: HudOverlayProps;
+  /** FUNNY_SHORTS: a small tag over a stretch (the slowed "REPLAY" of the payoff). */
+  tag?: { text: string; from: number; to: number };
 };
+
+/** Whether the tag shows at a time (pure). */
+export function tagOn(t: number, tag?: { from: number; to: number }): boolean {
+  return !!tag && t >= tag.from && t < tag.to;
+}
 
 export const SAMPLE_GAMEPLAY_SHORT: GameplayShortProps = {
   videoSrc: "",
@@ -171,6 +178,35 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
         </div>
       ) : null}
       {props.hud ? <HudOverlay hud={props.hud} /> : null}
+      {props.tag && tagOn(t, props.tag) ? (
+        <div
+          style={{
+            position: "absolute",
+            right: SAFE.left,
+            top: 160,
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "8px 18px",
+            borderRadius: 10,
+            background: "rgba(0,0,0,0.55)",
+            fontFamily: DISPLAY,
+            fontSize: 44,
+            letterSpacing: 2,
+            color: COLOUR.paper,
+          }}
+        >
+          <span
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              background: props.accent,
+            }}
+          />
+          {props.tag.text}
+        </div>
+      ) : null}
       <Captions
         pages={pages}
         accent={props.accent}

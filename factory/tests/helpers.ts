@@ -8,6 +8,7 @@ import type { Config } from "../src/config.ts";
 import { streamAsksSettings } from "../src/streamasks/settings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
+import { funnySettings } from "../src/funny/settings.ts";
 import { learnSettings } from "../src/learn/settings.ts";
 import { hudSettings } from "../src/hudreader/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
@@ -525,6 +526,7 @@ export function testConfig(
     subsLearn: subsLearnSettings({}),
     packaging: packagingSettings({}),
     liveClips: liveClipsSettings({}),
+    funny: funnySettings({}),
     learn: learnSettings({}),
     hud: hudSettings({}),
     spoilerWindowDays: 28,

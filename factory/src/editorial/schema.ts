@@ -353,6 +353,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
       payoff_at: number;
       focus_start: number;
       focus_payoff: number;
+      /** FUNNY_SHORTS (src/funny): the comedy cut in place of the narrated one, and the punchline stamp. */
+      funny?: import("../funny/edit.ts").FunnyPlan & { punch: string };
     };
   };
   /** A translated twin: the original's episode and video, the language, and its pinned comment in that language. */

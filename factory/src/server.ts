@@ -119,6 +119,7 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
+import { funnyTick, memeRows, memeTick, runTrials } from "./funny/job.ts";
 import { hudVodTick } from "./hudreader/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
@@ -1944,6 +1945,15 @@ async function main(): Promise<void> {
     setTimeout(() => void hudVodTick(cfg), 8 * 60_000);
     setInterval(() => void hudVodTick(cfg), 15 * 60_000);
   }
+  // A funny Short a day and a meme a week from the owner's own streams (FUNNY_SHORTS, MEME_POSTS): src/funny/job.ts.
+  if (cfg.funny.shorts) {
+    setTimeout(() => void funnyTick(cfg, { db }), 9 * 60_000);
+    setInterval(() => void funnyTick(cfg, { db }), 20 * 60_000);
+  }
+  if (cfg.funny.memes) {
+    setTimeout(() => void memeTick(cfg, { db, notify: (m) => services.notify(m) }), 11 * 60_000);
+    setInterval(() => void memeTick(cfg, { db, notify: (m) => services.notify(m) }), 30 * 60_000);
+  }
   // Near-live clips while the owner streams (LIVE_CLIPS): src/liveclips/job.ts.
   if (cfg.liveClips.enabled) {
     setTimeout(() => void liveClipsTick(cfg), 30_000);
@@ -2485,6 +2495,10 @@ async function main(): Promise<void> {
         now: new Date(),
         report: yt ? (start, end) => yt.channelReport(start, end) : undefined,
         notify: (m) => services.notify(m),
+        // FUNNY_SHORTS and MEME_POSTS on trial (src/funny): memes from their own ledger, both judged on the month.
+        extraRows: () => memeRows(cfg.dataDir, new Date()),
+        trials: (month) =>
+          runTrials(db, month, cfg.subsLearn, { funny: cfg.funny.shorts, meme: cfg.funny.memes }),
       });
       log("info", "subscriber learning ran", { week: key, source: out.windows.source, decision: out.decision.kind, applied: out.applied });
     })().catch((err) =>

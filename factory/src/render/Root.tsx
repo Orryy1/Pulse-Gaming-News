@@ -9,6 +9,7 @@ import { Long, SAMPLE_LONG_PROPS, type LongProps } from "./Long.tsx";
 import { LONG_FPS, LONG_WIDTH, LONG_HEIGHT } from "./longplan.ts";
 import { Engage, SAMPLE_ENGAGE } from "./Engage.tsx";
 import { Cutdown, SAMPLE_CUTDOWN, type CutdownProps } from "./Cutdown.tsx";
+import { Meme, MEME_H, MEME_W, SAMPLE_MEME } from "./Meme.tsx";
 import {
   GameplayShort,
   SAMPLE_GAMEPLAY_SHORT,
@@ -225,6 +226,8 @@ export const RemotionRoot: React.FC = () => (
     />
     {/* Channel brand stills: rendered by `npm run brand` into factory/brand/. */}
     <Still id="PulseBanner" component={Banner} width={2560} height={1440} />
+    {/* MEME_POSTS (src/funny/meme.ts): a meme layout around the owner's own stream frames. */}
+    <Still id="PulseMeme" component={Meme} width={MEME_W} height={MEME_H} defaultProps={SAMPLE_MEME} />
     <Still id="PulseAvatar" component={Avatar} width={800} height={800} />
     <Still
       id="PulseShortThumb"

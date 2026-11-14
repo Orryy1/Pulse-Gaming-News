@@ -33,6 +33,7 @@ import { learnSettings, learnSummary, type LearnSettings } from "./learn/setting
 import { hudSettings, hudSummary, type HudSettings } from "./hudreader/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
+import { funnyProblem, funnySettings, funnySummary, type FunnySettings } from "./funny/settings.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
 
 // Local installs keep settings in factory/.env (never committed).
@@ -981,6 +982,8 @@ export interface Config {
   packaging: PackagingSettings;
   /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
   liveClips: LiveClipsSettings;
+  /** FUNNY_SHORTS and MEME_POSTS: a funny Short a day and a meme a week from the owner's own streams (src/funny). Off by default. */
+  funny: FunnySettings;
   /** The shared learning core (src/learn): version stamps, the change ledger, the holdout, the judge ledger, the bandit,
    * the lesson playbook, hook breadth and the weekly summary, each behind its own LEARN_* setting, all off by default. */
   learn: LearnSettings;
@@ -1952,6 +1955,7 @@ export function loadConfig(): Config {
     subsLearn: subsLearnSettings(process.env),
     packaging: packagingSettings(process.env),
     liveClips: liveClipsSettings(process.env),
+    funny: funnySettings(process.env),
     learn: learnSettings(process.env),
     hud: hudSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
@@ -2212,6 +2216,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     subsLearn: subsLearnSummary(c.subsLearn),
     packaging: packagingSummary(c.packaging),
     liveClips: liveClipsSummary(c.liveClips),
+    funny: funnyProblem(c.funny, c) ? `off: ${funnyProblem(c.funny, c)}` : funnySummary(c.funny),
     learn: learnSummary(c.learn),
     hud: hudSummary(c.hud),
     whySerial: c.whySerialEnabled

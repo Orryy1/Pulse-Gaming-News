@@ -809,6 +809,19 @@ import {
 } from "./episodes.ts";
 import { askExperiments } from "./streamasks/job.ts";
 import {
+  funnyKept,
+  funnyOf,
+  funnyRenderProblems,
+  funnyReview,
+  funnyScript,
+  funnyShortProps,
+  funnySlot,
+  isFunnyHash,
+  type FunnyClipMeta,
+} from "./funny/review.ts";
+import { funnyFilter } from "./funny/edit.ts";
+import { inSpoilerWindow, pendingFunny, readVerdict } from "./funny/job.ts";
+import {
   fitClipsAroundQuotes,
   quotesAfterGaps,
   openQuotes,
@@ -5515,6 +5528,8 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       voiced: timing.voiced,
       accent: "#FF6B1A",
       ...(hud ? { hud } : {}),
+      // FUNNY_SHORTS: the REPLAY tag over the slowed payoff.
+      ...(g.direct!.funny ? { tag: funnyShortProps({ plan: g.direct!.funny, caption: { hook: g.direct!.hook, punch: g.direct!.funny.punch } }).tag } : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -5530,14 +5545,16 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
   });
   const problems = [
     ...tech.problems,
-    ...directProblems({
+    ...(g.direct!.funny
+      ? funnyRenderProblems({ blacks: await blackSpans(final), payoffAt: timing.payoffAt, seconds: duration })
+      : directProblems({
       blacks: await blackSpans(final),
       firstWordAt: assets.words?.[0]?.start,
       payoffAt: timing.payoffAt,
       seconds: duration,
       answerAt: timing.answerAt,
       loopLine: g.direct!.loop_line,
-    }),
+    })),
   ];
   const qa = {
     technical: { ...tech, ok: problems.length === 0, problems },
@@ -5703,13 +5720,21 @@ export async function ingestGameplay(
         }
         const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
         await writeWhole(path.join(dir, "words.json"), JSON.stringify(words));
-        review = await reviewClip(
-          s.llm,
-          dir,
-          meta,
-          words.map((w) => w.text).join(" "),
-          experiments,
-        );
+        // FUNNY_SHORTS: a funny clip carries its own verdict (the finder's signals and the local vision check), so
+        // the paid reviewer is not asked; the Whisper words still decide swearing.
+        const funny = cfg.funny.shorts ? funnyOf(meta) : undefined;
+        review = funny
+          ? funnyReview(meta as FunnyClipMeta, words, {
+              minScore: cfg.funny.minScore,
+              inSpoilerWindow: inSpoilerWindow(meta.source.title, dayKey(s.now(), cfg.timezone), cfg.spoilerWindowDays),
+            })
+          : await reviewClip(
+              s.llm,
+              dir,
+              meta,
+              words.map((w) => w.text).join(" "),
+              experiments,
+            );
         await logEvent(db, null, "gameplay_reviewed", {
           id: meta.id,
           keep: review.keep,
@@ -5834,6 +5859,22 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     blacks,
     meta.clip.seconds,
   );
+  // FUNNY_SHORTS: the comedy cut is already planned (src/funny/edit.ts): no second look, no narration.
+  const funny = s.cfg.funny.shorts ? funnyOf(meta) : undefined;
+  if (funny) {
+    const script = funnyScript(
+      gameplayScript(ref.review, ref.id, [], ref.live),
+      funny,
+      ref.review.game_title,
+    );
+    await guardScript(s, ep, script, "after writing");
+    await transition(s.db, ep.id, "selected", "scripted", {
+      script_json: script,
+      assets_json: { words: [], durationSeconds: funny.plan.seconds, clips: [] },
+    });
+    await logEvent(s.db, ep.id, "funny_cut", { clip: ref.id, plan: funny.plan, caption: funny.caption, reasons: funny.reasons.slice(0, 4) });
+    return;
+  }
   // The rebuilt Short: a second look times the attempt and the outcome and writes the lines; the cut waits for the
   // voice, since the answer's real length decides how the ending runs.
   // With the PC vision relay down (and the paid fallback off) there is no second look: the reviewer's window is cut
@@ -8047,6 +8088,7 @@ async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> 
   const script = ep.script_json!;
   const g = script.gameplay!;
   const d = g.direct!;
+  if (d.funny) return stepCutFunny(s, ep);
   const ref = ep.story_json.gameplay!;
   const clipDir = gameplayDir(s.cfg, ref.id);
   const meta = await readMeta(clipDir);
@@ -8181,6 +8223,52 @@ async function stepVoiceGameplayDirect(s: Services, ep: Episode): Promise<void> 
           },
         ],
       },
+    },
+  });
+}
+
+/**
+ * FUNNY_SHORTS: no narration (the owner's reaction carries it). The comedy cut (freeze and zoom punch on the payoff,
+ * the slowed replay) is made here, with a silent voice track so the render and the checks after it run unchanged.
+ */
+async function stepCutFunny(s: Services, ep: Episode): Promise<void> {
+  const d = ep.script_json!.gameplay!.direct!;
+  const plan = d.funny!;
+  const ref = ep.story_json.gameplay!;
+  const clipDir = gameplayDir(s.cfg, ref.id);
+  const meta = await readMeta(clipDir);
+  if (!meta) throw new FatalError("the gameplay clip is gone from the inbox");
+  const dir = episodeDir(s.cfg, ep.id);
+  await fs.mkdir(dir, { recursive: true });
+  const run = promisify(execFile);
+  // RADIO_STRIP (when merged): the radio-free copy when there is a clean one.
+  const strip = (meta as { strip?: { verdict?: string; file?: string } }).strip;
+  const source = path.join(clipDir, strip?.verdict === "clean" && strip.file ? strip.file : meta.clip.file || "clip.mp4");
+  const tone = hdrFilter(
+    await run(FFPROBE, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=color_transfer", "-of", "csv=p=0", source])
+      .then((r) => r.stdout.trim())
+      .catch(() => ""),
+  );
+  await run(
+    FFMPEG,
+    ["-v", "error", "-y", "-i", source, "-filter_complex", funnyFilter(plan, { tone }), "-map", "[vout]", "-map", "[aout]",
+      "-c:v", "libx264", "-preset", "fast", "-crf", "18", "-c:a", "aac", "-b:a", "192k", path.join(dir, "cut.mp4")],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  await run(
+    FFMPEG,
+    ["-v", "error", "-y", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", String(plan.seconds), "-c:a", "libmp3lame", "-q:a", "4", path.join(dir, "voice.mp3")],
+    { maxBuffer: 16 * 1024 * 1024 },
+  );
+  await transition(s.db, ep.id, "scripted", "voiced", {
+    assets_json: {
+      ...(ep.assets_json ?? {}),
+      words: [],
+      durationSeconds: plan.seconds,
+      clips: [],
+      audio: "voice.mp3",
+      cutdown: { start: 0, end: plan.seconds, video: "cut.mp4", background: "" },
+      gameplayShort: { hookEnd: plan.payoffAt, payoffAt: plan.payoffAt, answerAt: plan.seconds, voiced: [] },
     },
   });
 }
@@ -13862,24 +13950,43 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   }
   // A gameplay Short takes the first free gameplay slot, clear of everything already scheduled.
   if (ep.lane === "gameplay" && !ep.slot_at) {
-    const rows = await s.db.query<{ at: string; lane: string }>(
-      `SELECT COALESCE(publish_at, slot_at) AS at, lane FROM episodes
+    const rows = await s.db.query<{ at: string; lane: string; story_hash?: string | null }>(
+      `SELECT COALESCE(publish_at, slot_at) AS at, lane, story_hash FROM episodes
         WHERE COALESCE(publish_at, slot_at) IS NOT NULL AND COALESCE(publish_at, slot_at) > $1::timestamptz - interval '1 hour'
           AND status NOT IN ('failed','rejected') AND id <> $2`,
       [s.now(), ep.id],
     );
     // LIVE_CLIPS_PUBLISH_NOW: a clip from the live stream goes out while its topic is hot, at the first time clear of
     // every other publish (choosePublishAt keeps the gap), not in the evening's gameplay slot.
+    // FUNNY_SHORTS: a funny Short takes FUNNY_SLOT on its first open day; while one waits, other gameplay Shorts
+    // leave that slot to it. GTA 6 Day N's slot is never touched (src/funny/review.ts).
+    const funnyDropped = s.cfg.funny.shorts ? (await readVerdict(s.db, "funny")) === "dropped" : true;
+    const isFunny = isFunnyHash(ep.story_hash);
+    const daily = gtaDailyKept(s.cfg);
+    const funnyWaiting = !funnyDropped && !isFunny && (await pendingFunny(s.cfg.gameplayRoot)) > 0;
+    const keepFunny = funnyWaiting ? funnyKept(s.cfg.funny, s.cfg.timezone, funnyDropped) : () => false;
+    const funnyAt = isFunny
+      ? funnySlot(s.cfg.funny, {
+          now: s.now(),
+          timeZone: s.cfg.timezone,
+          dropped: funnyDropped,
+          funnyTaken: rows.filter((r) => isFunnyHash(r.story_hash)).map((r) => new Date(r.at)),
+          scheduled: rows.map((r) => new Date(r.at)),
+          gapMinutes: s.cfg.minUploadGapMinutes,
+          kept: daily,
+        })
+      : undefined;
     const slot =
       ep.story_json.gameplay?.live && s.cfg.liveClips.publishNow
         ? new Date(s.now().getTime() + 60_000)
-        : nextGameplaySlot(
-      s.cfg,
-      s.now(),
-      rows.filter((r) => r.lane !== "gameplay").map((r) => new Date(r.at)),
-      rows.filter((r) => r.lane === "gameplay").map((r) => new Date(r.at)),
-      gtaDailyKept(s.cfg),
-    );
+        : (funnyAt ??
+          nextGameplaySlot(
+            s.cfg,
+            s.now(),
+            rows.filter((r) => r.lane !== "gameplay").map((r) => new Date(r.at)),
+            rows.filter((r) => r.lane === "gameplay").map((r) => new Date(r.at)),
+            (at) => daily(at) || keepFunny(at),
+          ));
     if (slot) {
       await s.db.query(`UPDATE episodes SET slot_at = $2 WHERE id = $1`, [
         ep.id,

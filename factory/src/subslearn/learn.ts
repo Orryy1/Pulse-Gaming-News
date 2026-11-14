@@ -35,6 +35,8 @@ export type SubsFormat =
   | "long_ranking"
   | "documentary"
   | "gta_daily"
+  | "funny"
+  | "meme"
   | "other";
 
 /** Report order. */
@@ -49,6 +51,8 @@ export const SUBS_FORMATS: SubsFormat[] = [
   "long_ranking",
   "documentary",
   "gta_daily",
+  "funny",
+  "meme",
   "other",
 ];
 
@@ -63,6 +67,8 @@ export const SUBS_NAMES: Record<SubsFormat, string> = {
   long_ranking: "Long rankings",
   documentary: "Documentaries",
   gta_daily: "GTA daily (The GTA File)",
+  funny: "Funny Shorts (on trial)",
+  meme: "Meme posts (on trial)",
   other: "Other",
 };
 
@@ -83,6 +89,9 @@ export function subsFormat(ep: {
   const h = ep.story_hash ?? "";
   const long = ep.runtime === "long" || ep.lane === "longform";
   if (h.startsWith("gtafile:")) return "gta_daily";
+  // FUNNY_SHORTS and MEME_POSTS (src/funny): their own formats, so they are judged on their own numbers.
+  if (h.startsWith("gameplay:funny_")) return "funny";
+  if (h.startsWith("meme:")) return "meme";
   if (h.startsWith("reply:")) return "reply";
   if (h.startsWith("search:")) return "search";
   if (h.startsWith("why:")) return "why";
@@ -617,10 +626,20 @@ export async function runSubsLearn(deps: {
   now: Date;
   report?: ChannelReport;
   notify: (m: DiscordMessage) => Promise<unknown>;
+  /** Rows the YouTube report cannot hold (meme posts live on the Community tab, Instagram and X). */
+  extraRows?: () => Promise<SubsRow[]>;
+  /** FUNNY_SHORTS and MEME_POSTS on trial: this week's verdicts on the month's numbers, as lines for the message. */
+  trials?: (month: Map<SubsFormat, SubsTally>) => Promise<string[]>;
 }): Promise<SubsLearnOutcome> {
   const { db, cfg, now } = deps;
   const s = cfg.subsLearn;
   const windows = await subsWindows(db, now, deps.report);
+  const extra = (await deps.extraRows?.().catch(() => [])) ?? [];
+  if (extra.length) {
+    for (const [k, t] of tallyFormats(extra)) {
+      windows.month.set(k, t); // 28 days: what the meme ledger holds
+    }
+  }
   const state = await readState(db);
   const decision = decide({
     month: windows.month,
@@ -641,7 +660,11 @@ export async function runSubsLearn(deps: {
     applyToConfig(cfg, next);
     applied = true;
   }
-  const line = decisionLine(decision, s.apply, now, cfg.timezone);
+  const trialLines = (await deps.trials?.(windows.month).catch(() => [])) ?? [];
+  const line = [
+    decisionLine(decision, s.apply, now, cfg.timezone),
+    ...trialLines,
+  ].join("\n");
   await logEvent(db, null, "subs_learn", {
     source: windows.source,
     week: Object.fromEntries(windows.week),

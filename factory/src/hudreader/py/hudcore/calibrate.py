@@ -239,6 +239,26 @@ def run(a):
     else:
         mm.pop("bars", None)
         notes["warning"] = "no static bar strip found: HUD frames will be told by the minimap alone"
+    if a.sequence == "auto":
+        # The longest run of sampled HUD frames (a trailer cuts often): the tilt is learned from its middle 20 s.
+        ts = sorted(t for t, _ in frames)
+        gap = max(4.0, 2.5 * (np.median(np.diff(ts)) if len(ts) > 2 else 4.0))
+        best, run = (0.0, 0.0), [ts[0]] if ts else []
+        for t in ts[1:]:
+            if t - run[-1] <= gap:
+                run.append(t)
+            else:
+                run = [t]
+            if run[-1] - run[0] > best[1] - best[0]:
+                best = (run[0], run[-1])
+        if best[1] - best[0] >= 6:
+            mid = (best[0] + best[1]) / 2
+            sd = min(20.0, best[1] - best[0])
+            a.sequence = f"{max(0.0, mid - sd / 2):.2f},{sd:.2f}"
+            notes["sequence"] = a.sequence
+        else:
+            a.sequence = ""
+            notes["sequence"] = "no HUD run long enough for the tilt"
     if a.sequence:
         s0, sd = [float(x) for x in a.sequence.split(",")]
         seq = list(video.frames(a.ffmpeg, a.video, 2.0, start=s0, duration=sd, width=W, height=H))

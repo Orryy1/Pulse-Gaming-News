@@ -568,7 +568,8 @@ import {
   underFigure,
 } from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
-import { offendingMedia, dropOffending } from "./qa/retry.ts";
+import { offendingMedia, dropOffending, rememberUnsafe } from "./qa/retry.ts";
+import { CREDIT_RULE, givenSources, scrubScriptCredits } from "./editorial/credits.ts";
 import { shortSampleTimes, framesNamed } from "./qa/vision.ts";
 import {
   checkFrame,
@@ -7585,7 +7586,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
-      ...(newsVault?.brief ? { vault: newsVault.brief } : {}),
+      // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
+      // vault's brief until 14 Nov 2026, so most invented-credit drops were stories the vault knew nothing about).
+      vault: newsVault?.brief || CREDIT_RULE,
       desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
@@ -7653,6 +7656,25 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           title: gtaFileTitle(cluster.gtaFile.part, script.youtube.title),
         },
       };
+    // CREDIT_SCRUB (src/editorial/credits.ts): a credit to an outlet or document the writer was not given comes off
+    // before the fact check, which drops a Short for it; the fact stays.
+    if (s.cfg.creditScrub) {
+      const scrubbed = scrubScriptCredits(
+        script,
+        givenSources({
+          outlets: [
+            ...cluster.items.map((i) => i.source),
+            ...articles.map((a) => a.via),
+            storeData ? "Steam" : undefined,
+          ],
+          vault: newsVault?.brief,
+        }),
+      );
+      if (scrubbed.removed.length) {
+        script = scrubbed.script;
+        await logEvent(s.db, ep.id, "credits_scrubbed", { attempt, removed: scrubbed.removed });
+      }
+    }
     const { problems, thin } = houseProblems(script);
     check = await factCheck(
       s.llm,
@@ -9656,6 +9678,8 @@ export async function gatherMedia(
       (shots[k]!.kind === "screenshot" || isPressProvenance(shots[k]!.provenance))
     )
       unusable.add(shots[k]!.file);
+    // FOOTAGE_AD_SCREEN: anything suggestive fails the final check whatever the picture's kind.
+    else if (f.suggestive) unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
   if (unusable.size || wordy.size)
@@ -12420,10 +12444,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     const { longPlan: _dropped, ...withoutPlan } = assets;
-    const dropped = dropOffending(
-      withoutPlan,
-      offendingMedia(visionProblems, times, plan),
+    const off = offendingMedia(
+      // The technical check's black stretches name where they are: the clip on screen there is swapped too.
+      [...visionProblems, ...tech.problems.filter((p) => /black frames \(at /.test(p))],
+      times,
+      plan,
+      { adSwap: s.cfg.qaAdSwap },
     );
+    // QA_AD_SWAP: a moment faulted for ad safety is remembered, so no later gather picks it again.
+    const banned = rememberUnsafe(
+      withoutPlan.clips ?? [],
+      off,
+      visionProblems.join(" | "),
+    );
+    if (banned)
+      await logEvent(s.db, ep.id, "unsafe_moments_remembered", { keys: banned });
+    const dropped = dropOffending(withoutPlan, off);
     if (dropped.clips || dropped.images) {
       log("warn", "faulted media dropped for the retry", {
         episode: ep.id,
@@ -13464,11 +13500,34 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;
-    // A moment the checker faulted for text, a logo or the wrong game is not tried again.
-    const dropped = dropOffending(
-      withoutPlan,
-      offendingMedia(visionProblems, times, plan),
+    // A moment the checker faulted for text, a logo, the wrong game or (QA_AD_SWAP) ad safety is not tried again; an
+    // ad-safety moment is also remembered in the footage screen cache (src/assets/screencache.ts), so no later
+    // gather picks it. 13-14 Nov 2026: one bent-over GTA VI shot failed five Shorts, three renders each.
+    const off = offendingMedia(
+      // The technical check's black stretches name where they are: the clip on screen there is swapped too.
+      [...visionProblems, ...tech.problems.filter((p) => /black frames \(at /.test(p))],
+      times,
+      plan,
+      { adSwap: s.cfg.qaAdSwap },
     );
+    // The ad-safe gate names shots, not frames: an unreplaced clip there is swapped the same way.
+    if (s.cfg.qaAdSwap)
+      for (const p of adSafe) {
+        const m = p.match(/\bshot (\d+)\b/);
+        const shot = m ? plan.shots[Number(m[1])] : undefined;
+        if (shot?.media.type === "clip") {
+          off.clips.add(shot.media.index);
+          off.unsafeClips?.add(shot.media.index);
+        }
+      }
+    const banned = rememberUnsafe(
+      withoutPlan.clips ?? [],
+      off,
+      [...visionProblems, ...adSafe].join(" | "),
+    );
+    if (banned)
+      await logEvent(s.db, ep.id, "unsafe_moments_remembered", { keys: banned });
+    const dropped = dropOffending(withoutPlan, off);
     if (dropped.clips || dropped.images) {
       log("warn", "faulted media dropped for the retry", {
         episode: ep.id,

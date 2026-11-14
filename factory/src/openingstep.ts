@@ -57,7 +57,7 @@ export interface OpeningLook {
 export function adSafeProblem(l: OpeningLook | undefined): string | undefined {
   if (!l) return "not screened";
   if (l.gore) return "gore or blood";
-  if (l.nudity) return "nudity";
+  if (l.nudity) return "nudity or suggestive content";
   if (l.weapon) return "a weapon aimed at the viewer";
   if (l.shocking) return "shocking imagery";
   return undefined;
@@ -228,7 +228,7 @@ export function shotsInFirst(
 const PROMPT = `You check one frame from the first seconds of a YouTube Short about a video game, for advertisers. Answer with JSON.
 gameplay: true when the frame is the game's own moving picture (gameplay or an in-game cutscene) filling the frame; false for a logo, a title or text card, a menu, a store page, box art or a key art poster, a real-world photo or person, or a black or blank frame.
 gore: blood, wounds, gore, dead bodies, dismemberment, an execution, or a graphic kill (a person or character being shot, stabbed, run over or killed on screen).
-nudity: nudity or sexual content.
+nudity: nudity or sexual content, and (the final check's rule, word for word in substance) any sexualised or suggestive person or character, drawn or real, anywhere in the frame: underwear, lingerie or a bikini on show, visible cleavage or a revealing top, a bent-over, twerking or pole-dancing pose, a nightclub shot that dwells on bodies, or a crop dominated by a chest, bare torso, buttocks, groin or thighs. When unsure, answer true.
 weapon: a gun or weapon aimed straight at the viewer.
 shocking: disturbing or shocking imagery: torture, a horror creature's face filling the frame, drug use, self-harm.
 strength: 0 to 10, how striking this is as the very first frame a viewer sees: one clear subject near the centre, bright and readable on a phone, in action or a striking view; 0 for an empty, muddy or dark frame.`;

@@ -8,12 +8,16 @@ import { log, errorMessage } from "../lib/util.ts";
 import { learnAny } from "./settings.ts";
 import { ingestIntents, observeChanges } from "./ledger.ts";
 import { maybeRepin } from "./holdout.ts";
+import { learnJobs } from "./weekly.ts";
+import type { Llm } from "../editorial/llm.ts";
 
 export interface LearnTickHost {
   db: Db;
   cfg: Config;
   now(): Date;
   notify(m: DiscordMessage): Promise<unknown>;
+  /** For the weekly anchor re-scores (LEARN_ANCHORS). */
+  llm?: Llm;
 }
 
 /** Extra weekly work other modules hang on the tick (judges, bandit, playbook, the summary), in order. */
@@ -46,5 +50,5 @@ export async function learnTick(s: LearnTickHost): Promise<void> {
     await safely("holdout pin", () =>
       maybeRepin(s.db, s.cfg, now, ls.holdoutRepinDays),
     );
-  for (const j of jobs) await safely(j.name, () => j.run(s));
+  for (const j of [...learnJobs(), ...jobs]) await safely(j.name, () => j.run(s));
 }

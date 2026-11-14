@@ -383,6 +383,7 @@ import {
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { withLearn } from "./learn/scope.ts";
 import { holdoutOf } from "./learn/holdout.ts";
+import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
 import { learnTick } from "./learn/tick.ts";
 import {
   REPLY_LIMITS,
@@ -7169,16 +7170,25 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // A holdout Short (LEARN_HOLDOUT_SHARE, src/learn/holdout.ts) is the factory as pinned: no test arm, and the winners
   // the tests had settled when the baseline was pinned.
   const holdout = holdoutOf(s.cfg);
-  const test = await (cluster.run || cluster.reply || holdout
+  const testAssigned = await (cluster.run || cluster.reply || holdout
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
     log("warn", "growth test assignment failed", { error: errorMessage(err) });
     return undefined;
   });
-  const testDefaults = holdout
+  const testDefaultsBase = holdout
     ? pinnedGrowthDefaults(holdout.growthDefaults)
     : await growthDefaults(s.db).catch(() => []);
+  // LEARN_BANDIT (src/learn/bandit.ts): every open growth factor tested at once by Thompson sampling. On, the running
+  // test's variant and the other factors' arms come from the bandit; shadow records its draws only. growth.ts's
+  // bootstrap stays the verdict, reading assets_json.test as before.
+  const { test, defaults: testDefaults } =
+    holdout || cluster.run || cluster.reply
+      ? { test: testAssigned, defaults: testDefaultsBase }
+      : await banditForShort(s, ep, testAssigned, testDefaultsBase);
+  // LEARN_PLAYBOOK=on (src/learn/playbook.ts): the tracked lessons, recorded against this Short; never for a holdout.
+  const playbook = holdout ? "" : await playbookForShort(s, ep.id);
   // The audit's writer rules (src/editorial/shortrules.ts) come after the test's variant, nearest the draft.
   const argument = argumentArm(s.cfg, ep);
   if (argument)
@@ -7343,6 +7353,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           s.now(),
           loopLessonLines(s.cfg, s.now()),
         ).catch(() => ""),
+        playbook,
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -7363,6 +7374,24 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           ? { site: "reply.write" }
           : {}),
     });
+    // LEARN_HOOKS (src/learn/breadth.ts): 4 to 6 hooks from distinct angle briefs in one call, refused when they break a
+    // house rule the draft kept or read like the last 30 hooks, scored and clarity-judged; the winner is fact-checked
+    // below like every other word. A plain news Short's first draft only; never a holdout Short.
+    if (
+      attempt === 0 &&
+      !holdout &&
+      s.cfg.learn.hooks !== "off" &&
+      !cluster.why &&
+      !cluster.run &&
+      !cluster.reply &&
+      !cluster.search &&
+      !cluster.gtaFile
+    )
+      script = await pickHook(s, ep, script, {
+        rules: variantNote,
+        recentHooks: recentTexts.map((t) => t.hook).filter(Boolean),
+        problemsWith: (sc) => houseProblems(sc).problems.length,
+      });
     // A search Short keeps the searcher's words in its title: a title that drops them gives way to the planned one.
     if (cluster.search)
       script = {

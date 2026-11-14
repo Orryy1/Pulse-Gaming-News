@@ -24,6 +24,8 @@ export interface LearnSettings {
   bandit: LearnMode;
   /** LEARN_BANDIT_FLOOR: the least share any live arm keeps (0.15 = 15%), so no arm starves before its verdict. */
   banditFloor: number;
+  /** LEARN_BANDIT_WIN_PROB: the bootstrap share a winner needs on the bandit's factors (0.975: 95% either way). */
+  banditWinProb: number;
   /** LEARN_BANDIT_HALF_LIFE_DAYS: older Shorts count for less, halving every this many days. */
   banditHalfLifeDays: number;
   /** LEARN_PLAYBOOK: lessons as tracked items. shadow: curated and counted, never shown to a writer. */
@@ -92,6 +94,7 @@ export function learnSettings(
     anchorCount: Math.round(num(env.LEARN_ANCHOR_COUNT, 30, 5, 100)),
     bandit: learnMode(env.LEARN_BANDIT),
     banditFloor: num(env.LEARN_BANDIT_FLOOR, 0.15, 0.05, 0.5),
+    banditWinProb: num(env.LEARN_BANDIT_WIN_PROB, 0.975, 0.9, 0.999),
     banditHalfLifeDays: num(env.LEARN_BANDIT_HALF_LIFE_DAYS, 21, 3, 365),
     playbook: learnMode(env.LEARN_PLAYBOOK),
     playbookMax: Math.round(num(env.LEARN_PLAYBOOK_MAX, 25, 3, 60)),

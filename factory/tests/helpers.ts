@@ -163,6 +163,7 @@ export function testConfig(
     friendPassTier: "mid",
     clarityGate: [],
     clarityMin: 8,
+    humanise: "off",
     sequelWinners: false,
     cutdownSlot: "15:30",
     elevenLabsLowCredits: 0,

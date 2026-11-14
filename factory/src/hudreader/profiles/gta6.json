@@ -64,13 +64,17 @@
         0.95313,
         0.96771
       ],
-      "y": 0.03796,
+      "y": [
+        0.03796,
+        0.07037
+      ],
       "size": 0.03056
     },
     "starHeight": 0.03056,
     "minScore": 0.7,
     "filledLevel": 200,
-    "edgeDrop": 50
+    "edgeDrop": 50,
+    "note": "Slots measured on 4 grey stars at 9:12 of the 2 Nov stream (no cash shown). The second row (cash shown) is an estimate until a frame with both is seen."
   },
   "money": {
     "box": [

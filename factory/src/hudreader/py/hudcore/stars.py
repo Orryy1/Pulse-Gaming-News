@@ -117,27 +117,33 @@ def _slot_score(c, cx, cy, size, jitter):
 
 
 def read_slots(frame, profile):
-    """The level from the profile's fixed star slots (GTA V draws the five slots in the same place every time)."""
+    """The level from the profile's fixed star slots (GTA V draws the five slots in the same place every time). `y`
+    may list more than one row (GTA V moves the stars down while the cash is shown); the row with most stars wins."""
     sl = profile.get("wanted", "slots")
     H, W = frame.shape[:2]
     size = max(8, int(round(sl["size"] * H)))
     thr = profile.get("wanted", "minScore", default=0.7)
     jitter = max(2, size // 8)
-    marks = []
-    for fx in sl["x"]:
-        w, g = _slot_score(frame, fx * W, sl["y"] * H, size, jitter)
-        marks.append("w" if w >= thr and w >= g else ("g" if g >= thr else "-"))
-    # Filled stars run from the first slot; a lone "star" further along is scenery.
-    lead = 0
-    for m in marks:
-        if m == "-":
-            break
-        lead += 1
-    whites = marks[:lead].count("w")
-    greys = lead - whites
-    if not lead:
-        return {"stars": 0, "dim": 0, "score": 0.0, "slots": "".join(marks)}
-    return {"stars": lead if whites >= greys else 0, "dim": lead if greys > whites else 0, "score": 1.0, "slots": "".join(marks)}
+    rows = sl["y"] if isinstance(sl["y"], list) else [sl["y"]]
+    best = {"stars": 0, "dim": 0, "score": 0.0, "slots": "-" * len(sl["x"])}
+    for fy in rows:
+        marks = []
+        for fx in sl["x"]:
+            w, g = _slot_score(frame, fx * W, fy * H, size, jitter)
+            marks.append("w" if w >= thr and w >= g else ("g" if g >= thr else "-"))
+        # Filled stars run from the first slot; a lone "star" further along is scenery.
+        lead = 0
+        for m in marks:
+            if m == "-":
+                break
+            lead += 1
+        if lead <= best["stars"] + best["dim"]:
+            continue
+        whites = marks[:lead].count("w")
+        greys = lead - whites
+        best = {"stars": lead if whites >= greys else 0, "dim": lead if greys > whites else 0, "score": 1.0,
+                "slots": "".join(marks), "row": round(fy, 4)}
+    return best
 
 
 def read_wanted(frame, profile, template=None):

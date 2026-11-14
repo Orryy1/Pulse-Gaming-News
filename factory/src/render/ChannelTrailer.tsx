@@ -2,6 +2,7 @@
 // made from the channel's own published Shorts, documentaries and the official GTA VI footage they used, over one
 // narration take. The clips sit in public/trailer/ (copied from the episodes, never committed). The beats follow the
 // narration's word timings: hook, what the channel is, GTA 6 Day N, The Why, rankings and documentaries, subscribe.
+import { safeScale } from "./safetransform.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -155,7 +156,7 @@ const Plate: React.FC<{
         fontSize: size,
         lineHeight: 1.08,
         padding: `${size * 0.1}px ${size * 0.32}px ${size * 0.04}px`,
-        transform: `scaleX(${p})`,
+        transform: `scaleX(${safeScale(p)})`,
         transformOrigin: "left center",
         opacity: frame < delay ? 0 : 1,
         ...style,

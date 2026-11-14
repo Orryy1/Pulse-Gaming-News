@@ -10,6 +10,8 @@
 // browser-safe.
 
 import { TITLE_MAX, titleProblems } from "../editorial/seo.ts";
+import { spoilsStory } from "../streamasks/asks.ts";
+import { DAILY_PLOT_WORDS } from "../gtadaily.ts";
 
 export const LAB_NAME = "Pulse Lab";
 
@@ -196,6 +198,8 @@ export function labTitleProblems(
   const bad = title.match(ADVERTISER);
   if (bad)
     out.push(`"${bad[0]}" is not advertiser-friendly; say it another way.`);
+  // SPOILER_GUARD: a Lab title is about systems, never the story, for the whole launch window and after.
+  if (spoilsStory(title) || DAILY_PLOT_WORDS.test(title)) out.push("The title talks about the story.");
   if (format === "receipts" && STATED_AS_FACT.test(title) && !/\?$/.test(title))
     out.push(
       "A Receipts title asks the claim; it never states a leak or rumour as fact.",

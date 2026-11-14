@@ -24,7 +24,7 @@ import { readRun } from "../shortrun.ts";
 import { readAsks } from "../streamasks/job.ts";
 import { parseSeed } from "../streamasks/seed.ts";
 import { listVodIndexes } from "../vodindex/schema.ts";
-import { dailyTitle, isGtaVi } from "../gtadaily.ts";
+import { dailyTitle, dailyTitleProblems, isGtaVi } from "../gtadaily.ts";
 import type { LabOverlay } from "../render/labplan.ts";
 import {
   claimsFromAsks,
@@ -293,9 +293,9 @@ export function labDayTitle(
   const day = ep.story_json.gtaDaily?.day;
   const lab = ep.story_json.pulseLab;
   if (!day || !lab?.dayClaim) return;
-  script.youtube.title = dailyTitle(day, [lab.dayClaim, script.youtube.title], {
-    ask: !!ep.story_json.gtaDaily?.ask,
-  });
+  const title = dailyTitle(day, [lab.dayClaim, script.youtube.title], { ask: !!ep.story_json.gtaDaily?.ask });
+  // The daily's own rules (no story words, no dashes, advertiser-safe) still decide: a title that breaks one is not used.
+  if (!dailyTitleProblems(title, day).length) script.youtube.title = title;
 }
 
 /**

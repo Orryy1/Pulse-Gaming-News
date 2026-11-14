@@ -152,7 +152,7 @@ export function versusPrimaryArgs(
   });
   parts.push(`${labels.join("")}concat=n=${segments.length}:v=1:a=1[jv][ja]`);
   parts.push(
-    `[jv]${tone}scale=${PANE.width}:${PANE.height}:force_original_aspect_ratio=increase,crop=${PANE.width}:${PANE.height},fps=30,format=yuv420p[vout]`,
+    `[jv]${tone}scale=${PANE.width}:${PANE.height}:force_original_aspect_ratio=increase,crop=${PANE.width}:${PANE.height},tpad=stop_mode=clone:stop_duration=4,fps=30,format=yuv420p[vout]`,
   );
   return [
     "-v",

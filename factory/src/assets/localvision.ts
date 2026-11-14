@@ -103,11 +103,31 @@ export function frameFlagsFromAnswer(body: {
   message?: { content?: string; thinking?: string };
 }): FrameFlags | undefined {
   const parsed = visionAnswer(body);
-  const keys = ["text", "hud_only", "webcam", "gore", "letterbox", "dark", "blurry"];
-  if (!parsed || typeof parsed !== "object" || keys.some((key) => typeof parsed[key] !== "boolean")) return undefined;
+  const keys = [
+    "text",
+    "hud_only",
+    "webcam",
+    "gore",
+    "letterbox",
+    "dark",
+    "blurry",
+  ];
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    keys.some((key) => typeof parsed[key] !== "boolean")
+  )
+    return undefined;
   const hud = parsed.text && parsed.hud_only;
-  return { hud, text: parsed.text && !hud, webcam: parsed.webcam, gore: parsed.gore,
-    letterbox: parsed.letterbox, dark: parsed.dark, blurry: parsed.blurry };
+  return {
+    hud,
+    text: parsed.text && !hud,
+    webcam: parsed.webcam,
+    gore: parsed.gore,
+    letterbox: parsed.letterbox,
+    dark: parsed.dark,
+    blurry: parsed.blurry,
+  };
 }
 
 export const rejectReason = (f: FrameFlags): string | undefined =>
@@ -138,7 +158,9 @@ export function relayModels(body: unknown): string[] {
   const models = (body as { models?: unknown } | null)?.models;
   if (!Array.isArray(models)) return [];
   return models.flatMap((m) =>
-    [m?.name, m?.model].filter((x): x is string => typeof x === "string" && x.length > 0),
+    [m?.name, m?.model].filter(
+      (x): x is string => typeof x === "string" && x.length > 0,
+    ),
   );
 }
 
@@ -162,7 +184,11 @@ export const MODEL_CHECK_MS = 3 * 60_000;
  * counts exactly as down. Cached for `ttlMs` either way, so frame work does not ask before every call.
  */
 export function createModelCheck(opts: {
-  fetchTags: () => Promise<{ ok: boolean; status?: number; json: () => Promise<unknown> }>;
+  fetchTags: () => Promise<{
+    ok: boolean;
+    status?: number;
+    json: () => Promise<unknown>;
+  }>;
   model: string;
   now?: () => number;
   ttlMs?: number;
@@ -174,7 +200,8 @@ export function createModelCheck(opts: {
   const ask = async (): Promise<string | undefined> => {
     try {
       const res = await opts.fetchTags();
-      if (!res.ok) return `the relay's model list answered ${res.status ?? "an error"}`;
+      if (!res.ok)
+        return `the relay's model list answered ${res.status ?? "an error"}`;
       const models = relayModels(await res.json());
       if (hasVisionModel(models, opts.model)) return undefined;
       return `the relay does not list ${opts.model} (it has ${models.slice(0, 6).join(", ") || "no models"}): another server may be on its port`;
@@ -479,8 +506,7 @@ export function heroLookAnswer(parsed: any): HeroLook | undefined {
   const sized = box && box[2] > box[0] && box[3] > box[1];
   return {
     // A "face" too small to read on a phone is only a body.
-    kind:
-      k === "face" && sized && box![3] - box![1] < 0.15 ? "body" : k,
+    kind: k === "face" && sized && box![3] - box![1] < 0.15 ? "body" : k,
     ...(sized ? { box } : {}),
     realPerson: parsed.real_photo === true,
   };
@@ -538,6 +564,100 @@ export async function heroLook(file: string): Promise<HeroLook | undefined> {
     );
     if (!res.ok) return undefined;
     return heroLookAnswer(
+      visionAnswer(
+        (await res.json()) as {
+          message?: { content?: string; thinking?: string };
+        },
+      ),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+/** The Packaging Lab's look at a thumbnail or first frame (src/packaging/image.ts lookFeatures). */
+export interface PackagingLook {
+  subject: "face" | "body" | "thing";
+  realPerson: boolean;
+  /** The subject's box as a share of the picture's area, 0 to 1. */
+  size: number;
+  /** Words written on the picture (titles, captions, logos), counted by the model. */
+  words: number;
+}
+
+/** The look's answer as a PackagingLook (pure); undefined when it says nothing usable. */
+export function packagingLookAnswer(parsed: any): PackagingLook | undefined {
+  const hero = heroLookAnswer(parsed);
+  if (!hero) return undefined;
+  const b = hero.box;
+  const words = Number(parsed?.words);
+  return {
+    subject: hero.kind,
+    realPerson: hero.realPerson,
+    size: b ? Math.max(0, (b[2] - b[0]) * (b[3] - b[1])) : 0,
+    words:
+      Number.isFinite(words) && words >= 0
+        ? Math.min(40, Math.round(words))
+        : 0,
+  };
+}
+
+/**
+ * What a thumbnail shows at a glance, from this PC's own model (free; never a paid model): the subject, its size and
+ * the words on it. Undefined whenever local vision is off, paused, refused or unsure.
+ */
+export async function packagingLook(
+  file: string,
+): Promise<PackagingLook | undefined> {
+  if (
+    (await pcPaused()) ||
+    process.env.LOCAL_VISION === "off" ||
+    process.env.NODE_TEST_CONTEXT
+  )
+    return undefined;
+  if (await relayNotReady()) return undefined;
+  try {
+    const image = (await fs.readFile(file)).toString("base64");
+    const t = await visionTarget();
+    const res = await fetchWithTimeout(
+      `${t.url}/api/chat`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: t.model,
+          stream: false,
+          think: false,
+          format: {
+            type: "object",
+            properties: {
+              subject: { type: "string", enum: ["face", "body", "thing"] },
+              box: { type: "array", items: { type: "number" } },
+              real_photo: { type: "boolean" },
+              words: { type: "number" },
+            },
+            required: ["subject", "box", "real_photo", "words"],
+          },
+          keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
+          options: {
+            temperature: 0,
+            num_predict: 100 + THINK_ROOM,
+            num_ctx: NUM_CTX,
+          },
+          messages: [
+            {
+              role: "user",
+              content:
+                'You judge a video thumbnail as a viewer scrolling past would. subject: "face" when one character\'s or person\'s face is large and its expression can be read, "body" when one large figure fills much of the picture but no readable face, "thing" for anything else (a logo, a vehicle, a landscape, a crowd of small figures). box: [x1, y1, x2, y2] around that face or body, or around the main thing, in 0-1000 coordinates relative to the image width and height. real_photo: true only when the subject is a photograph of a real person. words: how many words are written on the picture (titles, captions, logos, numbers count as words); 0 when none.',
+              images: [image],
+            },
+          ],
+        }),
+      },
+      60_000,
+    );
+    if (!res.ok) return undefined;
+    return packagingLookAnswer(
       visionAnswer(
         (await res.json()) as {
           message?: { content?: string; thinking?: string };
@@ -870,20 +990,29 @@ export function subjectAnswer(parsed: any): SubjectLook | undefined {
   const c = Number(parsed.confidence);
   return {
     shows: parsed.shows,
-    confidence: Number.isFinite(c) ? Math.min(1, Math.max(0, c > 1 ? c / 100 : c)) : 0,
+    confidence: Number.isFinite(c)
+      ? Math.min(1, Math.max(0, c > 1 ? c / 100 : c))
+      : 0,
     seen: typeof parsed.seen === "string" ? parsed.seen.slice(0, 160) : "",
   };
 }
 
 /** The question for one frame (pure): the game, the line and the names it must show. */
-export function subjectPrompt(o: { game: string; line: string; names: string[] }): string {
+export function subjectPrompt(o: {
+  game: string;
+  line: string;
+  names: string[];
+}): string {
   const names = o.names.length ? o.names.join(", ") : "what the line describes";
   return `This is one frame of a cutscene from the video game ${o.game}. A narration line will play over it: "${o.line}"
 Does this frame visibly show this moment: at least one of ${names}? It need not show all of them: one named character on screen in the scene the line describes is enough. A named character counts only when that character is on screen and recognisable by their known look in this game (not someone else, not an empty room, not a face you cannot identify). A named place or object counts when it is clearly visible. When the line names a character and a place, the character matters most.
 Answer shows (true or false), confidence from 0 to 1 that shows is right, and seen: what the frame shows in under 15 words.`;
 }
 
-async function subjectOne(file: string, prompt: string): Promise<SubjectLook | undefined> {
+async function subjectOne(
+  file: string,
+  prompt: string,
+): Promise<SubjectLook | undefined> {
   const image = (await fs.readFile(file)).toString("base64");
   const res = await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/chat`,
@@ -904,14 +1033,27 @@ async function subjectOne(file: string, prompt: string): Promise<SubjectLook | u
           required: ["shows", "confidence", "seen"],
         },
         keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
-        options: { temperature: 0, num_predict: 120 + THINK_ROOM, num_ctx: NUM_CTX },
+        options: {
+          temperature: 0,
+          num_predict: 120 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
         messages: [{ role: "user", content: prompt, images: [image] }],
       }),
     },
     90_000,
   );
-  if (!res.ok) throw new Error(`ollama ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  return subjectAnswer(visionAnswer((await res.json()) as { message?: { content?: string; thinking?: string } }));
+  if (!res.ok)
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  return subjectAnswer(
+    visionAnswer(
+      (await res.json()) as {
+        message?: { content?: string; thinking?: string };
+      },
+    ),
+  );
 }
 
 /**
@@ -924,7 +1066,9 @@ export async function subjectFrames(
   ask: { game: string; line: string; names: string[] },
   concurrency = 2,
 ): Promise<Array<SubjectLook | undefined>> {
-  const out: Array<SubjectLook | undefined> = new Array(files.length).fill(undefined);
+  const out: Array<SubjectLook | undefined> = new Array(files.length).fill(
+    undefined,
+  );
   if (
     !files.length ||
     Date.now() < downUntil ||
@@ -951,7 +1095,9 @@ export async function subjectFrames(
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, files.length) }, worker),
+  );
   return out;
 }
 
@@ -961,7 +1107,9 @@ export async function subjectFrames(
 // a few side-by-side frames a call; never Claude, never a paid API (src/services.ts builds a Codex-only client).
 
 /** Looks at segment frames: one answer per file, undefined where it could not judge. */
-export type SegmentLooker = (files: string[]) => Promise<Array<SegmentLook | undefined>>;
+export type SegmentLooker = (
+  files: string[],
+) => Promise<Array<SegmentLook | undefined>>;
 
 let segmentFallback: SegmentLooker | undefined;
 
@@ -971,7 +1119,9 @@ export function setSegmentLookFallback(look?: SegmentLooker): void {
 }
 
 /** lookFrames, then the fallback looker (FOOTAGE_LOOK_CODEX) for every frame the local model left unjudged. */
-export async function lookFramesOrFallback(files: string[]): Promise<Array<SegmentLook | undefined>> {
+export async function lookFramesOrFallback(
+  files: string[],
+): Promise<Array<SegmentLook | undefined>> {
   const out = await lookFrames(files);
   const missing = out.flatMap((l, i) => (l ? [] : [i]));
   if (!missing.length || !segmentFallback) return out;
@@ -1014,7 +1164,11 @@ export function codexSegmentLook(llm: Llm, max = 30, batch = 6): SegmentLooker {
         content.push({ type: "text", text: `Segment ${i + 1}` });
         content.push({
           type: "image",
-          source: { type: "base64", media_type: "image/jpeg", data: (await fs.readFile(file)).toString("base64") },
+          source: {
+            type: "base64",
+            media_type: "image/jpeg",
+            data: (await fs.readFile(file)).toString("base64"),
+          },
         });
       }
       content.push({
@@ -1025,14 +1179,18 @@ export function codexSegmentLook(llm: Llm, max = 30, batch = 6): SegmentLooker {
         const r = await llm.structured({
           tier: "mid",
           site: "footagelook",
-          system: "You screen video game footage for a documentary. Answer only from what is visible.",
+          system:
+            "You screen video game footage for a documentary. Answer only from what is visible.",
           content,
           schema: CodexSegmentLooks,
           effort: "low",
         });
-        for (const [i] of part.entries()) if (r.segments[i]) out[at + i] = lookAnswer(r.segments[i]);
+        for (const [i] of part.entries())
+          if (r.segments[i]) out[at + i] = lookAnswer(r.segments[i]);
       } catch (err) {
-        log("warn", "footage looks: Codex did not answer", { error: errorMessage(err) });
+        log("warn", "footage looks: Codex did not answer", {
+          error: errorMessage(err),
+        });
         break;
       }
     }

@@ -9,6 +9,7 @@ import { streamAsksSettings } from "../src/streamasks/settings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
+import { packagingSettings } from "../src/packaging/settings.ts";
 import type { FeedItem } from "../src/discovery/rss.ts";
 import type { Script } from "../src/editorial/schema.ts";
 
@@ -491,6 +492,7 @@ export function testConfig(
     streamAsks: streamAsksSettings({}),
     searchShorts: searchShortsSettings({}),
     subsLearn: subsLearnSettings({}),
+    packaging: packagingSettings({}),
     liveClips: liveClipsSettings({}),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,

@@ -3,6 +3,9 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
+import { packBeforeUpload, pickHookWords } from "./packaging/lab.ts";
+import { runSecondChance } from "./packaging/secondchance.ts";
+import { packagingAtLeast } from "./packaging/settings.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -13883,6 +13886,9 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     }
   }
   let session = ep.upload_session_uri;
+  // PACKAGING_LAB (src/packaging/lab.ts): the title (and a long video's main thumbnail) scored and, under "pick",
+  // chosen before the first byte goes up. Once per episode; any trouble leaves the writer's packaging as it was.
+  if (!session) await packBeforeUpload(s, ep, episodeDir(s.cfg, ep.id));
   if (!session) {
     const size = (await fs.stat(file)).size;
     session = await yt.createSession(
@@ -14196,7 +14202,8 @@ async function queueAbTest(s: Services, ep: Episode): Promise<void> {
       await fs.readFile(file, "utf8").catch(() => "[]"),
     ) as Array<{ videoId: string }>;
     if (list.some((x) => x.videoId === ep.youtube_video_id)) return;
-    const thumbs = ["thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map(
+    // The main thumbnail first (PACKAGING_LAB=pick may have promoted a variant), then the other designs.
+    const thumbs = [ep.assets_json?.thumb ?? "thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map(
       (f) => path.join(dir, f),
     );
     list.push({
@@ -14237,7 +14244,8 @@ export async function designShortThumb(
   if (share <= 0 || !s.renderShortThumb) return;
   assets.shortThumbArm = shortThumbArm(id, share);
   if (assets.shortThumbArm !== "designed") return;
-  const words = thumbWords(script.youtube?.thumb_text);
+  // PACKAGING_LAB=pick: the best-scoring hook words that pass the clarity check (src/packaging/lab.ts), else the writer's.
+  const words = thumbWords(pickHookWords(s.cfg.packaging, s.cfg.dataDir, script));
   const image = pickThumbImage(assets.images, heroIndex);
   if (!words || !image) {
     assets.shortThumbArm = "frame";
@@ -14831,6 +14839,15 @@ export async function tick(
       await reachAlert(s.db, s.now(), (m) => s.notify(m)).catch((err) =>
         log("warn", "reach alert failed", { error: errorMessage(err) }),
       );
+      // PACKAGING_LAB=retitle: one second chance for an under-performing public video, and the verdicts on earlier ones.
+      if (packagingAtLeast(s.cfg.packaging, "retitle"))
+        await runSecondChance({
+          cfg: s.cfg,
+          db: s.db,
+          now: () => s.now(),
+          youtube: (ep) => s.youtube(accountOf(ep)),
+          notify: (m) => s.notify(m),
+        }).catch((err) => log("warn", "packaging second chance failed", { error: errorMessage(err) }));
       // Click-through per video, once a day (src/reach.ts).
       if (s.cfg.reachReport && s.reachClient && (await ctrCaptureDue(s.db, s.now()))) {
         await logEvent(s.db, null, "reach_report_tick", {});

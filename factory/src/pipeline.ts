@@ -227,6 +227,8 @@ import {
   loopDangles,
   loopRepeatsHook,
 } from "./gameplaydirect.ts";
+import { dayNOverlay } from "./hudreader/dayn.ts";
+import { profileFor } from "./hudreader/job.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
   cutdownRanks,
@@ -5316,6 +5318,58 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/**
+ * GTA 6 Day N's HUD graphics (HUD_PIN, HUD_TICKER, HUD_END_MAP; src/hudreader/dayn.ts): the pin, the wanted ticker and
+ * the every-spot map, from the source clip's own HUD. Off, unsure or failed: undefined, and the Short renders as before.
+ */
+async function gameplayHud(
+  s: Services,
+  ep: Episode,
+  dir: string,
+  duration: number,
+  timing: { hookEnd: number; payoffAt: number },
+) {
+  const h = s.cfg.hud;
+  const story = ep.story_json.gtaDaily;
+  const ref = ep.story_json.gameplay;
+  const segments = ep.script_json?.gameplay?.direct?.segments;
+  if (!h.enabled || !(h.pin || h.ticker || h.endMap) || !story || !ref || !segments?.length) return undefined;
+  const game = profileFor(ref.review.game_title) ?? "gta6";
+  const meta = await readMeta(gameplayDir(s.cfg, ref.id));
+  if (!meta) return undefined;
+  const r = await dayNOverlay({
+    hud: h,
+    dataDir: s.cfg.dataDir,
+    episodeDir: dir,
+    episode: ep.id,
+    day: story.day,
+    game,
+    clipFile: path.join(gameplayDir(s.cfg, ref.id), meta.clip.file || "clip.mp4"),
+    segments,
+    durationSeconds: duration,
+    hookEnd: timing.hookEnd,
+    payoffAt: timing.payoffAt,
+    accent: "#FF6B1A",
+    liveEpisodes: async (ids) =>
+      new Set(
+        (
+          await s.db.query<{ id: string }>(
+            `SELECT id FROM episodes WHERE id = ANY($1) AND status NOT IN ('rejected','failed')`,
+            [ids],
+          )
+        ).map((x) => x.id),
+      ),
+    now: s.now(),
+  });
+  await logEvent(s.db, ep.id, "hud_overlay", {
+    drawn: r.props ? Object.keys(r.props).filter((k) => k !== "accent") : [],
+    why: r.why,
+    pin: r.pin,
+    findings: r.findings.slice(0, 20),
+  });
+  return r.props;
+}
+
 /** The rebuilt gameplay Short's render: its faults stop it here, before the owner is asked. */
 async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void> {
   if (!s.renderGameplayShort) throw new Error("this build cannot render gameplay Shorts");
@@ -5327,6 +5381,7 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   const duration = assets.durationSeconds ?? 20;
+  const hud = await gameplayHud(s, ep, dir, duration, timing);
   await s.renderGameplayShort({
     episodeDir: dir,
     props: {
@@ -5340,6 +5395,7 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       payoffAt: timing.payoffAt,
       voiced: timing.voiced,
       accent: "#FF6B1A",
+      ...(hud ? { hud } : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),

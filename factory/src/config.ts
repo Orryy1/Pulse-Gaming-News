@@ -595,6 +595,8 @@ export interface Config {
   /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
    * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
   growthReport: boolean;
+  /** GROWTH_REPORT_SPLIT: the Sunday report goes out over as many Discord messages as it needs instead of being cut at 3,900 characters (off). */
+  growthReportSplit: boolean;
   /** Click-through per video from YouTube's Reporting API (src/reach.ts), in the Sunday report and the test queue: REACH_REPORT, default off. */
   reachReport: boolean;
   /** The weekly cross-platform analytics loop (src/analyticsloop.ts): Mondays from 09:00 it reads every platform, writes
@@ -1639,6 +1641,7 @@ export function loadConfig(): Config {
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
+    growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),
     reachReport: bool("REACH_REPORT", false),
     analyticsLoop: bool("ANALYTICS_LOOP", false),
     analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),

@@ -279,10 +279,74 @@ export async function movingShareRows(
   });
 }
 
-/** The Discord message. */
+type GrowthCfg = Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings };
+
+/** Discord's embed description holds 4,096 characters; the report keeps under this, with room to spare. */
+export const DISCORD_DESCRIPTION_MAX = 3900;
+
+/** The report's sections in order, each a list of lines (empty sections dropped). */
+export async function growthSections(
+  db: Db,
+  cfg: GrowthCfg,
+  now: Date,
+  retention?: RetentionStudy,
+): Promise<string[][]> {
+  return [
+    growthLines(await growthRows(db), now),
+    // SUBS_LEARN: subscribers per 1,000 views for every format over 7 and 28 days (src/subslearn).
+    cfg.subsLearn?.enabled ? ["", ...(await subsReportLines(db, now, cfg.subsLearn).catch(() => []))] : [],
+    cfg.reachReport ? packagingLines(await ctrRows(db)) : [],
+    cfg.socialScoreboard ? scoreboardLines(await socialBoard(db, now)) : [],
+    // GAME_FETCH: what the footage library has filed (src/sceneindex/gamefetch.ts).
+    cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : [],
+    // ARCHIVE_BACKLOG: the curated archive, games archived, queued and failed (src/sceneindex/archive.ts).
+    cfg.archiveBacklog && cfg.dataDir ? archiveLines(await readArchive(cfg.dataDir)) : [],
+    // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
+    cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : [],
+    // SEARCH_SHORTS: the search Shorts' share of views from YouTube search against the other Shorts' (src/searchq).
+    cfg.searchShorts?.enabled ? [searchShareLine(await searchReachRows(db, now))] : [],
+    // RETENTION_LEARN: where viewers left this week's curves, the top three causes (src/retentionlearn.ts).
+    retention ? retentionLines(retention) : [],
+    // Every long render's moving share and stills share (src/qa/movingshare.ts).
+    movingShareLines(await movingShareRows(db, now).catch(() => [])),
+  ].filter((sec) => sec.some((l) => l.trim()));
+}
+
+/**
+ * GROWTH_REPORT_SPLIT (pure): the sections packed into Discord descriptions of at most `max` characters, in order.
+ * A section is never split while it fits in one; a longer one breaks between lines; a single line longer than a
+ * message is the only thing ever cut. Blank lines at a message's start or end are dropped.
+ */
+export function packSections(sections: string[][], max = DISCORD_DESCRIPTION_MAX): string[] {
+  const out: string[] = [];
+  let cur: string[] = [];
+  const size = (lines: string[]) => lines.join("\n").length;
+  const flush = () => {
+    while (cur.length && !cur[0]!.trim()) cur.shift();
+    while (cur.length && !cur.at(-1)!.trim()) cur.pop();
+    if (cur.length) out.push(cur.join("\n"));
+    cur = [];
+  };
+  for (const sec of sections) {
+    if (cur.length && size([...cur, ...sec]) > max) flush();
+    for (const raw of sec) {
+      const line = raw.length > max ? `${raw.slice(0, max - 1)}…` : raw;
+      if (cur.length && size([...cur, line]) > max) flush();
+      cur.push(line);
+    }
+  }
+  flush();
+  return out;
+}
+
+function reportTitle(cfg: GrowthCfg, now: Date): string {
+  return `🌱 Pulse growth report, week to ${new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, day: "numeric", month: "short" }).format(now)}`;
+}
+
+/** The Discord message (one embed, cut at DISCORD_DESCRIPTION_MAX: the behaviour while GROWTH_REPORT_SPLIT is off). */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings },
+  cfg: GrowthCfg,
   now: Date,
   /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
   retention?: RetentionStudy,
@@ -290,34 +354,38 @@ export async function growthReport(
   return {
     embeds: [
       {
-        title: `🌱 Pulse growth report, week to ${new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, day: "numeric", month: "short" }).format(now)}`,
-        description: [
-          ...growthLines(await growthRows(db), now),
-          // SUBS_LEARN: subscribers per 1,000 views for every format over 7 and 28 days (src/subslearn).
-          ...(cfg.subsLearn?.enabled ? ["", ...(await subsReportLines(db, now, cfg.subsLearn).catch(() => []))] : []),
-          ...(cfg.reachReport ? packagingLines(await ctrRows(db)) : []),
-          ...(cfg.socialScoreboard
-            ? scoreboardLines(await socialBoard(db, now))
-            : []),
-          // GAME_FETCH: what the footage library has filed (src/sceneindex/gamefetch.ts).
-          ...(cfg.gameFetch && cfg.dataDir ? filedLines(await readFiled(cfg.dataDir), now) : []),
-          // ARCHIVE_BACKLOG: the curated archive, games archived, queued and failed (src/sceneindex/archive.ts).
-          ...(cfg.archiveBacklog && cfg.dataDir ? archiveLines(await readArchive(cfg.dataDir)) : []),
-          // GAME_AUDIO_BED: the split between Shorts with the game's own sound and without (src/assets/gameaudio.ts).
-          ...(cfg.gameAudioBed ? [gameAudioLine(await shortStats(db, now), await gameAudioSides(db))] : []),
-          // SEARCH_SHORTS: the search Shorts' share of views from YouTube search against the other Shorts' (src/searchq).
-          ...(cfg.searchShorts?.enabled ? [searchShareLine(await searchReachRows(db, now))] : []),
-          // RETENTION_LEARN: where viewers left this week's curves, the top three causes (src/retentionlearn.ts).
-          ...(retention ? retentionLines(retention) : []),
-          // Every long render's moving share and stills share (src/qa/movingshare.ts).
-          ...movingShareLines(await movingShareRows(db, now).catch(() => [])),
-        ]
+        title: reportTitle(cfg, now),
+        description: (await growthSections(db, cfg, now, retention))
+          .flat()
           .join("\n")
-          .slice(0, 3900),
+          .slice(0, DISCORD_DESCRIPTION_MAX),
         color: 0xff6b1a,
       },
     ],
   };
+}
+
+/**
+ * GROWTH_REPORT_SPLIT: the whole report as one or more Discord messages, sent in order, so nothing is cut off (the
+ * subscribers-per-1,000 table can take the report past one message). Titled "(2 of 3)" and so on after the first.
+ */
+export async function growthReportMessages(
+  db: Db,
+  cfg: GrowthCfg,
+  now: Date,
+  retention?: RetentionStudy,
+): Promise<DiscordMessage[]> {
+  const parts = packSections(await growthSections(db, cfg, now, retention));
+  const title = reportTitle(cfg, now);
+  return (parts.length ? parts : [""]).map((description, i, all) => ({
+    embeds: [
+      {
+        title: all.length > 1 ? `${title} (${i + 1} of ${all.length})` : title,
+        description,
+        color: 0xff6b1a,
+      },
+    ],
+  }));
 }
 
 /** The growth report's retention lines (pure): the summary and the top three causes, kept short for Discord. */

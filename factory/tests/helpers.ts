@@ -110,6 +110,7 @@ export function testConfig(
     cutdownsEnabled: false,
     seriesPlaylists: false,
     growthReport: false,
+    growthReportSplit: false,
     analyticsLoop: false,
     analyticsLoopLessons: false,
     analyticsLoopPosting: false,

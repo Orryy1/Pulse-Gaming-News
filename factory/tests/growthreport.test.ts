@@ -171,3 +171,33 @@ test("the message reads the factory's retention rows and fits an embed", async (
   assert.ok(String(e.description).length < 4000);
   await db.close();
 });
+
+test("GROWTH_REPORT_SPLIT: a report past one Discord message goes out whole, section by section, in order", async () => {
+  const { packSections, growthReportMessages, DISCORD_DESCRIPTION_MAX } = await import("../src/growthreport.ts");
+  const line = (tag: string, i: number) => `${tag} row ${i}: ${"x".repeat(80)}`;
+  const head = Array.from({ length: 12 }, (_, i) => line("formats", i));
+  // The subscribers-per-1,000 table: about 3,000 characters on its own, so it cannot share with the head.
+  const subs = ["", "**Subscribers per 1,000 views, by format** (7 days | 28 days)", ...Array.from({ length: 30 }, (_, i) => line("subs", i))];
+  const social = Array.from({ length: 10 }, (_, i) => line("social", i));
+  const huge = Array.from({ length: 60 }, (_, i) => line("huge", i));
+  const parts = packSections([head, subs, social, huge]);
+  assert.ok(parts.length >= 3);
+  for (const p of parts) assert.ok(p.length <= DISCORD_DESCRIPTION_MAX, `${p.length}`);
+  // Nothing lost or reordered: every line is there once, in order (blank lines aside).
+  const all = [head, subs, social, huge].flat().filter((l) => l.trim());
+  assert.deepEqual(parts.join("\n").split("\n").filter((l) => l.trim()), all);
+  // A section that fits is never split across messages, and no message starts on a blank line.
+  assert.ok(parts.some((p) => p.includes("subs row 0") && p.includes("subs row 29")));
+  assert.ok(parts.every((p) => p.trim() === p));
+  // A section longer than one message breaks only between lines.
+  assert.ok(parts.filter((p) => p.includes("huge row")).length >= 2);
+  // One line longer than a message is the only thing ever cut.
+  const [cut] = packSections([["y".repeat(5000)]]);
+  assert.equal(cut!.length, DISCORD_DESCRIPTION_MAX);
+  // A short report stays one message with the usual title.
+  const db = await testDb();
+  const msgs = await growthReportMessages(db, { timezone: "Europe/London" }, new Date("2026-11-15T10:00:00Z"));
+  assert.equal(msgs.length, 1);
+  assert.match(String(msgs[0]!.embeds?.[0]?.title), /^🌱 Pulse growth report, week to 15 Nov$/);
+  await db.close();
+});

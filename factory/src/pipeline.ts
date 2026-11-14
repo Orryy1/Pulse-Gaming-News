@@ -14155,6 +14155,11 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
   );
 }
 
+/** True when a failure is about one video's own content (fact check, QA, clarity, spoilers), never the platform. */
+export function isContentFault(msg: string): boolean {
+  return /fact-?check|QA failed|clarity|spoiler|graphics audit|suggestive|word count/i.test(msg);
+}
+
 /** On failure records it and backs off, alerting once it gives up. */
 async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
   const step = STEPS[ep.status];
@@ -14192,8 +14197,11 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
     });
     // Only a platform-wide fault (credentials, quota, policy) justifies pausing new stories;
     // a fatal error inside one episode's own content must not take the whole day with it.
+    // 14 Nov 2026: a ranking whose fact check failed twice at "uploading" paused every lane for 12 hours
+    // and told the owner YouTube had refused the upload; a fault in the video's own content drops that video only.
     const platformFault =
       fatal &&
+      !isContentFault(msg) &&
       ep.lane !== "twin" && // the twin channel's login or quota must never pause the main channel
       (["uploading", "uploaded"].includes(ep.status) ||
         // "refused" alone caught an explainer part the writer refused for missing evidence and paused every lane

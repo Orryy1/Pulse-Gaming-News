@@ -381,6 +381,9 @@ import {
   storyWeight,
 } from "./loopfeedback.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
+import { withLearn } from "./learn/scope.ts";
+import { holdoutOf } from "./learn/holdout.ts";
+import { learnTick } from "./learn/tick.ts";
 import {
   REPLY_LIMITS,
   factsText as replyFacts,
@@ -420,6 +423,7 @@ import {
   growthNotes,
   growthProblems,
   growthVerdict,
+  pinnedGrowthDefaults,
 } from "./growth.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
@@ -7162,14 +7166,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
   // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
   // A planned run topic's angle sets its opener, so it stays out of the opening-line test.
-  const test = await (cluster.run || cluster.reply
+  // A holdout Short (LEARN_HOLDOUT_SHARE, src/learn/holdout.ts) is the factory as pinned: no test arm, and the winners
+  // the tests had settled when the baseline was pinned.
+  const holdout = holdoutOf(s.cfg);
+  const test = await (cluster.run || cluster.reply || holdout
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
     log("warn", "growth test assignment failed", { error: errorMessage(err) });
     return undefined;
   });
-  const testDefaults = await growthDefaults(s.db).catch(() => []);
+  const testDefaults = holdout
+    ? pinnedGrowthDefaults(holdout.growthDefaults)
+    : await growthDefaults(s.db).catch(() => []);
   // The audit's writer rules (src/editorial/shortrules.ts) come after the test's variant, nearest the draft.
   const argument = argumentArm(s.cfg, ep);
   if (argument)
@@ -14388,7 +14397,9 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
       episode: ep.id,
       title: ep.script_json?.headline ?? ep.story_json?.headline,
     },
-    () => advanceStep(s, ep),
+    // The learning core (src/learn/scope.ts): the holdout's baseline settings, and the step's prompts, models, settings
+    // and commit stamped on the episode. Off (no LEARN_STAMPS, no LEARN_HOLDOUT_SHARE), the step runs straight through.
+    () => withLearn(s, ep, (run) => advanceStep(run, ep)),
   );
 }
 
@@ -14841,6 +14852,10 @@ export async function tick(
         );
       }
     }
+    // The learning core (src/learn/tick.ts): the change ledger, the holdout's pin and the weekly learning jobs.
+    await learnTick(s).catch((err) =>
+      log("warn", "learning core tick failed", { error: errorMessage(err) }),
+    );
     return { selected };
   });
   return result ? { ran: true, ...result } : { ran: false };

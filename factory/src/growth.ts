@@ -252,6 +252,18 @@ export async function growthDefaults(
   return out;
 }
 
+/** Winners recorded as plain keys (a holdout's pinned baseline, src/learn/holdout.ts) in growthDefaults' shape. */
+export function pinnedGrowthDefaults(
+  pinned: Array<{ key: string; variant: Variant }>,
+): Array<{ test: GrowthTest; variant: Variant }> {
+  const out: Array<{ test: GrowthTest; variant: Variant }> = [];
+  for (const p of pinned) {
+    const test = testByKey(p.key);
+    if (test) out.push({ test, variant: p.variant });
+  }
+  return out;
+}
+
 /** What the writer is told: the finished tests' winners as standing rules, then this Short's variant. */
 export function growthNotes(
   current: EpisodeTest | undefined,

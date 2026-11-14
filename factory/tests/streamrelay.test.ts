@@ -70,7 +70,7 @@ test("relay settings: off by default, public, three restarts, the owner's channe
 
 test("relay pipe: ads filtered, video always copied, the key never shown", () => {
   const sl = streamlinkArgs("tinotv", "best");
-  assert.ok(sl.includes("--twitch-disable-ads"));
+  assert.ok(!sl.includes("--twitch-disable-ads"), "deprecated in streamlink 8, which skips ads itself");
   assert.ok(sl.includes("--stdout"));
   assert.equal(sl.at(-2), "https://www.twitch.tv/tinotv");
   const plain = plainArgs(INGEST);

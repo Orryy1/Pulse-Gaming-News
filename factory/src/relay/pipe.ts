@@ -17,9 +17,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 
 export const PCM_ARGS = ["-f", "s16le", "-ar", "48000", "-ac", "2"];
 
+/**
+ * streamlink's arguments (pure). Ads: streamlink 8 skips Twitch's ad segments on its own ("Will skip ad segments" in its
+ * log; --twitch-disable-ads is deprecated there and would break the pipe once removed), so the stream pauses during
+ * an ad break instead of showing it.
+ */
 export function streamlinkArgs(channel: string, quality: string): string[] {
   return [
-    "--twitch-disable-ads",
     "--retry-streams",
     "5",
     "--retry-max",
@@ -105,6 +109,10 @@ export function joinArgs(url: string): string[] {
     ...head,
     "-thread_queue_size",
     "1024",
+    "-probesize",
+    "2000000",
+    "-analyzeduration",
+    "1000000",
     "-i",
     "pipe:3",
     "-thread_queue_size",
@@ -167,6 +175,14 @@ export interface PipeHandle {
   gaveUp(): boolean;
 }
 
+/** Copies a stream into another without waiting for it to drain; past 32 MB queued, chunks are dropped (a glitch, not a leak). */
+function loose(from: NodeJS.ReadableStream, to: NodeJS.WritableStream & { writableLength?: number }) {
+  from.on("data", (c: Buffer) => {
+    if ((to.writableLength ?? 0) < 32 * 1024 * 1024) to.write(c);
+  });
+  from.on("end", () => to.end());
+}
+
 /** The wait before restart n (1-based): 5 s doubling to 2 min (pure). */
 export const backoff = (n: number) =>
   Math.min(120_000, 5_000 * 2 ** Math.max(0, n - 1));
@@ -189,7 +205,14 @@ export function startPipe(o: PipeOptions): PipeHandle {
   const kill = () => {
     for (const p of procs) {
       p.removeAllListeners("exit");
-      if (p.exitCode === null) p.kill("SIGTERM");
+      if (p.exitCode === null) {
+        p.kill("SIGTERM");
+        // streamlink can ignore SIGTERM while it waits on Twitch (seen 14 Nov 2026): forced after 3 seconds.
+        const t = setTimeout(() => {
+          if (p.exitCode === null) p.kill("SIGKILL");
+        }, 3_000);
+        t.unref?.();
+      }
     }
     procs = [];
   };
@@ -219,8 +242,10 @@ export function startPipe(o: PipeOptions): PipeHandle {
       (a.stdio[3] as NodeJS.ReadableStream).pipe(
         b.stdio[3] as NodeJS.WritableStream,
       );
-      a.stdout!.pipe(f.stdin!);
-      f.stdout!.pipe(b.stdin!);
+      // The audio legs are buffered here without back-pressure: ffmpeg B opens its video input first and would
+      // otherwise stall A (and so the video) while the PCM backs up (a deadlock seen in the 14 Nov proof).
+      loose(a.stdout!, f.stdin!);
+      loose(f.stdout!, b.stdin!);
       for (const p of [a, f, b]) p.stderr!.on("data", note);
       procs = [sl, a, f, b];
     } else {

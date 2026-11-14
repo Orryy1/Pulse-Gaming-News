@@ -177,7 +177,7 @@ if (cmd === "watch") {
   let ffLog = "";
   ff.stderr.on("data", (b: Buffer) => (ffLog += b.toString()));
   await new Promise<void>((r) => ff.on("exit", () => r()));
-  sl.kill("SIGTERM");
+  sl.kill("SIGKILL");
   const bytes = fs.existsSync(out) ? fs.statSync(out).size : 0;
   console.log(
     JSON.stringify(
@@ -193,6 +193,7 @@ if (cmd === "watch") {
       2,
     ),
   );
+  process.exit(0);
 } else if (cmd === "yt-test") {
   const seconds = Number(process.argv[3] || 120);
   const yt = youtube();
@@ -303,6 +304,7 @@ if (cmd === "watch") {
       2,
     ),
   );
+  process.exit(0);
 } else if (cmd === "status") {
   const state = (() => {
     try {

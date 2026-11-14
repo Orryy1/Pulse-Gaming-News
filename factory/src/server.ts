@@ -20,7 +20,8 @@ import {
   redactedConfig,
   type Config,
 } from "./config.ts";
-import { runDoctor, formatDoctor } from "./doctor.ts";
+import { runDoctor, formatDoctor, gatherForecasts } from "./doctor.ts";
+import { forecastAlert } from "./forecast.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { backupDue, makeBackup, markBackup } from "./backup.ts";
@@ -2364,6 +2365,37 @@ async function main(): Promise<void> {
       log("warn", "credit check failed", { error: errorMessage(err) }),
     );
   }, 30 * 60_000);
+  // FORECAST_ENABLED (src/forecast.ts; readers in src/doctor.ts): quotas, logins, disks, Codex, Ollama and backups
+  // projected days ahead, every three hours; each dependency is said once a day per level, through the usual alerts.
+  if (cfg.forecastEnabled) {
+    const forecast = () =>
+      void (async () => {
+        const now = new Date();
+        const forecasts = await gatherForecasts(db, cfg, {
+          creditPlan: services.creditPlan,
+          refreshToken: await storedRefreshToken(db, oauthConfig(cfg)),
+          visionDown: services.visionDown,
+          now,
+        });
+        const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'forecast_sent'`);
+        let sent: Record<string, string> = {};
+        try {
+          sent = row ? (JSON.parse(row.value) as Record<string, string>) : {};
+        } catch {
+          sent = {};
+        }
+        const out = forecastAlert(forecasts, sent, now.toISOString().slice(0, 10));
+        await db.query(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('forecast_sent', $1, now())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+          [JSON.stringify(out.sent)],
+        );
+        if (out.text) await services.notify({ content: out.text });
+        log("info", "forecast", { levels: forecasts.map((f) => `${f.id}:${f.level}`) });
+      })().catch((err) => log("warn", "forecast failed", { error: errorMessage(err) }));
+    setTimeout(forecast, 10 * 60_000);
+    setInterval(forecast, 3 * 3600_000);
+  }
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
   setInterval(() => {
     void (async () => {
@@ -2462,7 +2494,10 @@ async function main(): Promise<void> {
   }, 5 * 60_000);
   // The factory watching its own output: a working day with no new Short for hours is said once (src/outputwatch.ts).
   setInterval(() => {
-    void quietAlert(db, new Date(), cfg.timezone)
+    void quietAlert(db, new Date(), cfg.timezone, {
+      slots: [...cfg.newsSlots, ...(cfg.whyEnabled ? cfg.whySlots : [])],
+      dailyTarget: cfg.dailyTarget,
+    })
       .then((content) => (content ? services.notify({ content }) : undefined))
       .catch((err) => log("warn", "output watch failed", { error: errorMessage(err) }));
   }, 15 * 60_000);

@@ -17,8 +17,12 @@ import {
 } from "../render/render.ts";
 import type { StreamWeeklyProps } from "../render/StreamWeekly.tsx";
 import { DUCK, type Timeline } from "./timeline.ts";
+import { BEDS } from "../render/soundscape.ts";
 
 const run = promisify(execFile);
+
+/** The house music bed for a week (src/render/soundscape.ts BEDS, the loudness- and key-tuned set), in turn. */
+export const bedFor = (week: number): string => BEDS[Math.abs(week) % BEDS.length]!.file;
 
 /** The ffmpeg arguments that cut one stretch to the episode's format (pure). */
 export function cutArgs(
@@ -106,6 +110,8 @@ export function weekProps(
     base: string;
     endLine: string;
     next: StreamWeeklyProps["next"];
+    /** The music bed, a file under public/ (bedFor). */
+    bed?: string | null;
   },
 ): StreamWeeklyProps {
   const url = (rel: string) => `${o.base}/${webPath(rel)}`;
@@ -144,6 +150,7 @@ export function weekProps(
       : null,
     logoSrc: "logo.png",
     duck: DUCK,
+    bedSrc: o.bed ?? null,
   };
 }
 
@@ -155,6 +162,8 @@ export interface WeekRenderInput {
   posterFile: string;
   endLine: string;
   next: StreamWeeklyProps["next"];
+  /** The week number picks the house bed, so weeks running back to back do not share one. */
+  week?: number;
   concurrency: number;
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
@@ -170,6 +179,7 @@ export async function renderWeek(input: WeekRenderInput): Promise<void> {
       base: server.url,
       endLine: input.endLine,
       next: input.next,
+      bed: bedFor(input.week ?? 1),
     });
     const browserExecutable = input.browserExecutable || undefined;
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;

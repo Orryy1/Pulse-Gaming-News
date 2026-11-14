@@ -22,6 +22,7 @@ import type { Llm } from "../editorial/llm.ts";
 import { narrate } from "../voice/index.ts";
 import {
   compileWeek,
+  describeWindows,
   gatherStream,
   spoilerRule,
 } from "../streamweekly/build.ts";
@@ -170,6 +171,7 @@ if (cmd === "index") {
     now,
     clarity: !has("no-clarity"),
     reuseScript: has("reuse"),
+    ...(has("look") ? { look: (v: Parameters<typeof describeWindows>[1], w: Parameters<typeof describeWindows>[2]) => describeWindows(dataDir, v, w) } : {}),
     ...(has("render")
       ? {
           check: async (file: string, tl: Parameters<typeof checkWeekRender>[1]) => {
@@ -182,6 +184,7 @@ if (cmd === "index") {
               episodeDir: o.episodeDir,
               timeline: tl,
               game,
+              week,
               outFile: o.file,
               posterFile: o.poster,
               endLine: o.endLine,
@@ -221,7 +224,7 @@ if (cmd === "index") {
   } else {
     const game = flag("game") ?? sw.game;
     const file = path.join(out, flag("name") ?? "week.mp4");
-    await renderWeek({ episodeDir: out, timeline: tl, game, outFile: file, posterFile: path.join(out, "poster.jpg"), endLine: "Every day of the week has its own Short", next: { title: GTA_DAILY_PLAYLIST, thumbSrc: null }, concurrency: cfg.remotionConcurrency, gl: cfg.remotionGl, browserExecutable: cfg.browserExecutable || undefined });
+    await renderWeek({ episodeDir: out, timeline: tl, game, week: Number(flag("week") ?? 1), outFile: file, posterFile: path.join(out, "poster.jpg"), endLine: "Every day of the week has its own Short", next: { title: GTA_DAILY_PLAYLIST, thumbSrc: null }, concurrency: cfg.remotionConcurrency, gl: cfg.remotionGl, browserExecutable: cfg.browserExecutable || undefined });
     const check = await checkWeekRender(file, tl);
     await fs.writeFile(path.join(out, "render-check.json"), JSON.stringify(check, null, 1));
     await contactSheet(file, path.join(out, "contact.jpg"), 6);

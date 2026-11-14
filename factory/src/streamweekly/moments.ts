@@ -97,6 +97,10 @@ export interface WeekMoment {
   language: boolean;
   /** Seconds of strong language inside the window, from its start: muted in the cut. */
   bleeps: Array<{ from: number; to: number }>;
+  /** What the vision model saw in the window's shots, when it has looked (writer material). */
+  seen?: string;
+  /** The end of the last menu, map, loading or dark shot in the 40 s before the window: a lead-in starts after it. */
+  leadFloor?: number;
   /** Why it may not be used (spoiler window, blank picture); absent when it may. */
   blocked?: string;
 }
@@ -465,8 +469,17 @@ function scoreMoment(
     ...(ask ? { ask } : {}),
     language,
     bleeps: language || swears ? bleepsIn(lines, win.start, win.end) : [],
+    ...(described.length ? { seen: [...new Set(described.map((s) => s.desc))].slice(0, 3).join(" | ").slice(0, 300) } : {}),
+    ...leadFloorOf(v.shots, win.start),
     ...(blocked ? { blocked } : {}),
   };
+}
+
+/** Where a lead-in may start at the earliest (pure): after the last unusable shot in the 40 s before the window. */
+export function leadFloorOf(shots: Pick<SceneShot, "start" | "end" | "text" | "menu" | "blank" | "luma">[], start: number): { leadFloor?: number } {
+  const bad = shots.filter((s) => s.end <= start + 0.5 && s.end > start - 40 && (isMenuShot(s) || s.luma < 18));
+  if (!bad.length) return {};
+  return { leadFloor: r2(Math.min(start, Math.max(...bad.map((s) => s.end)))) };
 }
 
 /** Overlapping candidates as one: the best score's window, every reason kept once (pure). */

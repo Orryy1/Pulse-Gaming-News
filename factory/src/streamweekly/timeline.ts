@@ -163,10 +163,8 @@ export function buildTimeline(
   const pieces = glimpses.length ? glimpses : [{ key: "teaser", m: teaserM }];
   const each = introLen / pieces.length;
   pieces.forEach((g, i) => {
-    // From before the moment's own lead-in, so no picture is shown twice.
-    const lead = need(g.key).seconds + VOICE_AIR + 0.2 + CARD_SECONDS;
-    const srcTo = Math.max(each, g.m.start - lead);
-    const srcFrom = Math.max(0, srcTo - each);
+    // A glimpse of the moment itself, around its peak: the intro previews what is coming.
+    const srcFrom = Math.max(g.m.start, Math.min(g.m.end - each, g.m.peak - each / 2));
     clips.push({
       key: `intro${i + 1}`,
       source: g.m.file,
@@ -210,6 +208,8 @@ export function buildTimeline(
       let srcFrom = Math.max(0, m.start - lead);
       for (const u of used)
         if (u.file === m.file && u.from < m.start && u.to > srcFrom) srcFrom = Math.min(m.start, u.to);
+      // Never a menu, map or loading screen in a lead-in.
+      if (m.leadFloor !== undefined && m.leadFloor > srcFrom) srcFrom = Math.min(m.start, m.leadFloor);
       const realLead = r2(m.start - srcFrom);
       const len = r2(realLead + (m.end - m.start));
       const voiceStart = Math.max(Math.min(voiceAt, realLead), realLead - v.seconds - VOICE_AIR);

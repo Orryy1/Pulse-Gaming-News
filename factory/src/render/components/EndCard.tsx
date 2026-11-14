@@ -33,10 +33,12 @@ export const EndCard: React.FC<{
   logoSrc: string | null;
   endLine: string;
   variant?: number;
-}> = ({ next, logoSrc, endLine, variant = 0 }) => {
+  /** The whole video's frames, when the card is drawn inside a Sequence (whose own length the config reports). */
+  totalFrames?: number;
+}> = ({ next, logoSrc, endLine, variant = 0, totalFrames }) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
-  const t = endCardTiming(durationInFrames, fps);
+  const t = endCardTiming(totalFrames ?? durationInFrames, fps);
   const fade = interpolate(frame, [0, t.fadeIn], [0, 1], clamp);
   const nextIn = spring({
     frame: frame - t.nextIn,

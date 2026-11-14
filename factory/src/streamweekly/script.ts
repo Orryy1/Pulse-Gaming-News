@@ -137,6 +137,7 @@ export function writerContent(p: WeekPlan, notes: string[] = []): string {
         ? `  settles the stream ask "${m.ask.question}": ${m.ask.result}`
         : "",
       `  what was said: ${clean(m.transcript).slice(0, 700) || "(nothing said)"}`,
+      m.seen ? `  what was on screen: ${m.seen}` : "",
       `  why it was picked: ${m.why.join("; ")}`,
     ]
       .filter(Boolean)

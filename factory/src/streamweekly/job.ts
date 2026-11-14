@@ -23,6 +23,7 @@ import { YouTubeClient, buildResource, markerTag } from "../youtube/upload.ts";
 import { weekNumber } from "./chapters.ts";
 import {
   compileWeek,
+  describeWindows,
   gatherStream,
   readyIndex,
   spoilerRule,
@@ -239,6 +240,7 @@ export async function streamWeeklyTick(
           episodeDir: o.episodeDir,
           timeline: tl,
           game: s.game,
+          week: slot.week,
           outFile: o.file,
           posterFile: o.poster,
           endLine: o.endLine,
@@ -248,6 +250,7 @@ export async function streamWeeklyTick(
           browserExecutable: cfg.browserExecutable || undefined,
         }),
       check: checkWeekRender,
+      look: (v, w) => describeWindows(cfg.dataDir, v, w),
       spoiler: rule,
       days,
       ...(playlistId ? { playlistId } : {}),

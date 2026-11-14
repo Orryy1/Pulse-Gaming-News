@@ -14,6 +14,8 @@ import { measure } from "../liveclips/recorder.ts";
 import { liveDir, type LiveState } from "../liveclips/job.ts";
 import { testedThisWeek } from "../streamasks/miner.ts";
 import { loadVodIndex, type VodIndex } from "../vodindex/schema.ts";
+import { describeVodShots } from "../vodindex/build.ts";
+import { visionUp } from "../sceneindex/describe.ts";
 import { loadSceneIndex } from "../sceneindex/schema.ts";
 import {
   clipStoryMoment,
@@ -268,6 +270,12 @@ export interface CompileInput {
       next: { title: string; thumbSrc: string | null } | null;
     },
   ) => Promise<void>;
+  /**
+   * Has the free local vision model look at the shots of these windows that it has not seen yet (src/vodindex/build.ts
+   * describeVodShots), and returns the index with what it saw: menus, maps and loading screens are then known, and the
+   * writer has the pictures as material. Absent, or the model away: the ranking goes ahead on what is known.
+   */
+  look?: (v: VodIndex, windows: Array<{ from: number; to: number }>) => Promise<VodIndex>;
   /** Measures the finished file (src/streamweekly/render.ts checkWeekRender); its problems stop an upload. */
   check?: (file: string, tl: Timeline) => Promise<WeekCheck>;
   spoiler: {
@@ -306,6 +314,17 @@ const write = (dir: string, name: string, v: unknown) =>
 /** The whole week, step by step; each step's output is written to outDir as it is made. */
 export async function compileWeek(c: CompileInput): Promise<CompileResult> {
   await fs.mkdir(c.outDir, { recursive: true });
+  if (c.look) {
+    const first = rankWeek(c.streams, { spoilerWindowOpen: c.spoiler.open, storyCheck: c.spoiler.check });
+    for (const w of c.streams) {
+      // The best windows of each stream and the 40 s before them (their lead-ins).
+      const windows = first
+        .filter((m) => m.vodId === w.index.vodId && !m.blocked)
+        .slice(0, 24)
+        .map((m) => ({ from: Math.max(0, m.start - 40), to: m.end }));
+      if (windows.length) w.index = await c.look(w.index, windows).catch(() => w.index);
+    }
+  }
   // Cinema bars are measured only for the moments that could make the cut, and only while the window is open.
   let ranked = rankWeek(c.streams, {
     spoilerWindowOpen: c.spoiler.open,
@@ -508,6 +527,20 @@ export function report(
       "",
     );
   return lines.join("\n");
+}
+
+/** The free local vision model on the shots inside the windows that have not been looked at yet (see CompileInput.look). */
+export async function describeWindows(
+  dataDir: string,
+  v: VodIndex,
+  windows: Array<{ from: number; to: number }>,
+  o: { batch?: number; describe?: typeof describeVodShots; up?: () => Promise<boolean> } = {},
+): Promise<VodIndex> {
+  if (!(await (o.up ?? visionUp)())) return v;
+  const inside = (s: { start: number; end: number }) => windows.some((w) => s.end > w.from && s.start < w.to);
+  const subset: VodIndex = { ...v, shots: v.shots.filter(inside) };
+  const r = await (o.describe ?? describeVodShots)(subset, { dataDir, whisperPython: "", ocrFps: 0, chunkSeconds: 0, describeBatch: o.batch ?? 400 }, o.batch ?? 400);
+  return (await loadVodIndex(dataDir, v.vodId)) ?? r.index;
 }
 
 /** A recording's index only when it covers the whole recording (the miner builds it; descriptions are optional). */

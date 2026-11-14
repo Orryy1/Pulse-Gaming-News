@@ -53,6 +53,8 @@ export type StreamWeeklyProps = {
   next: EndCardNext | null;
   logoSrc: string | null;
   duck: number;
+  /** A quiet music bed under the whole video (the house beds, src/render/soundscape.ts), so no stretch is dead air. */
+  bedSrc?: string | null;
 };
 
 export const SAMPLE_STREAM_WEEKLY: StreamWeeklyProps = {
@@ -265,8 +267,15 @@ const TitleCard: React.FC<{ text: string; sub: string; frames: number }> = ({
   );
 };
 
+/** The bed's level at a second (pure): low under the game, lower still under the narrator, faded in and out. */
+export function bedVolume(t: number, total: number, voices: Array<{ at: number; len: number }>): number {
+  const speaking = voices.some((v) => t >= v.at - 0.3 && t <= v.at + v.len + 0.3);
+  const base = speaking ? 0.06 : 0.11;
+  return base * Math.min(1, t / 1.5) * Math.min(1, Math.max(0, total - t) / 3);
+}
+
 export const StreamWeekly: React.FC<StreamWeeklyProps> = (p) => {
-  const { fps } = useVideoConfig();
+  const { fps, durationInFrames } = useVideoConfig();
   const f = (s: number) => Math.round(s * fps);
   const len = (s: number) => Math.max(1, Math.round(s * fps));
   return (
@@ -287,6 +296,7 @@ export const StreamWeekly: React.FC<StreamWeeklyProps> = (p) => {
           </AbsoluteFill>
         </Sequence>
       ))}
+      {p.bedSrc ? <Audio src={resolveSrc(p.bedSrc)!} loop volume={(fr) => bedVolume(fr / fps, p.durationSeconds, p.voices)} /> : null}
       {p.voices.map((v) => (
         <Sequence
           key={`v-${v.key}`}
@@ -355,6 +365,7 @@ export const StreamWeekly: React.FC<StreamWeeklyProps> = (p) => {
           }
           logoSrc={resolveSrc(p.logoSrc)}
           endLine={p.endLine}
+          totalFrames={durationInFrames}
         />
       </Sequence>
     </AbsoluteFill>

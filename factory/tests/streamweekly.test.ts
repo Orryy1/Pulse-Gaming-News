@@ -1027,3 +1027,37 @@ test("parseSilences: ffmpeg's silencedetect log as stretches, short ones left ou
   assert.deepEqual(parseSilences(log, 3), [{ start: 12.5, end: 16.25 }]);
   assert.equal(parseSilences(log).length, 2);
 });
+
+test("leadFloorOf: a lead-in starts after the last menu or dark shot before the window", async () => {
+  const { leadFloorOf } = await import("../src/streamweekly/moments.ts");
+  const shots = [
+    { start: 50, end: 60, text: "", luma: 80 },
+    { start: 60, end: 80, text: "", luma: 80, menu: true },
+    { start: 80, end: 100, text: "", luma: 80 },
+  ];
+  assert.deepEqual(leadFloorOf(shots, 100), { leadFloor: 80 });
+  assert.deepEqual(leadFloorOf(shots.slice(0, 1), 100), {});
+});
+
+test("bedVolume: quiet under the game, quieter under the narrator, faded at both ends", async () => {
+  const { bedVolume } = await import("../src/render/StreamWeekly.tsx");
+  const voices = [{ at: 10, len: 5 }];
+  assert.equal(bedVolume(5, 100, voices), 0.11);
+  assert.equal(bedVolume(12, 100, voices), 0.06);
+  assert.equal(bedVolume(0, 100, voices), 0);
+  assert.equal(bedVolume(100, 100, voices), 0);
+});
+
+test("describeWindows: only shots inside the windows go to the vision model, and only when it is up", async () => {
+  const { describeWindows } = await import("../src/streamweekly/build.ts");
+  const v = vod("v1", "2026-11-19", { duration: 100 });
+  const seen: number[][] = [];
+  const describe = (async (sub: VodIndex) => {
+    seen.push(sub.shots.map((s) => s.start));
+    return { index: sub, described: 0, failed: 0 };
+  }) as never;
+  await describeWindows("/nowhere", v, [{ from: 25, to: 41 }], { describe, up: async () => true });
+  assert.deepEqual(seen, [[20, 30, 40]]);
+  await describeWindows("/nowhere", v, [{ from: 25, to: 41 }], { describe, up: async () => false });
+  assert.equal(seen.length, 1);
+});

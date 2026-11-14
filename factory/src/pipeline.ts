@@ -632,6 +632,7 @@ import {
   isWeeklyGuide,
   readGuidePlan,
 } from "./longguide.ts";
+import { applyPlannedChapters, factsPath, plannedFactsText, plannedTitle } from "./plannedoc.ts";
 import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
 import { editionOf } from "./assets/junk.ts";
 import { movingShare } from "./qa/movingshare.ts";
@@ -4063,6 +4064,12 @@ async function stepScriptDocumentary(
     if (g.text) runSources.text = [g.text, runSources.text].filter(Boolean).join("\n\n");
     runSources.missed.push(...g.missed);
   }
+  // A search-led planned entry (src/plannedoc.ts) writes from its confirmed facts file too, whatever the guide setting.
+  if (topic.planned?.facts_file) {
+    const f = plannedFactsText(factsPath(topic.planned.facts_file, s.cfg.shortRunFile));
+    if (f.text) runSources.text = [f.text, runSources.text].filter(Boolean).join("\n\n");
+    runSources.missed.push(...f.missed);
+  }
   const withRunSources = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
     runSources.text ? { ...a, text: `${a.text}\n\n${runSources.text}` } : a;
   // A single story starts from its overview article; a franchise from the series article.
@@ -4077,7 +4084,7 @@ async function stepScriptDocumentary(
   const franchise = franchiseArticle
     ? withRunSources(withTestRecords(franchiseArticle, records))
     : franchiseArticle;
-  const outline =
+  const drafted =
     topic.format === "everygame" && topic.roster
       ? await everyGameOutlineFor(s, ep, topic, franchise?.text ?? "")
       : retro
@@ -4088,6 +4095,10 @@ async function stepScriptDocumentary(
     `${franchise?.text ?? ""}${strict ? testOutlineNote(records) : ""}`,
     { openLoops: s.cfg.docOpenLoops, rules },
   );
+  // A search-led planned entry keeps its planned chapters: they are the YouTube chapters people search.
+  const held = applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise);
+  const outline = held.outline;
+  if (held.changed.length) await logEvent(s.db, ep.id, "planned_chapters", { changed: held.changed });
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
   const openLoops = s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
@@ -4624,6 +4635,18 @@ async function stepScriptDocumentary(
     script.youtube.title = retro.title;
     script.youtube.title_variants = [];
     if (retro.thumb) script.youtube.thumb_text = retro.thumb;
+  }
+  // A search-led planned entry: its title through the search title step, and its planned thumbnail words.
+  if (topic.planned) {
+    const planned = topic.planned;
+    const keeps = (t: string) => plannedTitle(t, planned, topic.franchise) === t;
+    const title = plannedTitle(script.youtube.title, planned, topic.franchise);
+    // The title test only tries titles that keep the search's words too.
+    script.youtube.title_variants = (script.youtube.title_variants ?? []).filter(
+      (t) => t !== title && keeps(t),
+    );
+    script.youtube.title = title;
+    if (topic.planned.thumb) script.youtube.thumb_text = topic.planned.thumb;
   }
   if (franchise && !script.sources?.includes(franchise.url))
     script.sources = [franchise.url, ...(script.sources ?? [])];

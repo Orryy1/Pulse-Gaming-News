@@ -725,6 +725,15 @@ export interface Config {
    * channel's recent replies, or another reply in the same pass, is held and judged again on the next pass.
    */
   replyOpeningGuard: boolean;
+  /**
+   * RULE_OF_TWO (Meta's "Agents Rule of Two", off): a step that reads untrusted text holds no secrets and no write tools,
+   * and the step that hearts, pins, replies or posts acts only on structured output from a fixed list. In the community
+   * engine, comments that read as instructions never reach the reply model, its verdicts flagged as instructions are
+   * dropped, and a public reply goes only for an allowed kind and never repeats six of the comment's words in a row;
+   * the Studio routine's plan (/routine/viewers) carries comment ids and fixed actions, no comment text; the reply
+   * Shorts' question picker passes over such comments.
+   */
+  ruleOfTwo: boolean;
   /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
   replyStyle: boolean;
   /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
@@ -1713,6 +1722,7 @@ export function loadConfig(): Config {
     firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
     firstCommentStrict: bool("FIRST_COMMENT_STRICT", false),
     replyOpeningGuard: bool("REPLY_OPENING_GUARD", false),
+    ruleOfTwo: bool("RULE_OF_TWO", false),
     replyStyle: bool("REPLY_STYLE", false),
     replyFollowups: bool("REPLY_FOLLOWUPS", false),
     metaCommentReplies: bool("META_COMMENT_REPLIES", false),

@@ -669,8 +669,14 @@ export async function handleRoutine(
           readList(doneFile(cfg, "hearted")),
           readList(doneFile(cfg, "viewerpin")),
           Math.min(30, Number(url.searchParams.get("max")) || 30),
+          // RULE_OF_TWO: ids and fixed actions only; the routine finds each comment by its id, never by its words.
+          cfg.ruleOfTwo,
         );
-        json(res, 200, { enabled: true, ...plan });
+        json(res, 200, {
+          enabled: true,
+          ...(cfg.ruleOfTwo ? { match: "by comment id only" } : {}),
+          ...plan,
+        });
         return true;
       }
       // The PC's puller (ROUTINE_FILES_TO=pc, LAN only): which files to fetch, then each file by id.

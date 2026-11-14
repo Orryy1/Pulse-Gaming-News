@@ -2151,6 +2151,7 @@ async function main(): Promise<void> {
         perDay: cfg.communityRepliesPerDay,
         perPass: cfg.communityRepliesPerPass,
         openingGuard: cfg.replyOpeningGuard,
+        ruleOfTwo: cfg.ruleOfTwo,
       }).catch((err) =>
         log("warn", "community engine pass failed", {
           error: errorMessage(err),

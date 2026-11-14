@@ -2665,6 +2665,7 @@ export async function maybeSelectCommentReply(
     filed,
     (id) => (eps.get(id) ? replyFacts(eps.get(id)!) : undefined),
     await usedComments(db),
+    cfg.ruleOfTwo,
   );
   if (!pick) {
     // The pick reads only the database, so it is tried every tick of the window; said once a day.

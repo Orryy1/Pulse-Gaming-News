@@ -53,7 +53,7 @@ export function humanNumbers(
     const m = maskQuotes(s);
     const t = m.text
       .replace(
-        /(?<![\w$£€¥.,])(\d{1,3})\.(5|25|75)\s+(million|billion|thousand)\b/g,
+        /(?<![\w$£€¥.,])(\d{1,3})\.(5)\s+(million|billion|thousand)\b/g,
         (whole: string, n: string, f: string, scale: string) => {
           if (isPoint(`${n}.${f}`, ctx)) return whole;
           findings.push({

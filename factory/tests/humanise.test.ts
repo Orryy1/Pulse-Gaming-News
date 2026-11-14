@@ -725,3 +725,9 @@ test("HUMANISE=fix: a rewrite that moves a fact falls back to the rule fixes; a 
   });
   assert.notEqual(unclear.stage, "rewrite");
 });
+
+test("a name inside a longer name is left alone, and only halves become words", () => {
+  const r = name(["Rockstar Games made it.", "The Rockstar Games Launcher went offline."]);
+  assert.equal(r.segments[1], "The Rockstar Games Launcher went offline.");
+  assert.equal(humanNumbers(["It added 1.75 million copies."], fix).segments[0], "It added 1.75 million copies.");
+});

@@ -11,6 +11,7 @@ import { logEvent } from "../episodes.ts";
 import { log } from "../lib/util.ts";
 import type { LearnJob, LearnTickHost } from "./tick.ts";
 import { loadOutcomes, type Outcome } from "./outcomes.ts";
+import { mascotLine, scoreMascot, type MascotScore } from "./mascottest.ts";
 import {
   freezeAnchors,
   ingestJudgeScores,
@@ -141,6 +142,8 @@ export interface WeeklyFacts {
     best?: { id: string; text: string; helpful: number; harmful: number };
   };
   hooks?: { n: number; kept: number };
+  /** The Pip mascot test (MASCOT_SHARE), once any Short is recorded in it. */
+  mascot?: MascotScore;
 }
 
 const pts = (x?: number) =>
@@ -213,6 +216,8 @@ export function weeklyMessage(f: WeeklyFacts): string {
     L.push(
       `Hook breadth: ${f.hooks.n} Shorts chose from several hooks; the writer's first hook won ${f.hooks.kept} times.`,
     );
+  const pip = f.mascot ? mascotLine(f.mascot) : undefined;
+  if (pip) L.push(pip);
   let msg = L.join("\n");
   if (msg.length > 1950) msg = `${msg.slice(0, 1940)}...`;
   return msg;
@@ -317,9 +322,14 @@ export async function runWeekly(
     const byId = new Map(outcomes.map((o) => [o.episodeId, o]));
     const train = rows
       .filter((r) => r.hook)
-      .map((r) => ({ hook: r.hook!, game: r.game ?? undefined, y: byId.get(r.id)!.hold3! }));
+      .map((r) => ({
+        hook: r.hook!,
+        game: r.game ?? undefined,
+        y: byId.get(r.id)!.hold3!,
+      }));
     const w = fitHookModel(train);
-    if (w) await saveHookModel(s.db, w, train.length, now, hookModelSkill(train));
+    if (w)
+      await saveHookModel(s.db, w, train.length, now, hookModelSkill(train));
     const picks = await s.db.query<{ chosen_idx: number }>(
       `SELECT idx AS chosen_idx FROM hook_candidates WHERE chosen AND created_at > $1`,
       [new Date(now.getTime() - 7 * DAY).toISOString()],
@@ -329,6 +339,8 @@ export async function runWeekly(
       kept: picks.filter((p) => Number(p.chosen_idx) === 0).length,
     };
   }
+  if (outcomes.some((o) => o.mascot !== undefined))
+    facts.mascot = scoreMascot(outcomes);
   const dir = path.join(s.cfg.dataDir, "reports", "learn");
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(
@@ -340,36 +352,43 @@ export async function runWeekly(
 
 /** The weekly job and the per-tick judge copy, run by the learning tick in this order. */
 export function learnJobs(): LearnJob[] {
-  return [{
-    name: "judge ledger",
-    run: async (s) => {
-      if (s.cfg.learn.judges) await ingestJudgeScores(s.db);
+  return [
+    {
+      name: "judge ledger",
+      run: async (s) => {
+        if (s.cfg.learn.judges) await ingestJudgeScores(s.db);
+      },
     },
-  },
-  {
-    name: "weekly learning",
-    run: async (s) => {
-      const ls = s.cfg.learn;
-      if (
-        !(
-          ls.weekly ||
-          ls.judges ||
-          ls.bandit !== "off" ||
-          ls.playbook !== "off" ||
-          ls.hooks !== "off"
+    {
+      name: "weekly learning",
+      run: async (s) => {
+        const ls = s.cfg.learn;
+        if (
+          !(
+            ls.weekly ||
+            ls.judges ||
+            ls.bandit !== "off" ||
+            ls.playbook !== "off" ||
+            ls.hooks !== "off"
+          )
         )
-      )
-        return;
-      const date = await weeklyDue(s.db, s.now(), s.cfg.timezone, ls.weeklyDay);
-      if (!date) return;
-      // Marked first, so a fault never repeats a week's posts.
-      await s.db.query(
-        `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
-        [`learn:weekly:${date}`, s.now().toISOString()],
-      );
-      const facts = await runWeekly(s, date);
-      log("info", "learning core weekly run", { date });
-      if (ls.weekly) await s.notify({ content: weeklyMessage(facts) });
+          return;
+        const date = await weeklyDue(
+          s.db,
+          s.now(),
+          s.cfg.timezone,
+          ls.weeklyDay,
+        );
+        if (!date) return;
+        // Marked first, so a fault never repeats a week's posts.
+        await s.db.query(
+          `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING`,
+          [`learn:weekly:${date}`, s.now().toISOString()],
+        );
+        const facts = await runWeekly(s, date);
+        log("info", "learning core weekly run", { date });
+        if (ls.weekly) await s.notify({ content: weeklyMessage(facts) });
+      },
     },
-  }];
+  ];
 }

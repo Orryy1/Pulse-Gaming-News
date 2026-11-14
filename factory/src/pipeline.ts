@@ -435,12 +435,14 @@ function learnOauth(cfg: Config) {
 import {
   deskShareNow,
   experimentVerdicts,
+  MASCOT_LANES,
   mascotFor,
   mascotShareNow,
   primeTimeVerdict,
   rumoursPerDayNow,
   nextLineArm,
 } from "./experiments.ts";
+import { SERIOUS as PIP_SERIOUS } from "./render/mascot.ts";
 import {
   growthAssign,
   growthDefaults,
@@ -13151,9 +13153,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ),
     });
   assets.suite = suiteFor(s.cfg, ep);
-  // Pip the mascot (src/experiments.ts): recorded either way only while the test runs, and kept on a re-render.
+  // Pip the mascot (src/experiments.ts, src/render/mascot.ts): recorded either way only while the test runs on a
+  // news or why Short, and kept on a re-render. Serious stories (layoffs, deaths, court cases) sit out on both
+  // sides, so the two groups stay alike.
   const mascotShare = await mascotShareNow(s.db, s.cfg);
-  if (assets.mascot === undefined && mascotShare > 0)
+  if (
+    assets.mascot === undefined &&
+    mascotShare > 0 &&
+    MASCOT_LANES.includes(ep.lane) &&
+    !PIP_SERIOUS.test(segments.map((g) => g.text).join(" "))
+  )
     assets.mascot = mascotFor(mascotShare, ep);
   // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
   const heroImage = assets.images?.[plan.heroIndex];

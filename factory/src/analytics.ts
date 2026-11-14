@@ -621,7 +621,7 @@ export function formatLessons(
   // Pip the mascot test (src/render/components/Pip.tsx): only Shorts made since it began count on either side.
   const withPip = avg(rows.filter((r) => r.mascot === true));
   const noPip = avg(rows.filter((r) => r.mascot === false));
-  if (withPip && noPip) out.push(line("Mascot (Pip beside the logo)", withPip, "with him", noPip, "without"));
+  if (withPip && noPip) out.push(line("Mascot (Pip reacting in the corner)", withPip, "with him", noPip, "without"));
   const formats = [
     ...new Set(rows.map((r) => r.format).filter((f): f is string => !!f)),
   ];

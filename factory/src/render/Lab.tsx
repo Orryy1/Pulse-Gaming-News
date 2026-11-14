@@ -1,6 +1,6 @@
 // The lab: a short sample for trying a new device before it goes into every Short. Two on trial
-// (25 Oct 2026): Pip, a code-drawn mascot in the channel's amber who idles, blinks, talks while the
-// narrator talks and reacts to the big moments; and word stamps, a rubber-stamp card that slams in on
+// (25 Oct 2026): Pip, a code-drawn mascot in the channel's amber who idles, blinks, reacts silently to
+// the big moments (he never talks: src/render/mascot.ts); and word stamps, a rubber-stamp card that slams in on
 // the exact spoken word ("CONFIRMED" on the date, "27 DAYS" on the number). Everything is a function of
 // the frame, like the rest of the renderer, so a sample re-renders identically.
 
@@ -22,7 +22,8 @@ import { Captions, HookHeadline, TopBar } from "./components/Overlays.tsx";
 import { Finish } from "./components/Background.tsx";
 import { displayWords, pageCaptions } from "./timeline.ts";
 import { Stamp } from "./components/Stamp.tsx";
-import { Pip, sinceLast } from "./components/Pip.tsx";
+import { PipReactions, sinceLast } from "./components/Pip.tsx";
+import { PIP_REACT_SECONDS } from "./mascot.ts";
 import type { Word } from "../voice/elevenlabs.ts";
 
 export interface LabStamp {
@@ -79,17 +80,6 @@ export const Lab: React.FC<LabProps> = (p) => {
     since !== undefined && since < 7
       ? Math.sin(since * 2.6) * (7 - since) * 1.6
       : 0;
-  // Pip looks up at the headline, then at each stamp while it is on screen, else at the viewer.
-  const lookAt = (f: number) => {
-    const s = sinceLast(
-      f,
-      fps,
-      p.stamps.map((x) => x.at),
-    );
-    if (s !== undefined && s < hold) return { x: 0.8, y: -0.7 };
-    if (f < hookEnd) return { x: 0.4, y: -1 };
-    return { x: 0.15, y: 0.1 };
-  };
   const push = interpolate(frame, [0, durationInFrames], [1.06, 1.16]);
   return (
     <AbsoluteFill
@@ -143,14 +133,16 @@ export const Lab: React.FC<LabProps> = (p) => {
           <Stamp stamp={s} hold={hold} />
         </Sequence>
       ))}
+      {/* Pip reacts to each stamp (silent, src/render/mascot.ts); the Shorts pick his moments from the script. */}
       {p.mascot ? (
-        <Pip
-          words={p.words}
-          reactions={p.stamps.map((s) => s.at)}
-          lookAt={lookAt}
-          left={64}
-          top={1010}
-          size={200}
+        <PipReactions
+          moments={p.stamps.map((s, i) => ({
+            beat: "reveal" as const,
+            mood: i % 2 ? ("receipt" as const) : ("shocked" as const),
+            at: s.at,
+            seconds: PIP_REACT_SECONDS,
+            segment: 0,
+          }))}
         />
       ) : null}
       <TopBar

@@ -183,7 +183,8 @@ test("overrides: the setting wins when there is one, else the config", async () 
   );
   assert.equal(await deskShareNow(db, cfg), 1);
   assert.equal(await rumoursPerDayNow(db, cfg), 1);
-  assert.equal(await mascotShareNow(db, cfg), 0.5);
+  // The old override:mascot_share (the talking Pip) is ignored: only MASCOT_SHARE runs the test.
+  assert.equal(await mascotShareNow(db, cfg), 0);
   await db.close();
 });
 
@@ -216,7 +217,7 @@ test("Pip: chosen per episode by a stable hash, never on the twin", () => {
       })),
     ]),
     [
-      "Mascot (Pip beside the logo): with him kept 64% (3 Shorts), without 60% (3 Shorts).",
+      "Mascot (Pip reacting in the corner): with him kept 64% (3 Shorts), without 60% (3 Shorts).",
     ],
   );
 });
@@ -316,12 +317,12 @@ test("verdict run: waits for the UK day, decides once, applies the overrides and
   assert.equal(run?.leaks, "cut");
   assert.equal(await deskShareNow(db, cfg), 1);
   assert.equal(await rumoursPerDayNow(db, cfg), 1);
-  assert.equal(await mascotShareNow(db, cfg), 0.5);
+  assert.equal(await mascotShareNow(db, cfg), 0, "a verdict never starts Pip");
   assert.equal(sent.length, 1);
   const text = sent[0]!.content!;
   assert.match(text, /keep it/);
   assert.match(text, /one leak a day from now/);
-  assert.match(text, /Pip the mascot/);
+  assert.doesNotMatch(text, /Pip the mascot/);
   assert.ok(!text.includes("—") && !text.includes("–"), "no em or en dashes");
   assert.ok(text.length < 2000, `fits one Discord message (${text.length})`);
   assert.equal(sent[0]!.level, undefined);
@@ -334,7 +335,7 @@ test("verdict run: waits for the UK day, decides once, applies the overrides and
   await db.close();
 });
 
-test("verdict run: too few Shorts extends the desk test a week, and Pip waits", async () => {
+test("verdict run: too few Shorts extends the desk test a week, and never starts Pip", async () => {
   const db = await testDb();
   const cfg = testConfig("", { deskShare: 0.5, rumoursPerDay: 2 });
   for (let i = 0; i < 4; i++) await addShort(db, { desk: true, stay: 70 });
@@ -369,7 +370,7 @@ test("verdict run: too few Shorts extends the desk test a week, and Pip waits", 
   );
   assert.equal(second?.desk, "drop");
   assert.equal(await deskShareNow(db, cfg), 0);
-  assert.equal(await mascotShareNow(db, cfg), 0.5);
+  assert.equal(await mascotShareNow(db, cfg), 0);
   assert.equal((await readVerdicts(db)).runs.length, 2);
   await db.close();
 });

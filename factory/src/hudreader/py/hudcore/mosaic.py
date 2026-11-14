@@ -234,6 +234,10 @@ class Tracker:
         self.reloc_tries = 0
         self.tracked = 0
         self.join_every = 20
+        self._wcache = {}
+        self.last_reloc = -1e9
+        self.reloc_every = 1.0
+        self.fails = 0
         self.merged_into = {}
         self.stats = {"f2f": 0, "refined": 0, "relocated": 0, "new_islands": 0, "lost": 0, "merged": 0}
 
@@ -260,9 +264,21 @@ class Tracker:
             return G, 0
         return G @ _h(S), n
 
-    def _relocate(self, img, mask, only=None):
+    def _window_features(self, iid, c, wx, wy, x1, y1, win):
+        """The matcher's features of one island window, cached until the island has grown a fair amount."""
+        key = (iid, wx, wy)
+        hit = self._wcache.get(key)
+        if hit is not None and c.version - hit[0] < 60:
+            return hit[1]
+        wimg, wmsk = c.render(wx, wy, min(x1, wx + win), min(y1, wy + win))
+        feats = None if (wmsk > 0).mean() < 0.05 else self.reloc.features(wimg, wmsk)
+        self._wcache[key] = (c.version, feats)
+        return feats
+
+    def _relocate(self, img, mask, only=None, query=None):
         """Finds the picture anywhere on the given islands (all by default): (island, G, inliers) or None."""
         best = None
+        q = query if query is not None else self.reloc.features(img, mask)
         for iid, c in list(self.atlas.islands.items()):
             if only is not None and iid not in only:
                 continue
@@ -274,10 +290,10 @@ class Tracker:
             win = 1024
             for wy in range(y0, max(y0 + 1, y1 - win // 2), win // 2):
                 for wx in range(x0, max(x0 + 1, x1 - win // 2), win // 2):
-                    wimg, wmsk = c.render(wx, wy, min(x1, wx + win), min(y1, wy + win))
-                    if (wmsk > 0).mean() < 0.05:
+                    wf = self._window_features(iid, c, wx, wy, x1, y1, win)
+                    if wf is None:
                         continue
-                    pa, pb = self.reloc.match(img, mask, wimg, wmsk)
+                    pa, pb = self.reloc.match_features(q, wf)
                     S, n = similarity(pa, pb, thresh=3.0, min_inliers=max(15, self.min_inliers + 5))
                     if S is not None and (best is None or n > best[2]):
                         G = np.array([[1, 0, wx], [0, 1, wy], [0, 0, 1.0]]) @ _h(S)
@@ -316,13 +332,27 @@ class Tracker:
                     self.stats["merged"] += 1
                     self.island, self.G = iid, G
         if how is None:
-            found = self._relocate(img, mask) if (allow_reloc and self.atlas.islands) else None
+            # Looking for the spot on the whole map is the costly step: at most once every RELOC_EVERY seconds.
+            if t - self.last_reloc < self.reloc_every:
+                self.stats["lost"] += 1
+                return {"how": "waiting"}
+            self.last_reloc = t
+            q = f if self.reloc is self.sift else None
+            found = self._relocate(img, mask, query=q) if (allow_reloc and self.atlas.islands) else None
             if found:
                 iid, G, n = found
                 self.island, self.G = iid, G
                 how = "relocated"
+                self.fails = 0
                 self.stats["relocated"] += 1
-            elif self.prev is None or self.island is None:
+            elif self.fails < 1 and self.atlas.islands:
+                # One more try before a new piece of map is begun: a fog bank or a turn can hide one frame.
+                self.fails += 1
+                self.stats["lost"] += 1
+                self.prev = None
+                return {"how": "lost", "inliers": n}
+            elif self.prev is None or self.island is None or self.fails >= 1:
+                self.fails = 0
                 self.island = self.atlas.new_island()
                 self.G = np.eye(3)
                 how = "new_island"

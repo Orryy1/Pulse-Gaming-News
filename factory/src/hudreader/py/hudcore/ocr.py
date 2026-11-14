@@ -95,8 +95,12 @@ class ChangeGate:
         self.threshold = threshold
         self.refresh = refresh
 
-    def changed(self, key, img, t):
+    def changed(self, key, img, t, min_gap=1.5):
         if img is None or img.size == 0:
+            return False
+        prev = self.last.get(key)
+        # Game text stays up for seconds: one read a region every min_gap seconds is enough to catch it.
+        if prev is not None and t - prev[1] < min_gap:
             return False
         thumb = cv2.resize(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), (64, 24), interpolation=cv2.INTER_AREA).astype(np.float32)
         prev = self.last.get(key)

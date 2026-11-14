@@ -3,6 +3,8 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
+import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
+import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -261,6 +263,7 @@ import {
   selectStory,
   writeScript,
   factCheck,
+  cardText,
   factCheckRanking,
   validateScript,
   WORDS_MIN,
@@ -2314,6 +2317,9 @@ async function stepScriptEveryGame(
       [],
       attempt,
       facts,
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!factual.length) break;
     draft = await writeEveryGameShort(s.llm, roster, entries, {
@@ -6530,7 +6536,12 @@ async function withBackground(
   const wiki = await s
     .research(title, `${title} video game`, maxChars)
     .catch(() => undefined);
-  if (!facts && !wiki) return undefined;
+  // FACT_VAULT=write: what this step fetched grows the vault (the research is followed to its cited sources in the
+  // background, so the writer never waits on it); FACT_VAULT=read and above: the vault's verified facts join the sheet.
+  await growFromSteam(s.db, s.cfg.factVault, title, facts);
+  void growFromResearch(s.db, s.cfg.factVault, title, wiki, s.cfg.factVaultFetchMax);
+  const vault = await openSession(s.db, s.cfg.factVault, [title], [], s.now());
+  if (!facts && !wiki && !vault?.brief) return undefined;
   return {
     ...(facts ?? {
       name: title,
@@ -6538,6 +6549,7 @@ async function withBackground(
       fetchedAt: s.now().toISOString(),
     }),
     ...(wiki ? { background: wiki.text, backgroundUrl: wiki.url } : {}),
+    ...(vault?.brief ? { vault: vault.brief } : {}),
   };
 }
 
@@ -6553,12 +6565,23 @@ async function adjudicateRanking(
   facts: Array<{ title: string; facts: SteamFacts }>,
   attempt: number,
   extra: Array<{ title: string; facts: string }> = [],
+  /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
+  fix?: (fixes: VaultFix[]) => void,
 ): Promise<string[]> {
+  // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
+  const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
+  const vault = await openSession(s.db, s.cfg.factVault, [...facts.map((f) => f.title), ...extra.map((e) => e.title)], spoken, s.now());
+  const verified = vault?.verified(spoken).trim() ?? "";
+  const vaultFacts = [
+    ...(vault?.brief && !facts.some((f) => f.facts.vault) ? [{ title: "Pulse Fact Vault", facts: vault.brief }] : []),
+    ...(verified ? [{ title: "Pulse Fact Vault pre-check", facts: verified }] : []),
+  ];
   const check = await factCheckRanking(s.llm, script, [
     ...facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
     ...extra,
+    ...vaultFacts,
   ]);
-  const blockers = check.issues
+  let blockers = check.issues
     .filter((i) => i.severity === "blocker")
     .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
   await logEvent(s.db, ep.id, "factcheck", {
@@ -6567,6 +6590,16 @@ async function adjudicateRanking(
     blockers,
     summary: check.summary,
   });
+  // FACT_VAULT=enforce: a blocker the vault supports passes, one it contradicts takes the vault's value.
+  if (vault && blockers.length) {
+    const settled = await vault.settle(script, blockers, ep.id, `ranking attempt ${attempt}`);
+    const fixedOnes = settled.resolutions.filter((r) => r.status === "fixed");
+    if (fixedOnes.length && fix) fix(settled.fixes);
+    const unfixable = fix ? [] : fixedOnes.map((r) => `Fact-check: "${r.blocker.quote}" - ${r.blocker.problem}`);
+    const before = blockers.length;
+    blockers = [...settled.remaining, ...unfixable];
+    if (!blockers.length && before > 0) return [];
+  }
   if (check.verdict !== "fail" && !blockers.length) return [];
   if (attempt === 0)
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
@@ -6643,6 +6676,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       longformToScript(draft),
       facts,
       attempt,
+      [],
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!problems.length && !factual.length) break;
     // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
@@ -7060,6 +7097,9 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       facts,
       attempt,
       dataFacts,
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!factual.length) break;
     draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
@@ -7322,8 +7362,37 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         );
     return { problems, thin };
   };
+  // FACT_VAULT (src/factvault): the vault's facts for this story's game go to the writer and the fact check, its
+  // articles grow the vault (write), and a blocker the vault settles is passed or fixed instead of dropping the story.
+  const newsVault = await openSession(
+    s.db,
+    s.cfg.factVault,
+    [cluster.gameHint ?? ""],
+    [cluster.headline, ...cluster.items.map((i) => i.title)],
+    s.now(),
+  );
+  void growFromArticles(
+    s.db,
+    s.cfg.factVault,
+    cluster.gameHint,
+    articles.map((a) => {
+      const item = cluster.items.find((i) => i.url === a.url);
+      return {
+        url: a.url,
+        title: a.title,
+        text: a.text,
+        ...(item ? { outlet: item.source, published: item.publishedAt.slice(0, 10), official: item.sourceKind === "official" } : {}),
+      };
+    }),
+  );
+  const vaultNote = (sc: Script) => {
+    if (!newsVault) return undefined;
+    const said = [narrationOf(sc), sc.headline, sc.youtube.title, ...sc.beats.map((b) => cardText(b.visual))];
+    return `${newsVault.brief}${newsVault.verified(said)}`.trim() || undefined;
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      ...(newsVault?.brief ? { vault: newsVault.brief } : {}),
       desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
@@ -7380,6 +7449,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       articles,
       storeData,
       cluster.search ? SEARCH_CHECK_SITE : undefined,
+      vaultNote(script),
     );
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")
@@ -7387,6 +7457,23 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     // A time word must be true when the Short goes public (a pre-made Short airs days after it is written).
     const airsAt = cluster.why?.airs_at ?? ep.slot_at;
     if (airsAt) blockers.push(...airTimeProblems(publicText(script), new Date(airsAt)));
+    // FACT_VAULT=enforce: blockers the vault supports pass and ones it contradicts take its value; the rest stand.
+    if (newsVault && blockers.length) {
+      const settled = await newsVault.settle(script, blockers, ep.id, `news attempt ${attempt}`);
+      if (settled.remaining.length < blockers.length) {
+        script = settled.script;
+        blockers.splice(0, blockers.length, ...settled.remaining);
+        if (!blockers.length && check.verdict === "fail")
+          check = {
+            ...check,
+            verdict: "pass",
+            issues: check.issues.filter((i) => i.severity !== "blocker"),
+            summary: `${check.summary} (The Pulse Fact Vault settled every blocker.)`,
+          };
+      }
+    }
+    // A line that repeats a claim our fact check already rejected goes back to the writer (FACT_VAULT=read and above).
+    if (newsVault) problems.push(...newsVault.warnings([narrationOf(script)]));
     if (
       check.verdict === "pass" &&
       check.rumour_labelling_ok &&
@@ -7506,7 +7593,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       // Judged on what the pass changed: a blocker on a line the settled check already passed doesn't count.
       check: async (after) => {
         const v = friendCheckVerdict(
-          await factCheck(s.llm, after, cluster, articles, storeData),
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
           shortSettledText(before),
         );
         afterCheck = v.check;
@@ -7555,7 +7642,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ];
       if (guard.length) return guard;
       const v = friendCheckVerdict(
-        await factCheck(s.llm, after, cluster, articles, storeData),
+        await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
         shortSettledText(before),
       );
       const airsAt = cluster.why?.airs_at ?? ep.slot_at;

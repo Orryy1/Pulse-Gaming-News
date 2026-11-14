@@ -225,6 +225,8 @@ export async function writeScript(
     availableQuotes?: readonly CutsceneQuote[];
     /** The step, so CODEX_CALLS can route this writer (the search lane: "search.write", a reply Short: "reply.write"). Absent: read from the caller. */
     site?: string;
+    /** The Pulse Fact Vault's verified facts and quotes for this story's games (FACT_VAULT, src/factvault). */
+    vault?: string;
   },
 ): Promise<Script> {
   const rules = opts.mustLabelRumour
@@ -267,7 +269,7 @@ export async function writeScript(
   const late = lateAngleNote(cluster.bigStory?.lateHours);
   // A video reply to a viewer's question (COMMENT_REPLY_SHORTS, src/commentreply.ts): the comment and how to answer it.
   const replyNote = cluster.reply ? `\n\n${replyBrief(cluster.reply)}` : "";
-  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${search}${replyNote}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
+  const brief = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${opts.vault ? `\n\n${opts.vault}` : ""}${rules}${late ? `\n\n${late}` : ""}${why}${serial}${file}${search}${replyNote}${opts.lessons ? `\n\n${opts.lessons}` : ""}${shapeNote}${structureNote}${recent}${variantNote}${segmentNote}${quoteBrief(opts.availableQuotes)}`;
   // Rumour labelling can need the rumour flag itself, which an edit to the text cannot set.
   const edited =
     opts.draft &&
@@ -366,11 +368,13 @@ export async function factCheck(
   storeData?: string,
   /** The step, so CODEX_CALLS can route this check (the search lane: "search.check"). Absent: read from the caller. */
   site?: string,
+  /** The Pulse Fact Vault's facts for the story's games and what it verified in this script (FACT_VAULT). */
+  vault?: string,
 ): Promise<FactCheck> {
   return llm.structured({
     ...(site ? { site } : {}),
     system: factCheckPrompt(),
-    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}${launchNotes(cluster)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
+    content: `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(storeData)}${vault ? `\n\n${vault}` : ""}${launchNotes(cluster)}\n\nScript (spoken):\n${narrationOf(script)}\n\nOn-screen text and card figures (every one must be supported):\n- ${script.headline}\n${script.beats
       .map((b) => `- ${cardText(b.visual)}`)
       .join(
         "\n",

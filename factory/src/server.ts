@@ -100,6 +100,7 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
+import { vaultHousekeeping } from "./factvault/nightly.ts";
 import {
   lanRequestAllowed,
   macReservationsDoc,
@@ -2326,6 +2327,9 @@ async function main(): Promise<void> {
     await db.close();
     process.exit(0);
   }, 5 * 60_000);
+  // The Pulse Fact Vault (FACT_VAULT): its seed loaded once, then from 04:00 local the nightly integrity run that reads
+  // stale and low-confidence facts again at their source (src/factvault/nightly.ts). Nothing at all when it is off.
+  setInterval(() => void vaultHousekeeping(db, cfg), 10 * 60_000);
   // 03:00 local: an encrypted restore point (database, settings, credentials) copied to BACKUP_DIR.
   setInterval(() => {
     void (async () => {

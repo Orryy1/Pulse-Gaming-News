@@ -2,6 +2,7 @@
 // Nothing secret is ever logged; see redactedConfig().
 
 import fs from "node:fs";
+import { factVaultMode, type FactVaultMode } from "./factvault/mode.ts";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
@@ -426,6 +427,9 @@ export interface Config {
   primarySources: boolean; // Wikipedia research keeps each sentence's references and reads the most-cited originals, so scripts credit and the fact check reads the original (PRIMARY_SOURCES, src/discovery/wikirefs.ts, on)
   primarySourcesMax: number; // at most this many originals read for one brief (PRIMARY_SOURCES_MAX, default 4)
   attributionGuard: boolean; // "Wikipedia" on air and an attribution frame repeated within a minute or over 3 times go back to the writer once, then the friend pass varies them (ATTRIBUTION_GUARD, src/editorial/attribution.ts, on)
+  factVault: FactVaultMode; // the Pulse Fact Vault (FACT_VAULT=off|read|write|enforce, src/factvault): verified game facts for the writers and the fact check; off by default
+  factVaultFetchMax: number; // primary sources the vault reads per research step (FACT_VAULT_FETCH_MAX, default 6)
+  factVaultNightly: number; // facts the nightly integrity job re-reads (FACT_VAULT_NIGHTLY, default 200)
   writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   shortSkeletons: boolean; // news Shorts rotate structures (opening, order, length, ending), none shared by two of the newest 30 (SHORT_SKELETONS, src/editorial/skeletons.ts, off)
@@ -1496,6 +1500,9 @@ export function loadConfig(): Config {
     primarySources: bool("PRIMARY_SOURCES", true),
     primarySourcesMax: int("PRIMARY_SOURCES_MAX", 4),
     attributionGuard: bool("ATTRIBUTION_GUARD", true),
+    factVault: factVaultMode(process.env.FACT_VAULT),
+    factVaultFetchMax: int("FACT_VAULT_FETCH_MAX", 6),
+    factVaultNightly: int("FACT_VAULT_NIGHTLY", 200),
     writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     shortSkeletons: bool("SHORT_SKELETONS", false),

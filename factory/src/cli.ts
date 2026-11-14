@@ -6,6 +6,8 @@
 //   retry <id>         move a failed episode back to the step it failed at
 //   doctor             check the key, YouTube login and scopes, voice server, ffmpeg, disk, tunnel, webhook
 //   tiktok-login       sign in to TikTok once in the factory's own Chrome profile
+//   factvault          the Fact Vault's size; factvault import [file] loads the seed (or a file), factvault integrity
+//                      re-reads stale and low-confidence facts at their source now
 
 import { loadConfig, redactedConfig } from "./config.ts";
 import { openDb, migrate } from "./db.ts";
@@ -46,6 +48,22 @@ async function main(): Promise<void> {
       const checks = await runDoctor(cfg, await storedRefreshToken(db, oauthConfig(cfg)));
       console.log(formatDoctor(checks));
       if (checks.some((k) => !k.ok && k.critical)) process.exitCode = 2;
+    } else if (cmd === "factvault") {
+      await migrate(db);
+      const { FactVault } = await import("./factvault/store.ts");
+      const vault = new FactVault(db);
+      const sub = arg ?? "stats";
+      if (sub === "import") {
+        const { readSeed, SEED_FILE } = await import("./factvault/nightly.ts");
+        const seed = readSeed(process.argv[4] ?? SEED_FILE);
+        if (!seed) throw new Error("no seed file");
+        console.log("imported:", await vault.importAll(seed));
+      } else if (sub === "integrity") {
+        const { runIntegrity } = await import("./factvault/integrity.ts");
+        const { readPage, steamPrices } = await import("./factvault/harvest.ts");
+        console.log(await runIntegrity(vault, readPage, { limit: cfg.factVaultNightly, prices: steamPrices }));
+      }
+      console.log(`FACT_VAULT=${cfg.factVault}`, await vault.stats());
     } else if (cmd === "migrate") {
       console.log("applied:", await migrate(db));
     } else if (cmd === "tick") {
@@ -67,7 +85,7 @@ async function main(): Promise<void> {
       await db.query(`UPDATE episodes SET status = $2, attempts = $3, next_attempt_at = NULL, updated_at = now() WHERE id = $1`, [arg, resume, resume === "uploading" ? 1 : 0]);
       console.log(`${arg} -> ${resume}`);
     } else {
-      console.log("usage: cli.ts migrate | tick | discover | episodes | retry <id> | doctor");
+      console.log("usage: cli.ts migrate | tick | discover | episodes | retry <id> | doctor | factvault [import [file] | integrity]");
       process.exitCode = 1;
     }
   } finally {

@@ -1534,3 +1534,14 @@ test("at render the tag is numbered by its tally, the chip filled, and Day N joi
   await db.close();
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test("a claim card shows the claim as made and the source by a short name", async () => {
+  const { claimWords, sourceName } = await import("../src/pulselab/ledger.ts");
+  assert.equal(sourceName("Previews: Edge"), "Edge");
+  assert.equal(sourceName("YouTube comments: Ps5 pro preview"), "YouTube comments");
+  assert.equal(sourceName("Bluesky"), "Bluesky");
+  assert.equal(
+    claimWords('"1440p at 30 fps." An unofficial preview figure, not confirmed by PlayStation or Rockstar. Show the settings menu and any performance mode.'),
+    '1440p at 30 fps. An unofficial preview figure, not confirmed by PlayStation or Rockstar.',
+  );
+});

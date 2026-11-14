@@ -31,6 +31,9 @@ import { LabInstrumentView } from "./Instruments.tsx";
 const src = (s: string) =>
   /^(https?:|data:|blob:)/.test(s) ? s : staticFile(s);
 
+/** Quote marks round a claim as stored: the card adds its own. */
+const QUOTES = /^[\s"“”']+|[\s"“”']+$/g;
+
 export const GRADE_COLOUR: Record<LabGrade, string> = {
   TRUE: COLOUR.up,
   FALSE: COLOUR.alert,
@@ -176,7 +179,7 @@ export const ClaimCard: React.FC<{ claim: LabClaimCard; payoffAt: number }> = ({
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const text = cardClaim(claim.text);
+  const text = cardClaim(claim.text.replace(QUOTES, ""));
   const stampIn = spring({
     frame: frame - Math.round(payoffAt * fps),
     fps,
@@ -254,8 +257,8 @@ export const ClaimCard: React.FC<{ claim: LabClaimCard; payoffAt: number }> = ({
         <div
           style={{
             position: "absolute",
-            right: 26,
-            top: -34,
+            right: 20,
+            top: -122,
             padding: "6px 26px",
             border: `8px solid ${colour}`,
             borderRadius: 16,
@@ -499,10 +502,10 @@ export const LabOverlay: React.FC<{
       {lab.versus && t >= payoffAt ? (
         <>
           {lab.versus.aResult ? (
-            <PaneResult text={lab.versus.aResult} top={316 + 608 - 86} />
+            <PaneResult text={lab.versus.aResult} top={316 + 18} />
           ) : null}
           {lab.versus.bResult ? (
-            <PaneResult text={lab.versus.bResult} top={932 + 608 - 86} />
+            <PaneResult text={lab.versus.bResult} top={932 + 18} />
           ) : null}
         </>
       ) : null}

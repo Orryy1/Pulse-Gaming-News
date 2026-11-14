@@ -134,6 +134,25 @@ export function creditedMention(a: StreamAsk) {
 
 // ------------------------------------------------------------------ building the ledger (pure)
 
+/** A source's name as the card shows it (pure): "Previews: Edge" -> "Edge", "YouTube comments: <video>" -> "YouTube comments". */
+export function sourceName(name: string): string {
+  return name.replace(/^Previews:\s*/i, "").replace(/^YouTube comments:.*$/i, "YouTube comments").trim() || name;
+}
+
+/** The test instructions the seed list keeps in a myth's bullet ("Show the settings menu."): not part of the claim. */
+const HOW_TO = /^(check|show|look|track|say|try|drive|open|walk|get|time|count|do|don'?t|keep|go|use)\b/i;
+
+/** The claim as it was made (pure): instructions to the streamer dropped, quote marks tidied. */
+export function claimWords(text: string): string {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter((s) => !HOW_TO.test(s.trim()))
+    .join(" ")
+    .trim()
+    .replace(/^["\u201c]([^"\u201d]*)["\u201d]/, "$1")
+    .trim();
+}
+
 /** Claims and myths from the stream-asks list (and the seed list, read the same way). Questions and wants are not claims. */
 export function claimsFromAsks(asks: StreamAsk[], game: string): LabClaim[] {
   const out: LabClaim[] = [];
@@ -148,7 +167,7 @@ export function claimsFromAsks(asks: StreamAsk[], game: string): LabClaim[] {
       id: claimId(game, `ask:${a.id}`),
       game,
       question: a.question,
-      claim: (a.claim || m?.text || a.question).slice(0, 280),
+      claim: claimWords(a.claim || m?.text || a.question).slice(0, 280),
       kind: claimKind(text, {
         rumour: a.rumour,
         myth: a.kind === "myth",
@@ -156,7 +175,7 @@ export function claimsFromAsks(asks: StreamAsk[], game: string): LabClaim[] {
         viewer: m?.source === "viewers" || m?.source === "comments",
       }),
       source: {
-        name: m?.name ?? "Unknown",
+        name: sourceName(m?.name ?? "Unknown"),
         ...(m?.url ? { url: m.url } : {}),
         ...(m?.at ? { at: m.at } : {}),
       },

@@ -27,7 +27,7 @@ const SCRIPT = path.join(AVTOOLS_DIR, "radiostrip.py");
 /** What the residue check measured on one sound (radiostrip.py summarise). */
 export interface SoundSummary {
   seconds: number;
-  /** Share of loud seconds the AudioSet model hears as music at 0.5 or more. */
+  /** Share of loud seconds the AudioSet model hears as music at 0.25 or more (radiostrip.py MUSIC_ON). */
   musicShare: number;
   musicMean: number;
   musicP95: number;

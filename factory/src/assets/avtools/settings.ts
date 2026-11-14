@@ -20,7 +20,7 @@ export interface AvToolsSettings {
     checkpoints: number;
     /** RADIO_STRIP_LYRIC_PASS: the RoFormer pass that takes sung vocals out of the kept dialogue. */
     lyricPass: boolean;
-    /** RADIO_STRIP_MAX_RESIDUE: the most of a clip's seconds that may still sound like music (AudioSet score 0.5+). */
+    /** RADIO_STRIP_MAX_RESIDUE: the most of a clip's seconds that may still sound like music (AudioSet score 0.25+). */
     maxResidue: number;
     /** RADIO_STRIP_MAX_FINGERPRINT: the most of a clip's blocks whose fingerprint may still match the removed music. */
     maxFingerprint: number;

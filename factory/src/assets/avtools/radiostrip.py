@@ -37,7 +37,7 @@ AST_SR = 16000
 # AudioSet labels (AST config id2label indices) that mean music, speech and a vehicle.
 MUSIC_IDS = [27, 28, 29, 137, 138] + list(range(139, 283))
 SPEECH_IDS = [0, 1, 2, 3, 4, 5, 6]
-VEHICLE_IDS = [300, 306, 307, 312, 313, 315, 316, 322, 323, 324, 325, 326, 327, 343]
+VEHICLE_IDS = [300, 306, 307, 312, 313, 315, 316, 322, 323, 324, 325, 326, 327, 335, 336, 337, 338, 339, 340, 343]
 SING_IDS = [27, 28, 29, 254, 255, 266]
 
 # The only globals a CDX23 checkpoint may name; anything else is refused before unpickling.
@@ -244,11 +244,71 @@ class Demixer:
         return {name: o[i] for i, name in enumerate(self.sources)}
 
 
+def slaney_mel(sr: float, n_fft: int, n_mels: int = 128, fmin: float = 0.0, fmax: float | None = None, htk: bool = False, norm="slaney", dtype=np.float32) -> np.ndarray:
+    """librosa.filters.mel, re-written (librosa's defaults: Slaney's mel scale and area normalisation). Only the
+    lyric pass needs it, to lay out the RoFormer's bands; the weights only load if the layout is identical."""
+    if fmax is None:
+        fmax = sr / 2.0
+
+    def hz_to_mel(f):
+        f = np.asanyarray(f, dtype=np.float64)
+        if htk:
+            return 2595.0 * np.log10(1.0 + f / 700.0)
+        f_sp = 200.0 / 3
+        mels = f / f_sp
+        min_log_hz = 1000.0
+        min_log_mel = min_log_hz / f_sp
+        logstep = np.log(6.4) / 27.0
+        return np.where(f >= min_log_hz, min_log_mel + np.log(np.maximum(f, 1e-10) / min_log_hz) / logstep, mels)
+
+    def mel_to_hz(m):
+        m = np.asanyarray(m, dtype=np.float64)
+        if htk:
+            return 700.0 * (10.0 ** (m / 2595.0) - 1.0)
+        f_sp = 200.0 / 3
+        freqs = f_sp * m
+        min_log_hz = 1000.0
+        min_log_mel = min_log_hz / f_sp
+        logstep = np.log(6.4) / 27.0
+        return np.where(m >= min_log_mel, min_log_hz * np.exp(logstep * (m - min_log_mel)), freqs)
+
+    fftfreqs = np.fft.rfftfreq(n=n_fft, d=1.0 / sr)
+    mel_f = mel_to_hz(np.linspace(hz_to_mel(fmin), hz_to_mel(fmax), n_mels + 2))
+    fdiff = np.diff(mel_f)
+    ramps = np.subtract.outer(mel_f, fftfreqs)
+    weights = np.zeros((n_mels, len(fftfreqs)), dtype=np.float64)
+    for i in range(n_mels):
+        lower = -ramps[i] / fdiff[i]
+        upper = ramps[i + 2] / fdiff[i + 1]
+        weights[i] = np.maximum(0, np.minimum(lower, upper))
+    if norm == "slaney":
+        weights *= (2.0 / (mel_f[2 : n_mels + 2] - mel_f[:n_mels]))[:, None]
+    return weights.astype(dtype)
+
+
+def _librosa_shim():
+    """BS-RoFormer imports librosa only for its mel filter bank; the Mac's environment has no librosa (it would
+    pull in numba and scipy), so where it will not import, slaney_mel stands in as librosa.filters.mel."""
+    try:
+        import librosa.filters  # noqa: F401
+    except Exception:
+        import types
+
+        pkg = types.ModuleType("librosa")
+        filt = types.ModuleType("librosa.filters")
+        filt.mel = lambda sr, n_fft, n_mels=128, fmin=0.0, fmax=None, htk=False, norm="slaney", dtype=np.float32: slaney_mel(sr, n_fft, n_mels, fmin, fmax, htk, norm, dtype)
+        pkg.filters = filt
+        sys.modules["librosa"] = pkg
+        sys.modules["librosa.filters"] = filt
+
+
 class LyricPass:
     """Mel-Band RoFormer vocals: what of the kept sound is a voice (sung or spoken)."""
 
     def __init__(self, ckpt: str, device, chunk_seconds: float = 8.0):
         import torch
+
+        _librosa_shim()
         from bs_roformer import MelBandRoformer
 
         self.torch = torch
@@ -378,7 +438,10 @@ def ber_per_block(a: np.ndarray, b: np.ndarray, block: int = 256, step: int = 86
 
 # ------------------------------------------------------------------ verdicts
 
-MUSIC_ON = 0.5  # a second counts as music at this AudioSet score
+# A second counts as music at this AudioSet score. Car radio under engine noise scores 0.3-0.5 in the owner's GTA
+# footage and its separated remainder about 0.05 (the 14 Nov proof), so 0.25 sits between them; 0.5 missed radio.
+MUSIC_ON = 0.25
+SPEECH_ON = 0.5
 FP_MATCH = 0.35  # a block whose BER is under this matches (the usual threshold for this fingerprint)
 
 
@@ -391,7 +454,7 @@ def summarise(tags: dict[str, list[float]], quiet_db: float = -50.0) -> dict:
         "musicShare": round(float(on.mean()) if len(m) else 0.0, 3),
         "musicMean": round(float(m.mean()) if len(m) else 0.0, 3),
         "musicP95": round(float(np.percentile(m, 95)) if len(m) else 0.0, 3),
-        "speechShare": round(float(((np.array(tags["speech"]) >= MUSIC_ON) & loud).mean()) if len(m) else 0.0, 3),
+        "speechShare": round(float(((np.array(tags["speech"]) >= SPEECH_ON) & loud).mean()) if len(m) else 0.0, 3),
         "vehicleShare": round(float(((np.array(tags["vehicle"]) >= 0.3) & loud).mean()) if len(m) else 0.0, 3),
     }
 

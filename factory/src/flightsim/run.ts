@@ -15,6 +15,7 @@ import { tick, tickLong, type Services } from "../pipeline.ts";
 import { quietAlert } from "../outputwatch.ts";
 import {
   setSpoilerWindows,
+  spoilerWindow,
   type SpoilerWindow,
 } from "../sceneindex/spoilers.ts";
 import { SimClock, installClock, uninstallClock } from "./clock.ts";
@@ -110,16 +111,13 @@ export function simProfile(
 
 /** GTA VI in its spoiler window across the run, as SPOILER_GUARD has it from launch. */
 export function simSpoilerWindows(start: Date, days: number): SpoilerWindow[] {
-  return [
-    {
-      game: "Grand Theft Auto VI",
-      aliases: ["GTA 6", "GTA VI"],
-      from: new Date(start.getTime() - 86_400_000).toISOString(),
-      until: new Date(start.getTime() + (days + 28) * 86_400_000).toISOString(),
-      openingShare: 0.1,
-      lateTerms: ["Port Gellhorn"],
-    },
-  ];
+  // Built as the server builds them (aliases include the full name), so the writers' guard sees what it sees live.
+  const w = spoilerWindow("Grand Theft Auto VI", new Date(start.getTime() - 86_400_000).toISOString(), {
+    days: days + 28,
+    openingShare: 0.1,
+    lateTerms: ["Port Gellhorn"],
+  });
+  return w ? [w] : [];
 }
 
 async function readEpisodes(db: SimDb): Promise<SimEpisode[]> {

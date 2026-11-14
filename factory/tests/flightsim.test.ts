@@ -159,3 +159,11 @@ test("a simulated day with writer's notes in a Horizon Forbidden West Short: the
     !r.record.notices.some((n) => /New stories are paused/.test(n.text)),
   );
 });
+
+test("a story spoiler of GTA VI in its window is stopped at the writer's door and never goes out", async () => {
+  const r = await runFlightSim({ days: 2, faults: ["spoiler"] });
+  for (const x of r.results) assert.ok(x.ok, `${x.id}: ${x.problems.join("; ")}`);
+  const stopped = r.record.episodes.filter((e) => (e.events ?? []).some((x) => x.kind === "spoiler_stopped"));
+  assert.ok(stopped.length >= 1, "the guard stopped at least one");
+  assert.ok(stopped.every((e) => !e.youtube_video_id));
+});

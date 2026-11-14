@@ -6,7 +6,7 @@
 //   2. the Pulse narrator against the earlier Liam and Alice Shorts: a report only, nothing changes;
 //   3. labelled leak Shorts against the other news Shorts: the rumour allowance drops to one a day when
 //      they do clearly worse.
-// Once the desk test has a verdict, Pip the mascot (src/render/components/Pip.tsx) starts on half of Shorts.
+// Pip the mascot (src/render/mascot.ts) is no longer started by a verdict: only MASCOT_SHARE runs him (14 Nov 2026).
 // Decisions are settings overrides read at runtime (deskShareNow and friends), never .env edits.
 
 import type { Db } from "./db.ts";
@@ -32,8 +32,6 @@ export const LEAK_VIEWS_RATIO = 0.5;
 export const MAX_RUNS = 4;
 /** The desk test began on 25 Oct 2026: only Shorts live since then are compared. */
 export const DESK_SINCE = "2026-10-25T00:00:00Z";
-/** The share of Shorts Pip goes on once the desk test has its verdict. */
-export const MASCOT_START_SHARE = 0.5;
 
 const NEWS_LANES = ["news", "news_breaking", "free"];
 const SHORT_LANES = [
@@ -48,7 +46,6 @@ const STATE_KEY = "experiment_verdicts";
 const OVERRIDE = {
   desk: "override:desk_share",
   rumours: "override:rumours_per_day",
-  mascot: "override:mascot_share",
 } as const;
 
 // ---- Runtime overrides -------------------------------------------------------------------------
@@ -102,23 +99,30 @@ export async function rumoursPerDayNow(
   return rumourCapFor(perDay, cfg.rumourShare ?? 1);
 }
 
-/** Pip's share now: the verdict's setting when there is one, else MASCOT_SHARE. */
+/**
+ * Pip's share now: MASCOT_SHARE alone (default 0, off). The 8 Nov verdict could write override:mascot_share for
+ * the old talking Pip; that setting is ignored, so only MASCOT_SHARE switches the silent reactions test on.
+ */
 export async function mascotShareNow(
-  db: Db,
+  _db: Db,
   cfg: Pick<Config, "mascotShare">,
 ): Promise<number> {
-  return share((await readOverride(db, OVERRIDE.mascot)) ?? cfg.mascotShare);
+  return share(cfg.mascotShare);
 }
+
+/** The lanes the mascot test runs on: news, breaking and free Shorts (why Shorts are news-lane episodes). */
+export const MASCOT_LANES = NEWS_LANES;
 
 /**
  * Whether this Short carries Pip: a stable hash of the episode id, salted so it is independent of the
- * desk and new-look tests. The Spanish twin copies its source and is left out.
+ * desk and new-look tests. Only news and why Shorts take part (MASCOT_LANES), so both sides of the
+ * comparison are the same kind of Short; the twin, rankings and other formats are left out.
  */
 export function mascotFor(
   mascotShare: number,
   ep: Pick<Episode, "id" | "lane">,
 ): boolean {
-  if (mascotShare <= 0 || ep.lane === "twin") return false;
+  if (mascotShare <= 0 || !MASCOT_LANES.includes(ep.lane)) return false;
   let h = 7;
   for (const c of `mascot:${ep.id}`) h = (h * 131 + c.charCodeAt(0)) >>> 0;
   return h % 1000 < mascotShare * 1000;
@@ -549,19 +553,8 @@ export async function experimentVerdicts(
   if (rumoursPerDay !== rumoursBefore)
     await writeOverride(db, OVERRIDE.rumours, rumoursPerDay);
 
-  // 4. Pip, once the desk test has its verdict.
-  let mascotShare = await mascotShareNow(db, cfg);
-  if (
-    desk.decision !== "extend" &&
-    (await readOverride(db, OVERRIDE.mascot)) === undefined
-  ) {
-    mascotShare = MASCOT_START_SHARE;
-    await writeOverride(db, OVERRIDE.mascot, mascotShare);
-    lines.push(
-      "",
-      "**4. Pip the mascot** starts today on about half of new Shorts (top right, beside the logo), so the weekly lessons can compare Shorts with and without him.",
-    );
-  }
+  // 4. Pip is no longer started here (MASCOT_SHARE only); the run records the share in force.
+  const mascotShare = await mascotShareNow(db, cfg);
 
   const report = lines.join("\n");
   const run: VerdictRun = {

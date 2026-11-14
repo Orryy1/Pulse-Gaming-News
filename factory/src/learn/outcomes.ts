@@ -28,6 +28,8 @@ export interface Outcome {
   views?: number;
   /** Views at 72 hours. */
   views72?: number;
+  /** The MASCOT_SHARE test: true with Pip, false without, undefined when the Short was not in the test. */
+  mascot?: boolean;
 }
 
 export interface EpisodeRow {
@@ -40,6 +42,7 @@ export interface EpisodeRow {
   story_type?: string | null;
   duration?: string | number | null;
   published_at?: string | null;
+  mascot?: string | boolean | null;
 }
 
 export interface MetricRow {
@@ -74,6 +77,7 @@ export function outcomeOf(ep: EpisodeRow, metrics: MetricRow[]): Outcome {
     storyType: ep.story_type ?? undefined,
     publishedAt: ep.published_at ?? undefined,
   };
+  if (ep.mascot != null) out.mascot = String(ep.mascot) === "true";
   const duration = (num(ep.duration) ?? 0) + TAIL_SECONDS;
   const curve = (by.get("curve") ?? by.get("curve_2d")) as Curve | undefined;
   if (Array.isArray(curve) && curve.length >= 20 && duration > TAIL_SECONDS)
@@ -112,7 +116,7 @@ export const METRIC_NAME: Record<Metric, string> = {
 export const EPISODE_COLUMNS = `e.id, e.lane, e.story_hash, e.script_json->>'evergreen_format' AS evergreen_format,
   e.script_json->>'runtime' AS runtime, e.story_json->'gameplay'->>'live' AS live,
   e.script_json->>'story_type' AS story_type, e.assets_json->>'durationSeconds' AS duration,
-  COALESCE(e.publish_at, e.updated_at) AS published_at`;
+  COALESCE(e.publish_at, e.updated_at) AS published_at, e.assets_json->>'mascot' AS mascot`;
 
 /** Every published video's outcome (twin channel left out), newest first. */
 export async function loadOutcomes(

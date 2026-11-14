@@ -36,7 +36,8 @@ import { STAMP_FRAMES } from "./components/Stamp.tsx";
 import { W_STYLES, DEFAULT_LOOK } from "./components/wordmoment/index.ts";
 import type { Tone } from "./components/wordmoment/types.ts";
 import { pickWordLook } from "./wordlook.ts";
-import { Pip, PIP_SHORT, sinceLast } from "./components/Pip.tsx";
+import { PipReactions, PIP_SHORT } from "./components/Pip.tsx";
+import { pipMoments } from "./mascot.ts";
 import type { ShotDressing } from "./components/Background.tsx";
 import type { CutMove, ShotMove } from "./camera.ts";
 import {
@@ -154,6 +155,19 @@ export const Short: React.FC<ShortProps> = (props) => {
   const accent = theme.accent;
   const words = props.words.length ? props.words : synthWords(props);
   const pages = useMemo(() => pageCaptions(displayWords(words)), [words]);
+  const pipShown = useMemo(
+    () =>
+      props.mascot
+        ? pipMoments({
+            segments: props.segments,
+            stamps: props.stamps,
+            isRumour: props.isRumour,
+            words,
+            durationSeconds: props.durationSeconds,
+          })
+        : [],
+    [props.mascot, props.segments, props.stamps, props.isRumour, words, props.durationSeconds],
+  );
   const emphasis = useMemo(
     () => new Set(props.emphasis.map((w) => w.toLowerCase())),
     [props.emphasis],
@@ -811,23 +825,9 @@ export const Short: React.FC<ShortProps> = (props) => {
         labelOpacity={labelOpacity}
       />
       {/* Pip the mascot test (props.mascot): in the brand band beside the logo row, clear of the Shorts header
-          above, the right-hand rail below y 1000 and everything else on the Short. */}
-      {props.mascot ? (
-        <Pip
-          words={words}
-          reactions={(props.stamps ?? []).map((st) => st.at)}
-          lookAt={(f) => {
-            // At a stamp while it holds (it lands below, left of centre), at the headline in the hook, else at the viewer.
-            const st = sinceLast(f, fps, (props.stamps ?? []).map((x) => x.at));
-            if (st !== undefined && st < STAMP_FRAMES) return { x: -0.7, y: 0.8 };
-            if (f < hookEnd) return { x: -0.6, y: 0.7 };
-            return { x: -0.1, y: 0.1 };
-          }}
-          left={PIP_SHORT.left}
-          top={PIP_SHORT.top}
-          size={PIP_SHORT.size}
-        />
-      ) : null}
+          above, the hero picture, the captions and the right-hand rail. Only at his two or three moments
+          (src/render/mascot.ts): the reveal, the joke or twist and the verdict; he never talks. */}
+      {pipShown.length ? <PipReactions moments={pipShown} /> : null}
       {clean ? null : (
         <ProgressRail
           segments={props.segments}

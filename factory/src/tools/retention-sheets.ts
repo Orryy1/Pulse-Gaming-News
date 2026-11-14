@@ -31,7 +31,11 @@ for (const f of fs
   .readdirSync(SB)
   .filter((x) => /^proof-ep_.*\.json$/.test(x))) {
   const [r] = JSON.parse(fs.readFileSync(path.join(SB, f), "utf8")) as any[];
-  if (!r?.after) continue;
+  // Only renders that passed the factory's own QA (a failed one is reported, not shown as a proof).
+  if (!r?.after || r.status !== "rendered" || !r.afterPlan) {
+    if (r) summary.push({ id: r.id, failed: r.status, fixes: r.retention?.report?.fixes ?? [] });
+    continue;
+  }
   const dir = path.join(SB, "episodes", r.id);
   const report = r.retention?.report;
   const fps = r.afterPlan?.fps ?? 30;

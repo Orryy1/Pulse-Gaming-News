@@ -85,6 +85,8 @@ const backtestCards = (v.backtestVideos as any[])
 const proofCards = sheets
   .map((s) => {
     const d = all.find((x) => x.episode === s.id);
+    if (s.failed)
+      return `<section class="proof"><h3>${esc(d?.title ?? s.id)} <small>not shown as a proof</small></h3><p>The director swapped in footage (${s.fixes.map((f: any) => esc(f.what)).join("; ")}) and the re-render then failed the factory's own frame check (status: ${esc(s.failed)}); the check faulted frames outside the director's change too. This is the case the QA revert now handles: on a QA failure after its swaps, the retry renders the plan as it was.</p></section>`;
     return `<section class="proof"><h3>${esc(d?.title ?? s.id)} <small><a href="https://youtu.be/${esc(d?.video)}">${esc(d?.video)}</a></small></h3>
 <p>Predicted share watched (relative to the first second): <b>${s.predicted}%</b> as published, <b>${s.after}%</b> after the director (our usual curve for this length: ${s.usual}%). The model that judged it had not seen this Short.</p>
 <ul>${s.fixes.map((f: any) => `<li>${esc(f.what)} <b>(+${f.gain} points)</b></li>`).join("")}</ul>

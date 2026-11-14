@@ -21,7 +21,7 @@ def probe(ffprobe, path):
     return int(vals["width"]), int(vals["height"]), float(vals.get("duration", "0") or 0)
 
 
-def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None, threads=2):
+def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None, threads=2, quiet=False):
     """Yields (seconds, BGR frame) at `fps`, from `start`, scaled to width x height when both are given."""
     w, h = width, height
     vf = f"fps={fps}"
@@ -37,7 +37,8 @@ def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None,
     if not (w and h):
         raise ValueError("frames() needs the output size; probe the file first")
     size = w * h * 3
-    p = subprocess.Popen(args, stdout=subprocess.PIPE, bufsize=size * 2)
+    # ffmpeg is stopped as soon as enough frames are read; its complaint about the closed pipe is not an error.
+    p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL if quiet else None, bufsize=size * 2)
     i = 0
     try:
         while True:
@@ -54,6 +55,6 @@ def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None,
 
 def frame_at(ffmpeg, path, t, width, height):
     """One frame at `t` seconds."""
-    for _, f in frames(ffmpeg, path, 30, start=t, duration=0.2, width=width, height=height):
+    for _, f in frames(ffmpeg, path, 30, start=t, duration=0.2, width=width, height=height, quiet=True):
         return f
     return None

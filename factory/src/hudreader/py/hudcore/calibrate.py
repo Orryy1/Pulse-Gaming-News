@@ -35,23 +35,33 @@ def _frac(box, W, H):
     return [round(x0 / W, 5), round(y0 / H, 5), round(x1 / W, 5), round(y1 / H, 5)]
 
 
-def find_bars(stack_hsv, std, W, H):
+def find_bars(stack_hsv, mad, W, H):
     """Static saturated horizontal strips (health and armour bars) in the lower half: [(x0, y0, x1, y1)]."""
     sat = np.median(stack_hsv[..., 1], axis=0) > 70
     val = np.median(stack_hsv[..., 2], axis=0) > 70
-    static = std < 8
+    static = mad < 10
     m = (sat & val & static).astype(np.uint8)
     m[: H // 2] = 0
     n, lab, stats, _ = cv2.connectedComponentsWithStats(cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 9), np.uint8)))
-    out = []
+    parts = []
     for i in range(1, n):
         x, y, w, h, area = stats[i]
-        if w > 0.05 * W and h < 0.02 * H and w > 6 * h:
-            out.append((int(x), int(y), int(x + w), int(y + h)))
+        if w > 0.02 * W and h < 0.02 * H and w > 4 * h:
+            parts.append([int(x), int(y), int(x + w), int(y + h)])
+    # Health, armour and the special bar sit end to end on one row: join pieces on the same row with small gaps.
+    parts.sort()
+    out = []
+    for b in parts:
+        last = out[-1] if out else None
+        if last and abs((b[1] + b[3]) / 2 - (last[1] + last[3]) / 2) < max(3, (b[3] - b[1])) and b[0] - last[2] < 0.03 * W:
+            last[:] = [min(last[0], b[0]), min(last[1], b[1]), max(last[2], b[2]), max(last[3], b[3])]
+        else:
+            out.append(list(b))
+    out = [tuple(b) for b in out if b[2] - b[0] > 0.05 * W]
     return sorted(out, key=lambda b: -(b[2] - b[0]))
 
 
-def find_minimap(std, sat_mean, W, H, bars):
+def find_minimap(std, sat_mean, W, H, bars, arrow_at=None):
     """The radar's box: above the bar strip when there is one, else the corner whose picture changes most while
     staying grey (a map, not the world)."""
     cands = []
@@ -67,9 +77,15 @@ def find_minimap(std, sat_mean, W, H, bars):
         x0, y0, x1, y1 = b
         s = std[y0:y1, x0:x1]
         g = sat_mean[y0:y1, x0:x1]
-        return float(np.mean(s) * (1.0 - np.clip(np.mean(g) / 120.0, 0, 1)))
+        base = float(np.mean(s) * (1.0 - np.clip(np.mean(g) / 120.0, 0, 1)))
+        # A steady bright marker (the player arrow) inside is the radar's surest sign; open sky has none.
+        return base * (3.0 if arrow_at and arrow_at(b) else 1.0)
 
-    best = max(cands, key=score)
+    # Above the bar strip is where GTA (and Rockstar's other open worlds) draw the radar: it wins unless it is dead.
+    if bars and score(cands[0]) > 0.25 * max(score(c) for c in cands):
+        best = cands[0]
+    else:
+        best = max(cands, key=score)
     x0, y0, x1, y1 = best
     # Tighten to the rows and columns that actually change.
     s = std[y0:y1, x0:x1] > max(10.0, float(np.percentile(std[y0:y1, x0:x1], 40)))
@@ -80,11 +96,11 @@ def find_minimap(std, sat_mean, W, H, bars):
     return best, round(score(best), 2)
 
 
-def find_arrow(stack_gray, std, box):
+def find_arrow(stack_gray, mad, box):
     """The player arrow: the steady bright blob nearest the radar's middle-bottom third."""
     x0, y0, x1, y1 = box
     med = np.median(stack_gray[:, y0:y1, x0:x1], axis=0)
-    m = ((med > 190) & (std[y0:y1, x0:x1] < 14)).astype(np.uint8)
+    m = ((med > 170) & (mad[y0:y1, x0:x1] < 12)).astype(np.uint8)
     n, lab, stats, cents = cv2.connectedComponentsWithStats(m)
     want = np.array([(x1 - x0) / 2, (y1 - y0) * 0.62])
     best = None
@@ -180,14 +196,32 @@ def run(a):
     frames = _frames(a, times, W, H)
     if len(frames) < 6:
         raise SystemExit("calibration needs at least 6 frames")
+    # Black frames and menus would hide the HUD's steady parts: only frames with picture count, and "steady" is
+    # judged robustly (median distance from the median), so a few odd frames cannot spoil it.
+    frames = [(t, f) for t, f in frames if float(cv2.cvtColor(f[::8, ::8], cv2.COLOR_BGR2GRAY).mean()) > 15]
     stack = np.stack([f for _, f in frames])
     gray = np.stack([cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) for f in stack]).astype(np.float32)
     hsv = np.stack([cv2.cvtColor(f, cv2.COLOR_BGR2HSV) for f in stack])
     std = gray.std(axis=0)
+    med = np.median(gray, axis=0)
+    mad = np.median(np.abs(gray - med[None]), axis=0)
     sat_mean = hsv[..., 1].astype(np.float32).mean(axis=0)
-    bars = find_bars(hsv, std, W, H)
-    mbox, mscore = find_minimap(std, sat_mean, W, H, bars)
-    (ax, ay), arrow_found = find_arrow(gray, std, mbox)
+    bars = find_bars(hsv, mad, W, H)
+    if bars:
+        # Frames that show the bar strip are frames with the HUD: the radar and its arrow are judged on those only.
+        bx0, by0, bx1, by1 = bars[0]
+        ref = np.median(stack[:, by0:by1, bx0:bx1].astype(np.float32), axis=0)
+        keep = [i for i in range(len(stack)) if float(np.abs(stack[i, by0:by1, bx0:bx1].astype(np.float32) - ref).mean()) < 25]
+        if len(keep) >= 4:
+            stack, gray, hsv = stack[keep], gray[keep], hsv[keep]
+            std = gray.std(axis=0)
+            med = np.median(gray, axis=0)
+            mad = np.median(np.abs(gray - med[None]), axis=0)
+            sat_mean = hsv[..., 1].astype(np.float32).mean(axis=0)
+            frames = [frames[i] for i in keep]
+    arrow_at = lambda b: find_arrow(gray, mad, b)[1]
+    mbox, mscore = find_minimap(std, sat_mean, W, H, bars, arrow_at)
+    (ax, ay), arrow_found = find_arrow(gray, mad, mbox)
     prof = copy.deepcopy(base.data)
     prof["game"] = a.game
     prof["label"] = a.game.upper()

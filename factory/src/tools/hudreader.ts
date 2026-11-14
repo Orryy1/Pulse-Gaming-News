@@ -10,6 +10,8 @@
 //       learns a new HUD from a few frames: writes the profile (default src/hudreader/profiles/<game>.json) and a
 //       _preview.png with every box drawn, to check by eye before switching anything on
 //   npx tsx src/tools/hudreader.ts check <raw.json> <labels.json>     the hand check's accuracy, per field
+//   npx tsx src/tools/hudreader.ts preview --dir <folder> --overlay <overlay.json> [--duration s] [--hook text]
+//       a sample render of the HUD graphics on the gameplay Short (cut.mp4 and voice.mp3 in --dir)
 //   npx tsx src/tools/hudreader.ts selftest                            the Python half's synthetic checks
 // A recording's name may hold "%" ("GTA V 100% [v...]"): it is passed through as one argument, never through cmd.
 
@@ -126,6 +128,37 @@ async function main(): Promise<number> {
       const out = arg("out");
       if (out) await fs.writeFile(out, JSON.stringify(r, null, 1));
       console.log(JSON.stringify(r, null, 1));
+      return 0;
+    }
+    case "preview": {
+      // A sample render of the HUD graphics on the gameplay Short: --dir holds cut.mp4 (9:16), voice.mp3 and the
+      // overlay's pictures; --overlay is the HudOverlayProps JSON.
+      const dir = arg("dir");
+      const overlay = arg("overlay");
+      if (!dir || !overlay) throw new Error("preview --dir <folder> --overlay <overlay.json>");
+      const { renderGameplayShort } = await import("../render/render.ts");
+      const hud = JSON.parse(await fs.readFile(overlay, "utf8"));
+      const duration = Number(arg("duration") ?? 20);
+      await renderGameplayShort({
+        episodeDir: dir,
+        props: {
+          videoFile: "cut.mp4",
+          voiceFile: "voice.mp3",
+          words: [],
+          durationSeconds: duration,
+          hook: arg("hook") ?? "",
+          hookEnd: Number(arg("hookEnd") ?? 0),
+          resultLine: arg("result") ?? "",
+          payoffAt: Number(arg("payoff") ?? duration + 1),
+          voiced: [],
+          accent: "#FF6B1A",
+          hud,
+        },
+        outFile: arg("out") ?? path.join(dir, "preview.mp4"),
+        posterFile: path.join(dir, "poster.jpg"),
+        concurrency: Number(arg("concurrency") ?? 4),
+      });
+      console.log(JSON.stringify({ ok: true, out: arg("out") ?? path.join(dir, "preview.mp4") }));
       return 0;
     }
     case "selftest": {

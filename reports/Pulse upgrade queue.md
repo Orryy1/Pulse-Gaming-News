@@ -290,3 +290,11 @@ The "Fairgames Is Finished. Haven Isn't." documentary started its render at abou
 ## 33. Shorts yield: 6 of 30 published on 13 to 14 Nov (being fixed on claude/qayield)
 
 Final QA rejected GTA 6 Rockstar footage frames (nightclubs, swimwear), misread prices and an unreadable wordmark. Fact checks rejected invented credits. The fix is to pre-screen footage before it is chosen and to swap a failing shot instead of failing the whole Short.
+
+## 34. Merge claude/funny (FUNNY_SHORTS, MEME_POSTS) after tonight's deploy
+
+On 14 Nov it conflicted with stage in src/pipeline.ts, src/render/GameplayShort.tsx and src/server.ts, so it was left out of the midnight batch. Merge it carefully, keeping both sides: check that GameplayShort keeps the HUD pin, ticker and Pip changes plus the funny edits. Then run the tests.
+
+## 35. liveclips/recorder.ts measure() reads 48 kHz VODs about 6x too fast (found 14 Nov by the funny build)
+
+Loudness readings from the live-clip recorder are wrong. That hurts live-clip and funny-moment detection. Fix it with a test before 19 Nov.

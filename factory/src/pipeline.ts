@@ -180,6 +180,7 @@ import {
   stepScriptExplained,
 } from "./explainedstep.ts";
 import { seriesCoverOf, seriesTagOf } from "./seriescover.ts";
+import { applyPulseLab, labCommentLines, labDayTitle, labDescriptionLines, labOverlayFor } from "./pulselab/apply.ts";
 import {
   recentVerdicts,
   stepScriptVerdict,
@@ -5327,6 +5328,8 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   const duration = assets.durationSeconds ?? 20;
+  // PULSE_LAB: the Lab's graphics and the season tally, counted as it renders (src/pulselab/apply.ts).
+  const lab = await labOverlayFor(s, ep);
   await s.renderGameplayShort({
     episodeDir: dir,
     props: {
@@ -5340,6 +5343,7 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       payoffAt: timing.payoffAt,
       voiced: timing.voiced,
       accent: "#FF6B1A",
+      ...(lab ? { lab } : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -5701,7 +5705,10 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_start: direction.focus_start,
       focus_payoff: direction.focus_payoff,
     };
+    // PULSE_LAB (src/pulselab): Receipts, I measured it, You asked or 6 vs 5, when the clip has the evidence for one.
+    await applyPulseLab(s, ep, script, meta, { cut, direction, source, episodeDir: episodeDir(s.cfg, ep.id) });
     await applyGtaDaily(s, ep, script, meta);
+    labDayTitle(ep, script);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -13661,6 +13668,8 @@ export function videoMetadata(
       leonida ? `\n${leonida}` : "",
       // GTA 6 Day N (src/gtadaily.ts): the day before and the whole run, in order.
       ep.story_json.gtaDaily ? `\n${dailyDescriptionLines(ep.story_json.gtaDaily).join("\n")}` : "",
+      // The Pulse Lab (src/pulselab): the claim's label and source, the measurement's method, who asked.
+      labDescriptionLines(ep).length ? `\n${labDescriptionLines(ep).join("\n")}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
         : "",
@@ -14102,7 +14111,12 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     const script = ep.script_json!;
     // A Short gets the channel's comment only when it ends on its own real question (src/social/firstcomment.ts).
     // GTA 6 Day N: the next day (when already made) and the playlist (src/gtadaily.ts).
-    const daily = ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "";
+    const daily = [
+      ...labCommentLines(ep),
+      ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
       const q = [shortComment(script), daily].filter(Boolean).join("\n\n");
       if (!q) {

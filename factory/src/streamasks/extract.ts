@@ -68,6 +68,7 @@ export function sightingsOf(posts: RawPost[]): Sighting[] {
           at: p.at,
           text: raw.text.slice(0, 280),
           engagement: p.engagement,
+          ...(p.handle ? { handle: p.handle } : {}),
         },
       });
   }

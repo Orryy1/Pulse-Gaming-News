@@ -23,6 +23,14 @@ const esc = (s: string) =>
       ]!,
   );
 
+const viewerAsked = (a: StreamAsk) =>
+  a.mentions.some((m) => m.source === "viewers" || m.source === "comments");
+/** The first viewer who asked, by public handle only (src/pulselab/asked.ts credits the same one on screen). */
+const askerOf = (a: StreamAsk) =>
+  [...a.mentions]
+    .filter((m) => (m.source === "viewers" || m.source === "comments") && m.handle)
+    .sort((x, y) => x.at.localeCompare(y.at))[0]?.handle;
+
 const label = (a: StreamAsk) => (a.rumour ? "RUMOUR, unconfirmed: " : "");
 
 const srcLine = (a: StreamAsk) => {
@@ -134,11 +142,16 @@ export function dailyMessage(
   asks: StreamAsk[],
   top: number,
   link: string,
+  /** PULSE_LAB_ASKED: this many viewer asks go to the top of tonight's list, credited by public handle. */
+  o: { viewersFirst?: number } = {},
 ): string {
-  const open = asks.filter((a) => a.status === "open").slice(0, top);
+  const all = asks.filter((a) => a.status === "open");
+  const fromViewers = all.filter(viewerAsked).slice(0, Math.max(0, o.viewersFirst ?? 0));
+  const open = [...fromViewers, ...all.filter((a) => !fromViewers.includes(a))].slice(0, top);
   if (!open.length) return "";
   const lines = open.map(
-    (a, i) => `${i + 1}. ${label(a)}${a.question}\n   Test: ${a.howToTest}`,
+    (a, i) =>
+      `${i + 1}. ${label(a)}${a.question}${fromViewers.includes(a) ? ` (you asked${askerOf(a) ? `: ${askerOf(a)}` : ""})` : ""}\n   Test: ${a.howToTest}`,
   );
   return [
     `Stream asks for today: what people want you to test (${open[0]!.game}${new Set(open.map((a) => a.game)).size > 1 ? " and more" : ""}).`,

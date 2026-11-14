@@ -312,6 +312,8 @@ export interface MinedMoment {
     claim: string;
     game: string;
     rumour: boolean;
+    /** PULSE_LAB_ASKED: the public handle of the viewer who asked for this test, when one did. */
+    askedBy?: string;
   };
   candidate: MomentCandidate;
   model?: ModelVerdict;
@@ -350,6 +352,13 @@ export interface MineDeps {
 }
 
 const FRAMES = 6;
+
+/** The earliest viewer who asked for a test with a public handle (never a display name). */
+export function askedBy(ask: Pick<StreamAsk, "mentions">): string | undefined {
+  return [...ask.mentions]
+    .filter((x) => (x.source === "viewers" || x.source === "comments") && x.handle)
+    .sort((a, b) => a.at.localeCompare(b.at))[0]?.handle;
+}
 
 export const momentKey = (askId: string, vodId: string, peak: number) =>
   `${askId}-${vodId}-${Math.round(peak)}`;
@@ -464,6 +473,7 @@ export async function mineVod(
           claim: ask.claim,
           game: ask.game,
           rumour: ask.rumour,
+          ...(askedBy(ask) ? { askedBy: askedBy(ask)! } : {}),
         },
         candidate: c,
         model,
@@ -684,6 +694,7 @@ async function toGameplayInbox(
       question: m.ask.question,
       claim: m.ask.claim,
       rumour: m.ask.rumour,
+      ...(m.ask.askedBy ? { asked_by: m.ask.askedBy } : {}),
       verdict: m.decision.result,
       confidence: m.decision.confidence,
       reason: m.decision.why,

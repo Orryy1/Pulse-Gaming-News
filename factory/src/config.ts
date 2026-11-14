@@ -23,6 +23,7 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
+import { pulseLabSettings, pulseLabSummary, type PulseLabSettings } from "./pulselab/settings.ts";
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./subslearn/settings.ts";
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
@@ -887,6 +888,8 @@ export interface Config {
   spoilerGuard: boolean;
   /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
   streamAsks: StreamAsksSettings;
+  /** PULSE_LAB and its formats (src/pulselab): Receipts, I measured it, the season tally, You asked, 6 vs 5. Off by default. */
+  pulseLab: PulseLabSettings;
   /** SEARCH_SHORTS and its settings: the search-demand engine (src/searchq). Off by default. */
   searchShorts: SearchShortsSettings;
   /** SUBS_LEARN and its settings: subscribers per 1,000 views by format, and one slot a week moved towards the formats
@@ -1815,6 +1818,7 @@ export function loadConfig(): Config {
     archiveSections: bool("ARCHIVE_SECTIONS", false),
     spoilerGuard: bool("SPOILER_GUARD", false),
     streamAsks: streamAsksSettings(process.env),
+    pulseLab: pulseLabSettings(process.env),
     // Facts files resolve against the factory folder the server runs in, like SHORT_RUN_FILE.
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
@@ -2069,6 +2073,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     streamAsks: streamAsksSummary(c.streamAsks),
+    pulseLab: pulseLabSummary(c.pulseLab, c),
     searchShorts: searchShortsSummary(c.searchShorts),
     subsLearn: subsLearnSummary(c.subsLearn),
     liveClips: liveClipsSummary(c.liveClips),

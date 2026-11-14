@@ -33,6 +33,7 @@ import { mineVod } from "./miner.ts";
 import { asksHtml, asksKey, asksMarkdown, dailyMessage } from "./page.ts";
 import { mergeSeeds, parseSeed } from "./seed.ts";
 import { gameNamed, gatherPosts, type GatherDeps } from "./sources.ts";
+import { foldPollResult, readLabPoll } from "../pulselab/asked.ts";
 
 const TOOL = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -134,7 +135,9 @@ export interface RefreshDeps extends GatherDeps {
 
 /** One refresh of the list. Returns the stored list. */
 export async function refreshAsks(
-  cfg: Pick<Config, "dataDir" | "streamAsks" | "ownerGames">,
+  cfg: Pick<Config, "dataDir" | "streamAsks" | "ownerGames"> & {
+    pulseLab?: Pick<Config["pulseLab"], "asked">;
+  },
   deps: RefreshDeps = {},
 ): Promise<AsksStore> {
   const now = deps.now ?? new Date();
@@ -180,6 +183,11 @@ export async function refreshAsks(
   asks = foldSightings(asks, sightingsOf(posts), now, { lateTerms });
   const added = new Set(asks.filter((a) => !before.has(a.id)).map((a) => a.id));
   asks = await refineAsks(deps.llm, asks, added);
+  // PULSE_LAB_ASKED: the Lab poll's winner counts as viewers asking for it (credited to the voters, never a name).
+  if (cfg.pulseLab?.asked && deps.db) {
+    const poll = await readLabPoll(deps.db).catch(() => undefined);
+    if (poll) asks = foldPollResult(asks, poll);
+  }
   if (deps.db) {
     const rows = await deps.db
       .query<{ title: string | null; game: string | null }>(
@@ -262,12 +270,14 @@ export async function sendDaily(
     | "publicUrl"
     | "appSecret"
     | "dryRun"
-  >,
+  > & { pulseLab?: Pick<Config["pulseLab"], "asked" | "tonight"> },
   day: string,
   post: typeof postDiscord = postDiscord,
 ): Promise<{ text: string; to: string }> {
   const store = await readAsks(cfg.dataDir);
-  const text = dailyMessage(store.asks, cfg.streamAsks.top, asksLink(cfg));
+  const text = dailyMessage(store.asks, cfg.streamAsks.top, asksLink(cfg), {
+    viewersFirst: cfg.pulseLab?.asked ? cfg.pulseLab.tonight : 0,
+  });
   if (!text) return { text: "", to: "nothing to send" };
   if (cfg.streamAsks.dryRun || cfg.dryRun || !cfg.discordWebhookUrl) {
     const file = path.join(asksDir(cfg.dataDir), `discord-${day}.txt`);

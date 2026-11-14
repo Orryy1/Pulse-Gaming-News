@@ -19,6 +19,8 @@ import { Captions } from "./components/Overlays.tsx";
 import { displayWords, pageCaptions } from "./timeline.ts";
 import { CONTENT_WIDTH, SAFE } from "./layout.ts";
 import type { Word } from "../voice/elevenlabs.ts";
+import type { LabOverlay as LabOverlayData } from "./labplan.ts";
+import { LabOverlay, VersusPanes } from "./components/pulselab/LabOverlay.tsx";
 
 export type GameplayShortProps = {
   videoSrc: string; // full-screen 1080x1920, with the game's own sound
@@ -33,6 +35,8 @@ export type GameplayShortProps = {
   /** The narrator's stretches, where the game's sound drops under the voice. */
   voiced: Array<{ start: number; end: number }>;
   accent: string;
+  /** PULSE_LAB (src/pulselab): the Lab's tag, tally, claim card, instrument, credit or split screen. Absent: as before. */
+  lab?: LabOverlayData;
 };
 
 export const SAMPLE_GAMEPLAY_SHORT: GameplayShortProps = {
@@ -96,11 +100,22 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  const lab = props.lab;
+  // The measured answer has its own card on the outcome; a split screen's verdict sits on the seam between the panes.
+  const stampTop = lab?.versus ? 862 : 320;
+  const showStamp = stampOn && !lab?.instrument && !!props.resultLine;
   const hookSize =
     props.hook.length > 34 ? 86 : props.hook.length > 22 ? 100 : 118;
   return (
     <AbsoluteFill style={{ backgroundColor: COLOUR.ink }}>
-      {props.videoSrc ? (
+      {lab?.versus ? (
+        <VersusPanes
+          versus={{ ...lab.versus, aSrc: lab.versus.aSrc ? resolveSrc(lab.versus.aSrc) : "", bSrc: lab.versus.bSrc ? resolveSrc(lab.versus.bSrc) : "" }}
+          volume={(f) => gameVolume(f / fps, props.voiced)}
+          Video={OffthreadVideo as never}
+        />
+      ) : null}
+      {props.videoSrc && !lab?.versus ? (
         <OffthreadVideo
           src={resolveSrc(props.videoSrc)}
           volume={(f) => gameVolume(f / fps, props.voiced)}
@@ -135,13 +150,16 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
           {props.hook}
         </div>
       ) : null}
-      {stampOn ? (
+      {lab ? (
+        <LabOverlay lab={lab} hookEnd={props.hookEnd} payoffAt={props.payoffAt} />
+      ) : null}
+      {showStamp ? (
         <div
           style={{
             position: "absolute",
             left: SAFE.left,
             width: CONTENT_WIDTH,
-            top: 320,
+            top: stampTop,
             display: "flex",
             justifyContent: "center",
             transform: `scale(${interpolate(stamp, [0, 1], [1.5, 1])}) rotate(-2deg)`,

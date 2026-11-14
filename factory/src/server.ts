@@ -119,6 +119,7 @@ import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
+import { ledgerTick } from "./pulselab/apply.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
 import { searchDir, searchKey } from "./searchq/store.ts";
 import { asksKey } from "./streamasks/page.ts";
@@ -1925,6 +1926,11 @@ async function main(): Promise<void> {
     const searchPass = () => void searchHarvestTick(cfg, { db });
     setTimeout(searchPass, 4 * 60_000);
     setInterval(searchPass, 20 * 60_000);
+  }
+  // PULSE_LAB_RECEIPTS: the claims ledger kept in step with the asks, the seed list, the GTA File and rumour Shorts.
+  if (cfg.pulseLab.enabled && cfg.pulseLab.receipts) {
+    setTimeout(() => void ledgerTick(cfg, db), 5 * 60_000);
+    setInterval(() => void ledgerTick(cfg, db), 30 * 60_000);
   }
   if (cfg.streamAsks.vodMiner) {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);

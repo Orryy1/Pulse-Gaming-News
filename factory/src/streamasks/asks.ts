@@ -35,6 +35,8 @@ export interface Mention {
   text: string;
   /** Likes, reposts and replies together; 0 when unknown. */
   engagement: number;
+  /** A viewer's public YouTube handle ("@name"), never a display name: the Pulse Lab credits who asked (PULSE_LAB_ASKED). */
+  handle?: string;
 }
 
 /** What the miner looks for in a stream: words said, things seen (vision descriptions), writing on screen. */

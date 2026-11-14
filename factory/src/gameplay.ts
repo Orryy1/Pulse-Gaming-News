@@ -80,7 +80,11 @@ export interface GameplayMeta {
     verdict: "proved" | "disproved";
     confidence: number;
     reason: string;
+    /** PULSE_LAB_ASKED: the public handle of the viewer who asked for the test (src/streamasks/miner.ts askedBy). */
+    asked_by?: string;
   };
+  /** PULSE_LAB_MEASURED: the owner's own count or reading for the test, written into meta.json by hand or a tool. */
+  lab_measure?: { value: number; of?: number; unit?: string };
 }
 
 export interface Experiment {

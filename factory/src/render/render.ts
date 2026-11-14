@@ -1106,6 +1106,16 @@ export async function renderGameplayShort(input: {
       videoSrc: `${files.url}/${webPath(videoFile)}`,
       voiceSrc: `${files.url}/${webPath(voiceFile)}`,
     };
+    // PULSE_LAB_VERSUS: the split screen's two panes are files in the episode folder, served like the cut.
+    if (props.lab?.versus)
+      props.lab = {
+        ...props.lab,
+        versus: {
+          ...props.lab.versus,
+          aSrc: `${files.url}/${webPath(props.lab.versus.aSrc)}`,
+          bSrc: `${files.url}/${webPath(props.lab.versus.bSrc)}`,
+        },
+      };
     const browserExecutable = input.browserExecutable || undefined;
     const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
     const composition = await selectComposition({

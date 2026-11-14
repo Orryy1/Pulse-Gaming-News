@@ -1,0 +1,11 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "sfx": [
+    {
+      "file": "lab-sting.mp3",
+      "sha256": "566e0be5e0b53979c3e5988f7cd98222477567942840504e590fe90039bb500b",
+      "origin": "synthesised in-house by src/tools/pulselab-sting.ts (ffmpeg sine primitives)",
+      "licence": "owned"
+    }
+  ]
+}

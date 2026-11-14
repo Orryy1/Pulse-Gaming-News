@@ -16,6 +16,13 @@ import { gameAliases } from "../sceneindex/spoilers.ts";
 import type { MentionSource } from "./asks.ts";
 import type { AskSourceName } from "./settings.ts";
 
+/** A public YouTube handle, the same shape src/commentreply.ts publicHandle accepts: display names are never kept. */
+const PUBLIC_HANDLE = /^@[\p{L}\p{N}._-]{3,30}$/u;
+const publicHandle = (a: string | null | undefined) => {
+  const t = String(a ?? "").trim();
+  return PUBLIC_HANDLE.test(t) ? t : undefined;
+};
+
 export interface RawPost {
   source: MentionSource;
   name: string;
@@ -24,6 +31,8 @@ export interface RawPost {
   text: string;
   engagement: number;
   game: string;
+  /** A viewer's public handle ("@name"), only from the comment tables, never a display name. */
+  handle?: string;
 }
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -225,8 +234,9 @@ export async function gatherPosts(
       at: string | Date;
       game: string | null;
       title: string | null;
+      author: string | null;
     }>(
-      `SELECT c.comment, c.created_at AS at,
+      `SELECT c.comment, c.created_at AS at, c.author_name AS author,
               COALESCE(NULLIF(e.script_json->>'game_title', ''), e.story_json->>'gameHint') AS game,
               e.script_json->>'title' AS title
          FROM comment_replies c LEFT JOIN episodes e ON e.id = c.episode_id
@@ -246,6 +256,7 @@ export async function gatherPosts(
         text: r.comment.slice(0, 600),
         engagement: 5,
         game,
+        ...(publicHandle(r.author) ? { handle: publicHandle(r.author)! } : {}),
       });
       n++;
     }

@@ -135,6 +135,7 @@ export function testConfig(
     analyticsLoopPosting: false,
     analyticsLoopScoring: false,
     retentionLearn: false,
+    retentionDirector: "off",
     commentReplyShorts: false,
     commentReplySlot: "16:30",
     reachReport: false,

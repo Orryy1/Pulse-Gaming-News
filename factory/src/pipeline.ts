@@ -398,6 +398,7 @@ import {
   storyWeight,
 } from "./loopfeedback.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
+import { directorStep, retrainTick } from "./retentionstep.ts";
 import {
   REPLY_LIMITS,
   factsText as replyFacts,
@@ -12853,6 +12854,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
     }
   }
+  // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's predicted curve for this plan, its weakest moments
+  // and, under "fix", the safe fixes (fresh footage for stills, the strongest picture first, shorter card text), before
+  // the first-seconds check and the render, so no re-render is ever needed. Off by default; never throws.
+  await directorStep(s, ep, {
+    assets,
+    script,
+    words,
+    segments,
+    plan,
+    gameAudio: { on: gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) },
+    segmentsOf: segmentInputs,
+  });
   // ...and nothing in the first 7 s is what YouTube limits ads on; a failing later shot gives way to a picture that passes.
   if (opening) {
     const seconds = await checkFirstSeconds(dir, plan, assets, { openingChecked: opening.clip });
@@ -15092,6 +15105,9 @@ export async function tick(
           error: errorMessage(err),
         }),
       );
+    // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model retrained weekly from the stored curves.
+    if (!s.cfg.dryRun && s.cfg.retentionDirector !== "off")
+      await retrainTick({ db: s.db, cfg: s.cfg, now: s.now, segmentsOf: segmentInputs, notify: (m) => s.notify(m) });
     // The experiments' verdicts: once on EXPERIMENT_VERDICT_DATE, then weekly while the desk test is undecided.
     if (!s.cfg.dryRun)
       await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(

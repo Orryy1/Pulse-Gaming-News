@@ -665,6 +665,12 @@ export interface Config {
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
    * ANALYTICS_LOOP_LESSONS) and the Sunday growth report: RETENTION_LEARN, default off. */
   retentionLearn: boolean;
+  /** The pre-publish edit director (src/retentiondirector.ts): the retention model (src/retentionmodel.ts) predicts each
+   * Short's curve once its shot plan is built, flags the weakest moments and, under "fix", swaps stills for unused
+   * footage, puts the strongest picture in the first second and trims long card text where the model scores a gain;
+   * "advise" only records the prediction and advice. Also retrains the model weekly from the stored curves and adds its
+   * findings to the writers' lessons. RETENTION_DIRECTOR=off|advise|fix, default off. */
+  retentionDirector: "off" | "advise" | "fix";
   /** Video replies to comments (src/commentreply.ts): once a day the best viewer question the community engine filed
    * (substantive, answerable from the video's confirmed facts, not hostile) gets its own Short, opening on the comment as
    * a card with the commenter's public handle and "You asked...", then a reply on the original comment pointing to it:
@@ -1745,6 +1751,7 @@ export function loadConfig(): Config {
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
     retentionLearn: bool("RETENTION_LEARN", false),
+    retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),
     commentReplySlot: str("COMMENT_REPLY_SLOT", "16:30").trim(),
     shortSearchThumbShare: Number(str("SHORT_SEARCH_THUMB_SHARE", "0")) || 0,

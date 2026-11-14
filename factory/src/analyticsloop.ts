@@ -57,6 +57,7 @@ import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
+import { retentionModelLessons } from "./retentionstep.ts";
 
 const DAY = 86_400_000;
 const H = 3_600_000;
@@ -810,6 +811,8 @@ export interface LoopJson {
     lessons: string[];
     causes: RetentionStudy["causes"];
   };
+  /** RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's findings as lessons; absent while off or untrained. */
+  retentionModel?: { lessons: string[] };
 }
 
 /** Retention lessons go first, at most RETENTION_LESSON_SLOTS of them, then the report's own, six in all. */
@@ -821,6 +824,14 @@ export function withRetentionLessons(loop: string[], retention: string[], blockl
   const ok = (l: string) => !blocked.some((b) => l.toLowerCase().includes(b));
   const first = retention.filter(ok).slice(0, RETENTION_LESSON_SLOTS);
   return [...first, ...loop.filter((l) => ok(l) && !first.includes(l))].slice(0, max);
+}
+
+/**
+ * RETENTION_LEARN's curve readings and RETENTION_DIRECTOR's model findings in one list (pure): two readings, then the
+ * model's strongest finding, then the rest of each, so neither crowds the other out of the slots.
+ */
+export function mergeRetentionLessons(study: string[], model: string[]): string[] {
+  return [...study.slice(0, 2), ...model.slice(0, 1), ...study.slice(2), ...model.slice(1)];
 }
 
 /** The test queue: the first is already set by the first report; each runs until judged. */
@@ -2027,6 +2038,7 @@ export async function runAnalyticsLoop(
   // ---- feedback
   const date = end;
   const blocklist = prev?.lessons_blocklist ?? [];
+  const modelLessons = retentionModelLessons(cfg, now);
   const lessons = withRetentionLessons(
     lessonLines(
       patterns,
@@ -2035,7 +2047,7 @@ export async function runAnalyticsLoop(
       blocklist,
       date,
     ),
-    retentionStudy?.lessons ?? [],
+    mergeRetentionLessons(retentionStudy?.lessons ?? [], modelLessons),
     blocklist,
   );
   const tk = breakouts.tiktok;
@@ -2261,6 +2273,7 @@ export async function runAnalyticsLoop(
           },
         }
       : {}),
+    ...(modelLessons.length ? { retentionModel: { lessons: modelLessons } } : {}),
   };
   const markdown = renderReport({
     cfg,
@@ -2523,6 +2536,9 @@ export function renderReport(x: RenderInput): string {
       ...json.retention.section,
       "",
     );
+  // RETENTION_DIRECTOR: what the retention model learnt across all features at once (src/retentionmodel.ts).
+  if (json.retentionModel?.lessons.length)
+    L.push("**What the retention model learnt (held-out tested; all features at once)**", "", ...json.retentionModel.lessons.map((l) => `- ${l}`), "");
 
   // 5. Changes made
   L.push("## 5. Changes made", "");

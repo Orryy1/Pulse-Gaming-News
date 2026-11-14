@@ -7,7 +7,7 @@ import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
 import type { renderShortThumb } from "./render/render.ts";
-import { firstComment, shortComment } from "./social/firstcomment.ts";
+import { firstComment, shortComment, strictShortComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
@@ -14102,6 +14102,19 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     const script = ep.script_json!;
     // A Short gets the channel's comment only when it ends on its own real question (src/social/firstcomment.ts).
     // GTA 6 Day N: the next day (when already made) and the playlist (src/gtadaily.ts).
+    // FIRST_COMMENT_STRICT (item 19): any Short gets its own closing question alone, or nothing; the GTA Daily links
+    // stay in its description.
+    if (s.cfg.firstCommentStrict && script.runtime !== "long" && !script.twin) {
+      const q = strictShortComment(script);
+      if (!q) {
+        await logEvent(s.db, ep.id, "comment_skipped", { why: "no question of its own" });
+        return;
+      }
+      const id = await s.youtube(accountOf(ep)).insertComment(ep.youtube_video_id!, q);
+      await quotaAdd(s.db, s.now(), QUOTA.comment);
+      await logEvent(s.db, ep.id, "comment_posted", { id, text: q });
+      return;
+    }
     const daily = ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "";
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
       const q = [shortComment(script), daily].filter(Boolean).join("\n\n");

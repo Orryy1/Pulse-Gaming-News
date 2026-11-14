@@ -712,6 +712,17 @@ export interface Config {
   firstCommentQuestion: boolean;
   /** Reads the public comment list to see whether first comments are really showing (FIRST_COMMENT_CHECK, src/social/commentcheck.ts). */
   firstCommentCheck: boolean;
+  /**
+   * FIRST_COMMENT_STRICT (upgrade queue item 19, off): every Short, of any format, gets the channel's comment only when
+   * it ends on a real question of its own, posted as that question alone: no stock tail ("Bottom line", "Sources are
+   * in the description"), no link, no hashtag, no mention. Long videos keep their pinned comment.
+   */
+  firstCommentStrict: boolean;
+  /**
+   * REPLY_OPENING_GUARD (item 19, off): a community-engine reply that opens with the same two words as one of the
+   * channel's recent replies, or another reply in the same pass, is held and judged again on the next pass.
+   */
+  replyOpeningGuard: boolean;
   /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
   replyStyle: boolean;
   /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
@@ -1697,6 +1708,8 @@ export function loadConfig(): Config {
     engageSlot: str("ENGAGE_SLOT", "15:00"),
     firstCommentQuestion: bool("FIRST_COMMENT_QUESTION", false),
     firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
+    firstCommentStrict: bool("FIRST_COMMENT_STRICT", false),
+    replyOpeningGuard: bool("REPLY_OPENING_GUARD", false),
     replyStyle: bool("REPLY_STYLE", false),
     replyFollowups: bool("REPLY_FOLLOWUPS", false),
     metaCommentReplies: bool("META_COMMENT_REPLIES", false),

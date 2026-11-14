@@ -232,15 +232,33 @@ export interface History {
   recent: string[];
 }
 
+/** A reply's opening as REPLY_OPENING_GUARD compares it: its first two words, lower case, without punctuation. */
+const NOT_WORD = /[^\p{L}\p{N}'’$]/gu;
+export function openingKey(text: string): string {
+  return text
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w.replace(NOT_WORD, ""))
+    .join(" ")
+    .toLowerCase();
+}
+
+/** The skip reason of a reply held by REPLY_OPENING_GUARD: not a judgement, so the comment is judged again. */
+export const REPEATED_OPENING = "repeated opening, judged again next pass";
+
 /** The rules' last word on the model's verdicts (pure: the tick and the dry run share it). */
 export function decide(
   comments: ViewerComment[],
   verdicts: Verdict[],
   own: string,
   history: History,
+  /** REPLY_OPENING_GUARD: hold a reply that opens like a recent one or another in this pass. */
+  openingGuard = false,
 ): CommentPlan[] {
   const byId = new Map(verdicts.map((v) => [v.id, v]));
   const answered = new Set(history.answered);
+  const openings = new Set(history.recent.map(openingKey).filter(Boolean));
   let askBack = askBackAllowed(history.recent);
   const out: CommentPlan[] = [];
   for (const c of comments) {
@@ -267,9 +285,12 @@ export function decide(
       [reply, skip] = ["", "reply had a link, hashtag or mention"];
     if (reply && advertiserProblems(reply).length)
       [reply, skip] = ["", "reply not advertiser-safe"];
+    if (reply && openingGuard && openings.has(openingKey(reply)))
+      [reply, skip] = ["", REPEATED_OPENING];
     if (touch && !reply && !skip) skip = "model wrote no reply";
     if (reply) {
       answered.add(who);
+      openings.add(openingKey(reply));
       if (/\?\s*$/.test(reply)) askBack = false;
     }
     out.push({
@@ -310,6 +331,8 @@ export interface EngineDeps {
   now: () => Date;
   perDay?: number;
   perPass?: number;
+  /** REPLY_OPENING_GUARD (src/config.ts). */
+  openingGuard?: boolean;
 }
 
 let lastPass = 0;
@@ -372,7 +395,7 @@ export async function communityTick(d: EngineDeps): Promise<number> {
     fresh,
     recentOpenings(history.recent),
   );
-  const plans = decide(fresh, verdicts, own, history);
+  const plans = decide(fresh, verdicts, own, history, d.openingGuard);
   const [{ n: dayCount } = { n: 0 }] = await d.db.query<{ n: number }>(
     `SELECT count(*)::int AS n FROM comment_replies WHERE decision = 'reply' AND created_at > $1::timestamptz - interval '24 hours'`,
     [now],
@@ -386,6 +409,8 @@ export async function communityTick(d: EngineDeps): Promise<number> {
   )) {
     const c = p.comment;
     const ep = eps.get(c.videoId)!;
+    // Held for its opening, not judged: the comment stays fresh and the next pass lists that opening to avoid.
+    if (!p.reply && p.skip === REPEATED_OPENING) continue;
     let decision: "reply" | "skip" = p.reply ? "reply" : "skip";
     let reason = p.reply ? `${p.kind}` : p.skip;
     let replyId: string | null = null;

@@ -8,6 +8,8 @@ import {
   communityTick,
   decide,
   heartKey,
+  openingKey,
+  REPEATED_OPENING,
   pinChoices,
   resetViewerMemory,
   screenComment,
@@ -511,4 +513,34 @@ test("community tick: an older pass's answer stands, its 'nothing to add' skip g
   const [a] = await s.db.query<{ reply_text: string }>(`SELECT reply_text FROM comment_replies WHERE comment_id = 'a'`);
   assert.equal(a!.reply_text, "Quake would rule.");
   await s.db.close();
+});
+
+test("REPLY_OPENING_GUARD: a reply opening like a recent one, or like another in the pass, is held for the next pass", () => {
+  const comments = [
+    c("a", "Quake, only Quake is worth waiting for"),
+    c("b", "GTA 6 will break every record", { authorChannelId: "UC_b" }),
+    c("c", "Is it on PS5?", { authorChannelId: "UC_c" }),
+  ];
+  const verdicts = [
+    v("a", "opinion", "Honestly, Quake would be the dream. Nothing is announced yet."),
+    v("b", "opinion", "Big call, but the trailer views back you up."),
+    v("c", "question", "Big call? It is on PS5 and Xbox Series X."),
+  ];
+  const history = {
+    answered: new Set<string>(),
+    recent: ["Honestly, the remaster looks better than we expected."],
+  };
+  assert.equal(openingKey("Honestly, Quake would be the dream."), "honestly quake");
+  assert.equal(openingKey("Honestly, the remaster looks good."), "honestly the");
+  const off = decide(comments, verdicts, "UCown", history);
+  assert.ok(off.every((p) => p.reply), "off: nothing held for its opening");
+  const recent = { ...history, recent: ["Honestly quake is overdue"] };
+  const on = decide(comments, verdicts, "UCown", recent, true);
+  const by = new Map(on.map((p) => [p.comment.id, p]));
+  assert.equal(by.get("a")!.reply, "", "opens like a recent reply");
+  assert.equal(by.get("a")!.skip, REPEATED_OPENING);
+  assert.equal(by.get("a")!.heart, true, "still hearted");
+  assert.match(by.get("b")!.reply, /^Big call, but/);
+  assert.equal(by.get("c")!.reply, "", "opens like the reply before it in the same pass");
+  assert.equal(by.get("c")!.skip, REPEATED_OPENING);
 });

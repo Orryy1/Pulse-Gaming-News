@@ -54,6 +54,8 @@ export function testConfig(
     attributionGuard: true,
     firstCommentQuestion: false,
     firstCommentCheck: false,
+    firstCommentStrict: false,
+    replyOpeningGuard: false,
     replyStyle: false,
     replyFollowups: false,
     metaCommentReplies: false,

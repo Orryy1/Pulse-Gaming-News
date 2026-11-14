@@ -12157,6 +12157,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       thumb: mainThumb!.thumb as never,
       thumbVariants: thumbRepair ? [...thumbVariants, thumbRepair] : thumbVariants,
       concurrency: s.cfg.remotionConcurrency,
+      speed: s.cfg.renderSpeed,
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
       props: longPropsNow(),
@@ -13048,6 +13049,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ? path.join(dir, assets.shortThumb)
       : undefined,
     concurrency: s.cfg.remotionConcurrency,
+    speed: s.cfg.renderSpeed,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
     props: {

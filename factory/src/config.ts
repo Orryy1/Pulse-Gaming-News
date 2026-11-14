@@ -9,6 +9,7 @@ import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
 import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
 import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
+import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
 import {
   defaultBackupDir,
   defaultCodexPython,
@@ -1229,6 +1230,8 @@ export interface Config {
   maxAttempts: number;
   remotionConcurrency: number;
   remotionGl: RemotionGl;
+  /** Render speed and resume (src/render/renderspeed.ts, 14 Nov 2026): every part off by default. */
+  renderSpeed: RenderSpeed;
   browserExecutable: string;
 }
 
@@ -2066,6 +2069,7 @@ export function loadConfig(): Config {
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),
     remotionGl,
     browserExecutable: str("REMOTION_BROWSER_EXECUTABLE"),
+    renderSpeed: renderSpeedFrom(process.env),
   };
   if (cfg.legacyTokenDir) adoptLegacyYouTubeTokens(cfg);
   applyMetaLogin(cfg);

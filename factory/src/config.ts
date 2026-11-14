@@ -1034,6 +1034,15 @@ export interface Config {
   twinDelayMinutes: number; // the twin follows the original by this long
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
+  /** SIGNATURE_MUSIC (default off): each named series opens on its own sting over its own bed, documentaries on
+   * the docs set with rises cut to the chapters (src/render/signature.ts, library from src/tools/musiclab). */
+  signatureMusic: boolean;
+  /** HOOK_TAKES (default 0, off): a Short's hook line is voiced this many extra times on ElevenLabs, the takes
+   * scored with the in-context read (energy, clarity by Whisper, pace, breaths, match to the rest) and the best
+   * spliced in (src/voice/hooktakes.ts). Only the hook's characters are spent again, and every take is logged. */
+  hookTakes: number;
+  /** HOOK_TARGET_WPM (default 175): the pace a hook is scored against, as heard (after SHORT_SPEED). */
+  hookTargetWpm: number;
   /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
   parallax: boolean;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
@@ -1978,6 +1987,9 @@ export function loadConfig(): Config {
     twinChannelId: str("TWIN_YOUTUBE_CHANNEL_ID", ""),
     twinDelayMinutes: int("TWIN_DELAY_MINUTES", 30),
     musicBed: bool("MUSIC_BED", true),
+    signatureMusic: bool("SIGNATURE_MUSIC", false),
+    hookTakes: Math.min(5, Math.max(0, int("HOOK_TAKES", 0))),
+    hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),

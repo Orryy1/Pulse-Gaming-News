@@ -350,7 +350,9 @@ import {
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
-import { bedFor } from "./render/soundscape.ts";
+import { bedFor, BEDS } from "./render/soundscape.ts";
+import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
+import { SIGNATURE_LIBRARY } from "./render/signaturelib.ts";
 import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
@@ -823,7 +825,7 @@ export interface Services {
     text: string,
     outPath: string,
     voice?: { id: string; name: string },
-    opts?: { provider?: Config["voiceProvider"]; minWpm?: number; speed?: number },
+    opts?: { provider?: Config["voiceProvider"]; minWpm?: number; speed?: number; hookTakes?: boolean },
   ): Promise<
     Narration & {
       voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
@@ -8189,11 +8191,13 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         : // A test dial, off by default: documentaries keep their natural pace whatever it says.
           s.cfg.longMinWpm && ep.script_json?.evergreen_format === "ranking"
           ? { minWpm: s.cfg.longMinWpm }
-          : ep.lane !== "longform" && (s.cfg.shortMinWpm || s.cfg.shortSpeed > 1)
+          : ep.lane !== "longform" && (s.cfg.shortMinWpm || s.cfg.shortSpeed > 1 || s.cfg.hookTakes > 0)
             ? {
                 // SHORT_MIN_WPM lifts a slow take; SHORT_SPEED plays every Short faster (owner's pick, 5 Nov 2026).
                 ...(s.cfg.shortMinWpm ? { minWpm: s.cfg.shortMinWpm } : {}),
                 ...(s.cfg.shortSpeed > 1 ? { speed: s.cfg.shortSpeed } : {}),
+                // HOOK_TAKES: the Short's hook line may be retaken and the best read kept (src/voice/hooktakes.ts).
+                ...(s.cfg.hookTakes > 0 ? { hookTakes: true } : {}),
               }
             : undefined,
     );
@@ -11952,6 +11956,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         variant,
         audioFile: assets.audio ?? null,
         musicFile,
+        // SIGNATURE_MUSIC: documentaries open on the docs sting, lead with its bed and rise into chapters.
+        signature: s.cfg.signatureMusic && doc ? signatureFor(SIGNATURE_LIBRARY, "docs") : undefined,
         imageFiles: images,
         clipFiles: clips,
         plan,
@@ -12534,7 +12540,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const g of segments)
       if (g.kind === "take") g.visual = undefined;
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
+  let musicFile: string | null = s.cfg.musicBed ? bedFor(variant) : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)
@@ -12836,6 +12842,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       plan.sfx.every((c) => Math.abs(c.frame - f) >= 60)
     )
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: cue.volume });
+  }
+  // SIGNATURE_MUSIC: a named series opens and closes on its own sting over its own bed (src/render/signature.ts).
+  if (s.cfg.signatureMusic && musicFile) {
+    const id = signatureSeriesOf({ series: seriesTagFor(ep, script) ?? script.series ?? ep.story_json?.series });
+    const sig = signatureFor(SIGNATURE_LIBRARY, id);
+    if (sig?.sting) {
+      plan.sfx = withSignatureSting(plan.sfx, sig.sting);
+      musicFile = shortMusic(sig, musicFile, (k) => BEDS.find((b) => b.key === k)?.file ?? null, (f) => BEDS.find((b) => b.file === f)?.key);
+      await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
+    }
   }
   // ...and nothing in the first 7 s is what YouTube limits ads on; a failing later shot gives way to a picture that passes.
   if (opening) {

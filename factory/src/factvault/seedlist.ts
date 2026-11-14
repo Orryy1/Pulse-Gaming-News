@@ -33,26 +33,29 @@ export const SEED_GAMES: SeedGame[] = [
   // Call of Duty: the Modern Warfare line and neighbours
   { name: "Call of Duty 4: Modern Warfare", aliases: ["CoD 4"] },
   {
-    name: "Call of Duty: Modern Warfare 2",
+    name: "Call of Duty: Modern Warfare 2 (2009)",
     wiki: "Call of Duty: Modern Warfare 2",
   },
   {
-    name: "Call of Duty: Modern Warfare 3",
+    name: "Call of Duty: Modern Warfare 3 (2011)",
     wiki: "Call of Duty: Modern Warfare 3",
   },
   {
-    name: "Call of Duty: Modern Warfare",
+    name: "Call of Duty: Modern Warfare (2019)",
     wiki: "Call of Duty: Modern Warfare (2019 video game)",
+    steam: false,
     aliases: ["Modern Warfare 2019"],
   },
   {
-    name: "Call of Duty: Modern Warfare II",
+    name: "Call of Duty: Modern Warfare II (2022)",
     wiki: "Call of Duty: Modern Warfare II (2022 video game)",
+    steam: false,
     aliases: ["MWII"],
   },
   {
-    name: "Call of Duty: Modern Warfare III",
+    name: "Call of Duty: Modern Warfare III (2023)",
     wiki: "Call of Duty: Modern Warfare III",
+    steam: false,
     aliases: ["MWIII"],
   },
   { name: "Call of Duty: Black Ops" },

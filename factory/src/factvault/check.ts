@@ -22,6 +22,7 @@ import {
   PROBLEM_KIND,
   STOP_WORDS,
   SUPERLATIVE,
+  FIGURE,
   type ClaimKind,
 } from "./patterns.ts";
 import type { Dispute, Entity, Fact } from "./store.ts";
@@ -64,11 +65,9 @@ export function usable(f: Fact, now: Date): boolean {
   if (f.status !== "active") return false;
   if (Number(f.confidence) < ENFORCE_MIN_CONFIDENCE) return false;
   if (!PRIMARY_TYPES.has(f.source_type)) return false;
-  if (f.kind === "price")
-    return (
-      now.getTime() - new Date(f.checked_at).getTime() <=
-      PRICE_FRESH_DAYS * 86_400_000
-    );
+  const age = now.getTime() - new Date(f.checked_at).getTime();
+  // A price is a fact for a few days either side of when it was read, never for a moment it was not yet known.
+  if (f.kind === "price") return age <= PRICE_FRESH_DAYS * 86_400_000 && age >= -86_400_000;
   return true;
 }
 
@@ -272,7 +271,15 @@ function judgeSales(c: SalesClaim, facts: Fact[]): Omit<Judged, "claim"> {
 
 /** One claim against the facts of the games its line names. */
 export function judgeClaim(claim: Claim, ctx: VaultContext, hint = ""): Judged {
-  const ents = entitiesIn(`${claim.line} ${hint}`, ctx);
+  // The game the line names, else the one its context names (the checker's complaint, the entry it sits in).
+  let ents = entitiesIn(claim.line, ctx, false);
+  if (ents.length !== 1 && claim.kind === "quote" && claim.outlet) {
+    // An outlet's exact words found in that outlet's review of exactly one game in play settle which game it is.
+    const words = normaliseQuote(claim.words);
+    const owners = [...new Set(ctx.facts.filter((f) => f.kind === "review_quote" && f.quote && lower(f.outlet) === lower(claim.outlet) && usable(f, ctx.now) && normaliseQuote(f.quote).includes(words)).map((f) => f.entity_id))];
+    if (owners.length === 1) ents = ctx.entities.filter((e) => e.id === owners[0]);
+  }
+  if (ents.length !== 1) ents = entitiesIn(`${claim.line} ${hint}`, ctx);
   if (ents.length !== 1) return { claim, verdict: "unknown" };
   const entity = ents[0]!.id;
   const facts = ctx.facts.filter(
@@ -314,7 +321,7 @@ export interface Resolution {
  * fixed when the vault contradicts it and has the right value, and left alone otherwise (a superlative, a mechanic,
  * a claim the vault holds nothing on).
  */
-export function resolveBlocker(b: Blocker, ctx: VaultContext): Resolution {
+export function resolveBlocker(b: Blocker, ctx: VaultContext, hint = ""): Resolution {
   const kinds = problemKinds(b.problem);
   const claims = extractClaims(b.quote).filter((c) => kinds.has(c.kind));
   const base = { blocker: b, judged: [] as Judged[], fixes: [] as Fix[] };
@@ -339,7 +346,7 @@ export function resolveBlocker(b: Blocker, ctx: VaultContext): Resolution {
       status: "unresolved",
       why: "a superlative or absolute the vault cannot settle",
     };
-  const judged = claims.map((c) => judgeClaim(c, ctx, b.problem));
+  const judged = claims.map((c) => judgeClaim(c, ctx, `${b.problem} ${hint}`));
   if (judged.some((j) => j.verdict === "unknown"))
     return {
       ...base,
@@ -414,8 +421,11 @@ export function repeatsDispute(
   disputes: readonly Dispute[],
   min = 0.7,
 ): Dispute | undefined {
+  // Every figure in the rejected claim must be in the line too: "11 months" never repeats "18 months".
+  const figures = (t: string) => new Set(t.match(FIGURE) ?? []);
+  const have = figures(line);
   return disputes.find(
-    (d) => claimOverlap(line, d.claim) >= min && content(d.claim).size >= 3,
+    (d) => claimOverlap(line, d.claim) >= min && content(d.claim).size >= 3 && [...figures(d.claim)].every((n) => have.has(n)),
   );
 }
 
@@ -452,3 +462,22 @@ export function applyFixes<T>(
 }
 
 export { aliasKeys };
+
+/** The vault game named last before a quote in a script's full text (the ranking entry the line belongs to). */
+export function nearestEntityBefore(fullText: string, quote: string, ctx: VaultContext): string {
+  const at = fullText.indexOf(quote.slice(0, 60));
+  if (at < 0) return "";
+  const before = fullText.slice(Math.max(0, at - 1500), at);
+  // The mention that ends last wins; of two ending together ("Brotherhood of Steel" inside "Fallout Tactics:
+  // Brotherhood of Steel"), the longer one.
+  let best = { name: "", end: -1, len: 0 };
+  const low = before.toLowerCase();
+  for (const e of ctx.entities)
+    for (const n of [e.name, ...((e.aliases ?? []) as string[]).map((a) => a.replace(/-/g, " "))]) {
+      const pos = low.lastIndexOf(n.toLowerCase());
+      if (pos < 0) continue;
+      const end = pos + n.length;
+      if (end > best.end || (end === best.end && n.length > best.len)) best = { name: e.name, end, len: n.length };
+    }
+  return best.name;
+}

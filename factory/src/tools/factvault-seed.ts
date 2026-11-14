@@ -25,7 +25,9 @@ import {
   type PageReader,
 } from "../factvault/harvest.ts";
 import { FactVault } from "../factvault/store.ts";
+import { entityId } from "../factvault/normalise.ts";
 import { SEED_GAMES } from "../factvault/seedlist.ts";
+import { PAGE_JUNK } from "../factvault/patterns.ts";
 
 const [dbDir, outDir] = process.argv.slice(2);
 if (!dbDir || !outDir) {
@@ -44,6 +46,8 @@ const only = flag("--only")
 const maxFetch = Number(flag("--fetch") ?? 14);
 const concurrency = Number(flag("--concurrency") ?? 5);
 
+// A broken outlet connection can throw outside any promise (undici's parser): one bad page must not end the run.
+process.on("uncaughtException", (err) => console.error(`ignored: ${String(err).slice(0, 200)}`));
 fs.mkdirSync(outDir, { recursive: true });
 const db = await createEmbeddedDb(dbDir);
 await migrate(db);
@@ -140,15 +144,21 @@ async function seedGame(g: (typeof SEED_GAMES)[number]): Promise<void> {
   );
 }
 
+// --resume: games an interrupted run already read (their Wikipedia page is recorded on the entity) are skipped.
+const done = process.argv.includes("--resume")
+  ? new Set((await db.query<{ id: string }>(`SELECT id FROM fact_entities WHERE external ? 'wikipedia'`)).map((r) => r.id))
+  : new Set<string>();
 const queue = SEED_GAMES.filter(
-  (g) => !only || only.includes(g.name.toLowerCase()),
+  (g) => (!only || only.includes(g.name.toLowerCase())) && !done.has(entityId("game", g.name)),
 );
+console.log(`seeding ${queue.length} games (${done.size} already done)`);
 await Promise.all(
   Array.from({ length: concurrency }, async () => {
     for (let g = queue.shift(); g; g = queue.shift()) await seedGame(g);
   }),
 );
 
+console.log(`pruned ${await vault.pruneQuotes((q) => PAGE_JUNK.test(q) || q.split(/\s+/).length < 6)} page-furniture quotes`);
 const stats = await vault.stats();
 const data = await vault.exportAll();
 fs.writeFileSync(

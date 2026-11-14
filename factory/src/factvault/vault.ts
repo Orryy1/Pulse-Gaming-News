@@ -4,6 +4,7 @@ import { log, errorMessage } from "../lib/util.ts";
 import type { Db } from "../db.ts";
 import {
   applyFixes,
+  nearestEntityBefore,
   entitiesIn,
   parseBlocker,
   precheck,
@@ -69,6 +70,13 @@ function factLine(f: Fact): string {
   return `- ${f.claim.replace(/\s+/g, " ").slice(0, 260)} ${src}`;
 }
 
+/** A secondary-source fact two different sources agree on (the same game, kind and value) is fit for the brief. */
+function corroborated(f: Fact, all: readonly Fact[]): boolean {
+  const key = (x: Fact) => `${x.entity_id}|${x.kind}|${x.region ?? ""}|${x.value.toLowerCase()}`;
+  const k = key(f);
+  return new Set(all.filter((x) => key(x) === k && Number(x.confidence) >= 0.6).map((x) => new URL(x.source_url).hostname)).size >= 2;
+}
+
 /**
  * The block a writer and a fact checker read: the vault's facts per game, each with its primary source, the review
  * quotes that may be quoted word for word, and the claims our fact check has already rejected.
@@ -86,7 +94,7 @@ export function vaultBrief(
         (f) =>
           f.entity_id === e.id &&
           f.status === "active" &&
-          Number(f.confidence) >= 0.6 &&
+          (Number(f.confidence) >= 0.75 || corroborated(f, ctx.facts)) &&
           (f.kind !== "price" || usable(f, ctx.now)),
       )
       .sort(
@@ -139,7 +147,10 @@ export function enforceBlockers<T>(
   script: T,
   blockers: readonly string[],
   ctx: VaultContext,
+  /** The script's text, to tell which game a line belongs to; the script itself when not given. */
+  fullText?: string,
 ): Enforcement<T> {
+  const text = fullText ?? JSON.stringify(script);
   const resolutions: Resolution[] = [];
   const remaining: string[] = [];
   const fixes: Fix[] = [];
@@ -149,7 +160,7 @@ export function enforceBlockers<T>(
       remaining.push(raw);
       continue;
     }
-    const r = resolveBlocker(b, ctx);
+    const r = resolveBlocker(b, ctx, nearestEntityBefore(text, b.quote, ctx));
     resolutions.push(r);
     if (r.status === "unresolved") remaining.push(raw);
     else fixes.push(...r.fixes);

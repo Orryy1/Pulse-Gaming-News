@@ -923,3 +923,22 @@ test("loadContext finds games a script names even when the step did not name the
     ["game:fallout-brotherhood-of-steel"],
   );
 });
+
+test("a quote whose line names no game is placed by the entry it sits in, or by being one game's exact words", async () => {
+  const db = await testDb();
+  const vault = new FactVault(db);
+  const add = (name: string, quote: string) =>
+    vault.addFact({ entity: { kind: "game", name }, kind: "review_quote", claim: "q", value: "q", quote, outlet: "GameSpot", sourceUrl: `https://www.gamespot.com/reviews/${entityKey(name)}-review/`, sourceType: "review", origin: "seed", confidence: 0.9, checkedAt: NOW });
+  await add("Fallout: Brotherhood of Steel", "The combat is very repetitive.");
+  await add("Fallout Tactics: Brotherhood of Steel", "Squad tactics done right.");
+  const ctx = await loadContext(vault, ["Fallout: Brotherhood of Steel", "Fallout Tactics: Brotherhood of Steel"], [], NOW);
+  // Exact words of one game's review settle which game the line is about.
+  assert.equal(resolveBlocker(parseBlocker(GAMESPOT_BLOCKER)!, ctx).status, "supported");
+  // Words in neither review: the entry the line sits in decides, and the fix is a paraphrase.
+  const other = 'Fact-check: "GameSpot called it “a slog.”" - The review attribution and exact quotation are unsupported.';
+  assert.equal(resolveBlocker(parseBlocker(other)!, ctx).status, "unresolved");
+  const full = "Number nine is Fallout Tactics: Brotherhood of Steel, a squad game. GameSpot called it “a slog.” Moving on.";
+  const e = enforceBlockers({ n: full }, [other], ctx, full);
+  assert.equal(e.remaining.length, 0);
+  assert.match(e.script.n, /GameSpot called it a slog Moving on/);
+});

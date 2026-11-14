@@ -235,6 +235,13 @@ export const REVIEW_SCORE =
 export const VERDICT_WORDS =
   /\b(best|worst|great|brilliant|superb|excellent|masterpiece|disappoint\w*|repetitive|tedious|fun|boring|stunning|gorgeous|clunky|frustrat\w*|essential|flawed|shallow|ambitious|memorable|forgettable|polished|janky|satisfying|charming|tense|thrilling|dull|bland|beautiful|addictive|rewarding|overall|verdict|ultimately|recommend\w*)\b/i;
 
+/** A figure in a claim ("18", "2.5", "2015"). */
+export const FIGURE = /\d+(?:\.\d+)?/g;
+
+/** Page furniture that is not a reviewer's words: shopping lists, rating widgets, sign-ups, related links. */
+export const PAGE_JUNK =
+  /(^\d+\s+best\b|\bbest (gaming|graphics|budget|cheap)\b|\brate this\b|\bselect 1\b|\bsign up\b|\bnewsletter\b|\bsubscribe\b|\bcookies?\b|\bdeals?\b|\bprice drop\b|\bsponsored\b|\baffiliate\b|\bclick here\b|\bread more\b|\bshare this\b|\bcomments?\b|\bfollow us\b|\bworth spending money\b)/i;
+
 /** Text that is a writer's or editor's note rather than a fact. */
 export const NOT_A_CLAIM = /^(?:\[|\(|note:|citation needed)/i;
 

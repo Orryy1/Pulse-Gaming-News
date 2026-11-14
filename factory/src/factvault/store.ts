@@ -325,6 +325,14 @@ export class FactVault {
     };
   }
 
+  /** Drops stored review quotes that a later, stricter filter says are page furniture, not a reviewer's words. */
+  async pruneQuotes(isJunk: (q: string) => boolean): Promise<number> {
+    const rows = await this.db.query<{ id: number; quote: string }>(`SELECT id, quote FROM fact_vault WHERE kind = 'review_quote'`);
+    const bad = rows.filter((r) => isJunk(r.quote)).map((r) => Number(r.id));
+    if (bad.length) await this.db.query(`DELETE FROM fact_vault WHERE id = ANY($1::bigint[])`, [bad]);
+    return bad.length;
+  }
+
   /** The whole vault as plain rows, for the seed file. */
   async exportAll(): Promise<VaultExport> {
     const entities = await this.db.query<Entity>(

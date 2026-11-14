@@ -43,6 +43,7 @@ import {
   CITED_PORT,
   REPORTING_VERB,
   VERDICT_WORDS,
+  PAGE_JUNK,
 } from "./patterns.ts";
 import { parseBlocker, type VaultContext, entitiesIn } from "./check.ts";
 import type { EntityKind, FactInput, FactKind, FactVault } from "./store.ts";
@@ -658,6 +659,7 @@ export async function harvestArticle(
       .filter(
         (s) =>
           VERDICT_WORDS.test(s) &&
+          !PAGE_JUNK.test(s) &&
           s.split(/\s+/).length >= 6 &&
           s.split(/\s+/).length <= 40 &&
           !/[“"]/.test(s),

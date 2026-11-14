@@ -247,7 +247,7 @@ export function aiTells(segments: string[], ctx: RuleContext): RuleOutput {
     findings.push({
       rule: "aitell",
       text: `${triples.length} lists of three`,
-      note: `There are ${triples.length} lists of three ("${triples[1]}"); keep ${tripleCap === 1 ? "one" : tripleCap} and give the rest two items or one strong one.`,
+      note: `There are ${triples.length} lists of three ("${triples[1]}"); keep at most ${tripleCap === 1 ? "one" : tripleCap} and give the rest two items or one strong one.`,
     });
   // Rhetorical questions stacked back to back.
   const ss = sentences(all);

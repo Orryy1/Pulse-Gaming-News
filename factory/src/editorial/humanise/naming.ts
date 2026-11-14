@@ -104,7 +104,8 @@ function formPattern(text: string): string {
     /[A-Za-z]$/.test(text) && !/(^|\s)[IVX]+$/.test(text)
       ? `(?!\\s*(?:\\d|[IVX]{1,4}\\b))(?!:\\s*[A-Z])`
       : "";
-  return `(?<![\\w'’-])${body}(?![\\w-])${tail}`;
+  // A name running on into another capitalised word is part of a longer name ("Rockstar Games Launcher").
+  return `(?<![\\w'’-])${body}(?![\\w-])(?!\\s+[A-Z][a-z])${tail}`;
 }
 
 function buildMatcher(forms: Form[]): (text: string) => Mention[] {

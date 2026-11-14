@@ -227,7 +227,7 @@ export function shotsInFirst(
 
 const PROMPT = `You check one frame from the first seconds of a YouTube Short about a video game, for advertisers. Answer with JSON.
 gameplay: true when the frame is the game's own moving picture (gameplay or an in-game cutscene) filling the frame; false for a logo, a title or text card, a menu, a store page, box art or a key art poster, a real-world photo or person, or a black or blank frame.
-gore: blood, wounds, gore, dead bodies, dismemberment or an execution.
+gore: blood, wounds, gore, dead bodies, dismemberment, an execution, or a graphic kill (a person or character being shot, stabbed, run over or killed on screen).
 nudity: nudity or sexual content.
 weapon: a gun or weapon aimed straight at the viewer.
 shocking: disturbing or shocking imagery: torture, a horror creature's face filling the frame, drug use, self-harm.
@@ -330,6 +330,8 @@ export interface OpeningDeps {
 }
 
 export interface OpeningResult {
+  /** The first-seven-seconds screen, once the plan is made (the pipeline fills it in). */
+  seconds?: SecondsResult;
   ok: boolean;
   why: string;
   clip?: string; // the opening clip's file
@@ -653,5 +655,65 @@ export async function checkFirstSeconds(
     };
     out.replaced.push({ shot: w.index, problem, with: img.file });
   }
+  return out;
+}
+
+// ---------------------------------------------------------------- the caption over the opening and the ad-safe gate
+
+/** Words that carry nothing alone on a first frame. */
+const CAPTION_FILLER = new Set(
+  "a an the and or but of to in on at for with from by is are was were be been it its this that these those you your i we our they their his her just now new why how what who when where there here so as about into over after before".split(
+    " ",
+  ),
+);
+
+/**
+ * The one or two caption words over the opening footage (pure; SHORT_OPEN_WORDS): no headline box, no sentence. The
+ * writer's hook words first, else the headline's words that are not the game's name; upper case, punctuation off.
+ * Empty when nothing is left: the footage then opens with no words at all.
+ */
+export function openingCaption(
+  o: { thumbText?: string; headline: string; game: string },
+  max = 2,
+): string {
+  const n = Math.max(1, Math.min(2, Math.round(max)));
+  const clean = (w: string) => w.replace(/^[^\p{L}\p{N}$£€#]+|[^\p{L}\p{N}%]+$/gu, "");
+  const gameWords = new Set(norm(o.game).split(" ").filter(Boolean));
+  const pick = (text: string | undefined, dropGame: boolean) =>
+    (text ?? "")
+      .split(/\s+/)
+      .map(clean)
+      .filter(Boolean)
+      .filter((w) => !CAPTION_FILLER.has(w.toLowerCase()))
+      .filter((w) => !dropGame || !gameWords.has(norm(w.replace(/['’]s$/i, ""))))
+      .slice(0, n);
+  const words = pick(o.thumbText, false);
+  const out = words.length ? words : pick(o.headline, true);
+  return out.join(" ").toUpperCase();
+}
+
+/** Why the Short's cover (frame 0, or the designed search tile) may not stand, or undefined (pure). */
+export function coverProblem(l: OpeningLook | undefined): string | undefined {
+  if (!l) return undefined; // not screened: the relay is down, nothing is claimed either way
+  return adSafeProblem(l);
+}
+
+/**
+ * SHORT_AD_SAFE_GATE (pure): what stops a rendered Short. A shot in the first seven seconds that failed the screen and
+ * found no safe picture to take its place, or a cover frame that fails it. Unscreened frames (relay down) do not stop
+ * it; they are logged by the caller.
+ */
+export function adSafeGateProblems(
+  seconds: Pick<SecondsResult, "replaced"> | undefined,
+  cover: OpeningLook | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const r of seconds?.replaced ?? [])
+    if (!r.with && r.problem !== "not screened")
+      out.push(
+        `ad safety: shot ${r.shot} in the first ${AD_SAFE_SECONDS} seconds shows ${r.problem}`,
+      );
+  const c = coverProblem(cover);
+  if (c) out.push(`ad safety: the cover frame shows ${c}`);
   return out;
 }

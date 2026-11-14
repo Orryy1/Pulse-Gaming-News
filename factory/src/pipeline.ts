@@ -46,7 +46,14 @@ import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconc
 import { hasUsableIndex } from "./sceneindex/footage.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
 import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
-import { checkFirstSeconds, chooseOpening } from "./openingstep.ts";
+import {
+  adSafeGateProblems,
+  checkFirstSeconds,
+  chooseOpening,
+  coverProblem,
+  lookOpeningFrame,
+  openingCaption,
+} from "./openingstep.ts";
 import { streamClipSpoiler } from "./sceneindex/spoilerclips.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
@@ -237,9 +244,11 @@ import {
 } from "./editorial/cutdown.ts";
 import { FFMPEG, FFPROBE } from "./lib/bin.ts";
 import {
-  FUNNEL_CTA,
-  FUNNEL_LINE,
   FUNNEL_TAIL_SECONDS,
+  funnelCta,
+  funnelKind,
+  funnelLine,
+  funnelParent,
   chapterBeats,
   funnelArm,
   funnelPicks,
@@ -497,6 +506,11 @@ import {
   repetitionProblems,
 } from "./authenticity.ts";
 import { followFor } from "./youtube/longlink.ts";
+import { disclosureLine, gateAiImages, sourcesLine, syntheticMediaFor, writeRecords } from "./reviewer.ts";
+import { MOMENT_MARK, cadenceChapters, framedVariants, pinStrandLayout } from "./strandframe.ts";
+import { lossThumb, pickWhyDied } from "./whydied.ts";
+import { proposeCompleteCuts, stanceProblems } from "./stance.ts";
+import { applyShortTitleGameFirst, applyStrandFrame } from "./strandstep.ts";
 import {
   dbDemandCache,
   demandFor,
@@ -3876,7 +3890,26 @@ export async function maybeSelectDocumentary(
   ).map((r) => r.headline);
   // The breakout picker (src/docpick.ts, DOC_BREAKOUT_PICKER) scores every candidate and takes the best with no
   // model call; the writer's pick from the lists stays the fallback.
-  const breakout = plannedDoc || everyTopic
+  // RANKING_STANCE (src/stance.ts): once enough films of one series are public, the "complete" cut is put to the owner once.
+  await proposeCompleteCuts(s).catch((err) =>
+    log("warn", "complete cut check failed", { error: errorMessage(err) }),
+  );
+  // WHY_DIED_ENABLED (src/whydied.ts): a "why it died" film from the news desk, when one is due, ahead of the score pick.
+  const whyDied =
+    plannedDoc || everyTopic
+      ? undefined
+      : await pickWhyDied(s, now, covered).catch((err) => {
+          log("warn", "why-it-died pick failed", { error: errorMessage(err) });
+          return undefined;
+        });
+  if (whyDied)
+    await s
+      .notify({
+        level: "info",
+        content: `Next documentary, "why it died" strand: "${whyDied.topic.title_idea}" (${whyDied.proposals.length} proposal${whyDied.proposals.length === 1 ? "" : "s"} from the news desk).`,
+      })
+      .catch(() => undefined);
+  const breakout = plannedDoc || everyTopic || whyDied
     ? undefined
     : s.cfg.docBreakoutPicker
     ? await pickBreakoutDoc(s).catch((err) => {
@@ -3889,6 +3922,7 @@ export async function maybeSelectDocumentary(
   const topic =
     plannedDoc?.topic ??
     everyTopic ??
+    whyDied?.topic ??
     breakout?.topic ??
     (await selectDocTopic(
     s.llm,
@@ -4663,6 +4697,13 @@ async function stepScriptDocumentary(
     script.youtube.title = topic.title_idea;
     script.youtube.title_variants = [];
   }
+  // A "why it died" film keeps its framed title, carrying the loss, and the loss figure is its thumbnail word.
+  if (topic.why_died) {
+    script.why_died = topic.why_died;
+    script.youtube.title = topic.title_idea;
+    script.youtube.title_variants = framedVariants("whydied", script.youtube.title_variants ?? [], topic.why_died.game);
+    script.youtube.thumb_text = lossThumb(topic.why_died.loss);
+  }
   // A weekly guide keeps its fixed frame: one title shape and one set of thumbnail words for the strand.
   if (topic.guide && s.cfg.guideWeekly) applyGuideFrame(script, topic.guide);
   // A retrospective keeps its planned title (it says it spoils) and thumbnail words.
@@ -5099,14 +5140,17 @@ export async function maybeSelectFunnelCut(s: Services): Promise<string | undefi
   const parents = await db.query<Episode>(
     `SELECT e.* FROM episodes e
       WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
-        AND e.factcheck_json->'topic'->'guide'->>'key' IS NOT NULL
+        AND ($4::boolean OR e.factcheck_json->'topic'->'guide'->>'key' IS NOT NULL)
+        AND COALESCE(e.script_json->>'runtime', '') = 'long'
         AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz
         AND COALESCE(e.publish_at, e.updated_at) > $2::timestamptz - make_interval(days => $3)
       ORDER BY COALESCE(e.publish_at, e.updated_at) DESC`,
-    [now, due, cfg.funnelDays],
+    [now, due, cfg.funnelDays, cfg.funnelAllLongs],
   );
   for (const parent of parents) {
     if (!parent.script_json?.beats?.length) continue;
+    // FUNNEL_ALL_LONGS: every long strand with chapters; a ranking keeps its own cutdowns.
+    if (!funnelParent(parent.script_json, isWeeklyGuide(parent.factcheck_json), cfg.funnelAllLongs)) continue;
     if (!(await fs.stat(path.join(episodeDir(cfg, parent.id), "short.mp4")).catch(() => undefined))) continue;
     const done = (
       await db.query<{ beat: string }>(
@@ -5250,11 +5294,13 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   );
   const narration = pScript.beats[beatIndex]?.narration ?? "";
   const arm = ref.funnel ?? "none";
+  // FUNNEL_ALL_LONGS: a documentary's cut says "the full documentary", a guide's "the full guide".
+  const kindOfParent = funnelKind(pScript, isWeeklyGuide(parent.factcheck_json));
   // The link arm says the link over the end card, in the long video's own voice (src/funnel.ts).
   if (funnelCut && arm === "link") {
     const lineFile = path.join(dir, "link_line.mp3");
     const voice = pAssets.voice ? { id: pAssets.voice.id, name: pAssets.voice.name } : undefined;
-    await s.synthesise(FUNNEL_LINE, lineFile, voice);
+    await s.synthesise(funnelLine(kindOfParent), lineFile, voice);
     await mixFunnelLine(FFMPEG, path.join(dir, "cut.mp4"), lineFile, len + 0.4);
   }
   const copy = funnelCut
@@ -5263,6 +5309,7 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
         guideTitle: pScript.youtube.title,
         chapterTitle: String(pScript.beats[beatIndex]?.visual?.primary ?? ""),
         narration,
+        kind: kindOfParent,
       })
     : await writeCutdownCopy(
     s.llm,
@@ -5272,7 +5319,7 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
     pScript.entries.length,
   );
   const script = funnelCut
-    ? funnelScript(pScript, beatIndex, copy, parent.youtube_video_id, arm)
+    ? funnelScript(pScript, beatIndex, copy, parent.youtube_video_id, arm, kindOfParent)
     : cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);
   script.cutdown!.theme = pScript.game_title;
   // The footage credits travel with the clips seen in this section.
@@ -5407,13 +5454,13 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
           ? `TEST #${g.experiment_number}`
           : "WE TESTED IT"
         : script.cutdown?.funnel
-          ? `GUIDE ${script.cutdown.rank} OF ${script.cutdown.total}`
+          ? `${script.cutdown.kind && script.cutdown.kind !== "guide" ? "CHAPTER" : "GUIDE"} ${script.cutdown.rank} OF ${script.cutdown.total}`
         : `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
       // A funnel cut (src/funnel.ts): the link card for its last 5 seconds in the link arm, the chapter's name in the control.
       cta: g
         ? g.result_line.toUpperCase()
         : script.cutdown?.funnel === "link"
-          ? FUNNEL_CTA
+          ? funnelCta(script.cutdown.kind)
           : script.cutdown?.funnel
             ? (script.pulse_take.on_screen || script.headline).toUpperCase()
             : "FULL RANKING ON THE CHANNEL",
@@ -6636,6 +6683,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     const problems = [
       ...validateLongform(draft, rules),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
+      // RANKING_STANCE (src/stance.ts): the ranking's title takes a side, and nothing past Part 2.
+      ...(s.cfg.rankingStance
+        ? stanceProblems(draft.youtube.title).filter((p) => !writerTitleProblems(s.cfg, draft!.youtube.title).includes(p))
+        : []),
     ];
     const factual = await adjudicateRanking(
       s,
@@ -10740,6 +10791,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       { stockThemeMax: s.cfg.stockThemeMax },
     );
     assets.filled = { before: r.before, after: r.after };
+    // AI_IMAGE_GATE (src/reviewer.ts): no AI-made picture that could pass for official game material or a photo.
+    if (s.cfg.aiImageGate && assets.images?.length) {
+      const dropped = await gateAiImages(assets.images, dir);
+      if (dropped.length) await logEvent(s.db, ep.id, "ai_image_gate", { dropped });
+    }
     // What the newer picture libraries gave the whole video, in its log and the owner's note.
     await reportLibraries(
       s,
@@ -11394,6 +11450,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(script),
     ]);
   }
+  // STRAND_FRAMES (src/strandframe.ts): the strand's one title shape and its thumbnail word count, before the designs.
+  const strand = await applyStrandFrame(
+    s,
+    ep,
+    script,
+    (ep.factcheck_json as { topic?: { format?: string; guide?: unknown } } | null)?.topic,
+  );
+  if (strand)
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";
@@ -11624,7 +11689,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         look: heroLook,
       }).catch(() => [])
     : [];
-  const designs: Candidate[] = ruled.length
+  const designsAll: Candidate[] = ruled.length
     ? ruled
     : s.cfg.thumbHeroRule
       ? heroRuleFallback(
@@ -11633,6 +11698,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           sourceOf.get(thumbArt?.file ?? "")?.provenance,
         )
       : candidates;
+  // STRAND_FRAMES: the strand's layout first, and its Test & compare variants the same layout on other art.
+  const designs: Candidate[] = strand ? pinStrandLayout(designsAll, strand) : designsAll;
   const [mainThumb, ...restThumbs] = designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
@@ -12642,6 +12709,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // ...and nothing in the first 7 s is what YouTube limits ads on; a failing later shot gives way to a picture that passes.
   if (opening) {
     const seconds = await checkFirstSeconds(dir, plan, assets, { openingChecked: opening.clip });
+    opening.seconds = seconds;
     await logEvent(s.db, ep.id, "opening_footage", { ...opening, seconds });
     const bad = seconds.replaced.filter((r) => !r.with);
     if (!opening.ok || seconds.openingStill || bad.length)
@@ -12854,6 +12922,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     browserExecutable: s.cfg.browserExecutable,
     props: {
       headline: script.headline,
+      // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
+      ...(s.cfg.shortOpenWords > 0 && opening?.ok && plan.shots[0]?.media.type === "clip"
+        ? {
+            openingWords: openingCaption(
+              { thumbText: script.youtube?.thumb_text, headline: script.headline, game: script.game_title },
+              s.cfg.shortOpenWords,
+            ),
+          }
+        : {}),
       storyType: script.is_rumour ? "rumour" : script.story_type,
       gameTitle: mediaTitle(script.game_title),
       isRumour: script.is_rumour,
@@ -13009,7 +13086,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? vision.problems
         : [`vision QA failed: ${vision.notes || "no reason given"}`]
       : [];
-  const problems = [...tech.problems, ...visionProblems, ...entryProblems, ...frameProblems];
+  // SHORT_AD_SAFE_GATE (src/openingstep.ts): nothing YouTube limits ads on in the first 7 s or as the cover. A designed
+  // search tile that fails gives way to the first frame; a failing first frame or an unreplaced shot fails QA.
+  const adSafe: string[] = [];
+  if (tech.ok && s.cfg.shortAdSafeGate && opening) {
+    if (assets.shortThumb === "thumb_search.jpg") {
+      const tile = coverProblem(await lookOpeningFrame(path.join(dir, assets.shortThumb)));
+      if (tile) {
+        assets.shortThumb = undefined;
+        assets.shortThumbArm = "frame";
+        await logEvent(s.db, ep.id, "ad_safe_tile_dropped", { problem: tile });
+      }
+    }
+    const [cover] = await s
+      .extractFrames(final, path.join(dir, "qa", "cover"), [0])
+      .catch(() => [] as string[]);
+    const coverLook = cover ? await lookOpeningFrame(cover) : undefined;
+    adSafe.push(...adSafeGateProblems(opening.seconds, coverLook));
+    await logEvent(s.db, ep.id, "ad_safe_gate", {
+      pass: !adSafe.length,
+      problems: adSafe,
+      coverScreened: Boolean(coverLook),
+    });
+  }
+  const problems = [...tech.problems, ...visionProblems, ...entryProblems, ...frameProblems, ...adSafe];
   // The check was skipped (the relay went down mid-render): held, the render kept on disk, checked again when back.
   if (
     s.cfg.visionHold &&
@@ -13104,6 +13204,9 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     );
     if (held) return;
   }
+  // SHORT_TITLE_GAME_FIRST (src/strandstep.ts): the Short's title opens on the game's name, then the why or how.
+  if (await applyShortTitleGameFirst(s, ep, script))
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
   // SHORT_ARGUES_CHECK (src/qa/argues.ts): a Short with no point beyond its picture, or none of Pulse's own
   // material, was already sent back to the writer once; here it is released under the lane's usual mode with a
   // note on the notice, never held for the owner. A twin repeats a Short already through it.
@@ -13485,19 +13588,29 @@ export function longChapters(ep: Episode): string[] {
     ),
     ep.assets_json?.breaks,
   );
-  return chapterLines(segments, (seg) =>
-    seg.kind === "hook"
+  // LONG_CHAPTER_CADENCE (src/strandframe.ts): the writer's moment marks fill the gaps between chapters, thinned so
+  // every mark stands at least a minute from the next; none on the script: the list is the chapters, as before.
+  const marks = new Map((script.moment_marks ?? []).map((m) => [m.beat, m.label]));
+  let beat = -1;
+  const lines = chapterLines(segments, (seg) => {
+    if (seg.kind === "beat") beat++;
+    const mark = seg.kind === "beat" && seg.visual?.kind !== "chapter" && seg.visual?.kind !== "rank" ? marks.get(beat) : undefined;
+    return mark ? `${MOMENT_MARK}${mark}` : chapterLabel(seg);
+  });
+  return marks.size ? cadenceChapters(lines) : lines;
+  function chapterLabel(seg: (typeof segments)[number]): string | undefined {
+    return seg.kind === "hook"
       ? "Intro"
       : seg.kind === "beat" && seg.visual?.kind === "rank"
         ? `#${seg.visual.value_a} ${seg.visual.primary}`
         : seg.kind === "beat" && seg.visual?.kind === "chapter"
           ? seg.visual.primary
           : seg.kind === "take"
-            ? script.evergreen_format === "documentary"
-              ? titleCaseLabel(script.pulse_take.label)
+            ? script!.evergreen_format === "documentary"
+              ? titleCaseLabel(script!.pulse_take.label)
               : "Our pick"
-            : undefined,
-  );
+            : undefined;
+  }
 }
 
 export function footageCredits(
@@ -13571,6 +13684,12 @@ export function footageCredits(
   return lines.length ? `\n${lines.join("\n")}` : "";
 }
 
+/** REVIEWER_PACK: the website the sources pages live on, or nothing when the pack is off. */
+export function reviewerPackFor(cfg: Pick<Config, "reviewerPack" | "siteUrl" | "publicUrl">): { siteBase: string } | undefined {
+  const siteBase = (cfg.siteUrl || cfg.publicUrl || "").replace(/\/$/, "");
+  return cfg.reviewerPack && siteBase ? { siteBase } : undefined;
+}
+
 export function videoMetadata(
   ep: Episode,
   privacy: Config["youtubePrivacy"],
@@ -13579,6 +13698,8 @@ export function videoMetadata(
   /** LEONIDA_LINK, and the time to judge the day by when the video has no publish time. */
   leonidaLink = false,
   now = new Date(),
+  /** REVIEWER_PACK (src/reviewer.ts): the standard AI line and the video's sources page on the website. */
+  pack?: { siteBase: string },
 ) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
@@ -13683,7 +13804,9 @@ export function videoMetadata(
       footage,
     ],
     [
-      script.gameplay?.direct
+      pack
+        ? `\n${disclosureLine(script)}\n${sourcesLine(pack.siteBase, ep.id)}`
+        : script.gameplay?.direct
         ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. Narration: AI-generated synthetic voice.`
         : script.gameplay
         ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
@@ -13890,12 +14013,18 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         videoMetadata(
           ep,
           s.cfg.youtubePrivacy,
-          ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
-            ? false
-            : s.cfg.syntheticMedia,
+          // The altered-content flag: the AI voice, or a kept AI picture under AI_IMAGE_GATE (src/reviewer.ts).
+          syntheticMediaFor(
+            ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
+              ? false
+              : s.cfg.syntheticMedia,
+            ep.assets_json,
+            s.cfg.aiImageGate,
+          ),
           affiliateTags(s.cfg, ep.id),
           s.cfg.leonidaLink,
           s.now(),
+          reviewerPackFor(s.cfg),
         ),
         marker,
       ),
@@ -13915,6 +14044,17 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     });
     await logEvent(s.db, ep.id, "uploaded", { videoId });
     await localizeMetadata(s, ep, videoId, yt);
+    // REVIEWER_PACK: the private production log, footage ledger and claims log (src/reviewer.ts); never blocks.
+    if (s.cfg.reviewerPack)
+      await s.db
+        .query<{ kind: string; at: string; detail: unknown }>(
+          `SELECT kind, created_at::text AS at, detail FROM events WHERE episode_id = $1 ORDER BY id`,
+          [ep.id],
+        )
+        .then((events) =>
+          writeRecords(s.cfg.dataDir, { ...ep, youtube_video_id: videoId } as never, events, s.now()),
+        )
+        .catch((err) => log("warn", "records not written", { episode: ep.id, error: errorMessage(err) }));
   } catch (err) {
     if (err instanceof SessionGone) {
       await s.db.query(
@@ -13948,6 +14088,7 @@ async function localizeMetadata(
       affiliateTags(s.cfg, ep.id),
       s.cfg.leonidaLink,
       s.now(),
+      reviewerPackFor(s.cfg),
     );
     const loc = await translateMetadata(
       s.llm,

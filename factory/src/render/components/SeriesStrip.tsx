@@ -27,6 +27,35 @@ export const SeriesStrip: React.FC<{
     Math.round(height * 0.4),
   );
   return (
+    <>
+    {cover.tally ? (
+      <div
+        style={{
+          position: "absolute",
+          left,
+          top: top + height + Math.round(height * 0.14),
+          width,
+          display: "flex",
+          justifyContent: "flex-end",
+        }}
+      >
+        <span
+          style={{
+            padding: `${Math.round(height * 0.08)}px ${Math.round(height * 0.22)}px`,
+            background: "rgba(11,11,14,0.86)",
+            border: `${Math.max(2, Math.round(height * 0.04))}px solid ${COLOUR.amber}`,
+            borderRadius: Math.round(height * 0.14),
+            fontFamily: DISPLAY,
+            fontSize: Math.round(height * 0.42),
+            lineHeight: 1.1,
+            color: COLOUR.paper,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {cover.tally}
+        </span>
+      </div>
+    ) : null}
     <div
       style={{
         position: "absolute",
@@ -84,5 +113,6 @@ export const SeriesStrip: React.FC<{
         </div>
       ) : null}
     </div>
+    </>
   );
 };

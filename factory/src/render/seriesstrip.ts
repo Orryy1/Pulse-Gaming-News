@@ -12,6 +12,8 @@ export type SeriesCover = {
   number?: number;
   /** Buy, Wait or Skip: the price the verdict is about, dollars first (e.g. "$9.99"). */
   price?: string;
+  /** PULSE_LAB_TALLY: the season's running tally under the strip ("The Why: 24 answered"). */
+  tally?: string;
 };
 
 /** The strip's top on the 1080x1920 Short: under the brand band (150-300), above the poster's words (420). */

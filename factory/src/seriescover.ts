@@ -8,6 +8,8 @@ import type { Db } from "./db.ts";
 import type { Episode } from "./episodes.ts";
 import type { Script } from "./editorial/schema.ts";
 import type { SeriesCover } from "./render/seriesstrip.ts";
+import type { PulseLabSettings } from "./pulselab/settings.ts";
+import { claimTally, tallyEntryFor, tallyLine } from "./pulselab/tally.ts";
 
 export const SERIES_TAGS = [
   "why",
@@ -105,6 +107,24 @@ export function coverPrice(script: Pick<Script, "beats">): string | undefined {
 
 /** The strip for an episode about to render: its series, the part number when numbering is on, a verdict's price. */
 export async function seriesCoverOf(
+  db: Db,
+  cfg: Pick<Config, "seriesCoverStyle" | "seriesEpisodeNumbers"> & { pulseLab?: Pick<PulseLabSettings, "enabled" | "tally" | "season"> },
+  ep: Pick<Episode, "id" | "story_hash"> & { story_json?: Episode["story_json"] | null },
+  script: Script,
+): Promise<SeriesCover | undefined> {
+  const cover = await seriesCoverBase(db, cfg, ep, script);
+  // PULSE_LAB_TALLY: the season's running count under the strip, counted as this Short renders (idempotent).
+  const lab = cfg.pulseLab;
+  if (!cover || !lab?.enabled || !lab.tally) return cover;
+  const stamp = (script.pulse_take as { stamp?: { text?: string } } | undefined)?.stamp?.text;
+  const entry = tallyEntryFor({ series: seriesTagOf(script, ep.story_hash), verdictWord: stamp });
+  if (!entry) return cover;
+  const counts = await claimTally(db, entry.series, lab.season, ep.id, entry.outcome).catch(() => undefined);
+  const line = counts ? tallyLine(entry.series, counts) : undefined;
+  return line ? { ...cover, tally: line.line } : cover;
+}
+
+async function seriesCoverBase(
   db: Db,
   cfg: Pick<Config, "seriesCoverStyle" | "seriesEpisodeNumbers">,
   ep: Pick<Episode, "id" | "story_hash"> & { story_json?: Episode["story_json"] | null },

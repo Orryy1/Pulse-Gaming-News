@@ -203,12 +203,27 @@ test("series cover: the part number counts the series' Shorts that went out befo
   });
   assert.equal(await seriesCoverOf(db, OFF, ep, goodScript()), undefined);
   // A GTA File part and a numbered Why show the number their title already says, not a count.
-  const part = { ...ep, story_json: { ...ep.story_json, gtaFile: { part: 7 } } } as typeof ep;
-  assert.deepEqual(await seriesCoverOf(db, ON, part, { ...goodScript(), series: "gta_file" } as any), {
-    label: "THE GTA FILE",
-    number: 7,
-  });
-  const serial = { ...ep, story_json: { ...ep.story_json, why: { question: "?", angle: "", serial: { number: 12, home: false } } } } as typeof ep;
+  const part = {
+    ...ep,
+    story_json: { ...ep.story_json, gtaFile: { part: 7 } },
+  } as typeof ep;
+  assert.deepEqual(
+    await seriesCoverOf(db, ON, part, {
+      ...goodScript(),
+      series: "gta_file",
+    } as any),
+    {
+      label: "THE GTA FILE",
+      number: 7,
+    },
+  );
+  const serial = {
+    ...ep,
+    story_json: {
+      ...ep.story_json,
+      why: { question: "?", angle: "", serial: { number: 12, home: false } },
+    },
+  } as typeof ep;
   assert.equal((await seriesCoverOf(db, ON, serial, goodScript()))?.number, 12);
   await db.close();
 });
@@ -626,10 +641,11 @@ test("channel page: the description leads with the positioning line, the three s
     lines[0],
     "The why behind the games you love. One straight verdict, every day.",
   );
-  assert.match(lines[2]!, /^The Why: .*Every day, 7am ET \/ 12pm UK\.$/);
-  assert.match(lines[3]!, /^The GTA File: .*1:30pm ET \/ 6:30pm UK\.$/);
+  assert.match(lines[2]!, /^GTA 6 Day by Day: .*November 19/);
+  assert.match(lines[3]!, /^The Why: .*Every day, 7am ET \/ 12pm UK\.$/);
+  assert.match(lines[4]!, /^The GTA File: .*1:30pm ET \/ 6:30pm UK\.$/);
   assert.match(
-    lines[4]!,
+    lines[5]!,
     /^Buy, Wait or Skip: .*Tuesday, Thursday and Saturday, 11:30am ET \/ 4:30pm UK\.$/,
   );
   assert.match(d, /AI-generated synthetic voice/);
@@ -649,11 +665,12 @@ test("channel page: the description leads with the positioning line, the three s
 
 test("channel page: the shelf plan moves what is out of place and adds what is missing", () => {
   assert.deepEqual(SHELF_ORDER, [
-    "The GTA File",
+    "GTA 6 Day by Day",
     "The Why: Gaming's Biggest Questions",
-    "Buy, Wait or Skip",
-    "Gaming Documentaries",
     "Every Game Ranked: Worst to Best",
+    "Gaming Documentaries",
+    "The GTA File",
+    "Buy, Wait or Skip",
   ]);
   const ops = planSections(
     [
@@ -753,5 +770,5 @@ test("channel page: on and applied, it makes the playlists, sets the banner, tex
     ...SHELF_ORDER.map((t, i) => `shelf:${i}:${t}`),
   ]);
   assert.deepEqual(report.errors, []);
-  assert.equal(report.playlists[0]!.created, true);
+  assert.equal(report.playlists.find((p) => p.title === "The GTA File")!.created, true);
 });

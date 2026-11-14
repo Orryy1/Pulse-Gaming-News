@@ -18,16 +18,23 @@ export const CHANNEL_POSITIONING =
 export const BANNER_LINE =
   "The Why. The GTA File. Buy, Wait or Skip. New every day.";
 
-/** The series banner, rendered from src/render/BrandConcepts.tsx (SeriesBanner) into brand/final. */
-export const SERIES_BANNER_FILE = "youtube-banner-series-2560x1440.png";
+/**
+ * The channel banner the page applies: "GTA 6 every day + the stories behind the games you love", rendered from
+ * src/render/BrandConcepts.tsx (DailyBanner) into brand/final (channel page plan, 14 Nov 2026).
+ */
+export const SERIES_BANNER_FILE = "youtube-banner-daily-2560x1440.png";
 
-/** The shelves top to bottom, as the plan orders them. */
+/**
+ * The shelves top to bottom (channel page plan, 14 Nov 2026): the daily GTA 6 series first, then The Why (the
+ * Shorts that win subscribers), then rankings, then documentaries; the GTA File and the verdicts below them.
+ */
 export const SHELF_ORDER: string[] = [
-  SERIES_SHELF_TITLES.gtaFile,
+  SERIES_SHELF_TITLES.gtaDaily,
   SERIES_SHELF_TITLES.why,
-  SERIES_SHELF_TITLES.verdict,
-  SERIES_SHELF_TITLES.docs,
   SERIES_SHELF_TITLES.rankedLong,
+  SERIES_SHELF_TITLES.docs,
+  SERIES_SHELF_TITLES.gtaFile,
+  SERIES_SHELF_TITLES.verdict,
 ];
 
 const DAY_NAMES: Record<string, string> = {
@@ -84,6 +91,7 @@ export function channelDescription(
   return [
     CHANNEL_POSITIONING,
     "",
+    `GTA 6 Day by Day: a new numbered episode every day from launch on November 19, cut from real play on our own streams. No story spoilers.`,
     `The Why: one big question about a game you love, answered in under a minute. Every day, ${slotLabel(whySlot, cfg.timezone, now)}.`,
     `The GTA File: the one GTA VI thing worth knowing today, confirmed facts only. A new numbered part every day, ${slotLabel(gtaFileSlot, cfg.timezone, now)}.`,
     `Buy, Wait or Skip: one game, one price, one straight verdict. ${dayList(cfg.seriesVerdictDays)}, ${slotLabel(cfg.dealsSlot, cfg.timezone, now)}.`,

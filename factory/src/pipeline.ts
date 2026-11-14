@@ -1290,6 +1290,13 @@ const SERIES = {
     description:
       "Fast gaming news, checked and explained. New Shorts every day.",
   },
+  // The daily GTA 6 series from the owner's own streams (from launch, 19 Nov 2026): the channel page's first shelf.
+  // SERIES_GTA_DAILY_TITLE names the playlist if the series files under another title.
+  gtaDaily: {
+    title: process.env.SERIES_GTA_DAILY_TITLE || "GTA 6 Day by Day",
+    description:
+      "GTA 6, one day at a time: a new numbered episode every day from launch, cut from real play on our own streams. No story spoilers.",
+  },
   // The two new series shelves (format plan, 11 Nov 2026, item 8), filed only with SERIES_PLAYLISTS on.
   gtaFile: {
     title: "The GTA File",
@@ -1305,6 +1312,7 @@ const SERIES = {
 
 /** The new series shelves' titles, in the channel page's order (src/channelpage.ts). */
 export const SERIES_SHELF_TITLES = {
+  gtaDaily: SERIES.gtaDaily.title,
   gtaFile: SERIES.gtaFile.title,
   why: SERIES.why.title,
   verdict: SERIES.verdict.title,

@@ -596,6 +596,13 @@ export interface Config {
   clarityGate: FriendPassFormat[];
   /** CLARITY_MIN: the lowest clarity score that passes without going back to the writer (default 8). */
   clarityMin: number;
+  /** The humaniser (src/editorial/humanise, owner 14 Nov 2026: the Civilization Short said "Sid Meier's" every time):
+   * progressive naming, no repeated openings or connectives, contractions, no AI-tell words or em dashes, exact spoken
+   * numbers, relative dates, callbacks, capped filler and varied credits, on Shorts and documentary chapters before
+   * voicing. HUMANISE=off (default), "check" (measure and log only) or "fix" (apply the safe fixes, send what needs a
+   * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
+   * is "humanise.rewrite" (CODEX_CALLS can route it). */
+  humanise: "off" | "check" | "fix";
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1745,6 +1752,7 @@ export function loadConfig(): Config {
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
+    humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

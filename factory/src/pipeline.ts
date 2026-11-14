@@ -296,6 +296,13 @@ import {
   shortSettledText,
 } from "./editorial/friendpass.ts";
 import {
+  humaniseShort,
+  humaniseShortProblems,
+  humaniseChapter,
+  humaniseDrift,
+} from "./editorial/humanise/humanise.ts";
+import { humaniseStep } from "./humanisestep.ts";
+import {
   clarityGate,
   clarityLog,
   judgeClarity,
@@ -4553,6 +4560,52 @@ async function stepScriptDocumentary(
         kept: clarity.value !== settled,
       }).catch(() => undefined);
     }
+    // The humaniser per chapter (HUMANISE): names already said in earlier chapters count, so "Grand Theft Auto VI"
+    // is said in full once in the whole video. The chapter's fact check reads the humanised words.
+    if (clean && s.cfg.humanise !== "off") {
+      const earlier = chapters
+        .map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" "))
+        .join(" ");
+      const games = outline.chapters.map((c) => c.game_title).filter(Boolean);
+      const publishAt = ep.slot_at ? new Date(ep.slot_at) : undefined;
+      const settled = chapter!;
+      const rulesFor = (c: typeof settled) =>
+        validateChapter(c, {
+          earlier: chapters,
+          priorDoc,
+          loops: openLoops.loops,
+          chapter: index + 1,
+        });
+      const human = await humaniseStep<typeof settled>({
+        mode: s.cfg.humanise,
+        value: settled,
+        run: (v, mode) => {
+          const r = humaniseChapter(v, { mode, earlier, games, ...(publishAt ? { publishAt } : {}) });
+          return { value: r.chapter, result: r.result };
+        },
+        problems: (before, after, removed) => [
+          ...humaniseDrift(
+            before.paragraphs.map((x) => x.narration).join(" "),
+            after.paragraphs.map((x) => x.narration).join(" "),
+            { removedFigures: removed },
+          ),
+          ...newProblems(rulesFor(before), rulesFor(after)),
+          ...chapterRefusal(after),
+        ],
+        rewrite: (v, notes) =>
+          friendChapter(s.llm, v, {
+            tier: s.cfg.friendPassTier,
+            humanNotes: notes,
+            site: "humanise.rewrite",
+          }),
+        check: (after) => checkChapter(s.llm, after, source),
+      });
+      chapter = human.value;
+      await logEvent(s.db, ep.id, "doc_humanise", {
+        chapter: index + 1,
+        ...human.log,
+      }).catch(() => undefined);
+    }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
       warnings.push(
@@ -7864,6 +7917,71 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       kept: script !== settled,
       before_text: shortText(settled),
     }).catch(() => undefined);
+  }
+  // The humaniser (HUMANISE, src/editorial/humanise): the full name once and the short form after, no repeated openings,
+  // contractions, no AI-tell words or em dashes, relative dates against the publish time. Runs last before voicing;
+  // the fact check then reads the humanised words, and anything that fails leaves the settled script as it was.
+  if (
+    s.cfg.humanise !== "off" &&
+    check.verdict === "pass" &&
+    check.rumour_labelling_ok &&
+    !check.issues.some((i) => i.severity === "blocker")
+  ) {
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const publishAt = airsAt ? new Date(airsAt) : undefined;
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    let humanCheck: typeof check | undefined;
+    const human = await humaniseStep<Script>({
+      mode: s.cfg.humanise,
+      value: script,
+      run: (v, mode) => {
+        const r = humaniseShort(v, { mode, ...(publishAt ? { publishAt } : {}) });
+        return { value: r.script, result: r.result };
+      },
+      problems: (before, after, removed) => [
+        ...humaniseShortProblems(before, after, removed),
+        ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+        ...(publishAt ? airTimeProblems(publicText(after), publishAt) : []),
+      ],
+      rewrite: (v, notes) =>
+        friendShort(s.llm, v, {
+          tier: s.cfg.friendPassTier,
+          segment: pulseCheck,
+          endStatement: s.cfg.shortEndPayoff,
+          recent,
+          ...wordsLimits,
+          humanNotes: notes,
+          site: "humanise.rewrite",
+        }),
+      ...(friendPassOn({ friendPass: s.cfg.clarityGate }, "shorts")
+        ? {
+            clear: async (v: Script) =>
+              (
+                await judgeClarity(s.llm, {
+                  lines: shortLines(v),
+                  intended: v.point,
+                  title: v.youtube.title,
+                })
+              ).score >= s.cfg.clarityMin,
+          }
+        : {}),
+      check: async (after) => {
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
+          shortSettledText(script!),
+        );
+        humanCheck = v.check;
+        return v.blockers;
+      },
+    });
+    if (human.stage !== "settled" && humanCheck) {
+      script = human.value;
+      check = humanCheck;
+    }
+    await logEvent(s.db, ep.id, "humanise", human.log).catch(() => undefined);
   }
   // RUMOUR_SHARE=0 (format redesign plan item 2) stops rumour Shorts the same way.
   if (

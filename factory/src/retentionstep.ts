@@ -43,7 +43,14 @@ export interface RetentionRecord {
   cardTrims: CardTrim[];
   report?: DirectorReport;
   skipped?: string;
+  /** Under "fix", the shots as planned before the director changed them, so a QA failure can put them back. */
+  shotsBefore?: RenderPlan["shots"];
+  /** Set when a QA failure after the director's changes put the original plan back. */
+  reverted?: string;
 }
+
+/** A failed attempt whose error is the render's QA gate (a frame check, the graphics check): the fixes are suspects. */
+const QA_FAILED_RE = /^QA failed/;
 
 export async function directorStep(
   s: {
@@ -51,7 +58,7 @@ export async function directorStep(
     cfg: { retentionDirector: DirectorMode; dataDir: string };
     now: () => Date;
   },
-  ep: { id: string; lane: string },
+  ep: { id: string; lane: string; last_error?: string | null },
   x: {
     assets: any;
     script: Script;
@@ -65,6 +72,16 @@ export async function directorStep(
   const prior = x.assets.retention as RetentionRecord | undefined;
   // A retry: the plan is the directed one already; the card trims go back on the rebuilt segments.
   if (prior?.at) {
+    // Footage the director swapped in was screened with its clip, but not every frame of it was seen by the frame
+    // check: when the render then fails QA, the director's changes go and the planned shots come back.
+    if (prior.shotsBefore && !prior.reverted && QA_FAILED_RE.test(ep.last_error ?? "")) {
+      x.plan.shots = prior.shotsBefore;
+      prior.cardTrims = [];
+      prior.reverted = ep.last_error!.slice(0, 200);
+      await logEvent(s.db, ep.id, "retention_director_reverted", { why: prior.reverted });
+      log("warn", "retention director changes reverted after a QA failure", { episode: ep.id });
+      return;
+    }
     for (const t of prior.cardTrims ?? []) applyCardTrim(x.segments, t);
     return;
   }
@@ -81,6 +98,7 @@ export async function directorStep(
     } satisfies RetentionRecord;
     return;
   }
+  const shotsBefore = structuredClone(x.plan.shots);
   try {
     const report = directShort(
       model,
@@ -105,6 +123,7 @@ export async function directorStep(
       mode,
       cardTrims: report?.cardTrims ?? [],
       ...(report ? { report } : { skipped: "records too thin to predict" }),
+      ...(mode === "fix" && report?.fixes.some((f) => f.kind !== "card_text") ? { shotsBefore } : {}),
     } satisfies RetentionRecord;
     if (report) {
       await logEvent(s.db, ep.id, "retention_director", {

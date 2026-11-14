@@ -628,3 +628,28 @@ test("the director never trims a stat, quote or report label", () => {
   assert.equal(TRIM_SECONDARY.has("quote"), false);
   assert.equal(TRIM_SECONDARY.has("title"), true);
 });
+
+test("directorStep: a QA failure after the director's swaps puts the planned shots back", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  saveModel(dir, model().model);
+  const cfg = { retentionDirector: "fix" as const, dataDir: dir };
+  const now = () => new Date("2026-11-14T12:00:00Z");
+  const inp = directorInput(["clip", "plate", "clip", "plate", "clip"]);
+  const planned = structuredClone(inp.plan.shots);
+  const assets: any = { durationSeconds: inp.spokenSeconds, images: inp.images, clips: inp.clips };
+  await directorStep({ db, cfg, now }, { id: "q1", lane: "news" }, { assets, script: inp.script, words: inp.words, segments: inp.segments, plan: inp.plan, segmentsOf: segmentInputs });
+  assert.notDeepEqual(inp.plan.shots, planned, "the director swapped a shot");
+  assert.deepEqual(assets.retention.shotsBefore, planned);
+  // A retry after an unrelated failure keeps the directed plan.
+  const directed = structuredClone(inp.plan.shots);
+  await directorStep({ db, cfg, now }, { id: "q1", lane: "news", last_error: "render stalled" }, { assets, script: inp.script, words: inp.words, segments: inp.segments, plan: inp.plan, segmentsOf: segmentInputs });
+  assert.deepEqual(inp.plan.shots, directed);
+  // A retry after a QA failure reverts, once.
+  await directorStep({ db, cfg, now }, { id: "q1", lane: "news", last_error: "QA failed: Frame 6: a bad crop" }, { assets, script: inp.script, words: inp.words, segments: inp.segments, plan: inp.plan, segmentsOf: segmentInputs });
+  assert.deepEqual(inp.plan.shots, planned);
+  assert.match(assets.retention.reverted, /QA failed/);
+  const ev = await db.query<{ kind: string }>(`SELECT kind FROM events WHERE episode_id = 'q1' AND kind = 'retention_director_reverted'`);
+  assert.equal(ev.length, 1);
+  await db.close();
+});

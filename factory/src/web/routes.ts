@@ -36,7 +36,9 @@ import {
   type ChannelVideo,
   type GameHub,
   type SiteEpisode,
+  type SitePack,
 } from "./site.ts";
+import { getEpisode } from "../episodes.ts";
 
 const run = promisify(execFile);
 const PUBLIC_ROOT = path.join(
@@ -121,6 +123,28 @@ async function derived(
     fs.rmSync(tmp, { force: true });
     return undefined;
   }
+}
+
+const packCache = new Map<string, { at: number; pack: SitePack | undefined }>();
+
+/** A long video's answer pack from its timed narration (src/pipeline.ts longAnswerPack), kept for ten minutes. */
+async function sitePack(db: Db, id: string): Promise<SitePack | undefined> {
+  const have = packCache.get(id);
+  if (have && Date.now() - have.at < 10 * 60_000) return have.pack;
+  let pack: SitePack | undefined;
+  try {
+    const ep = await getEpisode(db, id);
+    if (ep?.script_json) {
+      const { longAnswerPack } = await import("../pipeline.ts");
+      const p = longAnswerPack(ep);
+      const d = ep.assets_json?.durationSeconds;
+      pack = { ...p, ...(d ? { duration: d } : {}) };
+    }
+  } catch (err) {
+    log("warn", "site answer pack failed", { id, error: errorMessage(err) });
+  }
+  packCache.set(id, { at: Date.now(), pack });
+  return pack;
 }
 
 async function storyPicture(
@@ -330,6 +354,13 @@ export async function handleSite(
     const related = [...new Set([...mine.flatMap((h) => h.episodes), ...eps])]
       .filter((e) => e.id !== ep.id)
       .slice(0, 3);
+    // ANSWER_PAGES (src/levers/answer.ts): a long video's page gets its summary, key facts and chapters, and
+    // ?t=<seconds> starts the embedded video there (the SeekToAction and Clip addresses).
+    const t = Number.parseInt(url.searchParams.get("t") ?? "", 10);
+    const pack =
+      cfg.levers?.answerPages && ep.script_json.runtime === "long"
+        ? await sitePack(db, ep.id)
+        : undefined;
     // The shop links follow the reader's country: not cacheable by a shared cache.
     return (
       html(
@@ -337,6 +368,8 @@ export async function handleSite(
         articlePage(ep, base, ctx.tags(ep.id), country, {
           hubs: mine,
           related,
+          ...(pack ? { pack } : {}),
+          ...(Number.isFinite(t) && t > 0 ? { seek: Math.min(t, 12 * 3600) } : {}),
         }),
         "private, max-age=300",
       ),

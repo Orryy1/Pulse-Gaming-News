@@ -4,6 +4,8 @@
 // to the YouTube Short. Each returns the platform's id for the post, or throws
 // with the platform's own error text.
 
+import { trialParams, trialRefused } from "../levers/trial.ts";
+import type { TrialGraduation } from "../levers/settings.ts";
 import fs from "node:fs/promises";
 import { oauth1Header, type OAuth1Keys } from "./oauth1.ts";
 
@@ -122,6 +124,10 @@ export interface InstagramReel {
   file: string;
   caption: string;
   videoUrl?: string; // a signed public link to the same file, for the fallback
+  /** IG_TRIAL_SHARE (src/levers/trial.ts): post as a trial reel, shown to non-followers first. */
+  trial?: TrialGraduation;
+  /** Told when Instagram refuses the trial and the Reel goes out as an ordinary one instead. */
+  onTrialRefused?: (message: string) => void;
 }
 
 /**
@@ -134,6 +140,24 @@ export async function postInstagramReel(
   fetchFn: FetchLike = fetch,
   pollMs = 10_000,
 ): Promise<string> {
+  if (r.trial) {
+    try {
+      return await postInstagramReelOnce(r, fetchFn, pollMs);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!trialRefused(msg)) throw err;
+      r.onTrialRefused?.(msg);
+      return postInstagramReelOnce({ ...r, trial: undefined }, fetchFn, pollMs);
+    }
+  }
+  return postInstagramReelOnce(r, fetchFn, pollMs);
+}
+
+async function postInstagramReelOnce(
+  r: InstagramReel,
+  fetchFn: FetchLike,
+  pollMs: number,
+): Promise<string> {
   const fromLink = async () =>
     (
       await json(
@@ -145,6 +169,7 @@ export async function postInstagramReel(
             video_url: r.videoUrl,
             caption: r.caption.slice(0, 2200),
             share_to_feed: true,
+            ...trialParams(r.trial),
             access_token: r.token,
           }),
         }),
@@ -216,6 +241,7 @@ async function instagramFromBytes(
         upload_type: "resumable",
         caption: r.caption.slice(0, 2200),
         share_to_feed: true,
+        ...trialParams(r.trial),
         access_token: r.token,
       }),
     }),

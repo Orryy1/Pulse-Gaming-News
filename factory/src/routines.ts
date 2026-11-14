@@ -24,6 +24,9 @@ import { logEvent } from "./episodes.ts";
 import { dayKey, weekday } from "./lanes.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { planFunnel } from "./funnel.ts";
+import { withArchiveTargets } from "./levers/archives.ts";
+import { planGameTitles, planShortsSeries } from "./levers/studio.ts";
+import { GTA_DAILY_PLAYLIST } from "./gtadaily.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { pollPlan, readPoll, recordPollResult } from "./social/poll.ts";
 import { recordTikTokStats, tiktokStatus } from "./social/metrics.ts";
@@ -153,6 +156,16 @@ export const DONE_KINDS = {
     file: ["admin", "viewer_pins.json"],
     valid: (k: string) => VIDEO_ID.test(k),
   },
+  // Videos whose game title the Studio routine has set (STUDIO_PLANS, src/levers/studio.ts).
+  gametitle: {
+    file: ["admin", "gametitle_done.json"],
+    valid: (k: string) => VIDEO_ID.test(k),
+  },
+  // Series playlists made into Shorts series in Studio (STUDIO_PLANS).
+  shortsseries: {
+    file: ["admin", "shortsseries_done.json"],
+    valid: (k: string) => /^[a-z0-9-]{2,40}$/.test(k),
+  },
 } as const;
 export type DoneKind = keyof typeof DONE_KINDS;
 
@@ -210,6 +223,8 @@ export interface RelatedRow {
     youtube?: { title?: string };
     cutdown?: { parent_video?: string; funnel?: "link" | "none" };
   } | null;
+  /** STREAM_ARCHIVE_LINKS: the stream archive the Short was cut from (src/levers/archives.ts). */
+  stream_archive?: import("./levers/archives.ts").ArchiveLink | null;
 }
 export interface LongVideo {
   id: string;
@@ -310,7 +325,8 @@ export function planRelated(
 /** The factory's published videos of the last few days (what /admin/export lists). */
 async function recentPublished(db: Db, days: number): Promise<RelatedRow[]> {
   return db.query<RelatedRow>(
-    `SELECT e.id, e.lane, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at, e.script_json
+    `SELECT e.id, e.lane, e.youtube_video_id, coalesce(e.publish_at, e.updated_at) AS live_at, e.script_json,
+            e.story_json->'streamArchive' AS stream_archive
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND coalesce(e.publish_at, e.updated_at) > now() - make_interval(days => $1)
       ORDER BY live_at DESC`,
@@ -560,18 +576,21 @@ export async function handleRoutine(
                 (ctx.channelLongs ?? channelLongs)(),
                 cfg.funnelClearDays > 0 ? recentPublished(db, cfg.funnelClearDays) : Promise.resolve([]),
               ]).then(([rows, longs, older]) =>
-                planFunnel(
+                withArchiveTargets(
+                  planFunnel(
+                    rows,
+                    longs,
+                    older,
+                    new Set(readList(doneFile(cfg, "related"))),
+                    new Set(readList(doneFile(cfg, "related_clear"))),
+                  ),
                   rows,
-                  longs,
-                  older,
-                  new Set(readList(doneFile(cfg, "related"))),
-                  new Set(readList(doneFile(cfg, "related_clear"))),
                 ),
               )
             : Promise.all([
             recentPublished(db, 3),
             (ctx.channelLongs ?? channelLongs)(),
-          ]).then(([rows, longs]) => planRelated(rows, longs));
+          ]).then(([rows, longs]) => withArchiveTargets(planRelated(rows, longs), rows));
           relatedCache = { at: now.getTime(), plan };
           plan.catch(() => {
             if (relatedCache?.plan === plan) relatedCache = undefined;
@@ -591,6 +610,27 @@ export async function handleRoutine(
           count: items.length,
           items,
         });
+        return true;
+      }
+      // STUDIO_PLANS (src/levers/studio.ts): the game title to set on recent videos (the Data API has no field for it).
+      case "/routine/gametitle": {
+        if (!cfg.levers?.studioPlans) return false;
+        const max = Math.min(50, Math.max(1, Number(url.searchParams.get("max")) || 15));
+        const items = planGameTitles(
+          await recentPublished(db, 7),
+          new Set(readList(doneFile(cfg, "gametitle"))),
+        ).slice(0, max);
+        json(res, 200, { count: items.length, items });
+        return true;
+      }
+      // STUDIO_PLANS: the series playlists to make Shorts series of, once Studio offers it (Content > Playlists).
+      case "/routine/shortsseries": {
+        if (!cfg.levers?.studioPlans) return false;
+        const items = planShortsSeries(
+          { daily: GTA_DAILY_PLAYLIST, why: "The Why: Gaming's Biggest Questions" },
+          new Set(readList(doneFile(cfg, "shortsseries"))),
+        );
+        json(res, 200, { count: items.length, items });
         return true;
       }
       // Long videos waiting for Test & compare; "ready" once the video is public.

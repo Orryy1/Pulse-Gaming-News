@@ -18,6 +18,8 @@ import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 import { movingShareLines } from "./qa/movingshare.ts";
 import { subsReportLines } from "./subslearn/learn.ts";
 import type { SubsLearnSettings } from "./subslearn/settings.ts";
+import { readYpp, yppReportLines } from "./levers/ypp.ts";
+import type { LeverSettings } from "./levers/settings.ts";
 
 export type GrowthFormat =
   | "news"
@@ -282,7 +284,7 @@ export async function movingShareRows(
 /** The Discord message. */
 export async function growthReport(
   db: Db,
-  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings },
+  cfg: Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings; levers?: Pick<LeverSettings, "yppTracker"> },
   now: Date,
   /** RETENTION_LEARN: the week's retention curve study (src/retentionlearn.ts); absent while it is off. */
   retention?: RetentionStudy,
@@ -293,6 +295,8 @@ export async function growthReport(
         title: `🌱 Pulse growth report, week to ${new Intl.DateTimeFormat("en-GB", { timeZone: cfg.timezone, day: "numeric", month: "short" }).format(now)}`,
         description: [
           ...growthLines(await growthRows(db), now),
+          // YPP_TRACKER: public watch hours against the Partner Programme bars (src/levers/ypp.ts).
+          ...(cfg.levers?.yppTracker && cfg.dataDir ? yppReportLines(readYpp(cfg.dataDir)) : []),
           // SUBS_LEARN: subscribers per 1,000 views for every format over 7 and 28 days (src/subslearn).
           ...(cfg.subsLearn?.enabled ? ["", ...(await subsReportLines(db, now, cfg.subsLearn).catch(() => []))] : []),
           ...(cfg.reachReport ? packagingLines(await ctrRows(db)) : []),

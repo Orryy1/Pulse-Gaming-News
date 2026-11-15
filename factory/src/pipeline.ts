@@ -13242,7 +13242,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const footageShare = clipFrames / Math.max(1, plan.totalFrames);
     const footageExists =
       (await libraryHasFootage(s.cfg.dataDir, script.game_title)) || (assets.officialTrailer?.clipSeconds ?? 0) > 0;
-    const verdict = footageGate({ footageShare, openingOk: opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
+    // An opening the vision model never looked at (the PC relay busy) is not a failed opening: the picture check holds
+    // the Short until it can look (VISION_HOLD); 15 Nov 2026 the PS4 Short was held at 63% footage for this alone.
+    const verdict = footageGate({ footageShare, openingOk: opening?.unchecked ? undefined : opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
     await logEvent(s.db, ep.id, "footage_gate", { verdict, footageShare: Math.round(footageShare * 100) / 100, opening: opening?.ok, footageExists });
     if (verdict === "regather") {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });

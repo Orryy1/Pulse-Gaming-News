@@ -339,6 +339,8 @@ export interface OpeningResult {
   window?: { from: number; to: number };
   strength?: number;
   tried: Array<{ file: string; problem?: string; strength?: number }>;
+  /** Nothing was screened because the vision model did not answer: not a verdict on the footage. */
+  unchecked?: boolean;
 }
 
 async function cutClip(
@@ -548,10 +550,11 @@ export async function chooseOpening(
     };
   }
   // The relay is down or the model cannot read these frames: nothing was screened, so no opening is made.
-  const why = tried.every((t) => t.problem === "the vision model could not judge it")
+  const unchecked = tried.every((t) => t.problem === "the vision model could not judge it");
+  const why = unchecked
     ? "the local vision model did not answer: opening left as planned"
     : "no candidate passed the opening check";
-  return { ok: false, why, tried };
+  return { ok: false, why, tried, ...(unchecked ? { unchecked: true } : {}) };
 }
 
 // ---------------------------------------------------------------- the first seven seconds

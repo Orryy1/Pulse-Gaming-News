@@ -359,7 +359,8 @@ import {
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
-import { bedFor, BEDS } from "./render/soundscape.ts";
+import { BEDS } from "./render/soundscape.ts";
+import { bedSeed, chooseBed } from "./render/bedrotation.ts";
 import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
 import { SIGNATURE_LIBRARY } from "./render/signaturelib.ts";
 import { cameraNotice } from "./render/camera.ts";
@@ -11368,7 +11369,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.breaks,
   );
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
+  // The bed none of the last few long videos played (src/render/bedrotation.ts); the house beds rotate from it.
+  const musicFile = s.cfg.musicBed
+    ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "long", seed: bedSeed(ep.id) })
+    : null;
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
   if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
@@ -12886,7 +12890,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const g of segments)
       if (g.kind === "take") g.visual = undefined;
   const variant = variantOf(ep.id);
-  let musicFile: string | null = s.cfg.musicBed ? bedFor(variant) : null;
+  // The bed none of the last eight Shorts played (src/render/bedrotation.ts), so no two Shorts in a row share music.
+  let musicFile: string | null = s.cfg.musicBed
+    ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) })
+    : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)

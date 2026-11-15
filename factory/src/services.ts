@@ -1,5 +1,6 @@
 // Production wiring for the pipeline's service seam.
 
+import { libraryRoot, libraryTrailers } from "./assets/gamelib.ts";
 import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
@@ -416,10 +417,11 @@ export function createServices(db: Db, cfg: Config): Services {
       return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
     },
     ownClips: (game, franchise, dir, targets, maxClips) =>
-      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
+      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot || cfg.streamAsks.vodDir)
         ? libraryClips({
             root: cfg.footageLibrary,
             inbox: cfg.gameplayRoot,
+            vods: cfg.streamAsks.vodDir,
             game,
             franchise,
             episodeDir: dir,
@@ -531,6 +533,8 @@ export function createServices(db: Db, cfg: Config): Services {
         story,
         fill,
         stillFrames: cfg.officialStillFrames,
+        // The publisher's own trailer files from the game library (src/assets/gamelib.ts), before any YouTube call.
+        localTrailers: cfg.gameLibrary ? (g) => libraryTrailers(libraryRoot(cfg.dataDir), g) : undefined,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

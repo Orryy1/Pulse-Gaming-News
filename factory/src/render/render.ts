@@ -602,6 +602,7 @@ export interface RenderInput {
       beatIndex?: number;
       credit?: string;
       focusX?: number;
+      noCollage?: boolean;
     }>;
     clipFiles: Array<{
       file: string;
@@ -1099,6 +1100,7 @@ export async function renderShort(input: RenderInput): Promise<void> {
         beatIndex: i.beatIndex,
         credit: i.credit,
         focusX: i.focusX,
+        ...(i.noCollage ? { noCollage: true } : {}),
       })),
       clips: clipFiles.map((c) => ({
         src: `${files.url}/${webPath(c.file)}`,

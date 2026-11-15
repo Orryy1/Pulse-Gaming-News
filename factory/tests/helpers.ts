@@ -236,6 +236,8 @@ export function testConfig(
     ownerGames: [],
     captureChecklist: false,
     footageLibrary: "",
+    gameLibrary: false,
+    shortFootageGate: false,
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

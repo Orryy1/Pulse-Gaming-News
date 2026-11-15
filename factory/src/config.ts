@@ -1046,6 +1046,10 @@ export interface Config {
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
   footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
+  /** GAME_LIBRARY (default on): Shorts pick each sentence's scene and still from the game media library and scene indexes (src/assets/shortlibrary.ts). */
+  gameLibrary: boolean;
+  /** SHORT_FOOTAGE_GATE (default on): a Short with no moving footage, or no footage to open on, is held when footage of its game exists. */
+  shortFootageGate: boolean;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   /**
    * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
@@ -2020,10 +2024,11 @@ export function loadConfig(): Config {
       .map((g) => g.trim())
       .filter(Boolean),
     captureChecklist: bool("CAPTURE_CHECKLIST", true),
-    footageLibrary: str(
-      "FOOTAGE_LIBRARY",
-      path.join(process.env.USERPROFILE ?? "", "Videos"),
-    ),
+    // The owner's recordings under ~/Videos/<Game>/: USERPROFILE on Windows, the home folder anywhere else (on the Mac
+    // this read "Videos", relative to the factory folder, so the owner's footage was never found there).
+    footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE || os.homedir(), "Videos")),
+    gameLibrary: bool("GAME_LIBRARY", true),
+    shortFootageGate: bool("SHORT_FOOTAGE_GATE", true),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
     libraryOpenverse: bool("LIBRARY_OPENVERSE", true),

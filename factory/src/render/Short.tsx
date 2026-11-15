@@ -68,18 +68,18 @@ import { musicDipAt } from "./gamebed.ts";
 const MOTIF_STING = 30;
 
 /** The motif's 16:9 card shown across the Short's middle for a second, the frame dimmed around it. */
-const MotifSting: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const MotifSting: React.FC<{ children: React.ReactNode; frames?: number }> = ({ children, frames = MOTIF_STING }) => {
   const frame = useCurrentFrame();
   const o = interpolate(
     frame,
-    [0, 5, MOTIF_STING - 6, MOTIF_STING],
+    [0, 5, frames - 6, frames],
     [0, 1, 1, 0],
     {
       extrapolateLeft: "clamp",
       extrapolateRight: "clamp",
     },
   );
-  const sc = interpolate(frame, [0, MOTIF_STING], [0.94, 1.0], {
+  const sc = interpolate(frame, [0, frames], [0.94, 1.0], {
     extrapolateRight: "clamp",
   });
   return (
@@ -498,7 +498,14 @@ export const Short: React.FC<ShortProps> = (props) => {
   // The clean frame (src/render/cleanframe.ts): one overlay at a time besides the caption, by priority; a lower
   // one is cut to the stretch the higher ones leave free, or dropped. The old Short draws every overlay as planned.
   const clean = Boolean(props.clean);
-  const stingOn = Boolean(motif?.card && props.images.length && hookEnd < durationInFrames - 120);
+  // The collage card: where the render step placed it on a line naming the game (props.motifSting), never when it
+  // said there is none (null); a plan from before keeps the old second after the hook.
+  const collagePictures = props.images.filter((im) => !im.noCollage && im.aspect >= 1.2);
+  const stingAt =
+    props.motifSting === null
+      ? undefined
+      : props.motifSting ?? (motif?.card && props.images.length && hookEnd < durationInFrames - 120 ? { from: hookEnd, frames: MOTIF_STING } : undefined);
+  const stingOn = Boolean(motif?.card && collagePictures.length && stingAt);
   const layout = useMemo(
     () => shortLayout(props.segments, fps, durationInFrames, plan.tailFrames),
     [props.segments, fps, durationInFrames, plan.tailFrames],
@@ -507,10 +514,10 @@ export const Short: React.FC<ShortProps> = (props) => {
     () =>
       clean
         ? arbitrate(
-            overlaySpans({ segments: props.segments, words, plan, layout, stamps: props.stamps ?? [], sting: stingOn }),
+            overlaySpans({ segments: props.segments, words, plan, layout, stamps: props.stamps ?? [], sting: stingOn && stingAt ? stingAt : false }),
           )
         : undefined,
-    [clean, props.segments, words, plan, layout, props.stamps, stingOn],
+    [clean, props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames],
   );
   /** Where an overlay is drawn: as planned, or on a clean Short its kept stretch (undefined: not drawn). */
   const placed = (key: string, from: number, len: number): { from: number; len: number } | undefined => {
@@ -856,9 +863,9 @@ export const Short: React.FC<ShortProps> = (props) => {
           <CommentCard handle={props.reply.handle} text={props.reply.text} frames={replyFrames} accent={accent} />
         </Sequence>
       ) : null}
-      {motif?.card && stingOn && (!kept || (keptSpan(kept, "sting")?.from === hookEnd && keptSpan(kept, "sting")?.to === hookEnd + MOTIF_STING)) ? (
-        <Sequence from={hookEnd} durationInFrames={MOTIF_STING} layout="none">
-          <MotifSting>
+      {motif?.card && stingOn && stingAt && (!kept || (keptSpan(kept, "sting")?.from === stingAt.from && keptSpan(kept, "sting")?.to === stingAt.from + stingAt.frames)) ? (
+        <Sequence from={stingAt.from} durationInFrames={stingAt.frames} layout="none">
+          <MotifSting frames={stingAt.frames}>
             {/* Joined part-way through its build so the second shows the look already standing. */}
             <Sequence from={-40} layout="none">
               {React.createElement(motif.card, {
@@ -866,11 +873,10 @@ export const Short: React.FC<ShortProps> = (props) => {
                 kicker: theme.chip,
                 game: props.gameTitle,
                 year: year ? String(year) : undefined,
-                pictures: props.images
-                  .filter((im) => im.aspect >= 1.2)
+                pictures: collagePictures
                   .map((im) => im.src)
                   .slice(0, 6),
-                frames: 120,
+                frames: Math.max(120, stingAt.frames + 50),
                 variant: props.variant,
               })}
             </Sequence>

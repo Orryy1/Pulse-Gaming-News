@@ -830,6 +830,11 @@ import {
   countProducing,
   takenSlots,
 } from "./episodes.ts";
+import { footageGate, libraryHasFootage, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
+import { namesGame } from "./assets/linevisuals.ts";
+import { stingPlacement } from "./render/cleanframe.ts";
+import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
+import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
 import {
   fitClipsAroundQuotes,
@@ -9739,6 +9744,45 @@ export async function gatherMedia(
   // credited on screen, on the first line that names them (else wherever a still is needed).
   if (script.person?.trim())
     await personPhoto(s, ep, dir, script.person.trim(), images);
+  // GAME_LIBRARY (src/assets/shortlibrary.ts): every sentence gets the best-fitting scene and still from the game it is
+  // about (a comparison's sentence from the other game), picked by what the library's vision tags say each shows and
+  // pushed away from what the game's last ten Shorts showed; the title's subject leads as the hero and the thumbnail.
+  let library: ShortLibraryMedia | undefined;
+  if (s.cfg.gameLibrary && !ranking && !script.every_game && ep.lane !== "longform" && script.game_title) {
+    library = await shortLibraryMedia({
+      dataDir: s.cfg.dataDir,
+      episodeId: ep.id,
+      episodeDir: dir,
+      script,
+      maxClipSeconds: Math.max(10, narrationSeconds * 0.85),
+    });
+    // The library's per-sentence scenes replace the trailer matcher's picks from the same site trailers, so one trailer
+    // moment never shows twice; footage from anywhere else stays.
+    if (library.clips.length >= 2) {
+      const siteCut = clips.filter((c) => c.provenance.includes("own site ("));
+      if (siteCut.length) clips.splice(0, clips.length, ...clips.filter((c) => !siteCut.includes(c)));
+    }
+    clips.push(...library.clips);
+    images.push(...library.images);
+    if (library.picks)
+      await logEvent(s.db, ep.id, "game_library", {
+        games: library.games,
+        clips: library.clips.length,
+        images: library.images.length,
+        compared: comparedGames(script),
+        footageExists: library.footageExists,
+      });
+  }
+  // No hardware or merchandise in a game story (15 Nov 2026: a PlayStation controller opened a Short about roads and
+  // sat in its thumbnail): press pictures of controllers, consoles, boxes, editions and merch go, unless the story is
+  // about that hardware itself.
+  if (!hardwareStory(script)) {
+    const dropped = images.filter((a) => isHardwareAsset(a));
+    if (dropped.length) {
+      images.splice(0, images.length, ...images.filter((a) => !isHardwareAsset(a)));
+      await logEvent(s.db, ep.id, "hardware_dropped", { files: dropped.map((a) => a.file) });
+    }
+  }
   // Screenshots get the same local screen as clip frames: a webcam or gore is never used, and
   // one with menu or HUD text across it ("SET V'S APPEARANCE") is used only after the clean ones.
   // Key art and article images are screened for text only: one with the game's logo printed
@@ -9790,6 +9834,7 @@ export async function gatherMedia(
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
       ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
+      ...((a as { libKey?: string }).libKey ? { libKey: (a as { libKey?: string }).libKey } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -12956,6 +13001,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: c.beatIndex,
       role: c.role,
       cutsceneMatch: c.cutsceneMatch,
+      ...(c.forWords ? { forWords: c.forWords } : {}),
       // GAME_AUDIO_BED: a mild preference for footage whose own sound the bed can carry (trailers stay silent).
       ...(gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) && heardInBed(c, s.cfg.gameAudioTrailers) ? { heard: true } : {}),
     })),
@@ -13059,6 +13105,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           beatIndex: c.beatIndex,
           role: c.role,
           cutsceneMatch: c.cutsceneMatch,
+          ...(c.forWords ? { forWords: c.forWords } : {}),
         })),
       };
       const tries = [0, 1, 2, 3].map((k) =>
@@ -13179,6 +13226,28 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         openingStill: seconds.openingStill,
         unsafe: bad.map((r) => `shot ${r.shot}: ${r.problem}`),
       });
+  }
+  // SHORT_FOOTAGE_GATE (15 Nov 2026): "Why did Rockstar narrow GTA 6's roads?" went out with no moving footage at all
+  // (footage share 0, opening check failed, rubric amber). When footage of the game exists, such a Short gathers once
+  // more, richer; still without footage it is held, the slot goes to the next ready Short and the alerts say why.
+  if (s.cfg.shortFootageGate && !script.entries?.length && !script.every_game && ["news", "news_breaking", "free", "evergreen"].includes(ep.lane)) {
+    const clipFrames = plan.shots.filter((x) => x.media.type === "clip").reduce((n, x) => n + x.end - x.start, 0);
+    const footageShare = clipFrames / Math.max(1, plan.totalFrames);
+    const footageExists =
+      (await libraryHasFootage(s.cfg.dataDir, script.game_title)) || (assets.officialTrailer?.clipSeconds ?? 0) > 0;
+    const verdict = footageGate({ footageShare, openingOk: opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
+    await logEvent(s.db, ep.id, "footage_gate", { verdict, footageShare: Math.round(footageShare * 100) / 100, opening: opening?.ok, footageExists });
+    if (verdict === "regather") {
+      Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
+      delete assets.plan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+      throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
+    }
+    if (verdict === "hold") {
+      const why = `"${script.headline}" is held: no moving footage of ${script.game_title} on screen (footage share ${Math.round(footageShare * 100)}%${opening?.ok === false ? `, no footage to open on: ${opening.why ?? "none"}` : ""}) although footage of the game exists. The slot goes to the next ready Short.`;
+      await s.notify({ level: "info", content: `🎞️ ${why}` });
+      throw new FatalError(`QA held: ${why}`);
+    }
   }
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
@@ -13390,6 +13459,20 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     browserExecutable: s.cfg.browserExecutable,
     props: {
       headline: script.headline,
+      // The game collage card only on a line that names the game, held 2.5 s, never with hardware (cleanframe.ts).
+      ...(assets.suite
+        ? {
+            motifSting:
+              stingPlacement({
+                segments,
+                words,
+                fps: plan.fps,
+                totalFrames: plan.totalFrames,
+                names: (t) => namesGame(t, script.game_title),
+                pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
+              }) ?? null,
+          }
+        : {}),
       // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
       ...(s.cfg.shortOpenWords > 0 && opening?.ok && plan.shots[0]?.media.type === "clip"
         ? {
@@ -13424,6 +13507,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
         focusX: i.focusX,
+        ...(isHardwareAsset(i) ? { noCollage: true } : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,
@@ -13469,6 +13553,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
   await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex, seriesCover);
+  // GAME_LIBRARY: what this Short showed from the libraries, so the game's next Shorts show something else.
+  {
+    const keys = [
+      ...new Set(
+        plan.shots
+          .map((x) => (x.media.type === "clip" ? assets.clips?.[x.media.index]?.libKey : x.media.type === "image" ? assets.images?.[x.media.index]?.libKey : undefined))
+          .filter((k): k is string => Boolean(k)),
+      ),
+    ];
+    const hero = assets.images?.[plan.heroIndex]?.libKey;
+    if (hero && !keys.includes(hero)) keys.push(hero);
+    if (keys.length)
+      for (const game of [script.game_title, ...comparedGames(script)])
+        await recordUsage(libraryRoot(s.cfg.dataDir), { episode: ep.id, game, at: s.now().toISOString(), keys }).catch((err) =>
+          log("warn", "library usage not recorded", { error: errorMessage(err) }),
+        );
+  }
 
   const tech = await s.technicalQa(
     final,

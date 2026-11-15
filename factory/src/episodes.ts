@@ -129,6 +129,8 @@ export interface EpisodeAssets {
     focusX?: number;
     forWords?: string;
     role?: "hook";
+    /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
+    libKey?: string;
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
@@ -158,6 +160,10 @@ export interface EpisodeAssets {
     span?: { source: string; from: number; to: number };
     /** APPLE_SMART_CROP: the subject-following upright crop (src/render/smartcrop.ts), made once on the Mac. */
     crop?: import("./render/smartcrop.ts").ClipCrop;
+    /** The sentence this clip was chosen for (GAME_LIBRARY): the planner puts it under those words. */
+    forWords?: string;
+    /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
+    libKey?: string;
   }>;
   steam?: {
     appId: number;

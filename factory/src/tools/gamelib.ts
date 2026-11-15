@@ -242,7 +242,7 @@ async function siteStill(
   const id = itemId(a.url);
   const file = path.join(
     "stills",
-    `${id}${path.extname(new URL(a.url).pathname) || ".jpg"}`,
+    `${id}${/\.(jpe?g|png|webp)$/i.exec(a.url.split("#").pop() ?? "")?.[0] ?? ".jpg"}`,
   );
   if (lib.items.some((i) => i.sourceUrl === a.url)) return;
   if (local) await fs.copyFile(local, path.join(dir, file));

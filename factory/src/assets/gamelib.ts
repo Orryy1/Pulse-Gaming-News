@@ -737,7 +737,7 @@ export async function materialise(
     if (!pick.scene) {
       const file = path.join(
         "assets",
-        `lib_${pick.item.id}${path.extname(pick.item.file) || ".jpg"}`,
+        `lib_${pick.item.id}${/^\.(jpe?g|png|webp)$/i.test(path.extname(pick.item.file)) ? path.extname(pick.item.file) : ".jpg"}`,
       );
       if (from.local) await fs.copyFile(src, path.join(episodeDir, file));
       else {

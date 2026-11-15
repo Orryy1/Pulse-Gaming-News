@@ -111,7 +111,8 @@ import {
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
 import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
-import { appleCut, smartCrop } from "./assets/applevision.ts";
+import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
+import { frameTarget } from "./render/smartcrop.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -13346,6 +13347,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         const crop = await smartCrop(path.join(dir, c.file));
         if (crop) c.crop = crop;
       }
+  // The same for wide stills with no subject found yet (library, press and store pictures): the upright crop sits
+  // on Apple Vision's subject rather than the picture's middle (owner, 15 Nov 2026: Shorts not on the focal content).
+  if (s.cfg.appleSmartCrop) {
+    const wide = (assets.images ?? []).filter((i) => i.focusX === undefined && (i.aspect ?? 0) > 0.6);
+    const boxes = await readBoxes(wide.map((i) => path.join(dir, i.file))).catch(() => new Map());
+    for (const i of wide) {
+      const b = boxes.get(path.join(dir, i.file));
+      if (!b?.width || !b.height) continue;
+      const x = frameTarget(b, 0.5625 / (b.width / b.height));
+      if (x !== undefined) i.focusX = x;
+    }
+  }
   // SHORT_PARALLAX: the wide stills get depth layers too, once per Short (kept in assets), so they drift like
   // footage; viewers left 1.3 times as fast while a flat still was up (Sunday retention curves, 15 Nov).
   // A share of Shorts while it is tested (SHORT_PARALLAX_SHARE); the arm is kept so retention can be split by it.

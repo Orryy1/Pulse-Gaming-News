@@ -31,7 +31,8 @@ src = open(os.path.join(HERE, "pickbeds.py"), encoding="utf-8").read().rsplit("\
 P = {"__file__": os.path.join(HERE, "pickbeds.py"), "__name__": "pickbeds"}
 exec(compile(src, "pickbeds.py", "exec"), P)
 
-WORK = os.path.join("data", "sfxlab", "library")
+# BEDS_WORK moves the takes and their working audio off the factory drive (15 Nov 2026: C: was short of space).
+WORK = os.environ.get("BEDS_WORK") or os.path.join("data", "sfxlab", "library")
 OUT = os.path.join("public", "music")
 MAX_HOUSE = 6.0
 MAX_MOOD = 8.0

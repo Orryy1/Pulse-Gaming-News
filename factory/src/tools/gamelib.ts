@@ -519,7 +519,7 @@ async function main(): Promise<void> {
     const from = await readLibrary(fromRoot, game0!);
     if (!from) throw new Error(`no library for ${game0} in ${fromRoot}`);
     const to = (await readLibrary(toRoot, game0!)) ?? { version: LIBRARY_VERSION, game: from.game, items: [], updatedAt: "" };
-    const score = (i: LibItem) => (i.seen ? 1 : 0) + (i.scenes ?? []).filter((s) => s.seen).length + (i.scenes ? 0.5 : 0);
+    const score = (i: LibItem) => (i.seen ? 1 : 0) + (i.scenes ?? []).filter((s) => s.seen).length + (i.scenes ? 0.5 : 0) + (i.unusable ? 0.25 : 0);
     const fromDir = libraryDir(fromRoot, game0!);
     const toDir = libraryDir(toRoot, game0!);
     let added = 0;
@@ -535,9 +535,9 @@ async function main(): Promise<void> {
         to.items.push(item);
         added++;
       } else if (score(item) > score(to.items[at]!)) {
-        to.items[at] = { ...to.items[at]!, ...item, file: to.items[at]!.file };
+        to.items[at] = { ...to.items[at]!, ...item, file: to.items[at]!.file, ...(to.items[at]!.unusable && !item.unusable ? { unusable: to.items[at]!.unusable } : {}) };
         better++;
-      }
+      } else if (item.unusable && !to.items[at]!.unusable) to.items[at] = { ...to.items[at]!, unusable: item.unusable };
     }
     await writeLibrary(toRoot, to);
     console.log(`merged ${game0}: ${added} new items, ${better} better-described, ${to.items.length} in all`);

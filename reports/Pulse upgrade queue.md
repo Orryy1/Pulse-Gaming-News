@@ -314,3 +314,11 @@ In progress, owned by the improvement engine. `SHORT_PARALLAX_SHARE=0.5` on the 
 ## 37. The social scoreboard counts the channel's own Facebook comments (found 15 Nov)
 
 The Sunday report said "Facebook: 37 comments, 0 answered". All of those are the channel's own "Full story and sources" link comments. Exclude the page's own comments from the count and the "answered" share, so the report shows real viewer comments only. Small fix in the social scoreboard; no posting change.
+
+## 38. URGENT: the Shorts footage gate holds every GTA 6 Short during the YouTube block (found 15 Nov 16:35 by the hourly watch)
+
+Five GTA 6 news Shorts in a row were held on 15 Nov (03:04, 05:04, 07:04, 13:24 and 16:26 UK; the first four were retried at 15:31-15:41 and held again), so their slots went to other Shorts. Cause: `src/pipeline.ts` near line 13244 counts footage as existing when `assets.officialTrailer?.clipSeconds > 0`, but that is the publisher's allowed cap (Rockstar 10 s), set when the trailer is found by search, even when yt-dlp could not download a single clip (YouTube bot block since 14 Nov). So the gate regathers, finds nothing and holds. Fix: count the trailer only when official clips actually landed in the episode (or rely on `libraryHasFootage` alone), with a test. A `gamelib fetch Grand Theft Auto VI` run started on the Mac at about 16:27, so once it finishes the library should give real GTA 6 footage; then retry the held episodes (ep_20261115_db8356b3, _000b0a99, _75345555, _a11bf864, _80f93adf) with /admin/retry.
+
+## 39. The narration check re-voices "rumored" read as "rumoured" (found 15 Nov)
+
+ep_20261115_db8356b3 was voiced twice because the check flagged "rumored" heard as "rumoured" and "lineup" as "line -up". These sound the same; treat US/UK spelling pairs and hyphen splits as matches so voice credits are not spent on retakes.

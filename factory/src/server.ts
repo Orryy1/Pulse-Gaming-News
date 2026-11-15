@@ -1064,6 +1064,29 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         .end(JSON.stringify({ ok: true, id: ep.id }));
       return;
     }
+    // A corrected title (15 Nov 2026: "Bully: Why It 2's canceled plans..." went out from a title-rewrite bug): the
+    // stored script's title changes, and a video already on YouTube is retitled there (snippet only, privacy untouched;
+    // refused when the live title is not the one we uploaded, so a hand edit is never overwritten).
+    if (url.pathname === "/admin/retitle" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      const title = (url.searchParams.get("title") ?? "").trim();
+      if (!ep?.script_json?.youtube || !title || title.length > 100) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: "needs an episode with a script and a title of 1-100 characters" }));
+        return;
+      }
+      const was = ep.script_json.youtube.title;
+      let youtube = "not uploaded";
+      if (ep.youtube_video_id) {
+        await services.youtube().retitle(ep.youtube_video_id, was, title);
+        youtube = "retitled";
+      }
+      const script = { ...ep.script_json, youtube: { ...ep.script_json.youtube, title } };
+      await db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+      await logEvent(db, ep.id, "retitled", { from: was, to: title, youtube }).catch(() => undefined);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, from: was, to: title, youtube }));
+      return;
+    }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");

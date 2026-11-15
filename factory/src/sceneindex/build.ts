@@ -653,8 +653,9 @@ export function frameSource(
  */
 export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "dataDir">, now: Date, freeGb?: () => Promise<number>): Promise<number> {
   if (!indexComplete(index) || index.tier === "light" || index.tier === "upgrading") return 0;
-  // Kept local (15 Nov 2026): a gameplay playthrough is downloaded once and never released, and any proxy stays while
-  // the disk has room (SCENE_INDEX_KEEP_PROXY_FREE_GB, default 40), so a later Short never pulls the game from YouTube.
+  // Kept local (15 Nov 2026): a gameplay playthrough is downloaded once and never released, and with
+  // SCENE_INDEX_KEEP_PROXY_FREE_GB set any proxy stays while the disk has that much room, so a later Short never pulls
+  // the game from YouTube again (ARCHIVE_PROXY=keep, the default, never calls this at all).
   if (!(await mayReleaseProxy(index.game, s.dataDir, freeGb))) return 0;
   const file = path.join(sceneIndexDir(s.dataDir, index.game), index.proxy?.file || "proxy.mp4");
   const st = await fs.stat(file).catch(() => undefined);
@@ -667,10 +668,11 @@ export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "da
   return st.size;
 }
 
-/** Whether a built index may give up its proxy: never a gameplay index, never while the disk has room. */
+/** Whether a built index may give up its proxy: never a gameplay index, never while the disk has the kept room. */
 export async function mayReleaseProxy(game: string, dataDir: string, freeGb?: () => Promise<number>): Promise<boolean> {
   if (isGameplayIndex(game)) return false;
-  const floor = Number(process.env.SCENE_INDEX_KEEP_PROXY_FREE_GB ?? 40);
+  const floor = Number(process.env.SCENE_INDEX_KEEP_PROXY_FREE_GB ?? 0);
+  if (!(floor > 0)) return true;
   const free = await (freeGb ??
     (async () => {
       const st = await fs.statfs(dataDir);

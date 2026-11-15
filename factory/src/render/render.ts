@@ -108,16 +108,44 @@ function pocketBeds(serveUrl: string): string[] {
   );
 }
 
+/** True while a bundle folder still holds its page and every music bed that public/ has. */
+export function bundleIntact(dir: string, publicDir = PUBLIC_DIR): boolean {
+  if (!fs.existsSync(path.join(dir, "index.html"))) return false;
+  const beds = [
+    ...BEDS.map((b) => b.file),
+    ...Object.values(MOOD_BEDS)
+      .flat()
+      .map((b) => b.file),
+  ];
+  return beds.every(
+    (b) =>
+      !fs.existsSync(path.join(publicDir, b)) ||
+      fs.existsSync(path.join(dir, "public", b)),
+  );
+}
+
+function touchDir(dir: string): void {
+  try {
+    const now = new Date();
+    fs.utimesSync(dir, now, now);
+  } catch {
+    /* a folder that can't be touched is still usable */
+  }
+}
+
 let bundlePromise: Promise<string> | undefined;
 let bundleDir: string | undefined;
 export function getBundle(): Promise<string> {
   // A bundle swept away from the temp folder is rebuilt rather than rendered from a missing folder.
-  if (bundleDir && !fs.existsSync(bundleDir))
+  // A bundle that lost files is rebuilt too: on 15 Nov 2026 a half-removed temp bundle kept 1 of 4
+  // music beds, so every Short given another bed failed to render.
+  if (bundleDir && !bundleIntact(bundleDir))
     bundlePromise = bundleDir = undefined;
+  // Touch the folder so other processes' age-based temp sweeps see it as in use.
+  if (bundleDir) touchDir(bundleDir);
   // The Mac worker keeps one bundle per commit beside the code: a fresh process per job would rebuild it each time.
   const kept = process.env.REMOTION_BUNDLE_DIR;
-  if (kept && fs.existsSync(path.join(kept, "index.html")))
-    return Promise.resolve(kept);
+  if (kept && bundleIntact(kept)) return Promise.resolve(kept);
   bundlePromise ??= bundle({
     entryPoint: ENTRY,
     publicDir: PUBLIC_DIR,

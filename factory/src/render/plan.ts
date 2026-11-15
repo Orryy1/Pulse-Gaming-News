@@ -413,7 +413,8 @@ export function clipForWords(clips: PlanClip[], among: number[], words: Word[], 
   for (const i of among) {
     const want = wordsOf(clips[i]!.forWords ?? "");
     if (!want.length) continue;
-    const score = want.filter((w) => said.has(w)).length / want.length;
+    const hits = want.filter((w) => said.has(w)).length;
+    const score = Math.max(hits / want.length, said.size >= 3 ? hits / said.size : 0);
     if (score > bestScore) {
       bestScore = score;
       best = i;
@@ -450,7 +451,8 @@ export function pictureForWords(
     if (!im.forWords || im.then || uses[i]! >= 1 || (last?.type === "image" && last.index === i)) continue;
     const want = norm(im.forWords);
     if (!want.length) continue;
-    const score = want.filter((w) => said.has(w)).length / want.length;
+    const hits = want.filter((w) => said.has(w)).length;
+    const score = Math.max(hits / want.length, said.size >= 3 ? hits / said.size : 0);
     if (score > bestScore) {
       bestScore = score;
       best = i;

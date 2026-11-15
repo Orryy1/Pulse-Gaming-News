@@ -632,3 +632,22 @@ test("a gameplay index has its own name and folder, searches playthroughs only a
 
   assert.equal(pickSource([movie, play] as never, "Grand Theft Auto V", { playthroughOnly: true })?.videoId, "ppppppppppp");
 });
+
+test("library paths are stored with forward slashes on every machine, so a PC-built library reads on the Mac", async () => {
+  const { portableFile, writeLibrary, readLibrary } = await import("../src/assets/gamelib.ts");
+  assert.equal(portableFile("stills\\igdb-sc166fv.jpg"), "stills/igdb-sc166fv.jpg");
+  assert.equal(portableFile("videos/t.mp4"), "videos/t.mp4");
+  assert.equal(portableFile("D:\\pulse-data\\proxy.mp4"), "D:\\pulse-data\\proxy.mp4");
+  const os = await import("node:os");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "lib-"));
+  try {
+    await writeLibrary(root, { version: 1, game: "Grand Theft Auto VI", updatedAt: "", items: [{ id: "a", kind: "still", file: "stills\\a.jpg", sourceUrl: "a", provenance: "a", source: "IGDB", named: [], tags: [], seen: "", addedAt: "" }] });
+    const raw = await fsp.readFile(path.join(root, "grand-theft-auto-vi", "library.json"), "utf8");
+    assert.ok(raw.includes('"stills/a.jpg"'));
+    assert.equal((await readLibrary(root, "GTA 6"))!.items[0]!.file, "stills/a.jpg");
+  } finally {
+    await fsp.rm(root, { recursive: true, force: true });
+  }
+});

@@ -2,6 +2,14 @@
 
 Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item first. Each entry says why, what to build and how we'll know it worked.
 
+## Urgent (15 Nov 14:50, hourly watch): a retry button for failed Shorts
+
+**Why:** four Shorts failed on 15 Nov (ep_20261115_a11bf864, 80f93adf, 75345555, 000b0a99) because a half-swept render bundle lost music beds. The fix (345062b1e) went live at 14:18, but there is no way to re-run a failed Short: `/admin/retry` does not exist in any branch (returns Not found), and `/admin/remake` only takes long videos. The hourly watch task assumes the route is live.
+
+**Build:** `POST /admin/retry?id=` (admin key) that puts a failed Short back to its last good status (e.g. `voiced`), resets attempts and keeps its script, voice and plan, refusing content failures (fact check, QA, clarity, spoiler). Then retry the four above if their stories are still current.
+
+**Done when:** the hourly watch can retry a technical failure with one call and the Short renders.
+
 ## 1. "Every [series] game EVER" format (long form plus a 60-second Short)
 
 **Why:** the owner rates @zenkaigoose's editing highly, and his numbers back it up. His biggest videos are all franchise marathons in release order: Every Rockstar Game 8.2M views, Every Spider-Man Game 3M, Every Need for Speed Game 1.7M, Every Game of the Year 1.6M. The 60-second companions also land: Every GTA Game 1.5M, Every Doom Game 1.7M, Every Abandoned Rockstar Game 1.7M. The format works without his face; the face is his garnish, not the engine.
@@ -281,7 +289,7 @@ Owner: massive retrospectives with full game histories, the making of, innovatio
 - 29. Near-live clips from the live stream within minutes (LIVE_CLIPS, claude/liveclips), owner tap stays the gate.
 - 30. Retention-curve learning into the lessons loop (RETENTION_LEARN, claude/retention).
 - 31. Video replies to the best viewer question daily (COMMENT_REPLY_SHORTS, claude/retention).
-Aim: ready before 18 Nov; risky switches wait out the 18-21 Nov freeze unless proven.
+      Aim: ready before 18 Nov; risky switches wait out the 18-21 Nov freeze unless proven.
 
 ## 32. Deploys must never cut off a long render (found 14 Nov)
 

@@ -264,13 +264,21 @@ export function gameFirstShortTitle(
   if (why) {
     const rest = t.slice(why[0].length);
     const name = leading(rest);
-    if (name) {
-      const after = rest.slice(name.length);
+    // 15 Nov 2026: "Why Bully 2's canceled plans..." became "Bully: Why It 2's canceled plans": a name followed by a
+    // sequel number or a part of a longer name is another game, never reworded.
+    const after0 = name ? rest.slice(name.length) : "";
+    if (name && !/^\s*(?:\d|[IVX]+|:|-)/.test(after0) && /^(?:['’]s\s|\s)/.test(after0)) {
+      const after = after0;
       const lead = names.includes(name) ? shortName : name;
       const word = why[1]![0]!.toUpperCase() + why[1]!.slice(1).toLowerCase();
+      // The pronoun takes the title's own casing: "Why Its Radio Keeps..." in Title Case, "why its radio keeps..."
+      // in sentence case (15 Nov 2026: "GTA 6: Why Its radio keeps playing" went out).
+      const nextWord = after.replace(/^['’]s\s/i, "").trim();
+      const titleCase = /^\p{Lu}/u.test(nextWord);
+      const it = titleCase ? "It" : "it";
       const pronoun = /^['’]s\s/i.test(after)
-        ? `Its ${after.slice(3)}`
-        : `It${after}`;
+        ? `${it}s ${after.slice(3)}`
+        : `${it}${after}`;
       const out = `${lead}: ${word} ${pronoun}`.replace(/\s+/g, " ").trim();
       if (out.length <= max) return out;
     }

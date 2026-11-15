@@ -1048,6 +1048,9 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       if (url.searchParams.get("fresh") === "1") {
         delete assets.images;
         delete assets.clips;
+        // The stored Steam match names the game the gather searches for; a wrong one ("Bully Beatdown") would be
+        // found again, so it is looked up afresh from the script's game.
+        delete assets.steam;
       }
       await db.query(
         `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, assets_json = $2 WHERE id = $1`,

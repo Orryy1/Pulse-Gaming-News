@@ -322,3 +322,5 @@ Five GTA 6 news Shorts in a row were held on 15 Nov (03:04, 05:04, 07:04, 13:24 
 ## 39. The narration check re-voices "rumored" read as "rumoured" (found 15 Nov)
 
 ep_20261115_db8356b3 was voiced twice because the check flagged "rumored" heard as "rumoured" and "lineup" as "line -up". These sound the same; treat US/UK spelling pairs and hyphen splits as matches so voice credits are not spent on retakes.
+
+Update 15 Nov 18:30 UK (hourly watch): the Mac library now holds 11 GTA 6 videos (fetched 16:48), but the 17:43-17:46 retries still held at 0% footage because `libraryHasFootage` and the Short picker only use scenes that have been vision-tagged ("seen"). The PC job "game library: vision-tag GTA VI + GTA V" is running and should finish about 19:18 UK. After it lands, retry the five held episodes once. YouTube block still in place at 18:25 UK (yt-dlp bot check).

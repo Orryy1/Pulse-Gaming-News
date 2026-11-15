@@ -63,7 +63,8 @@ export function streamTitle(o: {
   part?: number;
 }): string {
   const short = /grand theft auto vi\b/i.test(o.game) ? "GTA 6" : o.game;
-  const plan = o.plan ? tidy(o.plan) : "First Playthrough";
+  // "First Playthrough" is only true of a new game (GTA VI from launch); older games he replays get a neutral line (15 Nov 2026).
+  const plan = o.plan ? tidy(o.plan) : short === "GTA 6" ? "First Playthrough" : "Live Gameplay";
   const part = o.part && o.part > 1 ? ` (part ${o.part})` : "";
   return `${`${short} LIVE Day ${o.day}: ${plan}`.slice(0, 99 - part.length)}${part}`;
 }

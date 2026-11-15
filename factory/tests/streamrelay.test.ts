@@ -606,3 +606,9 @@ test("relay: CHALLENGE_SERIES off leaves the registry alone", async () => {
   await r.job.tick();
   assert.equal(readRegistry(r.dir).challenges.length, 0);
 });
+
+test("an older game's stream is never called a first playthrough", async () => {
+  const { streamTitle } = await import("../src/liveclips/simulcast.ts");
+  assert.equal(streamTitle({ game: "Grand Theft Auto V", day: 2 }), "Grand Theft Auto V LIVE Day 2: Live Gameplay");
+  assert.equal(streamTitle({ game: "Grand Theft Auto VI", day: 1 }), "GTA 6 LIVE Day 1: First Playthrough");
+});

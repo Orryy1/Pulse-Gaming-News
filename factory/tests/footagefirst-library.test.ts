@@ -651,3 +651,32 @@ test("library paths are stored with forward slashes on every machine, so a PC-bu
     await fsp.rm(root, { recursive: true, force: true });
   }
 });
+
+test("a 4K library still is copied into a Short at 1920 pixels across, small enough for the picture checks", async () => {
+  const { materialise, libraryDir } = await import("../src/assets/gamelib.ts");
+  const { FFMPEG, FFPROBE } = await import("../src/lib/bin.ts");
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+  const os = await import("node:os");
+  const fsp = await import("node:fs/promises");
+  const path = await import("node:path");
+  const root = await fsp.mkdtemp(path.join(os.tmpdir(), "lib-"));
+  const ep = await fsp.mkdtemp(path.join(os.tmpdir(), "ep-"));
+  const prev = process.env.GAMELIB_REMOTE;
+  delete process.env.GAMELIB_REMOTE;
+  try {
+    const dir = libraryDir(root, "Grand Theft Auto VI");
+    await fsp.mkdir(path.join(dir, "stills"), { recursive: true });
+    await exec(FFMPEG, ["-y", "-v", "error", "-f", "lavfi", "-i", "color=c=0x406080:s=3840x2160", "-frames:v", "1", "-c:v", "mjpeg", "-f", "image2", path.join(dir, "stills", "big.zip")]);
+    const item = { id: "big", kind: "still" as const, file: "stills/big.zip", sourceUrl: "x", provenance: "x", source: "Rockstar Games", named: [], tags: [], seen: "", addedAt: "" };
+    const made = await materialise(root, { key: "beat:0", sentence: "x", game: "Grand Theft Auto VI", item, score: 1 }, ep);
+    assert.ok(made && made.file.endsWith(".jpg"));
+    const { stdout } = await exec(FFPROBE, ["-v", "error", "-show_entries", "stream=width", "-of", "csv=p=0", path.join(ep, made!.file)]);
+    assert.equal(Number(String(stdout).trim()), 1920);
+  } finally {
+    if (prev !== undefined) process.env.GAMELIB_REMOTE = prev;
+    await fsp.rm(root, { recursive: true, force: true });
+    await fsp.rm(ep, { recursive: true, force: true });
+  }
+});

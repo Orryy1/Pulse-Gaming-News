@@ -260,7 +260,8 @@ seen: what the picture shows, in under 15 words.
 lettering: true when large words, a title, a logo, a rating card or a caption cover much of the picture (a small HUD or street signs are fine).
 webcam: true when a streamer's webcam, chat or overlay is on top of the game.
 hardware: true when the main subject is a real-world product rather than the game world: a controller, console, handheld, game box, special edition, figure or merchandise.
-${SUGGESTIVE_RULE}`;
+${SUGGESTIVE_RULE}
+Answer with the JSON object only, briefly.`;
 }
 
 /** The tagger's answer as tags (pure): unknown words dropped, a reason when the picture must never be used. */
@@ -332,7 +333,7 @@ export async function tagPicture(
           ],
         },
         keep_alive: "60s",
-        options: { temperature: 0, num_predict: 1100, num_ctx: 8192 },
+        options: { temperature: 0, num_predict: 2600, num_ctx: 8192 },
         messages: [
           { role: "user", content: tagPrompt(game, named), images: [image] },
         ],
@@ -345,6 +346,7 @@ export async function tagPicture(
       `vision ${res.status}: ${(await res.text()).slice(0, 160)}`,
     );
   const body = (await res.json()) as { message?: { content?: string; thinking?: string } };
+  if (body.message?.content?.includes("</think>")) body.message.content = body.message.content.split("</think>").pop()!.trim();
   const tags = tagsFromAnswer(visionAnswer(body as never));
   if (!tags) throw new Error(`vision answer not readable: ${(body.message?.content || body.message?.thinking || "").slice(0, 160)}`);
   return tags;

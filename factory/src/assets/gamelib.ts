@@ -297,7 +297,12 @@ export async function tagPicture(
   game: string,
   named: string[],
 ): Promise<PictureTags | undefined> {
-  const image = (await fs.readFile(file)).toString("base64");
+  // A 4K press still is far more than the model's context holds (8,593 tokens against 8,192 on 15 Nov 2026): it is
+  // looked at as a 768-pixel copy, plenty to say what it shows.
+  const small = `${file}.tag.jpg`;
+  await exec(FFMPEG, ["-y", "-v", "error", "-i", file, "-frames:v", "1", "-vf", "scale='min(768,iw)':-2", "-q:v", "4", small]).catch(() => undefined);
+  const image = (await fs.readFile(small).catch(() => fs.readFile(file))).toString("base64");
+  await fs.rm(small, { force: true }).catch(() => undefined);
   const res = await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/chat`,
     {

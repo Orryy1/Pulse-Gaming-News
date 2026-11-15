@@ -306,3 +306,11 @@ On 14 Nov it conflicted with stage in src/pipeline.ts, src/render/GameplayShort.
 ## 35. liveclips/recorder.ts measure() reads 48 kHz VODs about 6x too fast (found 14 Nov by the funny build)
 
 Loudness readings from the live-clip recorder are wrong. That hurts live-clip and funny-moment detection. Fix it with a test before 19 Nov.
+
+## 36. Depth layers on Shorts' stills: 50/50 test running (improvement engine, 15 Nov)
+
+In progress, owned by the improvement engine. `SHORT_PARALLAX_SHARE=0.5` on the Mac since 15 Nov 15:31. Judge on 29 Nov or at 20 Shorts per arm: average viewed share and the still-picture exit ratio, "depth" against "flat" (`assets.shortDepthArm`). Details in `Pulse improvement log.md`. Don't change Shorts' still-picture motion until it is judged.
+
+## 37. The social scoreboard counts the channel's own Facebook comments (found 15 Nov)
+
+The Sunday report said "Facebook: 37 comments, 0 answered". All of those are the channel's own "Full story and sources" link comments. Exclude the page's own comments from the count and the "answered" share, so the report shows real viewer comments only. Small fix in the social scoreboard; no posting change.

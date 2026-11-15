@@ -240,3 +240,17 @@ test("a wrong number in a possessive is still a fault", () => {
     false,
   );
 });
+
+test("US and UK spellings of one word are the same word to the narration check", async () => {
+  const { usUk } = await import("../src/qa/narration.ts");
+  for (const [a, b] of [
+    ["rumored", "rumoured"],
+    ["realize", "realise"],
+    ["center", "centre"],
+    ["traveled", "travelled"],
+    ["favorite", "favourite"],
+    ["analyze", "analyse"],
+  ])
+    assert.equal(usUk(a), usUk(b), `${a}/${b}`);
+  assert.notEqual(usUk("rumored"), usUk("rumor"));
+});

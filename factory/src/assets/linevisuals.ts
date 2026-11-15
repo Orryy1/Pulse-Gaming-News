@@ -209,21 +209,20 @@ export async function mapScaleGraphic(
 ): Promise<boolean> {
   const font = systemFont();
   if (!font) return false;
-  const W = 1920,
-    H = 1080;
-  const smallSide = 300;
+  // Square, so a vertical Short shows it whole in its framed panel (a 16:9 picture is cropped to its middle).
+  const W = 1080, H = 1080;
+  const smallSide = 220;
   const bigSide = Math.round(smallSide * Math.sqrt(o.factor));
-  const base = 760;
-  const x1 = 520 - smallSide / 2,
-    x2 = 1240 - bigSide / 2;
+  const base = 700;
+  const x1 = 300 - smallSide / 2, x2 = 760 - bigSide / 2;
   const f = font.replace(/:/g, "\\:");
   const draw = [
     `drawbox=x=${x1}:y=${base - smallSide}:w=${smallSide}:h=${smallSide}:color=0x9aa4b2@0.95:t=fill`,
     `drawbox=x=${x2}:y=${base - bigSide}:w=${bigSide}:h=${bigSide}:color=0xff6b1a@0.95:t=fill`,
     `drawtext=fontfile='${f}':text='${ffText(o.small)}':x=${x1 + smallSide / 2}-tw/2:y=${base + 30}:fontsize=54:fontcolor=white`,
     `drawtext=fontfile='${f}':text='${ffText(o.big)}':x=${x2 + bigSide / 2}-tw/2:y=${base + 30}:fontsize=54:fontcolor=white`,
-    `drawtext=fontfile='${f}':text='MAP AREA TO SCALE':x=(w-tw)/2:y=90:fontsize=64:fontcolor=white`,
-    `drawtext=fontfile='${f}':text='${ffText(`About ${o.factor}x the area, per ${o.source}`)}':x=(w-tw)/2:y=${base + 120}:fontsize=40:fontcolor=0xc8ccd4`,
+    `drawtext=fontfile='${f}':text='MAP AREA TO SCALE':x=(w-tw)/2:y=110:fontsize=64:fontcolor=white`,
+    `drawtext=fontfile='${f}':text='${ffText(`About ${o.factor}x the area, per ${o.source}`)}':x=(w-tw)/2:y=${base + 120}:fontsize=38:fontcolor=0xc8ccd4`,
   ].join(",");
   try {
     await exec(

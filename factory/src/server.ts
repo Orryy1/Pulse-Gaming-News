@@ -1078,7 +1078,10 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const was = ep.script_json.youtube.title;
       let youtube = "not uploaded";
       if (ep.youtube_video_id) {
-        await services.youtube().retitle(ep.youtube_video_id, was, title);
+        // The upload step may restyle the title (Title Case), so the live title can differ from the stored one;
+        // expected= names the live title outright.
+        const expected = (url.searchParams.get("expected") ?? "").trim() || was;
+        await services.youtube().retitle(ep.youtube_video_id, expected, title);
         youtube = "retitled";
       }
       const script = { ...ep.script_json, youtube: { ...ep.script_json.youtube, title } };

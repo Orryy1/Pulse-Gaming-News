@@ -717,8 +717,11 @@ export async function materialise(
   episodeDir: string,
   maxSeconds = 4.2,
 ): Promise<{ file: string; durationSeconds?: number } | undefined> {
-  const dir = libraryDir(root, pick.game);
-  const src = path.isAbsolute(pick.item.file) ? pick.item.file : path.join(dir, pick.item.file);
+  // The Mac's cache, else only this segment from the PC's master library (src/assets/gamelibstore.ts), else nothing.
+  const { sourceOf, storeSettings } = await import("./gamelibstore.ts");
+  const from = await sourceOf(root, pick.game, pick.item.file, storeSettings());
+  if (!from) return undefined;
+  const src = from.local ?? from.url!;
   await fs.mkdir(path.join(episodeDir, "assets"), { recursive: true });
   try {
     if (!pick.scene) {
@@ -726,7 +729,12 @@ export async function materialise(
         "assets",
         `lib_${pick.item.id}${path.extname(pick.item.file) || ".jpg"}`,
       );
-      await fs.copyFile(src, path.join(episodeDir, file));
+      if (from.local) await fs.copyFile(src, path.join(episodeDir, file));
+      else {
+        const res = await fetchWithTimeout(src, {}, 30_000);
+        if (!res.ok) return undefined;
+        await fs.writeFile(path.join(episodeDir, file), Buffer.from(await res.arrayBuffer()));
+      }
       return { file };
     }
     const seconds = Math.min(maxSeconds, pick.scene.end - pick.scene.at);
@@ -759,7 +767,7 @@ export async function materialise(
         "yuv420p",
         path.join(episodeDir, file),
       ],
-      { maxBuffer: 8 * 1024 * 1024, timeout: 120_000 },
+      { maxBuffer: 8 * 1024 * 1024, timeout: from.url ? 60_000 : 120_000 },
     );
     return { file, durationSeconds: Math.max(0, seconds - 0.05) };
   } catch (err) {

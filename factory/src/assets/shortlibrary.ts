@@ -30,6 +30,7 @@ import {
   type LibItem,
   type LibPick,
 } from "./gamelib.ts";
+import { readableLibrary, storeSettings } from "./gamelibstore.ts";
 import {
   comparedGames,
   hardwareStory,
@@ -100,12 +101,12 @@ export async function libraryWithIndexes(
     if (item) items.push(item);
   }
   if (!items.length) return undefined;
-  return {
-    version: 1,
-    game: canonicalGame(game),
-    items,
-    updatedAt: lib?.updatedAt ?? "",
-  };
+  // Only what can be read now: the Mac's cache, or the PC's master copy while the PC answers (gamelibstore.ts).
+  return readableLibrary(
+    libraryRoot(dataDir),
+    { version: 1, game: canonicalGame(game), items, updatedAt: lib?.updatedAt ?? "" },
+    storeSettings(),
+  );
 }
 
 export interface ShortLibraryMedia {

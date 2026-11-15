@@ -28,9 +28,13 @@ export function vodDirectory(
   env: NodeJS.ProcessEnv = process.env,
   canWrite: (dir: string) => boolean = writableDir,
 ): string {
+  // Opt-in only: probing /Volumes from the launchd factory made macOS hold the process on a removable-volume
+  // permission prompt, and the factory never finished starting (15 Nov 2026, 17:31). VOD_DIR=usb uses the drive
+  // once node has that permission; any other value names the folder.
   const set = env.VOD_DIR?.trim();
-  if (set) return set;
-  return canWrite(USB_VOD_DIR) ? USB_VOD_DIR : HOME_VOD_DIR;
+  if (!set) return HOME_VOD_DIR;
+  if (set === "usb") return canWrite(USB_VOD_DIR) ? USB_VOD_DIR : HOME_VOD_DIR;
+  return set;
 }
 
 /** Every folder recordings may sit in, newest home first, so readers find files from before and after the move. */

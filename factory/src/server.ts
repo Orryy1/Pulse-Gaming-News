@@ -174,7 +174,11 @@ import {
   subsLearnDue,
 } from "./subslearn/learn.ts";
 import { graphicsDigest } from "./gfxauditstep.ts";
-import { readUnknown, unknownDigestLine, unknownFile } from "./voice/pronounce.ts";
+import {
+  readUnknown,
+  unknownDigestLine,
+  unknownFile,
+} from "./voice/pronounce.ts";
 import {
   alertDigestDue,
   markAlertDigestSent,
@@ -274,7 +278,10 @@ export function createApp(
         url.pathname === `/asks/${asksKey(cfg.appSecret)}.md`)
     ) {
       const md = url.pathname.endsWith(".md");
-      const file = path.join(asksDir(cfg.dataDir), md ? "asks.md" : "asks.html");
+      const file = path.join(
+        asksDir(cfg.dataDir),
+        md ? "asks.md" : "asks.html",
+      );
       const body = fs.existsSync(file)
         ? fs.readFileSync(file, "utf8")
         : md
@@ -282,7 +289,9 @@ export function createApp(
           : "<p>No list yet.</p>";
       res
         .writeHead(200, {
-          "content-type": md ? "text/markdown; charset=utf-8" : "text/html; charset=utf-8",
+          "content-type": md
+            ? "text/markdown; charset=utf-8"
+            : "text/html; charset=utf-8",
           "x-robots-tag": "noindex, nofollow",
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
@@ -305,7 +314,11 @@ export function createApp(
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
         })
-        .end(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "<p>No harvest yet.</p>");
+        .end(
+          fs.existsSync(file)
+            ? fs.readFileSync(file, "utf8")
+            : "<p>No harvest yet.</p>",
+        );
       return;
     }
 
@@ -521,18 +534,37 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       let note = "";
       if (start) {
         const r = editRegistry(cfg.dataDir, (reg) =>
-          startByHand(reg, start, url.searchParams.get("game") || "Grand Theft Auto VI", now, localDay(now, cfg.timezone)),
+          startByHand(
+            reg,
+            start,
+            url.searchParams.get("game") || "Grand Theft Auto VI",
+            now,
+            localDay(now, cfg.timezone),
+          ),
         );
-        note = r.challenge ? `started: ${challengeSeriesTitle(r.challenge.rule, r.challenge.game)}` : "not a rule";
+        note = r.challenge
+          ? `started: ${challengeSeriesTitle(r.challenge.rule, r.challenge.game)}`
+          : "not a rule";
       } else if (end) {
         const o = url.searchParams.get("outcome");
-        const outcome: ChallengeOutcome = o === "made" ? "made it" : o === "failed" ? "failed" : "unknown";
-        const r = editRegistry(cfg.dataDir, (reg) => endByHand(reg, end, outcome, now));
-        note = r.challenge ? `ended: ${r.challenge.rule} (${outcome})` : "no such challenge";
+        const outcome: ChallengeOutcome =
+          o === "made" ? "made it" : o === "failed" ? "failed" : "unknown";
+        const r = editRegistry(cfg.dataDir, (reg) =>
+          endByHand(reg, end, outcome, now),
+        );
+        note = r.challenge
+          ? `ended: ${r.challenge.rule} (${outcome})`
+          : "no such challenge";
       }
       res
         .writeHead(200, { "content-type": "application/json" })
-        .end(JSON.stringify({ note, on: cfg.challenge.enabled, ...readRegistry(cfg.dataDir) }, null, 2));
+        .end(
+          JSON.stringify(
+            { note, on: cfg.challenge.enabled, ...readRegistry(cfg.dataDir) },
+            null,
+            2,
+          ),
+        );
       return;
     }
     // The publishing hold (admin key): ?set=on stops every upload, cross-post, reply and post until ?set=off.
@@ -895,7 +927,12 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
             platforms: Object.fromEntries(
               Object.entries(out.json.platforms).map(([k, v]) => [
                 k,
-                { read: v.read, posts: v.posts, views: v.views, source: v.source },
+                {
+                  read: v.read,
+                  posts: v.posts,
+                  views: v.views,
+                  source: v.source,
+                },
               ]),
             ),
             changes: out.json.changes,
@@ -985,6 +1022,33 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           .writeHead(400, { "content-type": "application/json" })
           .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
       }
+      return;
+    }
+    // Retry: a voiced episode that failed on a fault since fixed (15 Nov 2026: four Shorts lost to a render
+    // bundle missing music beds) goes back to "voiced" with fresh attempts, keeping its script and voice.
+    if (url.pathname === "/admin/retry" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {
+        res.writeHead(400, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            ok: false,
+            error:
+              "only a failed episode that was already voiced can be retried",
+          }),
+        );
+        return;
+      }
+      await db.query(
+        `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL WHERE id = $1`,
+        [ep.id],
+      );
+      await logEvent(db, ep.id, "retried", {
+        after: ep.last_error ?? "",
+      }).catch(() => undefined);
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ ok: true, id: ep.id }));
       return;
     }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
@@ -1817,11 +1881,17 @@ async function main(): Promise<void> {
   const services = createServices(db, cfg);
   // SUBS_LEARN (src/subslearn): the slots it moved, back into the running config before the first tick.
   const slotsNow = await restoreSubsLearn(db, cfg).catch((err) => {
-    log("warn", "subscriber learning restore failed", { error: errorMessage(err) });
+    log("warn", "subscriber learning restore failed", {
+      error: errorMessage(err),
+    });
     return undefined;
   });
   if (cfg.subsLearn.enabled && slotsNow)
-    log("info", "subscriber learning slots", { news: slotsNow.news, why: slotsNow.why, apply: cfg.subsLearn.apply });
+    log("info", "subscriber learning slots", {
+      news: slotsNow.news,
+      why: slotsNow.why,
+      apply: cfg.subsLearn.apply,
+    });
   const state: {
     lastTick?: string;
     lastLongTick?: string;
@@ -1909,7 +1979,9 @@ async function main(): Promise<void> {
             await db.query<{ game: string | null; at: string | Date }>(
               `SELECT COALESCE(NULLIF(script_json->>'game_title', ''), story_json->>'gameHint') AS game, created_at AS at FROM episodes WHERE created_at > now() - interval '7 days'`,
             )
-          ).flatMap((r) => (r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [])),
+          ).flatMap((r) =>
+            r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [],
+          ),
       });
     footagePass();
     setInterval(footagePass, 30 * 60_000);
@@ -1934,12 +2006,20 @@ async function main(): Promise<void> {
       void archiveTick(cfg, {
         coverage: async () =>
           (
-            await db.query<{ game: string | null; n: number | string; views: number | string | null }>(
+            await db.query<{
+              game: string | null;
+              n: number | string;
+              views: number | string | null;
+            }>(
               `SELECT COALESCE(NULLIF(e.script_json->>'game_title', ''), e.story_json->>'gameHint') AS game, count(*) AS n, COALESCE(sum(m.v), 0) AS views
                  FROM episodes e LEFT JOIN (SELECT episode_id, max(views) AS v FROM video_metrics GROUP BY episode_id) m ON m.episode_id = e.id
                 WHERE e.lane <> 'twin' GROUP BY 1`,
             )
-          ).flatMap((r) => (r.game ? [{ game: r.game, n: Number(r.n), views: Number(r.views ?? 0) }] : [])),
+          ).flatMap((r) =>
+            r.game
+              ? [{ game: r.game, n: Number(r.n), views: Number(r.views ?? 0) }]
+              : [],
+          ),
       });
     setTimeout(archivePass, 7 * 60_000);
     setInterval(archivePass, 10 * 60_000);
@@ -1953,7 +2033,9 @@ async function main(): Promise<void> {
         // Comments under the big videos: the factory's own login when YOUTUBE_API_KEY is unset or expired.
         youtubeToken: () => accessToken(db, oauthConfig(cfg)),
         onQuota: (kind, n) =>
-          kind === "search" ? quotaCall(db, new Date(), "search") : quotaAdd(db, new Date(), n),
+          kind === "search"
+            ? quotaCall(db, new Date(), "search")
+            : quotaAdd(db, new Date(), n),
       });
     setTimeout(asksPass, 3 * 60_000);
     setInterval(asksPass, 15 * 60_000);
@@ -1983,7 +2065,12 @@ async function main(): Promise<void> {
   // the ranked ideas report written, every three hours.
   if (cfg.challenge.enabled) {
     const challengePass = () =>
-      void challengeHousekeeping(cfg, db, (m) => services.notify(m), new Date()).catch((err) =>
+      void challengeHousekeeping(
+        cfg,
+        db,
+        (m) => services.notify(m),
+        new Date(),
+      ).catch((err) =>
         log("warn", "challenge pass failed", { error: errorMessage(err) }),
       );
     setTimeout(challengePass, 9 * 60_000);
@@ -2223,7 +2310,9 @@ async function main(): Promise<void> {
         headroom: () => quotaHeadroom(db, cfg, new Date()),
         now: new Date(),
       }).catch((err) =>
-        log("warn", "reply Short pointers failed", { error: errorMessage(err) }),
+        log("warn", "reply Short pointers failed", {
+          error: errorMessage(err),
+        }),
       );
     setInterval(() => void point(), 10 * 60_000);
   }
@@ -2435,22 +2524,32 @@ async function main(): Promise<void> {
           visionDown: services.visionDown,
           now,
         });
-        const [row] = await db.query<{ value: string }>(`SELECT value FROM settings WHERE key = 'forecast_sent'`);
+        const [row] = await db.query<{ value: string }>(
+          `SELECT value FROM settings WHERE key = 'forecast_sent'`,
+        );
         let sent: Record<string, string> = {};
         try {
           sent = row ? (JSON.parse(row.value) as Record<string, string>) : {};
         } catch {
           sent = {};
         }
-        const out = forecastAlert(forecasts, sent, now.toISOString().slice(0, 10));
+        const out = forecastAlert(
+          forecasts,
+          sent,
+          now.toISOString().slice(0, 10),
+        );
         await db.query(
           `INSERT INTO settings (key, value, updated_at) VALUES ('forecast_sent', $1, now())
            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
           [JSON.stringify(out.sent)],
         );
         if (out.text) await services.notify({ content: out.text });
-        log("info", "forecast", { levels: forecasts.map((f) => `${f.id}:${f.level}`) });
-      })().catch((err) => log("warn", "forecast failed", { error: errorMessage(err) }));
+        log("info", "forecast", {
+          levels: forecasts.map((f) => `${f.id}:${f.level}`),
+        });
+      })().catch((err) =>
+        log("warn", "forecast failed", { error: errorMessage(err) }),
+      );
     setTimeout(forecast, 10 * 60_000);
     setInterval(forecast, 3 * 3600_000);
   }
@@ -2468,13 +2567,17 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
-      await sendMissReport(db, cfg, new Date(), (m) => services.notify(m)).catch(
-        (err) =>
-          log("error", "big story report failed", { error: errorMessage(err) }),
+      await sendMissReport(db, cfg, new Date(), (m) =>
+        services.notify(m),
+      ).catch((err) =>
+        log("error", "big story report failed", { error: errorMessage(err) }),
       );
-      await creditForecastAlert(cfg, new Date(), db, (m) => services.notify(m)).catch(
-        (err) =>
-          log("error", "Claude credit forecast failed", { error: errorMessage(err) }),
+      await creditForecastAlert(cfg, new Date(), db, (m) =>
+        services.notify(m),
+      ).catch((err) =>
+        log("error", "Claude credit forecast failed", {
+          error: errorMessage(err),
+        }),
       );
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),
@@ -2531,7 +2634,12 @@ async function main(): Promise<void> {
         report: yt ? (start, end) => yt.channelReport(start, end) : undefined,
         notify: (m) => services.notify(m),
       });
-      log("info", "subscriber learning ran", { week: key, source: out.windows.source, decision: out.decision.kind, applied: out.applied });
+      log("info", "subscriber learning ran", {
+        week: key,
+        source: out.windows.source,
+        decision: out.decision.kind,
+        applied: out.applied,
+      });
     })().catch((err) =>
       log("error", "subscriber learning failed", { error: errorMessage(err) }),
     );
@@ -2545,8 +2653,10 @@ async function main(): Promise<void> {
       const study = await retentionStudy(db, cfg, new Date(), segmentInputs);
       // GROWTH_REPORT_SPLIT: the whole report over as many messages as it needs, in order; else one, cut at 3,900.
       if (cfg.growthReportSplit)
-        for (const m of await growthReportMessages(db, cfg, new Date(), study)) await services.notify(m);
-      else await services.notify(await growthReport(db, cfg, new Date(), study));
+        for (const m of await growthReportMessages(db, cfg, new Date(), study))
+          await services.notify(m);
+      else
+        await services.notify(await growthReport(db, cfg, new Date(), study));
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),
@@ -2559,7 +2669,9 @@ async function main(): Promise<void> {
       dailyTarget: cfg.dailyTarget,
     })
       .then((content) => (content ? services.notify({ content }) : undefined))
-      .catch((err) => log("warn", "output watch failed", { error: errorMessage(err) }));
+      .catch((err) =>
+        log("warn", "output watch failed", { error: errorMessage(err) }),
+      );
   }, 15 * 60_000);
   // Each morning from 09:00 local: what the alerts have been saying (ALERT_DIGEST). The page is written every day; the
   // channel hears about it only when a kind of alert is new or rising.
@@ -2569,9 +2681,13 @@ async function main(): Promise<void> {
       if (!key) return;
       await markAlertDigestSent(db, key);
       // The graphics audit's day (GRAPHICS_AUDIT, src/gfxauditstep.ts): one line, when it ran.
-      const gfxLine = await graphicsDigest(db, new Date()).catch(() => undefined);
+      const gfxLine = await graphicsDigest(db, new Date()).catch(
+        () => undefined,
+      );
       // Abbreviations the voice spelled out that the pronunciation tables do not know yet (src/voice/pronounce.ts).
-      const sayLine = unknownDigestLine(await readUnknown(unknownFile(cfg.dataDir)));
+      const sayLine = unknownDigestLine(
+        await readUnknown(unknownFile(cfg.dataDir)),
+      );
       const extra = [gfxLine, sayLine].filter((x): x is string => Boolean(x));
       const post = await writeAlertDigest(cfg, new Date(), extra);
       if (post) await services.notify(post);
@@ -2580,10 +2696,11 @@ async function main(): Promise<void> {
         const problems = await socialProblems(db, new Date());
         if (problems.length)
           await services.notify({
-            content: `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
-              0,
-              1900,
-            ),
+            content:
+              `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
+                0,
+                1900,
+              ),
           });
       }
       log("info", "alert digest written", { day: key, posted: Boolean(post) });

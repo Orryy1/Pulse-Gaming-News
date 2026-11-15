@@ -563,6 +563,7 @@ export function testConfig(
     hookTakes: 0,
     hookTargetWpm: 175,
     parallax: false,
+    shortParallaxShare: 0,
     annotate: false,
     realPhotosPinnedOnly: true,
     stockThemeMax: 2,

@@ -110,7 +110,7 @@ import {
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
-import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
+import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
 import { appleCut, smartCrop } from "./assets/applevision.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
@@ -13340,6 +13340,28 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         const crop = await smartCrop(path.join(dir, c.file));
         if (crop) c.crop = crop;
       }
+  // SHORT_PARALLAX: the wide stills get depth layers too, once per Short (kept in assets), so they drift like
+  // footage; viewers left 1.3 times as fast while a flat still was up (Sunday retention curves, 15 Nov).
+  // A share of Shorts while it is tested (SHORT_PARALLAX_SHARE); the arm is kept so retention can be split by it.
+  const depthArm = shortDepthArm(ep.id, s.cfg.shortParallaxShare);
+  if (s.cfg.shortParallaxShare > 0) assets.shortDepthArm = depthArm;
+  if (depthArm === "depth" && s.cfg.parallaxPython && assets.images?.length) {
+    const want = shortDepthWanted(
+      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) })),
+    );
+    if (want.length) {
+      const made = await makeParallax(
+        s.cfg.parallaxPython,
+        dir,
+        want.map((i) => i.file),
+      );
+      for (const i of assets.images) {
+        const l = made.get(i.file.split(path.sep).join("/"));
+        if (l) i.layers = l;
+      }
+      log("info", "short depth layers", { ep: ep.id, wanted: want.length, made: made.size });
+    }
+  }
   if (
     assets.suite &&
     !assets.heroCut &&
@@ -13515,6 +13537,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         credit: photoCredit(i),
         focusX: i.focusX,
         ...(isHardwareAsset(i) ? { noCollage: true } : {}),
+        // SHORT_PARALLAX: the depth layers made above; the long render's layers ride along only when it is on.
+        ...(depthArm === "depth" && i.layers
+          ? { layers: { bg: i.layers.bg, mid: i.layers.mid, fg: i.layers.fg } }
+          : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,

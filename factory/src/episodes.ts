@@ -105,6 +105,7 @@ export interface EpisodeAssets {
   shortThumb?: string;
   /** Which side of the Shorts thumbnail test this Short is on (src/shortthumb.ts); unset when no test ran. */
   shortThumbArm?: string;
+  shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */

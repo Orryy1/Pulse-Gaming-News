@@ -631,6 +631,7 @@ export interface RenderInput {
       credit?: string;
       focusX?: number;
       noCollage?: boolean;
+      layers?: { bg: string; mid: string; fg: string };
     }>;
     clipFiles: Array<{
       file: string;
@@ -1129,6 +1130,15 @@ export async function renderShort(input: RenderInput): Promise<void> {
         credit: i.credit,
         focusX: i.focusX,
         ...(i.noCollage ? { noCollage: true } : {}),
+        ...(i.layers
+          ? {
+              layers: {
+                bg: `${files.url}/${webPath(i.layers.bg)}`,
+                mid: `${files.url}/${webPath(i.layers.mid)}`,
+                fg: `${files.url}/${webPath(i.layers.fg)}`,
+              },
+            }
+          : {}),
       })),
       clips: clipFiles.map((c) => ({
         src: `${files.url}/${webPath(c.file)}`,

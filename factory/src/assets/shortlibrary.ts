@@ -332,6 +332,9 @@ export async function shortLibraryMedia(o: {
           source,
         })
       ) {
+        // Nothing else from the library competes for these words: the line shows the comparison.
+        out.clips = out.clips.filter((c) => c.forWords !== w.sentence);
+        out.images = out.images.filter((i) => i.forWords !== w.sentence);
         out.images.push({
           kind: "screenshot",
           file,

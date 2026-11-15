@@ -680,3 +680,25 @@ test("a 4K library still is copied into a Short at 1920 pixels across, small eno
     await fsp.rm(ep, { recursive: true, force: true });
   }
 });
+
+test("a comparison line's footage of the other game never opens the Short", async () => {
+  const { openingCandidates, clipOfOtherGame } = await import("../src/openingstep.ts");
+  const own = { provenance: "Pulse's own gameplay capture of Grand Theft Auto V (stream.mp4), 6.0s at 1861s", durationSeconds: 4.2, motion: 0.9 };
+  const six = { provenance: 'Official trailer "Trailer 1" from Rockstar Games\'s own site, publisher: Rockstar Games', durationSeconds: 3, motion: 0.5 };
+  assert.equal(clipOfOtherGame(own, "Grand Theft Auto VI"), true);
+  assert.equal(clipOfOtherGame(six, "Grand Theft Auto VI"), false);
+  assert.equal(clipOfOtherGame(own, "Grand Theft Auto V"), false);
+  assert.deepEqual(openingCandidates([own, six] as never, { game: "Grand Theft Auto VI", entries: 0 } as never), [1]);
+});
+
+test("a picture chosen for a sentence plays over a cut inside that sentence, even when the sentence spans several cuts", async () => {
+  const { pictureForWords } = await import("../src/render/plan.ts");
+  const sentence = "Edge puts it at roughly 2 times GTA 5's size.";
+  const words = sentence.split(" ").map((text, i) => ({ text, start: i * 0.3, end: i * 0.3 + 0.25 }));
+  const images = [{ kind: "screenshot", aspect: 1, forWords: sentence }];
+  // A cut over the first four words only: a third of the sentence, all of it from the sentence.
+  assert.equal(pictureForWords(images as never, words, { start: 0, end: 36 }, [0]), 0);
+  // A cut over other words: nothing.
+  const other = "Believable streets are worth giving up space.".split(" ").map((text, i) => ({ text, start: 10 + i * 0.3, end: 10 + i * 0.3 + 0.25 }));
+  assert.equal(pictureForWords(images as never, [...words, ...other], { start: 300, end: 390 }, [0]), undefined);
+});

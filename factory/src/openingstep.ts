@@ -74,6 +74,7 @@ export function openerProblem(l: OpeningLook | undefined): string | undefined {
 }
 
 const OWN = /^Pulse's own gameplay capture/;
+import { comparedGames, namesGame } from "./assets/linevisuals.ts";
 const CUTSCENE = /^Cutscenes for "/;
 const PLAYTHROUGH = /^Gameplay "/;
 const NOT_FOOTAGE = /^Portrait of |shown on (?:the )?hardware|not footage/i;
@@ -86,6 +87,12 @@ const norm = (s: string) =>
     .trim();
 
 /** True when the clip's provenance names the game (its distinctive words, at least two of them or all there are). */
+/** A clip that names another numbered game of the same series and not this one ("Grand Theft Auto V" in a GTA VI Short). */
+export function clipOfOtherGame(clip: Pick<Clip, "provenance" | "label">, game: string): boolean {
+  const hay = `${clip.provenance} ${clip.label ?? ""}`;
+  return !namesGame(hay, game) && comparedGames({ game_title: game, hook: hay, beats: [] }).length > 0;
+}
+
 export function clipOfGame(
   clip: Pick<Clip, "provenance" | "label">,
   game: string,
@@ -138,6 +145,8 @@ export function openingCandidates(
         !NOT_FOOTAGE.test(c.provenance),
     )
     .filter(({ c }) => winner === undefined || c.beatIndex !== winner)
+    // A clip of another game of the series (a comparison line's footage) never opens the Short.
+    .filter(({ c }) => !o.game || !clipOfOtherGame(c, o.game))
     .filter(
       ({ c }) =>
         !(

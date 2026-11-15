@@ -7,6 +7,8 @@
 //   node --import tsx src/tools/gamelib.ts tag "<game>" [--limit=N]   tag stills and scenes on the free local model
 //   node --import tsx src/tools/gamelib.ts stats "<game>"
 //   node --import tsx src/tools/gamelib.ts pick "<game>" "<sentence>" [--keywords=a,b]   what a line would get
+//   node --import tsx src/tools/gamelib.ts merge-library "<game>" <from library root> <to library root>   merge a game's
+//        library made or tagged on another machine (files copied, the better-described copy of each item kept)
 //   node --import tsx src/tools/gamelib.ts merge-descriptions <described index.json> <live index.json>   fill the live
 //        scene index's undescribed shots from a copy described elsewhere (stop the factory's scene index turn first)
 //   node --import tsx src/tools/gamelib.ts queue-playthroughs "<game>" ["<game>" ...]   gameplay indexes for the
@@ -441,6 +443,39 @@ async function fetchOwn(
 }
 
 async function main(): Promise<void> {
+  if (command === "merge-library") {
+    // One game's library built or tagged on another machine merged into this one: files this side lacks are copied,
+    // items are matched by id, and for an item on both sides the better-described copy wins (tags and scenes kept).
+    // Nothing here is overwritten blindly, so two machines can build the same game's library at once.
+    const [fromRoot, toRoot] = [rest.find((a) => !a.startsWith("--")), rest.filter((a) => !a.startsWith("--"))[1]] as [string, string];
+    if (!fromRoot || !toRoot) throw new Error('usage: gamelib.ts merge-library "<game>" <from library root> <to library root>');
+    const from = await readLibrary(fromRoot, game0!);
+    if (!from) throw new Error(`no library for ${game0} in ${fromRoot}`);
+    const to = (await readLibrary(toRoot, game0!)) ?? { version: LIBRARY_VERSION, game: from.game, items: [], updatedAt: "" };
+    const score = (i: LibItem) => (i.seen ? 1 : 0) + (i.scenes ?? []).filter((s) => s.seen).length + (i.scenes ? 0.5 : 0);
+    const fromDir = libraryDir(fromRoot, game0!);
+    const toDir = libraryDir(toRoot, game0!);
+    let added = 0;
+    let better = 0;
+    for (const item of from.items) {
+      const at = to.items.findIndex((i) => i.id === item.id || i.sourceUrl === item.sourceUrl);
+      const dest = path.join(toDir, item.file);
+      if (!(await fs.stat(dest).catch(() => undefined))) {
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.copyFile(path.join(fromDir, item.file), dest);
+      }
+      if (at < 0) {
+        to.items.push(item);
+        added++;
+      } else if (score(item) > score(to.items[at]!)) {
+        to.items[at] = { ...to.items[at]!, ...item, file: to.items[at]!.file };
+        better++;
+      }
+    }
+    await writeLibrary(toRoot, to);
+    console.log(`merged ${game0}: ${added} new items, ${better} better-described, ${to.items.length} in all`);
+    return;
+  }
   if (command === "merge-descriptions") {
     // Shots described on another machine (the PC, in an orchestrator turn) go into this machine's index: only shots
     // still undescribed here take a description, matched by their start and end, so nothing done here is lost.

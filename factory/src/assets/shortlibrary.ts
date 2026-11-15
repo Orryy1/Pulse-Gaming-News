@@ -314,11 +314,7 @@ export async function shortLibraryMedia(o: {
     for (const w of wants) {
       const scale = mapScale(w.sentence);
       if (!scale || !other) continue;
-      const gotMap = picks.some(
-        (p) =>
-          p.sentence === w.sentence &&
-          (p.scene?.tags ?? p.item.tags).includes("map"),
-      );
+      const gotMap = picks.some((p) => p.sentence === w.sentence && realMap(p.scene?.seen ?? p.item.seen));
       if (gotMap) continue;
       const file = path.join("assets", "map_scale.jpg");
       const short = (g: string) =>
@@ -364,6 +360,15 @@ export async function shortLibraryMedia(o: {
 }
 
 const p0 = (p: LibPick) => p;
+
+/**
+ * Whether a picture's description shows a real map (pure): the tagger also says "map" for a corner minimap or an aerial
+ * view (15 Nov 2026: 53 of GTA V's 170 items), which is not the map a line about the map's size needs.
+ */
+export function realMap(seen: string): boolean {
+  const s = seen.toLowerCase().replace(/minimap|mini-map|mini map/g, "");
+  return /\b(in-game map|map screen|pause map|world map|full map|map of|map showing|map view)\b/.test(s);
+}
 
 /** Whether moving footage of the game exists in its library or a local scene index (the publish gate asks). */
 export async function libraryHasFootage(dataDir: string, game: string): Promise<boolean> {

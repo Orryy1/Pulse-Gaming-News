@@ -7,6 +7,8 @@
 //   node --import tsx src/tools/gamelib.ts tag "<game>" [--limit=N]   tag stills and scenes on the free local model
 //   node --import tsx src/tools/gamelib.ts stats "<game>"
 //   node --import tsx src/tools/gamelib.ts pick "<game>" "<sentence>" [--keywords=a,b]   what a line would get
+//   node --import tsx src/tools/gamelib.ts merge-descriptions <described index.json> <live index.json>   fill the live
+//        scene index's undescribed shots from a copy described elsewhere (stop the factory's scene index turn first)
 //   node --import tsx src/tools/gamelib.ts queue-playthroughs "<game>" ["<game>" ...]   gameplay indexes for the
 //        scene index job (src/sceneindex/schema.ts gameplayIndexName); they download through the YouTube guard's
 //        background budget only, once, and keep their proxy
@@ -439,6 +441,27 @@ async function fetchOwn(
 }
 
 async function main(): Promise<void> {
+  if (command === "merge-descriptions") {
+    // Shots described on another machine (the PC, in an orchestrator turn) go into this machine's index: only shots
+    // still undescribed here take a description, matched by their start and end, so nothing done here is lost.
+    const [from, to] = [game0, rest.find((a) => !a.startsWith("--"))] as [string, string];
+    const src = JSON.parse(await fs.readFile(from, "utf8"));
+    const dst = JSON.parse(await fs.readFile(to, "utf8"));
+    const at = (x: { start: number; end: number }) => `${x.start.toFixed(2)}|${x.end.toFixed(2)}`;
+    const seen = new Map<string, Record<string, unknown>>(src.shots.filter((s: { desc?: string }) => s.desc).map((s: { start: number; end: number }) => [at(s), s]));
+    let n = 0;
+    for (const shot of dst.shots) {
+      if (shot.desc) continue;
+      const t = seen.get(at(shot));
+      if (!t) continue;
+      for (const k of ["desc", "who", "where", "mood", "tags", "menu"]) if (t[k] !== undefined) shot[k] = t[k];
+      n++;
+    }
+    await fs.writeFile(`${to}.tmp`, JSON.stringify(dst), "utf8");
+    await fs.rename(`${to}.tmp`, to);
+    console.log(`merged ${n} descriptions; ${dst.shots.filter((s: { desc?: string }) => s.desc).length} of ${dst.shots.length} described`);
+    return;
+  }
   if (command === "queue-playthroughs") {
     const games = [game0, ...rest.filter((a) => !a.startsWith("--"))].filter(
       Boolean,

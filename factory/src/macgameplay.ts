@@ -44,10 +44,7 @@ export function vodsToClear(
   let free = o.freeBytes;
   for (const v of [...vods].sort((a, b) => a.mtimeMs - b.mtimeMs)) {
     if (!scored.has(v.name)) continue;
-    if (
-      o.now - v.mtimeMs > o.keepDays * 86_400_000 ||
-      free < o.floorGb * 1e9
-    ) {
+    if (o.now - v.mtimeMs > o.keepDays * 86_400_000 || free < o.floorGb * 1e9) {
       out.push(v.name);
       free += v.bytes;
     }
@@ -56,7 +53,11 @@ export function vodsToClear(
 }
 
 /** A job behind the Mac's turn-taker, or at background priority where it is not installed. */
-function behindRenders(name: string, cmd: string, args: string[]): [string, string[]] {
+function behindRenders(
+  name: string,
+  cmd: string,
+  args: string[],
+): [string, string[]] {
   const macrun = path.join(os.homedir(), "orch", "macrun.sh");
   return fs.existsSync(macrun)
     ? ["/bin/bash", [macrun, name, cmd, ...args]]
@@ -88,8 +89,13 @@ export async function localGameplayPass(
     ...process.env,
     PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
     GAMEPLAY_ROOT: cfg.gameplayRoot,
-    GAMEPLAY_WATCH: [vodDir, ...(fs.existsSync(oneDrive) ? [oneDrive] : [])].join(";"),
-    VOD_FLOOR_GB: String(cfg.macMinFreeGb + 15),
+    GAMEPLAY_WATCH: [
+      vodDir,
+      ...(fs.existsSync(oneDrive) ? [oneDrive] : []),
+    ].join(";"),
+    // A VOD needs room for itself above the floor: about 3 GB an hour at 1080p, so 8 GB covers a long stream.
+    // (+15 skipped every download from 14 Nov 2026 with 50 GB free.)
+    VOD_FLOOR_GB: String(cfg.macMinFreeGb + 8),
   };
   const opts = { env, timeout: 6 * 3_600_000, maxBuffer: 16 * 1024 * 1024 };
   const scripts = path.dirname(FINDER);
@@ -104,7 +110,8 @@ export async function localGameplayPass(
   const done = (() => {
     try {
       return Object.keys(
-        (JSON.parse(fs.readFileSync(state, "utf8")) as { done?: object }).done ?? {},
+        (JSON.parse(fs.readFileSync(state, "utf8")) as { done?: object })
+          .done ?? {},
       ).map((k) => path.basename(k.split("|")[0]!));
     } catch {
       return [] as string[];
@@ -112,9 +119,7 @@ export async function localGameplayPass(
   })();
   const files = fs.readdirSync(vodDir).flatMap((name) => {
     const st = fs.statSync(path.join(vodDir, name));
-    return st.isFile()
-      ? [{ name, mtimeMs: st.mtimeMs, bytes: st.size }]
-      : [];
+    return st.isFile() ? [{ name, mtimeMs: st.mtimeMs, bytes: st.size }] : [];
   });
   const free = fs.statfsSync(vodDir);
   for (const name of vodsToClear(files, new Set(done), {
@@ -208,7 +213,12 @@ export async function macGameplayTick(cfg: Config): Promise<void> {
       env: {
         ...process.env,
         GAMEPLAY_ROOT: cfg.gameplayRoot,
-        GAMEPLAY_WATCH: path.join(os.homedir(), "Videos", "Captures", "Xbox DVR"),
+        GAMEPLAY_WATCH: path.join(
+          os.homedir(),
+          "Videos",
+          "Captures",
+          "Xbox DVR",
+        ),
       },
       timeout: 3_600_000,
       maxBuffer: 16 * 1024 * 1024,

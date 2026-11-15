@@ -42,3 +42,18 @@ test("the music drops out once a long section, on a key word, and comes back", (
   assert.ok(dropLevel(w + 40, [w]) > 0 && dropLevel(w + 40, [w]) < 1);
   assert.equal(dropLevel(w + 70, [w]), 1);
 });
+
+test("the new moods: a mystery, big news, an explainer, the funny ones and Vice City", () => {
+  const base = { first: false, last: false, documentary: true, year: 2024 };
+  assert.equal(moodOf({ ...base, text: "A hidden room, a secret file nobody can explain, and a theory about the mystery." }), "mystery");
+  assert.equal(moodOf({ ...base, text: "The reveal: a trailer, a release date and a showcase, all confirmed." }), "hype");
+  assert.equal(moodOf({ ...base, text: "How it works: the system, its mechanics and a quick guide for beginners." }), "chill");
+  assert.equal(moodOf({ ...base, text: "The funniest memes, a hilarious ragdoll glitch and pure chaos." }), "playful");
+  assert.equal(moodOf({ ...base, text: "Vice City returns: Leonida's neon nights." }), "synthwave");
+  assert.equal(moodOf({ ...base, text: "One mention of Vice City is not enough." }), undefined);
+  // An old game is still retro, and the last chapter still closes the video, whatever the words.
+  assert.equal(moodOf({ ...base, year: 2002, text: "Vice City, Miami, neon." }), "retro");
+  assert.equal(moodOf({ ...base, last: true, text: "Vice City, Miami, neon." }), "reflective");
+  // No clear winner: the house beds.
+  assert.equal(moodOf({ ...base, text: "A secret, a mystery, a hidden trailer, a reveal, an announcement." }), undefined);
+});

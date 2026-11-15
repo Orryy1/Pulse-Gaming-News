@@ -5,12 +5,50 @@
 // Once a section, on its key line, the music drops out for a beat and comes back, the editor's oldest trick.
 import { OLD_YEAR } from "./retroplan.ts";
 
-export type Mood = "tense" | "retro" | "triumph" | "reflective";
+export type Mood =
+  | "tense"
+  | "retro"
+  | "triumph"
+  | "reflective"
+  // 15 Nov 2026 (owner: "Shouldn't we have way more than 4 beds?"): five more, made by src/tools/sfxlab/genlibrary.py.
+  | "mystery"
+  | "hype"
+  | "chill"
+  | "playful"
+  | "synthwave";
+
+/** Every mood, in the order moodOf weighs them. */
+export const MOODS: readonly Mood[] = [
+  "tense",
+  "retro",
+  "triumph",
+  "reflective",
+  "mystery",
+  "hype",
+  "chill",
+  "playful",
+  "synthwave",
+];
 
 const TENSE =
-  /\b(delay(?:s|ed)?|crunch|cancel(?:s|led|ed)?|lawsuits?|sued|leak(?:s|ed)?|hack(?:s|ed)?|crisis|trouble|struggl\w*|fail(?:s|ed|ure)?|problems?|controvers\w*|backlash|layoffs?|laid off|bankrupt\w*|banned|scrapped|rebooted|disaster|broken|bugs?|rushed|mystery|secret\w*|warning|pressure|risk\w*)\b/gi;
+  /\b(delay(?:s|ed)?|crunch|cancel(?:s|led|ed)?|lawsuits?|sued|leak(?:s|ed)?|hack(?:s|ed)?|crisis|trouble|struggl\w*|fail(?:s|ed|ure)?|problems?|controvers\w*|backlash|layoffs?|laid off|bankrupt\w*|banned|scrapped|rebooted|disaster|broken|bugs?|rushed|warning|pressure|risk\w*)\b/gi;
 const TRIUMPH =
   /\b(launch(?:es|ed)?|record(?:s|-breaking)?|best-selling|bestselling|sold|sales|million|billion|biggest|fastest|award\w*|won|wins|game of the year|acclaim\w*|masterpiece|success\w*|triumph\w*|phenomenon|smash|hit|comeback|beloved|perfect)\b/gi;
+/** Something hidden: a mystery, a secret, a datamine, a theory. */
+const MYSTERY =
+  /\b(myster\w*|secrets?|secretly|hidden|unexplained|unsolved|datamin\w*|easter eggs?|theor(?:y|ies)|clues?|cryptic|riddles?|puzzl\w*|unknown|vanish\w*|disappear\w*|strange|eerie|lost)\b/gi;
+/** Big news landing: a reveal, a trailer, a date, a showcase. */
+const HYPE =
+  /\b(reveal(?:s|ed)?|announce\w*|trailer|showcase|release date|confirm\w*|first look|teaser|countdown|pre-?orders?|breaking|surprise|shadow-?drop\w*|unveil\w*)\b/gi;
+/** An explainer: how a system works, a guide, the numbers. */
+const CHILL =
+  /\b(explain\w*|how it works|how to|guide|tips?|mechanics?|systems?|settings|works out|breakdown|step by step|tutorial|beginners?|in short|simply put)\b/gi;
+/** The funny ones: memes, glitches played for laughs, the absurd. */
+const PLAYFUL =
+  /\b(memes?|funn(?:y|iest)|hilarious|jokes?|joking|laugh\w*|weird\w*|bizarre|ridiculous|absurd|silly|goofy|chaos|chaotic|cursed|ragdoll\w*|prank\w*|troll\w*)\b/gi;
+/** Vice City and the 80s: GTA VI's Leonida, Miami, neon. */
+const SYNTHWAVE =
+  /\b(vice city|leonida|miami|gta (?:vi|6)|grand theft auto (?:vi|6)|neon|synthwave|outrun|1980s|80s|eighties)\b/gi;
 
 const count = (re: RegExp, text: string) => (text.match(re) ?? []).length;
 
@@ -24,11 +62,23 @@ export function moodOf(o: {
 }): Mood | undefined {
   if (o.first) return undefined;
   if (o.year && o.year <= OLD_YEAR) return "retro";
-  const tense = count(TENSE, o.text);
-  const triumph = count(TRIUMPH, o.text);
   if (o.last) return o.documentary ? "reflective" : "triumph";
-  if (tense >= 3 && tense > triumph * 1.5) return "tense";
-  if (triumph >= 3 && triumph > tense * 1.5) return "triumph";
+  // Vice City has a sound of its own: two mentions are enough.
+  if (count(SYNTHWAVE, o.text) >= 2) return "synthwave";
+  const n = {
+    tense: count(TENSE, o.text),
+    triumph: count(TRIUMPH, o.text),
+    mystery: count(MYSTERY, o.text),
+    hype: count(HYPE, o.text),
+    chill: count(CHILL, o.text),
+    playful: count(PLAYFUL, o.text),
+  };
+  // The strongest reading wins if it is clear (three hits, half as many again as the runner-up); the older
+  // moods first on a tie, so a chapter scored before the new moods keeps its music.
+  const order = ["tense", "triumph", "mystery", "hype", "playful", "chill"] as const;
+  const best = order.reduce((a, b) => (n[b] > n[a] ? b : a));
+  const rest = Math.max(...order.filter((k) => k !== best).map((k) => n[k]));
+  if (n[best] >= 3 && n[best] > rest * 1.5) return best;
   return undefined;
 }
 

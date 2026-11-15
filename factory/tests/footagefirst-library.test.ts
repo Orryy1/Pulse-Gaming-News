@@ -31,7 +31,7 @@ import {
   mapScale,
   sentenceWants,
 } from "../src/assets/linevisuals.ts";
-import { footageGate, indexAsLibraryItem } from "../src/assets/shortlibrary.ts";
+import { footageGate, indexAsLibraryItem, realMap } from "../src/assets/shortlibrary.ts";
 import {
   overlaySpans,
   stingPlacement,
@@ -418,6 +418,13 @@ test("a story comparing GTA 6 with GTA 5 fetches both games and puts each senten
     }),
     [],
   );
+});
+
+test("only a real map counts as a map, never a minimap or an aerial view", () => {
+  assert.equal(realMap("In-game map showing roads and locations in GTA V."), true);
+  assert.equal(realMap("helicopter flying over city at night with minimap"), false);
+  assert.equal(realMap("Aerial night city view with helicopter and minimap"), false);
+  assert.equal(realMap("Aerial view of a highway"), false);
 });
 
 test("a map line with a size figure gets an honest to-scale comparison; a vague one gets none", () => {

@@ -747,11 +747,20 @@ export async function materialise(
         "assets",
         `lib_${pick.item.id}${/^\.(jpe?g|png|webp)$/i.test(path.extname(pick.item.file)) ? path.extname(pick.item.file) : ".jpg"}`,
       );
-      if (from.local) await fs.copyFile(src, path.join(episodeDir, file));
-      else {
-        const res = await fetchWithTimeout(src, {}, 30_000);
-        if (!res.ok) return undefined;
-        await fs.writeFile(path.join(episodeDir, file), Buffer.from(await res.arrayBuffer()));
+      // A 4K press still is written at 1920 pixels across: plenty for a vertical Short, and small enough for the
+      // picture checks (15 Nov 2026: a 3840-pixel Rockstar still overran the local model's context, which then counted
+      // the relay as down and paused every picture check for ten minutes).
+      const dest = path.join(episodeDir, file);
+      const shrunk = await exec(FFMPEG, ["-y", "-v", "error", "-i", src, "-frames:v", "1", "-vf", "scale='min(1920,iw)':-2", "-q:v", "2", dest], { timeout: 60_000 })
+        .then(() => true)
+        .catch(() => false);
+      if (!shrunk) {
+        if (from.local) await fs.copyFile(src, dest);
+        else {
+          const res = await fetchWithTimeout(src, {}, 30_000);
+          if (!res.ok) return undefined;
+          await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
+        }
       }
       return { file };
     }

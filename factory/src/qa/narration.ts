@@ -489,12 +489,21 @@ export function usUk(w: string): string {
     .replace(/ll(ed|ing|er|ers)$/, "l$1");
 }
 
+const DIGIT_WORDS = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+/** Figures up to 20 as words, and no spaces, hyphens or apostrophes, so "a6's" and "asixs" compare equal. */
+export function spellDigits(s: string): string {
+  return s.replace(/\d+/g, (n) => DIGIT_WORDS[Number(n)] ?? n).replace(/[\s'’-]/g, "");
+}
+
 function benign(meant: string[], heard: string[]): boolean {
   const a = meant.join(""),
     b = heard.join("");
   if (a === b) return true; // compounds: "rockstar"/"rock star"
   // The same word in US and UK spelling ("rumored" heard as "rumoured", 15 Nov 2026) is no voice fault.
   if (usUk(a) === usUk(b)) return true;
+  // The same number written as a figure or a word, split anywhere ("GTA six's" heard as "GT A6's", 15 Nov 2026).
+  const spoken = (xs: string[]) => spellDigits(xs.map(usUk).join(""));
+  if (spoken(meant) === spoken(heard)) return true;
   const content = (xs: string[]) => xs.filter((x) => !FILLER.has(x));
   if (!content(meant).length && !content(heard).length) return true; // "and", "the"
   // Nothing that changes the claim may differ, a number's possessive ("five's", "sixty-four's") included.

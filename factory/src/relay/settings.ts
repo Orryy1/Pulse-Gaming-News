@@ -3,6 +3,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { vodDirectory } from "../voddir.ts";
 
 export interface RelaySettings {
   /** STREAM_RELAY: mirror the owner's Twitch stream to the Pulse YouTube channel while he is live. */
@@ -91,7 +92,7 @@ export function relaySettings(
     challengeSeries: bool(env, "CHALLENGE_SERIES", false),
     challengeQuietDays: num(env, "CHALLENGE_END_DAYS", 7, 1, 60),
     vodDir:
-      env.VOD_MINER_DIR || path.join(os.homedir(), "Videos", "TinoTV VODs"),
+      env.VOD_MINER_DIR || vodDirectory(env),
     dataDir: path.resolve(env.DATA_DIR || "./data"),
     streamlink: env.STREAMLINK_PATH || brew("streamlink"),
     ffmpeg: env.FFMPEG_PATH || brew("ffmpeg"),

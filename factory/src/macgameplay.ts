@@ -22,6 +22,7 @@ import type { Config } from "./config.ts";
 import { errorMessage, log } from "./lib/util.ts";
 import { gameplayDue } from "./macjobs.ts";
 import { macGameplayPass, macSettings, shouldTell } from "./macworker.ts";
+import { HOME_VOD_DIR, vodDirectories, vodDirectory } from "./voddir.ts";
 
 const run = promisify(execFile);
 const FINDER = path.join(
@@ -70,7 +71,9 @@ export async function localGameplayPass(
   vods: boolean,
 ): Promise<void> {
   const home = os.homedir();
-  const vodDir = path.join(home, "Videos", "TinoTV VODs");
+  // The USB drive when it is mounted and writable, else the Mac's own disk (src/voddir.ts).
+  const vodDir = vodDirectory();
+  const onUsb = vodDir !== HOME_VOD_DIR;
   fs.mkdirSync(path.join(cfg.gameplayRoot, "inbox"), { recursive: true });
   fs.mkdirSync(vodDir, { recursive: true });
   // No state file makes the finder's first run mark every recording as old footage, new ones included.
@@ -90,12 +93,13 @@ export async function localGameplayPass(
     PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
     GAMEPLAY_ROOT: cfg.gameplayRoot,
     GAMEPLAY_WATCH: [
-      vodDir,
+      ...vodDirectories(),
       ...(fs.existsSync(oneDrive) ? [oneDrive] : []),
     ].join(";"),
+    VOD_DIR: vodDir,
     // A VOD needs room for itself above the floor: about 3 GB an hour at 1080p, so 8 GB covers a long stream.
-    // (+15 skipped every download from 14 Nov 2026 with 50 GB free.)
-    VOD_FLOOR_GB: String(cfg.macMinFreeGb + 8),
+    // (+15 skipped every download from 14 Nov 2026 with 50 GB free.) The USB drive only needs that room.
+    VOD_FLOOR_GB: String(onUsb ? 10 : cfg.macMinFreeGb + 8),
   };
   const opts = { env, timeout: 6 * 3_600_000, maxBuffer: 16 * 1024 * 1024 };
   const scripts = path.dirname(FINDER);
@@ -117,18 +121,25 @@ export async function localGameplayPass(
       return [] as string[];
     }
   })();
-  const files = fs.readdirSync(vodDir).flatMap((name) => {
-    const st = fs.statSync(path.join(vodDir, name));
-    return st.isFile() ? [{ name, mtimeMs: st.mtimeMs, bytes: st.size }] : [];
-  });
-  const free = fs.statfsSync(vodDir);
-  for (const name of vodsToClear(files, new Set(done), {
-    now: Date.now(),
-    keepDays: Number(process.env.VOD_KEEP_DAYS || 7),
-    freeBytes: free.bavail * free.bsize,
-    floorGb: cfg.macMinFreeGb + 15,
-  }))
-    fs.rmSync(path.join(vodDir, name), { force: true });
+  for (const dir of vodDirectories()) {
+    const usb = dir !== HOME_VOD_DIR;
+    const files = fs.readdirSync(dir).flatMap((name) => {
+      const st = fs.statSync(path.join(dir, name));
+      return st.isFile() ? [{ name, mtimeMs: st.mtimeMs, bytes: st.size }] : [];
+    });
+    const free = fs.statfsSync(dir);
+    for (const name of vodsToClear(files, new Set(done), {
+      now: Date.now(),
+      // The USB drive keeps scored VODs a month (they feed the footage library); the Mac's disk a week.
+      keepDays: Number(
+        (usb ? process.env.VOD_KEEP_DAYS_USB : process.env.VOD_KEEP_DAYS) ||
+          (usb ? 30 : 7),
+      ),
+      freeBytes: free.bavail * free.bsize,
+      floorGb: usb ? 20 : cfg.macMinFreeGb + 15,
+    }))
+      fs.rmSync(path.join(dir, name), { force: true });
+  }
 }
 
 /** One check of the timetable: at most one pass at a time, its state kept in data/admin/mac_gameplay.json. */

@@ -628,6 +628,7 @@ async function main(): Promise<void> {
     await fs.mkdir(work, { recursive: true });
     let done = 0;
     let fails = 0;
+    const started = Date.now();
     for (const item of lib.items) {
       if (done >= limit || fails >= 5) break;
       if (item.kind === "still" && !item.seen && !item.unusable) {
@@ -668,7 +669,10 @@ async function main(): Promise<void> {
         sc.seen = t.unusable ? `unusable: ${t.unusable}` : t.seen || "-";
         done++;
       }
-      if (done && done % 25 === 0) await save();
+      if (done && done % 10 === 0) {
+        await save();
+        console.log(`tagged ${done} so far, ${((Date.now() - started) / done / 1000).toFixed(1)} s each`);
+      }
     }
     await save();
     await fs.rm(work, { recursive: true, force: true });

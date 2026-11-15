@@ -344,7 +344,10 @@ export async function tagPicture(
     throw new Error(
       `vision ${res.status}: ${(await res.text()).slice(0, 160)}`,
     );
-  return tagsFromAnswer(visionAnswer((await res.json()) as never));
+  const body = (await res.json()) as { message?: { content?: string; thinking?: string } };
+  const tags = tagsFromAnswer(visionAnswer(body as never));
+  if (!tags) throw new Error(`vision answer not readable: ${(body.message?.content || body.message?.thinking || "").slice(0, 160)}`);
+  return tags;
 }
 
 // ---------------------------------------------------------------- video scenes

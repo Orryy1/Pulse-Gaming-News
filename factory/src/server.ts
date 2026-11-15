@@ -1043,6 +1043,12 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const assets = { ...ep.assets_json } as Record<string, unknown>;
       delete assets.rich;
       delete assets.plan;
+      // fresh=1: all gathered media goes too and is gathered again (15 Nov 2026: the Bully Short's media was another
+      // game's, so swapping single clips could never fix it).
+      if (url.searchParams.get("fresh") === "1") {
+        delete assets.images;
+        delete assets.clips;
+      }
       await db.query(
         `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, assets_json = $2 WHERE id = $1`,
         [ep.id, JSON.stringify(assets)],

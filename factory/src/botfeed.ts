@@ -13,6 +13,8 @@ let writes = 0;
 function feedFile(): string | undefined {
   const set = process.env.BOT_FEED_FILE?.trim();
   if (set === "off") return undefined;
+  // A test run never writes to the real feed (15 Nov 2026: alertloop's "first alert" lines reached the watch).
+  if (!set && process.env.NODE_TEST_CONTEXT) return undefined;
   return (
     set ||
     path.join(os.homedir(), "PulseFactory", "state", "discord_posts.jsonl")

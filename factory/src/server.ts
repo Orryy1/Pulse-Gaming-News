@@ -1039,9 +1039,13 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         );
         return;
       }
+      // The footage gate's one richer gathering starts afresh (new footage may have arrived since), and the plan is redone.
+      const assets = { ...ep.assets_json } as Record<string, unknown>;
+      delete assets.rich;
+      delete assets.plan;
       await db.query(
-        `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL WHERE id = $1`,
-        [ep.id],
+        `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, assets_json = $2 WHERE id = $1`,
+        [ep.id, JSON.stringify(assets)],
       );
       await logEvent(db, ep.id, "retried", {
         after: ep.last_error ?? "",

@@ -44,7 +44,7 @@ import { thinSourceProblem, type ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
-import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./assets/footage.ts";
+import { capFootage, defaultFootageSeconds, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
@@ -9437,7 +9437,7 @@ export async function gatherMedia(
       // Footage first on a Short: the entries share the publisher's budget, a few clean moments each.
       const entryFill =
         shortFill && ep.lane !== "longform" && gatherBudget.elapsedMinutes() < s.cfg.shortGatherMaxMinutes / 2
-          ? { ...shortFill, seconds: DEFAULT_FOOTAGE_SECONDS / Math.max(1, sorted.length) }
+          ? { ...shortFill, seconds: defaultFootageSeconds() / Math.max(1, sorted.length) }
           : undefined;
       // An achievement's own icon is its card's box art (Steam community assets, official).
       if (entry.icon) {

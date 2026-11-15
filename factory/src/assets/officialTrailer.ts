@@ -137,11 +137,16 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
  * table above, e.g. "Rockstar Games=20,Nintendo=20". Read on every use, after the .env has loaded; unset keeps the table.
  */
 export function publisherFootageOverride(name: string): number | undefined {
+  // "*=180" (15 Nov 2026, owner: "why is there any limit?") sets every publisher and the default at once; a named
+  // publisher still wins over the star.
+  let star: number | undefined;
   for (const part of (process.env.PUBLISHER_FOOTAGE_SECONDS ?? "").split(",")) {
     const [k, v] = part.split("=").map((x) => x.trim());
-    if (k && v !== undefined && k.toLowerCase() === name.toLowerCase() && Number.isFinite(Number(v))) return Math.max(0, Number(v));
+    if (!k || v === undefined || !Number.isFinite(Number(v))) continue;
+    if (k.toLowerCase() === name.toLowerCase()) return Math.max(0, Number(v));
+    if (k === "*") star = Math.max(0, Number(v));
   }
-  return undefined;
+  return star;
 }
 for (const rule of PUBLISHER_CHANNELS) {
   const base = rule.clipSeconds;

@@ -18,6 +18,7 @@ import {
 import {
   assetKey,
   canonicalGame,
+  grabFrame,
   libraryRoot,
   materialise,
   pickForLines,
@@ -30,7 +31,9 @@ import {
   type LibItem,
   type LibPick,
 } from "./gamelib.ts";
-import { readableLibrary, storeSettings } from "./gamelibstore.ts";
+import { readableLibrary, sourceOf, storeSettings } from "./gamelibstore.ts";
+import { rejectReason, screenFrames, type FrameFlags } from "./localvision.ts";
+import { cachedVerdicts, frameKey, gridTimes, sourceKey } from "./screencache.ts";
 import {
   comparedGames,
   hardwareStory,
@@ -141,6 +144,8 @@ export interface ShortLibraryMedia {
   picks: number;
   /** Clips cut from untagged videos for lines the tags could not serve. */
   untagged: number;
+  /** Untagged segments the screen or the screen cache ruled out before they were cut. */
+  screenedOut: number;
 }
 
 const beatOf = (key: string): number | undefined =>
@@ -165,6 +170,7 @@ export async function shortLibraryMedia(o: {
     footageExists: false,
     picks: 0,
     untagged: 0,
+    screenedOut: 0,
   };
   try {
     const games = [o.script.game_title, ...comparedGames(o.script)];
@@ -276,12 +282,22 @@ export async function shortLibraryMedia(o: {
     const covered = new Set(picks.filter((p) => p.scene).map((p) => p.sentence));
     const needing = wants.filter((w) => canonicalGame(w.game) === canonicalGame(o.script.game_title) && !covered.has(w.sentence));
     if (needing.length && main && seconds < cap) {
-      const spots = untaggedSpots(main.items, needing.length * 3, recent);
+      const spots = untaggedSpots(main.items, needing.length * 4, recent);
+      const visionBudget = { ms: UNTAGGED_VISION_BUDGET_MS };
+      const work = path.join(o.episodeDir, "assets");
+      await fs.mkdir(work, { recursive: true });
       let k = 0;
       for (const w of needing) {
         if (seconds >= cap) break;
         while (k < spots.length) {
           const s = spots[k++]!;
+          // Screened before it is cut (15 Nov 2026: the final check rejected a suggestive close-up, "PRESENTS"
+          // lettering and a bare torso, a render each): the cache's verdicts and faults, then the local screen.
+          const screened = await screenSpot(libraryRoot(o.dataDir), main.game, s, work, visionBudget);
+          if (screened.verdict === "reject") {
+            out.screenedOut++;
+            continue;
+          }
           const pick: LibPick = { key: w.key, sentence: w.sentence, game: main.game, item: s.item, scene: { at: s.at, end: s.end, tags: [], seen: "" }, score: 0 };
           const made = await materialise(libraryRoot(o.dataDir), pick, o.episodeDir, Math.min(4.2, cap - seconds));
           if (!made || (made.durationSeconds ?? 0) < 3) continue;
@@ -373,6 +389,79 @@ export async function libraryHasFootage(dataDir: string, game: string): Promise<
   );
 }
 
+/** The stretch of an untagged video segments come from: past the opening "presents" cards, before the end cards. */
+export const UNTAGGED_FROM = 0.15;
+export const UNTAGGED_TO = 0.85;
+
+/** Fresh looks by the local vision model for one Short's untagged segments stop after this long (it runs during renders). */
+export const UNTAGGED_VISION_BUDGET_MS = 20_000;
+
+/** Why a screen verdict rules a frame out (pure); the game's own small HUD is fine. */
+export function screenFault(f: FrameFlags | undefined): string | undefined {
+  return f ? rejectReason({ ...f, text: f.text && !f.hud }) : undefined;
+}
+
+/**
+ * A segment's verdict from what is known (pure): any frame the final check faulted or the screen ruled out sinks it;
+ * a fresh look that passed every frame clears it; otherwise it is unknown and the cheap local checks decide.
+ */
+export function spotVerdict(
+  cached: Array<(FrameFlags & { by?: string; why?: string }) | undefined>,
+  fresh: Array<FrameFlags | undefined>,
+): { verdict: "reject" | "ok" | "unknown"; why?: string } {
+  for (const c of cached) {
+    const why = c?.by === "qa" ? (c.why ?? "faulted by the final check") : screenFault(c);
+    if (why) return { verdict: "reject", why };
+  }
+  for (const f of fresh) {
+    const why = screenFault(f);
+    if (why) return { verdict: "reject", why };
+  }
+  const looked = [...cached, ...fresh];
+  return looked.length && looked.every((x) => x) ? { verdict: "ok" } : { verdict: "unknown" };
+}
+
+/**
+ * Screens one untagged segment before it is cut: the screen cache first (verdicts and moments the final check
+ * faulted, keyed by the source and the 1.5 s grid), then, while the Short's vision budget lasts, the first and last
+ * grid frames inside it with the same local ad-safety and text screen the footage gather uses. With vision away the
+ * verdict is unknown and the caller's cheap checks decide.
+ */
+export async function screenSpot(
+  root: string,
+  game: string,
+  spot: { item: LibItem; at: number; end: number },
+  work: string,
+  budget: { ms: number },
+): Promise<{ verdict: "reject" | "ok" | "unknown"; why?: string }> {
+  const src = sourceKey(spot.item.sourceUrl);
+  if (!src) return { verdict: "unknown" };
+  const grid = gridTimes(spot.at, spot.end - spot.at).filter((t) => t >= spot.at - 0.75 && t <= spot.end + 0.75);
+  const cached = cachedVerdicts(grid.map((t) => frameKey(src, t)));
+  const known = spotVerdict(cached.filter(Boolean), []);
+  if (known.verdict === "reject") return known;
+  const inside = grid.filter((t) => t >= spot.at && t <= spot.end);
+  const looks = [...new Set([inside[0], inside.at(-1)].filter((t): t is number => t !== undefined))];
+  const todo = looks.filter((t) => !cachedVerdicts([frameKey(src, t)])[0]);
+  if (!todo.length) return spotVerdict(cachedVerdicts(looks.map((t) => frameKey(src, t))), []);
+  if (budget.ms <= 0) return { verdict: "unknown" };
+  const from = await sourceOf(root, game, spot.item.file, storeSettings());
+  if (!from) return { verdict: "unknown" };
+  const frames: string[] = [];
+  for (const t of todo) {
+    const out = path.join(work, `screen_${spot.item.id}_${Math.round(t * 10)}.jpg`);
+    if (await grabFrame(from.local ?? from.url!, t, out)) frames.push(out);
+  }
+  const t0 = Date.now();
+  const flags = frames.length ? await screenFrames(frames, 2, todo.map((t) => frameKey(src, t))).catch(() => []) : [];
+  budget.ms -= Date.now() - t0;
+  for (const f of frames) await fs.rm(f, { force: true }).catch(() => undefined);
+  return spotVerdict(
+    cachedVerdicts(looks.filter((t) => !todo.includes(t)).map((t) => frameKey(src, t))),
+    todo.map((_, i) => flags[i]),
+  );
+}
+
 /** A video long enough to cut untagged segments from (pure): a trailer or recording, not a one-second site loop. */
 export function untaggedVideo(i: LibItem): boolean {
   return i.kind === "video" && !i.unusable && (i.durationSeconds ?? 0) >= 12 && !(i.scenes ?? []).some((s) => s.seen);
@@ -392,9 +481,9 @@ export function untaggedSpots(
   const videos = items.filter(untaggedVideo).sort((a, b) => (b.durationSeconds ?? 0) - (a.durationSeconds ?? 0));
   const lists = videos.map((v) => {
     const d = v.durationSeconds ?? 0;
-    const n = o.perVideo ?? Math.max(3, Math.min(12, Math.floor((d * 0.8) / 8)));
+    const n = o.perVideo ?? Math.max(3, Math.min(12, Math.floor((d * (UNTAGGED_TO - UNTAGGED_FROM)) / 8)));
     return Array.from({ length: n }, (_, k) => {
-      const at = Math.round((d * 0.1 + ((d * 0.8 - seconds) * (k + 0.5)) / n) * 10) / 10;
+      const at = Math.round((d * UNTAGGED_FROM + ((d * (UNTAGGED_TO - UNTAGGED_FROM) - seconds) * (k + 0.5)) / n) * 10) / 10;
       return { item: v, at, end: Math.round((at + seconds) * 10) / 10 };
     });
   });

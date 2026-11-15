@@ -7,6 +7,11 @@
 //   node --import tsx src/tools/gamelib.ts tag "<game>" [--limit=N]   tag stills and scenes on the free local model
 //   node --import tsx src/tools/gamelib.ts stats "<game>"
 //   node --import tsx src/tools/gamelib.ts pick "<game>" "<sentence>" [--keywords=a,b]   what a line would get
+//   node --import tsx src/tools/gamelib.ts serve [--port=8793]   (the PC) the master library, read-only, with byte ranges
+//   node --import tsx src/tools/gamelib.ts sync | cache [--dry]   (the Mac) pull indexes and active games' media from
+//        GAMELIB_REMOTE, then keep the media cache under GAMELIB_MAC_CACHE_GB (src/assets/gamelibstore.ts)
+//   node --import tsx src/tools/gamelib.ts merge-library "<game>" <from library root> <to library root>   merge a game's
+//        library made or tagged on another machine (files copied, the better-described copy of each item kept)
 //   node --import tsx src/tools/gamelib.ts merge-descriptions <described index.json> <live index.json>   fill the live
 //        scene index's undescribed shots from a copy described elsewhere (stop the factory's scene index turn first)
 //   node --import tsx src/tools/gamelib.ts queue-playthroughs "<game>" ["<game>" ...]   gameplay indexes for the
@@ -35,6 +40,7 @@ import {
   LIBRARY_VERSION,
   pickForLines,
   readLibrary,
+  readUsage,
   scenesFromCuts,
   tagPicture,
   tagsForSentence,
@@ -441,6 +447,102 @@ async function fetchOwn(
 }
 
 async function main(): Promise<void> {
+  if (command === "serve") {
+    // The PC: the master library read-only over HTTP with byte ranges (src/assets/gamelibserve.ts). Binds to this
+    // machine only; the Mac reaches it as http://192.168.0.93:8793 through the orchestrator's LAN relay.
+    const { createLibraryServer } = await import("../assets/gamelibserve.ts");
+    const port = Number(flag("port") ?? process.env.GAMELIB_SERVE_PORT ?? 8793);
+    // 127.0.0.1 only: the orchestrator's LAN relay owns 192.168.0.93:8793 and forwards it here.
+    const host = "127.0.0.1";
+    createLibraryServer(root).listen(port, host, () => console.log(`game library: serving ${root} on http://${host}:${port}`));
+    return;
+  }
+  if (command === "sync" || command === "cache") {
+    // The Mac: every game's library.json from the PC's master copy (kept, never evicted), the media of the active and
+    // recently used games while the cache has room, then the least recently used media out until it is under the cap
+    // and the disk keeps its floor. "cache" does only the last step. The PC off: sync skips its pulls and says so.
+    const store = await import("../assets/gamelibstore.ts");
+    const s = store.storeSettings();
+    const usage = await readUsage(root);
+    const now = new Date();
+    if (command === "sync") {
+      if (!(await store.remoteUp(s.remote))) console.log(`the PC's library server does not answer (${s.remote || "GAMELIB_REMOTE unset"}): nothing pulled`);
+      else {
+        const games = (await (await fetchWithTimeout(`${s.remote}/games`, {}, 15_000)).json()) as string[];
+        for (const slug of games) {
+          const res = await fetchWithTimeout(`${s.remote}/${encodeURIComponent(slug)}/library.json`, {}, 30_000);
+          if (!res.ok) continue;
+          const master = (await res.json()) as GameLibrary;
+          const mine = await readLibrary(root, master.game);
+          // The master wins item by item; items only this machine has stay.
+          const items = [...master.items, ...(mine?.items ?? []).filter((i) => !master.items.some((m) => m.id === i.id || m.sourceUrl === i.sourceUrl))];
+          const lib = { ...master, items };
+          await writeLibrary(root, lib);
+          const dir = libraryDir(root, lib.game);
+          let pulled = 0;
+          for (const item of store.wantedOnMac(lib, s, usage, now)) {
+            const dest = path.join(dir, item.file);
+            if (await fs.stat(dest).catch(() => undefined)) continue;
+            if (await download(store.remoteUrl(s.remote, dir, item.file), dest)) pulled++;
+          }
+          console.log(`${lib.game}: ${lib.items.length} items in the index, ${pulled} media files pulled`);
+        }
+      }
+    }
+    const libs: GameLibrary[] = [];
+    for (const d of await fs.readdir(root, { withFileTypes: true }).catch(() => [])) {
+      if (!d.isDirectory()) continue;
+      const lib = JSON.parse(await fs.readFile(path.join(root, d.name, "library.json"), "utf8").catch(() => "null")) as GameLibrary | null;
+      if (lib) libs.push(lib);
+    }
+    const entries = await store.cacheEntries(root, libs, usage);
+    const st = await fs.statfs(root);
+    const plan = store.planEviction(entries, {
+      capBytes: s.capBytes,
+      activeGames: s.activeGames,
+      recentDays: s.recentDays,
+      now,
+      freeBytes: st.bavail * st.bsize,
+      floorBytes: Number(process.env.MAC_MIN_FREE_GB ?? 40) * 1e9,
+    });
+    const freed = flag("dry") ? 0 : await store.evict(root, plan);
+    const total = entries.reduce((n, e) => n + e.bytes, 0);
+    console.log(`cache: ${(total / 1e9).toFixed(1)} GB of media (cap ${(s.capBytes / 1e9).toFixed(0)} GB); ${plan.length} files ${flag("dry") ? "would go" : "removed"}, ${(freed / 1e9).toFixed(1)} GB freed`);
+    return;
+  }
+  if (command === "merge-library") {
+    // One game's library built or tagged on another machine merged into this one: files this side lacks are copied,
+    // items are matched by id, and for an item on both sides the better-described copy wins (tags and scenes kept).
+    // Nothing here is overwritten blindly, so two machines can build the same game's library at once.
+    const [fromRoot, toRoot] = [rest.find((a) => !a.startsWith("--")), rest.filter((a) => !a.startsWith("--"))[1]] as [string, string];
+    if (!fromRoot || !toRoot) throw new Error('usage: gamelib.ts merge-library "<game>" <from library root> <to library root>');
+    const from = await readLibrary(fromRoot, game0!);
+    if (!from) throw new Error(`no library for ${game0} in ${fromRoot}`);
+    const to = (await readLibrary(toRoot, game0!)) ?? { version: LIBRARY_VERSION, game: from.game, items: [], updatedAt: "" };
+    const score = (i: LibItem) => (i.seen ? 1 : 0) + (i.scenes ?? []).filter((s) => s.seen).length + (i.scenes ? 0.5 : 0);
+    const fromDir = libraryDir(fromRoot, game0!);
+    const toDir = libraryDir(toRoot, game0!);
+    let added = 0;
+    let better = 0;
+    for (const item of from.items) {
+      const at = to.items.findIndex((i) => i.id === item.id || i.sourceUrl === item.sourceUrl);
+      const dest = path.join(toDir, item.file);
+      if (!(await fs.stat(dest).catch(() => undefined))) {
+        await fs.mkdir(path.dirname(dest), { recursive: true });
+        await fs.copyFile(path.join(fromDir, item.file), dest);
+      }
+      if (at < 0) {
+        to.items.push(item);
+        added++;
+      } else if (score(item) > score(to.items[at]!)) {
+        to.items[at] = { ...to.items[at]!, ...item, file: to.items[at]!.file };
+        better++;
+      }
+    }
+    await writeLibrary(toRoot, to);
+    console.log(`merged ${game0}: ${added} new items, ${better} better-described, ${to.items.length} in all`);
+    return;
+  }
   if (command === "merge-descriptions") {
     // Shots described on another machine (the PC, in an orchestrator turn) go into this machine's index: only shots
     // still undescribed here take a description, matched by their start and end, so nothing done here is lost.
@@ -527,6 +629,7 @@ async function main(): Promise<void> {
     await fs.mkdir(work, { recursive: true });
     let done = 0;
     let fails = 0;
+    const started = Date.now();
     for (const item of lib.items) {
       if (done >= limit || fails >= 5) break;
       if (item.kind === "still" && !item.seen && !item.unusable) {
@@ -567,7 +670,10 @@ async function main(): Promise<void> {
         sc.seen = t.unusable ? `unusable: ${t.unusable}` : t.seen || "-";
         done++;
       }
-      if (done && done % 25 === 0) await save();
+      if (done && done % 10 === 0) {
+        await save();
+        console.log(`tagged ${done} so far, ${((Date.now() - started) / done / 1000).toFixed(1)} s each`);
+      }
     }
     await save();
     await fs.rm(work, { recursive: true, force: true });

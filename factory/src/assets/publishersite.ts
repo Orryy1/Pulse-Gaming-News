@@ -46,7 +46,7 @@ const defaultFetch: Fetcher = (url, init) =>
 
 /** Names that are not official trailers or clean game media: never taken. */
 export const NOT_MEDIA =
-  /\b(extended[ _-]?look|cover[ _-]?art|pre[ _-]?load|fob|edition|bundle|poster|logo|wallpaper|benefits|vintage[ _-]vice[ _-]city[ _-]pack|pre[ _-]?order|merch|controller|console)\b/i;
+  /\b(extended[ _-]?look|cover[ _-]?art|pre[ _-]?load|fob|edition|bundle|poster|logo|wallpaper|benefits|vintage[ _-]vice[ _-]city|weapon[ _-]pattern|pre[ _-]?order|merch|controller|console)\b/i;
 
 const ROCKSTAR_CDN = "https://media-rockstargames-com.akamaized.net";
 

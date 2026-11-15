@@ -30,6 +30,7 @@ import {
   type LibItem,
   type LibPick,
 } from "./gamelib.ts";
+import { readableLibrary, storeSettings } from "./gamelibstore.ts";
 import {
   comparedGames,
   hardwareStory,
@@ -100,12 +101,12 @@ export async function libraryWithIndexes(
     if (item) items.push(item);
   }
   if (!items.length) return undefined;
-  return {
-    version: 1,
-    game: canonicalGame(game),
-    items,
-    updatedAt: lib?.updatedAt ?? "",
-  };
+  // Only what can be read now: the Mac's cache, or the PC's master copy while the PC answers (gamelibstore.ts).
+  return readableLibrary(
+    libraryRoot(dataDir),
+    { version: 1, game: canonicalGame(game), items, updatedAt: lib?.updatedAt ?? "" },
+    storeSettings(),
+  );
 }
 
 export interface ShortLibraryMedia {
@@ -138,6 +139,8 @@ export interface ShortLibraryMedia {
   /** Whether the game has moving footage in its library at all (the publish gate asks). */
   footageExists: boolean;
   picks: number;
+  /** Clips cut from untagged videos for lines the tags could not serve. */
+  untagged: number;
 }
 
 const beatOf = (key: string): number | undefined =>
@@ -161,6 +164,7 @@ export async function shortLibraryMedia(o: {
     games: [],
     footageExists: false,
     picks: 0,
+    untagged: 0,
   };
   try {
     const games = [o.script.game_title, ...comparedGames(o.script)];
@@ -176,7 +180,7 @@ export async function shortLibraryMedia(o: {
       (i) =>
         i.kind === "video" &&
         !i.unusable &&
-        (i.scenes ?? []).some((s) => s.seen && s.tags.length),
+        ((i.scenes ?? []).some((s) => s.seen && s.tags.length) || untaggedVideo(i)),
     );
     const names = [
       ...new Set(
@@ -265,6 +269,45 @@ export async function shortLibraryMedia(o: {
         });
       }
     }
+    // UNTAGGED FALLBACK (15 Nov 2026: the Mac's GTA VI library had its trailers but no tags yet, so Shorts got no clips
+    // and the footage gate held them): the main game's sentences that got no tagged scene take evenly spread segments
+    // from the middle of its untagged videos, a different video each time, never a dark, near-still or lettered one,
+    // and not one the game's recent Shorts showed.
+    const covered = new Set(picks.filter((p) => p.scene).map((p) => p.sentence));
+    const needing = wants.filter((w) => canonicalGame(w.game) === canonicalGame(o.script.game_title) && !covered.has(w.sentence));
+    if (needing.length && main && seconds < cap) {
+      const spots = untaggedSpots(main.items, needing.length * 3, recent);
+      let k = 0;
+      for (const w of needing) {
+        if (seconds >= cap) break;
+        while (k < spots.length) {
+          const s = spots[k++]!;
+          const pick: LibPick = { key: w.key, sentence: w.sentence, game: main.game, item: s.item, scene: { at: s.at, end: s.end, tags: [], seen: "" }, score: 0 };
+          const made = await materialise(libraryRoot(o.dataDir), pick, o.episodeDir, Math.min(4.2, cap - seconds));
+          if (!made || (made.durationSeconds ?? 0) < 3) continue;
+          if (!(await segmentUsable(path.join(o.episodeDir, made.file)))) {
+            await fs.rm(path.join(o.episodeDir, made.file), { force: true }).catch(() => undefined);
+            continue;
+          }
+          seconds += made.durationSeconds ?? 0;
+          out.clips.push({
+            file: made.file,
+            sourceUrl: s.item.sourceUrl,
+            provenance: pickProvenance(pick),
+            durationSeconds: made.durationSeconds ?? 3,
+            beatIndex: beatOf(w.key),
+            ...(w.key === "hook" ? { role: "hook" as const } : {}),
+            forWords: w.sentence,
+            libKey: assetKey(s.item, { at: s.at }),
+            reason: "library (untagged)",
+            startSeconds: s.at,
+            motion: 0.5,
+          });
+          out.untagged++;
+          break;
+        }
+      }
+    }
     // A map line with a size figure and a second game to compare with: the honest to-scale graphic, unless the
     // library already gave that sentence a real map.
     const other = comparedGames(o.script)[0];
@@ -325,8 +368,67 @@ const p0 = (p: LibPick) => p;
 /** Whether moving footage of the game exists in its library or a local scene index (the publish gate asks). */
 export async function libraryHasFootage(dataDir: string, game: string): Promise<boolean> {
   const lib = await libraryWithIndexes(dataDir, game).catch(() => undefined);
-  return !!lib?.items.some((i) => i.kind === "video" && !i.unusable && (i.scenes ?? []).some((s) => s.seen && !s.seen.startsWith("unusable")));
+  return !!lib?.items.some(
+    (i) => i.kind === "video" && !i.unusable && ((i.scenes ?? []).some((s) => s.seen && !s.seen.startsWith("unusable")) || untaggedVideo(i)),
+  );
 }
+
+/** A video long enough to cut untagged segments from (pure): a trailer or recording, not a one-second site loop. */
+export function untaggedVideo(i: LibItem): boolean {
+  return i.kind === "video" && !i.unusable && (i.durationSeconds ?? 0) >= 12 && !(i.scenes ?? []).some((s) => s.seen);
+}
+
+/**
+ * Segments to try from untagged videos (pure): evenly spread over the middle 10% to 90% of each, taken one video at
+ * a time in turn so consecutive lines show different videos, and anything the game's recent Shorts showed last.
+ */
+export function untaggedSpots(
+  items: LibItem[],
+  max: number,
+  recent: Map<string, number> = new Map(),
+  o: { seconds?: number; perVideo?: number } = {},
+): Array<{ item: LibItem; at: number; end: number }> {
+  const seconds = o.seconds ?? 4.2;
+  const videos = items.filter(untaggedVideo).sort((a, b) => (b.durationSeconds ?? 0) - (a.durationSeconds ?? 0));
+  const lists = videos.map((v) => {
+    const d = v.durationSeconds ?? 0;
+    const n = o.perVideo ?? Math.max(3, Math.min(12, Math.floor((d * 0.8) / 8)));
+    return Array.from({ length: n }, (_, k) => {
+      const at = Math.round((d * 0.1 + ((d * 0.8 - seconds) * (k + 0.5)) / n) * 10) / 10;
+      return { item: v, at, end: Math.round((at + seconds) * 10) / 10 };
+    });
+  });
+  const turns: Array<{ item: LibItem; at: number; end: number }> = [];
+  for (let k = 0; lists.some((l) => k < l.length); k++) for (const l of lists) if (l[k]) turns.push(l[k]!);
+  const fresh = turns.filter((t) => !recent.has(assetKey(t.item, { at: t.at })));
+  const stale = turns.filter((t) => recent.has(assetKey(t.item, { at: t.at })));
+  return [...fresh, ...stale].slice(0, max);
+}
+
+/** A cut segment is usable: not dark, not near-still, no big lettering in its middle frame (cheap local checks). */
+export async function segmentUsable(file: string): Promise<boolean> {
+  const { darkestLuma, DARK_LUMA, segmentMotion } = await import("./clipscore.ts");
+  const dark = await darkestLuma(file).catch(() => undefined);
+  if (dark !== undefined && dark < DARK_LUMA) return false;
+  const motion = await segmentMotion(file).catch(() => undefined);
+  if (motion !== undefined && motion < STILL_MOTION) return false;
+  const frame = `${file}.mid.jpg`;
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { FFMPEG } = await import("../lib/bin.ts");
+    await promisify(execFile)(FFMPEG, ["-y", "-v", "error", "-ss", "1.5", "-i", file, "-frames:v", "1", "-q:v", "3", frame]);
+    const { stillBigText } = await import("./cliptext.ts");
+    return (await stillBigText(frame).catch(() => [] as string[])).length === 0;
+  } catch {
+    return true;
+  } finally {
+    await fs.rm(frame, { force: true }).catch(() => undefined);
+  }
+}
+
+/** Below this mean frame difference (0-255) a segment reads as a still picture: a title card or a held frame. */
+export const STILL_MOTION = 1.5;
 
 /**
  * The publish gate's verdict (pure): a Short whose plan shows no moving footage, or that cannot open on footage, is

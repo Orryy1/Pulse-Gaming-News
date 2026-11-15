@@ -141,6 +141,21 @@ export function targetsFor(script: Script): FootageTarget[] {
   return out;
 }
 
+/** The mean difference between consecutive frames of a clip (0-255, sampled at 10 fps); undefined when ffmpeg cannot say. */
+export async function segmentMotion(file: string): Promise<number | undefined> {
+  try {
+    const { stderr, stdout } = await run(
+      FFMPEG,
+      ["-hide_banner", "-i", file, "-vf", "fps=10,scale=160:-2,tblend=all_mode=difference,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 },
+    );
+    const vals = [...String(stdout || stderr).matchAll(/YAVG=([\d.]+)/g)].map((m) => Number(m[1]));
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Below this mean brightness a frame reads as black on a phone or TV. */
 export const DARK_LUMA = 24;
 

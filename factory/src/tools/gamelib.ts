@@ -7,7 +7,7 @@
 //   node --import tsx src/tools/gamelib.ts tag "<game>" [--limit=N]   tag stills and scenes on the free local model
 //   node --import tsx src/tools/gamelib.ts stats "<game>"
 //   node --import tsx src/tools/gamelib.ts pick "<game>" "<sentence>" [--keywords=a,b]   what a line would get
-//   node --import tsx src/tools/gamelib.ts serve [--port=8790]   (the PC) the master library, read-only, with byte ranges
+//   node --import tsx src/tools/gamelib.ts serve [--port=8793]   (the PC) the master library, read-only, with byte ranges
 //   node --import tsx src/tools/gamelib.ts sync | cache [--dry]   (the Mac) pull indexes and active games' media from
 //        GAMELIB_REMOTE, then keep the media cache under GAMELIB_MAC_CACHE_GB (src/assets/gamelibstore.ts)
 //   node --import tsx src/tools/gamelib.ts merge-library "<game>" <from library root> <to library root>   merge a game's
@@ -449,10 +449,11 @@ async function fetchOwn(
 async function main(): Promise<void> {
   if (command === "serve") {
     // The PC: the master library read-only over HTTP with byte ranges (src/assets/gamelibserve.ts). Binds to this
-    // machine only unless GAMELIB_SERVE_HOST says otherwise; the Mac reaches it through the orchestrator's LAN relay.
+    // machine only; the Mac reaches it as http://192.168.0.93:8793 through the orchestrator's LAN relay.
     const { createLibraryServer } = await import("../assets/gamelibserve.ts");
-    const port = Number(flag("port") ?? process.env.GAMELIB_SERVE_PORT ?? 8790);
-    const host = process.env.GAMELIB_SERVE_HOST || "127.0.0.1";
+    const port = Number(flag("port") ?? process.env.GAMELIB_SERVE_PORT ?? 8793);
+    // 127.0.0.1 only: the orchestrator's LAN relay owns 192.168.0.93:8793 and forwards it here.
+    const host = "127.0.0.1";
     createLibraryServer(root).listen(port, host, () => console.log(`game library: serving ${root} on http://${host}:${port}`));
     return;
   }

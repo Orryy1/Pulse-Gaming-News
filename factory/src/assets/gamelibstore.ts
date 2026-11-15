@@ -20,7 +20,7 @@ import {
 } from "./gamelib.ts";
 
 export interface StoreSettings {
-  /** The PC's range server, e.g. http://DESKTOP-D3EI9PV.local:8790; empty: local files only. */
+  /** The PC's range server through the orchestrator's relay, http://192.168.0.93:8793 on the Mac; empty: local files only. */
   remote: string;
   capBytes: number;
   activeGames: string[];

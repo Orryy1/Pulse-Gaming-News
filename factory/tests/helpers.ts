@@ -57,6 +57,7 @@ export function testConfig(
     completeCutMin: 4,
     officialStillFrames: 0,
     shortVivid: false,
+    peopleInsets: false,
     appleSmartCrop: false,
     appleSubjectLift: false,
     appleHwEncode: false,

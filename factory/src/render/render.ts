@@ -612,8 +612,11 @@ export interface RenderInput {
     | "musicSrc"
     | "quotes"
     | "gameBed"
+    | "people"
   > & {
     audioFile: string | null;
+    /** PEOPLE_INSETS: the people's face photos, relative to the episode folder, with when each name is said. */
+    peopleFiles?: Array<{ name: string; file: string; credit: string; at: number }>;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
     quoteFiles?: Array<
       Omit<import("./props.ts").ShortQuote, "src"> & { file: string }
@@ -1096,10 +1099,19 @@ export async function renderShort(input: RenderInput): Promise<void> {
       heroCutFile,
       quoteFiles,
       gameBedFile,
+      peopleFiles,
       ...rest
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      ...(peopleFiles?.length
+        ? {
+            people: peopleFiles.map(({ file, ...p }) => ({
+              ...p,
+              src: `${files.url}/${webPath(file)}`,
+            })),
+          }
+        : {}),
       ...(gameBedFile
         ? {
             gameBed: {

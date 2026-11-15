@@ -148,16 +148,24 @@ export async function readLibrary(
         "utf8",
       ),
     ) as GameLibrary;
-    return lib.version === LIBRARY_VERSION ? lib : undefined;
+    if (lib.version !== LIBRARY_VERSION) return undefined;
+    for (const i of lib.items) i.file = portableFile(i.file);
+    return lib;
   } catch {
     return undefined;
   }
+}
+
+/** A library file path as stored (pure): relative paths with "/" on every machine; absolute paths left as they are. */
+export function portableFile(file: string): string {
+  return path.isAbsolute(file) || /^[A-Za-z]:[\\/]/.test(file) ? file : file.replace(/\\/g, "/");
 }
 
 export async function writeLibrary(
   root: string,
   lib: GameLibrary,
 ): Promise<void> {
+  lib = { ...lib, items: lib.items.map((i) => ({ ...i, file: portableFile(i.file) })) };
   const dir = libraryDir(root, lib.game);
   await fs.mkdir(dir, { recursive: true });
   const tmp = path.join(dir, "library.json.tmp");

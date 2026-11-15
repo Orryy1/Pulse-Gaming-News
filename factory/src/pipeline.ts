@@ -12972,6 +12972,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   // SHORT_OPEN_FOOTAGE (src/openingstep.ts): frame one is the game's own moving footage, cut out and tagged for the hook.
+  let openingStale = false;
   const opening =
     s.cfg.shortOpenFootage && !assets.plan
       ? await chooseOpening(
@@ -13080,6 +13081,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), {
         rich: true,
       });
+      // The opening was chosen from the media before this gather: a "nothing to open on" from then says nothing about
+      // the footage just added (15 Nov 2026: the police Short was held with 66% footage for it).
+      if (opening && !opening.ok) openingStale = true;
       for (const img of assets.images ?? [])
         if (!img.blurFile)
           img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
@@ -13244,7 +13248,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       (await libraryHasFootage(s.cfg.dataDir, script.game_title)) || (assets.officialTrailer?.clipSeconds ?? 0) > 0;
     // An opening the vision model never looked at (the PC relay busy) is not a failed opening: the picture check holds
     // the Short until it can look (VISION_HOLD); 15 Nov 2026 the PS4 Short was held at 63% footage for this alone.
-    const verdict = footageGate({ footageShare, openingOk: opening?.unchecked ? undefined : opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
+    const verdict = footageGate({ footageShare, openingOk: opening?.unchecked || openingStale ? undefined : opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
     await logEvent(s.db, ep.id, "footage_gate", { verdict, footageShare: Math.round(footageShare * 100) / 100, opening: opening?.ok, footageExists });
     if (verdict === "regather") {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });

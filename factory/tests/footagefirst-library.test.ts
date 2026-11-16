@@ -702,3 +702,17 @@ test("a picture chosen for a sentence plays over a cut inside that sentence, eve
   const other = "Believable streets are worth giving up space.".split(" ").map((text, i) => ({ text, start: 10 + i * 0.3, end: 10 + i * 0.3 + 0.25 }));
   assert.equal(pictureForWords(images as never, [...words, ...other], { start: 300, end: 390 }, [0]), undefined);
 });
+
+test("the hook only takes a scene long enough to open the Short", async () => {
+  const { pickForLines, HOOK_SCENE_SECONDS } = await import("../src/assets/gamelib.ts");
+  const lib = {
+    version: 1, game: "Grand Theft Auto VI", updatedAt: "",
+    items: [{ id: "t", kind: "video" as const, file: "t.mp4", sourceUrl: "t", provenance: "t", source: "Rockstar Games", named: [], tags: [], seen: "", addedAt: "",
+      scenes: [{ at: 10, end: 11.6, tags: ["driving", "road", "car"], seen: "a car" }, { at: 20, end: 24, tags: ["driving", "road"], seen: "a road" }] }],
+  };
+  const libs = new Map([["Grand Theft Auto VI", lib]]);
+  const [hook] = pickForLines(libs, [{ key: "hook", sentence: "Why less room to drive?", game: "Grand Theft Auto VI", tags: ["driving", "road", "car"], names: [] }], { preferVideo: true });
+  assert.ok(hook!.scene!.end - hook!.scene!.at >= HOOK_SCENE_SECONDS);
+  const [beat] = pickForLines(libs, [{ key: "beat:0", sentence: "x", game: "Grand Theft Auto VI", tags: ["driving", "road", "car"], names: [] }], { preferVideo: true });
+  assert.equal(beat!.scene!.at, 10);
+});

@@ -4,13 +4,13 @@
 // against the read already inside the narration, and the best is spliced in front of the rest.
 //
 // What a take is scored on, all measured, none judged by ear:
-//   energy   its intonation range (semitones between the 10th and 90th percentile of the voiced pitch) and its
+//   energy   its intonation range (semitones between the 25th and 75th percentile of the voiced pitch) and its
 //            speech level against the loudest take of the set
 //   clarity  the share of the hook's words Whisper hears back (the narration check's own recogniser)
 //   pace     words a minute as heard (after SHORT_SPEED) against HOOK_TARGET_WPM
 //   breaths  audible intakes, by the narration's breath detector (src/voice/breathcheck.ts)
-//   match    pitch and brightness against the rest of the narration (src/voice/takecheck.ts): a spliced hook
-//            must sound like the same read, so a take that strays is never used
+//   match    brightness against the narration's own read of the same words (src/voice/takecheck.ts): a spliced
+//            hook must sound like the same session, so a take more than 10% off is never used
 // The read already in the narration competes too and wins ties: a splice is only worth it for a clear gain.
 //
 // Spend: only the hook's characters, once per extra take, checked against the balance first, and every take is
@@ -25,7 +25,6 @@ import { log, errorMessage } from "../lib/util.ts";
 import { breathsIn, envelope } from "./breathcheck.ts";
 import {
   decodeMono,
-  deviation,
   measureTake,
   RATE,
   voicedPitches,
@@ -43,8 +42,15 @@ export const HOOK_MAX_WORDS = 25;
 export const SPLICE_MARGIN = 0.05;
 /** Under this share of the words heard back, a take is out. */
 export const CLARITY_FLOOR = 0.8;
-/** Over this deviation (1 = takecheck's limit: 5% pitch or 10% brightness), a take is out. */
-export const MATCH_CEILING = 1.6;
+/**
+ * A take whose brightness (median spectral centroid) strays more than this from the narration's own read of the
+ * same words is out: it would sound like another session spliced on. Pitch is not compared: a hook's intonation
+ * is what the takes are meant to vary, and on the 16 Nov proof even the in-context read sat 2.5 to 6 times past
+ * takecheck's pitch limit against the sentence after it. The same words make the centroids comparable.
+ */
+export const MATCH_CENTROID = 0.1;
+/** The match ceiling, in units of MATCH_CENTROID. */
+export const MATCH_CEILING = 1;
 /** Seconds of fade either side of the splice, inside the pause between the hook and the next word. */
 export const SPLICE_FADE = 0.015;
 
@@ -98,6 +104,20 @@ export function hookSplit(
   return { count, end, cut, tail: cut - end };
 }
 
+/**
+ * The quietest moment in a window of a 20 ms loudness envelope (pure): the middle of its lowest frame, in seconds.
+ * The splice is cut there, not where the word timings put the pause: on the 16 Nov proof the timings placed the
+ * next word 60 ms after it had started, and a cut there clipped its first consonant.
+ */
+export function quietCut(env: number[], from: number, to: number, frame = 0.02): number {
+  const a = Math.max(0, Math.floor(from / frame));
+  const b = Math.min(env.length - 1, Math.ceil(to / frame));
+  if (b < a) return Math.max(0, from);
+  let best = a;
+  for (let i = a + 1; i <= b; i++) if (env[i]! < env[best]!) best = i;
+  return (best + 0.5) * frame;
+}
+
 /** Share of the hook's tokens found in order in what was heard (longest common subsequence), 0-1 (pure). */
 export function clarityOf(hook: string, heard: string): number {
   const a = toks(hook);
@@ -119,14 +139,14 @@ export interface HookMeasure {
   label: string;
   /** Words a minute as the viewer hears them (after the Short's speed-up). */
   wpm: number;
-  /** Semitones between the 10th and 90th percentile of the voiced pitch. */
+  /** Semitones between the 25th and 75th percentile of the voiced pitch. */
   rangeSt: number;
   /** Speech level, dBFS (the 70th percentile of the 20 ms loudness on speech). */
   levelDb: number;
   loudBreaths: number;
   /** Share of the hook's words Whisper heard, or undefined when no recogniser ran. */
   clarity?: number;
-  /** takecheck deviation from the rest of the narration (1 = at the limit), when measured. */
+  /** Brightness distance from the narration's own read of the hook, in MATCH_CENTROID units (1 = the limit), when measured. */
   match?: number;
 }
 
@@ -141,7 +161,7 @@ const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
 /**
  * The takes' scores (pure), 0-1 each part, weighted by WEIGHTS (a part that was not measured drops out and the
- * rest are re-weighted). Energy reads intonation range (4 to 12 semitones) and level against the set's loudest
+ * rest are re-weighted). Energy reads intonation range (3 to 10 semitones) and level against the set's loudest
  * (3 dB below it scores nothing); pace loses all its marks 40 wpm off the target; one audible breath halves
  * the breath marks and two take them all. A take under the clarity floor or past the match ceiling is out.
  */
@@ -152,7 +172,7 @@ export function scoreHooks(
   const top = Math.max(...takes.map((t) => t.levelDb));
   return takes.map((t) => {
     const energy =
-      0.6 * clamp01((t.rangeSt - 4) / 8) +
+      0.6 * clamp01((t.rangeSt - 3) / 7) +
       0.4 * clamp01(1 - (top - t.levelDb) / 3);
     const pace = clamp01(1 - Math.abs(t.wpm - targetWpm) / 40);
     const breaths = t.loudBreaths <= 0 ? 1 : t.loudBreaths === 1 ? 0.5 : 0;
@@ -174,7 +194,7 @@ export function scoreHooks(
       t.clarity !== undefined && t.clarity < CLARITY_FLOOR
         ? `only ${Math.round(t.clarity * 100)}% of the words heard`
         : t.match !== undefined && t.match > MATCH_CEILING
-          ? `sounds unlike the rest of the read (${t.match.toFixed(2)})`
+          ? `brighter or duller than the narration's read (${t.match.toFixed(2)})`
           : undefined;
     return {
       label: t.label,
@@ -261,8 +281,9 @@ export async function measureHook(
 ): Promise<HookMeasure & { measure: TakeMeasure }> {
   const samples = await decodeMono(file);
   const pitches = voicedPitches(samples, RATE);
-  const p10 = percentile(pitches, 0.1);
-  const p90 = percentile(pitches, 0.9);
+  // The middle half of the voiced pitch: the outer tails are where the pitch finder slips an octave.
+  const p10 = percentile(pitches, 0.25);
+  const p90 = percentile(pitches, 0.75);
   const env = await envelope(file);
   const speech = env.filter((v) => v > -60);
   const breaths = breathsIn(env);
@@ -294,7 +315,9 @@ export async function measureHook(
     levelDb: top,
     loudBreaths: breaths.loudBreaths,
     ...(clarity === undefined ? {} : { clarity }),
-    ...(opts.norm ? { match: deviation(measure, opts.norm).score } : {}),
+    ...(opts.norm && opts.norm.centroidHz > 0 && measure.centroidHz > 0
+      ? { match: Math.abs(measure.centroidHz / opts.norm.centroidHz - 1) / MATCH_CENTROID }
+      : {}),
     measure,
   };
 }
@@ -373,18 +396,18 @@ export async function bestHook(o: {
   if (!split) return undefined;
   const dir = path.dirname(o.audio);
   const base = path.join(dir, "hooktake");
-  // The rest of the narration is the voice to match: from the first word after the hook to the end.
-  const restFile = `${base}_rest.wav`;
-  await cutAudio(o.audio, restFile, split.cut, 1e6);
-  const norm = await measureTake(restFile);
   const files: string[] = [];
   const takeWords: Word[][] = [];
   const cuts: number[] = [];
+  // Cut in the quietest frame of the pause the audio really has (quietCut), not the timings' midpoint.
+  const mainCut = quietCut(await envelope(o.audio), split.end - 0.04, split.end + 2 * split.tail);
   const mainHook = `${base}_0.wav`;
-  await cutAudio(o.audio, mainHook, 0, split.cut);
+  await cutAudio(o.audio, mainHook, 0, mainCut);
+  // The voice to match: the narration's own read of the same words.
+  const norm = await measureTake(mainHook);
   files.push(mainHook);
   takeWords.push(o.words);
-  cuts.push(split.cut);
+  cuts.push(mainCut);
   let characters = 0;
   for (let n = 1; n <= o.takes; n++) {
     const raw = `${base}_${n}.mp3`;
@@ -393,7 +416,7 @@ export async function bestHook(o: {
       characters += hook.length;
       const last = t.words[split.count - 1];
       if (!last || t.words.length < split.count) continue;
-      const cut = Math.min(t.durationSeconds, last.end + split.tail);
+      const cut = quietCut(await envelope(raw), last.end - 0.04, Math.min(t.durationSeconds, last.end + 0.6));
       const wav = `${base}_${n}.wav`;
       await cutAudio(raw, wav, 0, cut);
       files.push(wav);
@@ -422,15 +445,15 @@ export async function bestHook(o: {
   const result: HookTakeResult = { chosen, scores, measures, characters };
   if (chosen > 0) {
     const takeFile = files[chosen]!.replace(/\.wav$/, ".mp3");
-    await spliceAudio(o.audio, takeFile, split.cut, cuts[chosen]!);
+    await spliceAudio(o.audio, takeFile, mainCut, cuts[chosen]!);
     result.words = spliceWords(
       o.words,
       takeWords[chosen]!,
       split.count,
-      split.cut,
+      mainCut,
       cuts[chosen]!,
     );
-    result.shift = cuts[chosen]! - split.cut;
+    result.shift = cuts[chosen]! - mainCut;
   }
   if (o.ledger)
     await fs
@@ -456,7 +479,7 @@ export async function bestHook(o: {
     (_, i) => `${base}_${i + 1}.mp3`,
   );
   if (!o.keep)
-    for (const f of [restFile, ...files, ...raws])
+    for (const f of [...files, ...raws])
       await fs.rm(f, { force: true }).catch(() => undefined);
   return result;
 }

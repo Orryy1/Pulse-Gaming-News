@@ -6,6 +6,7 @@ import {
   clarityOf,
   hookOf,
   hookSplit,
+  quietCut,
   MATCH_CEILING,
   scoreHooks,
   spliceWords,
@@ -137,7 +138,7 @@ test("an unclear or mismatched take is out; a take without clarity is scored on 
     175,
   );
   assert.match(a!.out ?? "", /words heard/);
-  assert.match(b!.out ?? "", /unlike the rest/);
+  assert.match(b!.out ?? "", /than the narration/);
   assert.equal(c!.out, undefined);
   assert.equal(c!.parts.clarity, undefined);
   assert.ok(c!.total > 0.99, "re-weighted over the parts that were measured");
@@ -204,4 +205,12 @@ test("the pitch track of a rising tone spans its interval", () => {
     12 *
     Math.log2(p[Math.floor(p.length * 0.9)]! / p[Math.floor(p.length * 0.1)]!);
   assert.ok(st > 8 && st < 12, `range ${st.toFixed(1)} semitones`);
+});
+
+test("the splice is cut in the quietest frame of the pause, not the timings' midpoint", () => {
+  // 20 ms frames: speech, a pause whose quietest frame is the ninth (0.16-0.18 s), then the next word starting early.
+  const env = [-15, -16, -15, -14, -18, -30, -50, -62, -70, -66, -55, -40, -20, -15, -14, -16];
+  assert.ok(Math.abs(quietCut(env, 0.1, 0.4) - 0.17) < 1e-9);
+  assert.ok(Math.abs(quietCut(env, 0.12, 0.3) - 0.17) < 1e-9);
+  assert.equal(quietCut(env, 1, 0.5), 1, "an empty window keeps its start");
 });

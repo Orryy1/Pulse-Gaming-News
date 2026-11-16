@@ -863,7 +863,11 @@ export function planShots(
           ? winnerBeat
           : undefined;
     // A picture the editor chose for these very words comes first, whatever else this line would do.
-    const chosen = c.then || isOpening || isClosing ? undefined : pictureForWords(images, input.words, c, stillUses, last);
+    const wordClip =
+      footageFirst && !c.then && !isOpening
+        ? clipForWords(clips, clipOrder.filter((i) => clipLeft(i) >= MIN_SHOT), input.words, c)
+        : undefined;
+    const chosen = c.then || isOpening || isClosing || wordClip !== undefined ? undefined : pictureForWords(images, input.words, c, stillUses, last);
     if (chosen !== undefined) {
       stillUses[chosen]!++;
       media = { type: "image", index: chosen };

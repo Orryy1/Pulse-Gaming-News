@@ -2025,6 +2025,24 @@ async function main(): Promise<void> {
     footagePass();
     setInterval(footagePass, 30 * 60_000);
   }
+  // The game library cache (16 Nov 2026): the Mac pulls each game's index and recent media from the PC's master copy
+  // (GAMELIB_REMOTE) and trims its cache to its cap, every six hours, as a low-priority child process.
+  if (process.env.GAMELIB_REMOTE?.trim() && process.platform === "darwin") {
+    const syncPass = () => {
+      const child = spawn("taskpolicy", ["-b", process.execPath, "--import", "tsx", "src/tools/gamelib.ts", "sync"], {
+        cwd: process.cwd(),
+        env: { ...process.env, DATA_DIR: cfg.dataDir },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      child.stdout?.on("data", (d) => (out += String(d)).length > 4000 && (out = out.slice(-4000)));
+      child.stderr?.on("data", (d) => (out += String(d)).length > 4000 && (out = out.slice(-4000)));
+      child.on("close", (code) => log(code === 0 ? "info" : "warn", "game library sync finished", { code, tail: out.slice(-600) }));
+      child.on("error", (err) => log("warn", "game library sync not started", { error: String(err) }));
+    };
+    setTimeout(syncPass, 15 * 60_000);
+    setInterval(syncPass, 6 * 60 * 60_000);
+  }
   if (cfg.sceneIndex) {
     const pass = () =>
       void sceneIndexTick(

@@ -844,7 +844,7 @@ export function pickProvenance(pick: LibPick): string {
     pick.item.source !== "Steam"
       ? `, publisher: ${pick.item.source}`
       : "";
-  return `${pick.item.provenance}${where}${pub}; library pick for ${pick.key} (${(pick.scene?.seen ?? pick.item.seen) || "untagged"})`;
+  return `${pick.item.provenance}${where}${pub}; game: ${pick.game}; library pick for ${pick.key} (${(pick.scene?.seen ?? pick.item.seen) || "untagged"})`;
 }
 
 /** The library's official trailers of a game (absolute files), for the trailer matcher (src/assets/officialTrailer.ts). */

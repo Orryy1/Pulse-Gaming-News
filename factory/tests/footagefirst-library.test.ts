@@ -724,3 +724,14 @@ test("a letterboxed trailer scene is cut without its black bars; a full-frame on
   assert.equal(letterboxFilter(1920, 1080, 1920, 1040, 0, 20), undefined); // thin bars stay
   assert.equal(letterboxFilter(1920, 1080, 1200, 800, 360, 140), undefined); // a dark scene, not a letterbox
 });
+
+test("the publisher's own trailer of the game may open the Short even when it looks photoreal; the ad-safety look still rules", async () => {
+  const { openerProblem, officialTrailerOf } = await import("../src/openingstep.ts");
+  const clip = { provenance: 'Official trailer "Trailer 2" from Rockstar Games\'s own site (https://x), 4.2s at 45.4s, publisher: Rockstar Games; game: Grand Theft Auto VI; library pick for hook' };
+  assert.equal(officialTrailerOf(clip, "Grand Theft Auto VI"), true);
+  assert.equal(officialTrailerOf({ provenance: "Pulse's own gameplay capture of Grand Theft Auto V" }, "Grand Theft Auto VI"), false);
+  const photoreal = { gameplay: false, gore: false, nudity: false, weapon: false, shocking: false, strength: 6 };
+  assert.equal(openerProblem(photoreal as never, true), undefined);
+  assert.equal(openerProblem(photoreal as never, false), "not the game's own picture (a card, logo or art)");
+  assert.equal(openerProblem({ ...photoreal, nudity: true } as never, true), "nudity or suggestive content");
+});

@@ -716,3 +716,11 @@ test("the hook only takes a scene long enough to open the Short", async () => {
   const [beat] = pickForLines(libs, [{ key: "beat:0", sentence: "x", game: "Grand Theft Auto VI", tags: ["driving", "road", "car"], names: [] }], { preferVideo: true });
   assert.equal(beat!.scene!.at, 10);
 });
+
+test("a letterboxed trailer scene is cut without its black bars; a full-frame one is left alone", async () => {
+  const { letterboxFilter } = await import("../src/assets/gamelib.ts");
+  assert.equal(letterboxFilter(3840, 2160, 3840, 1600, 0, 280), "crop=3840:1600:0:280,");
+  assert.equal(letterboxFilter(1920, 1080, 1920, 1080, 0, 0), undefined);
+  assert.equal(letterboxFilter(1920, 1080, 1920, 1040, 0, 20), undefined); // thin bars stay
+  assert.equal(letterboxFilter(1920, 1080, 1200, 800, 360, 140), undefined); // a dark scene, not a letterbox
+});

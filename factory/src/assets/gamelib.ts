@@ -787,7 +787,7 @@ export async function materialise(
         seconds.toFixed(2),
         "-an",
         "-vf",
-        "scale=-2:1080,fps=30",
+        `${(await letterboxCrop(src, pick.scene.at)) ?? ""}scale=-2:1080,fps=30`,
         "-c:v",
         "libx264",
         "-preset",
@@ -808,6 +808,29 @@ export async function materialise(
     });
     return undefined;
   }
+}
+
+/**
+ * The crop that removes a letterbox from one second of a video at `at` ("crop=w:h:x:y,"), or undefined when the
+ * bars are thin (under 4% of the height each) or cannot be measured.
+ */
+export async function letterboxCrop(src: string, at: number): Promise<string | undefined> {
+  const { stderr } = await exec(
+    FFMPEG,
+    ["-hide_banner", "-ss", Math.max(0, at).toFixed(2), "-i", src, "-t", "1", "-an", "-vf", "cropdetect=limit=24:round=2:reset=0", "-f", "null", "-"],
+    { maxBuffer: 8 * 1024 * 1024, timeout: 60_000 },
+  ).catch((e: { stderr?: string }) => ({ stderr: String(e.stderr ?? "") }));
+  const size = String(stderr).match(/, (\d{3,5})x(\d{3,5})[, ]/);
+  const all = [...String(stderr).matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];
+  const last = all.at(-1);
+  if (!last || !size) return undefined;
+  return letterboxFilter(Number(size[1]), Number(size[2]), Number(last[1]), Number(last[2]), Number(last[3]), Number(last[4]));
+}
+
+/** The crop filter for a measured letterbox (pure): only when it removes bars of at least 4% top and bottom. */
+export function letterboxFilter(width: number, height: number, w: number, h: number, x: number, y: number): string | undefined {
+  if (w < width * 0.9 || h >= height * 0.92 || h < height * 0.5) return undefined;
+  return `crop=${width}:${h}:0:${y},`;
 }
 
 /** The provenance line of a pick, with the publisher named the way the footage caps read it. */

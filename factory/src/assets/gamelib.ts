@@ -584,6 +584,9 @@ export function fitScore(
   return s;
 }
 
+/** The shortest scene the hook may take: long enough for the opening step (2.5 s) with room to trim. */
+export const HOOK_SCENE_SECONDS = 3;
+
 /** Each recent use (in the game's last RECENT_SHORTS Shorts) costs this much fit. */
 export const RECENT_PENALTY = 1.25;
 export const RECENT_SHORTS = 10;
@@ -631,6 +634,7 @@ export function pickForLines(
         for (const opt of options) {
           const key = assetKey(item, opt.scene);
           if (used.has(key)) continue;
+          if (w.key === "hook" && opt.scene && opt.scene.end - opt.scene.at < HOOK_SCENE_SECONDS) continue;
           const fit = fitScore(opt.tags, item.named, opt.seen, w);
           if (fit <= 0) continue;
           const score =

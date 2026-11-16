@@ -63,11 +63,16 @@ export function adSafeProblem(l: OpeningLook | undefined): string | undefined {
   return undefined;
 }
 
+/** The publisher's own trailer footage of this game, by its provenance (pure): the game's picture whatever it looks like. */
+export function officialTrailerOf(c: Pick<Clip, "provenance" | "label">, game?: string): boolean {
+  return /^Official trailer "/.test(c.provenance) && !!game && clipOfGame(c, game) && !clipOfOtherGame(c, game);
+}
+
 /** Why a frame may not open the Short, or undefined (pure): ad-safe and the game's own picture. */
-export function openerProblem(l: OpeningLook | undefined): string | undefined {
+export function openerProblem(l: OpeningLook | undefined, officialFootage = false): string | undefined {
   return (
     adSafeProblem(l) ??
-    (l!.gameplay
+    (officialFootage || l!.gameplay
       ? undefined
       : "not the game's own picture (a card, logo or art)")
   );
@@ -425,15 +430,17 @@ export async function chooseOpening(
       if (tried.every((t) => t.problem === "the vision model could not judge it")) break;
       continue;
     }
+    const official = officialTrailerOf(c, o.game);
     const moments = times
       .map((t, k) => ({ t, l: looks[k] }))
-      .filter((m) => !openerProblem(m.l))
+      .filter((m) => !openerProblem(m.l, official))
       .sort((a, b) => b.l!.strength - a.l!.strength);
     if (!moments.length) {
       tried.push({
         file: c.file,
         problem: openerProblem(
-          looks.find((l) => openerProblem(l) !== "not screened"),
+          looks.find((l) => openerProblem(l, official) !== "not screened"),
+          official,
         ),
       });
       continue;
@@ -452,7 +459,7 @@ export async function chooseOpening(
         wt,
       );
       const wl = await Promise.all(wf.map((f) => look(f)));
-      problem = wl.map(openerProblem).find(Boolean);
+      problem = wl.map((l) => openerProblem(l, official)).find(Boolean);
       if (!problem) {
         chosen = { w, strength: m.l!.strength };
         break;

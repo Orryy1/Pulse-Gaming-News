@@ -105,7 +105,7 @@ Ranked by likely effect on views, retention and subscribers, weighed against how
 - The first sentence serves the title's promise. No buyer framing unless the video is a buyer's guide.
 - One finish line per video: a single question or goal, planted before 1:30 and paid in the last 15%, written into the outline with both timestamps.
 - Open on a real dated voice or source where one exists, with no music under it.
-- The first two minutes are cut at about twice the body's pace.
+- The opening has no long holds (no still over 3 seconds, no clip over 4). **Correction after the build, 18 Nov:** the original idea, an intro cut at twice the body's pace, cannot work, because Pulse's body already changes picture 15 to 19 times a minute, about the pace top documentaries use only for their intros (their bodies run at 8 to 14). The real fix is a calmer body with longer moving shots. That is now part of gap 10 and depends on moving footage.
 - Chapters hand over by contrast (praise then cost, joy then threat), and a series part ends on the next threat.
 
 **How it is automated.** Outline and opening checks in the documentary and long-form writers, and a two-speed rule in the long edit plan, behind `LONG_OPENING_CONTRACT=off|check|fix`. It extends the open-loops and cold-open steps that already exist.
@@ -221,6 +221,25 @@ Three Opus helpers on the PC, each on its own branch cut from `claude/stage`, ea
 | C      | `claude/gap-longform`   | 3 and 4 | `LONG_OPENING_CONTRACT`, `LONG_ARGUES` |
 
 Each helper must prove its change on real past videos before it is offered for deploy, and report what is on and what is off.
+
+### Build status, 18 Nov evening
+
+All three branches are pushed and not merged. Every setting below is **off** until the Pulse Gaming News chat deploys and switches it on.
+
+| Branch                  | Commit    | Settings (all off)                                                                                               | New tests                | What the free checks found                                                                                                                                                                   |
+| ----------------------- | --------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude/gap-payoff`     | 7ac04d8d8 | `SHORT_PAYOFF_GATE`, `SHORT_PAYOFF_SHARE`                                                                        | 22 pass, plus 68 related | Of 77 news Shorts: the opinion starts before 60% in 30, the verdict is missing from the last third in 26, a stock opinion opener repeats within three Shorts in 32, and 15 end on a question |
+| `claude/gap-untemplate` | a4c5efa82 | `SHORT_SOUND_PLAN`, `SHORT_SOUND_SPARSE_SHARE`, `SHORT_LAYOUTS`, `SHORT_LAYOUTS_SHARE`, `SHORT_FIRST_SHOT_MIN_S` | 17 pass, plus 83 related | Newest 30 Shorts: 93% share an effect sequence. Simulated with the settings on every Short: 0%, 0.37 effects per 10 seconds, no opening layout over 37%                                      |
+| `claude/gap-longform`   | 270bc7f68 | `LONG_OPENING_CONTRACT`, `LONG_ARGUES`                                                                           | 28 pass, plus 68 related | All four long videos open over the 90-word cap with no first-person opinion in any chapter; the ranking has 0 of 11 verdicts and equal time per entry                                        |
+
+**Still to do before any of it is offered for deploy:**
+
+- The whole-code check and the full test suite on each branch. They are queued on the PC as short jobs and are held behind the kept-free windows of GTA launch week.
+- Four proof renders for the sound and layout change (same queue).
+- Real-writer before and after for the Shorts gate and the long-video rules. This costs about 1.50 to 3.50 US dollars in total and waits for Martin's OK.
+- One existing test (`shortrun`, the launch run file) fails on the long-form branch; to be confirmed as failing without the change too.
+
+**Suggested switch-on order, once checked:** `SHORT_FIRST_SHOT_MIN_S=1.5` for every Short; then the sound and layout settings on half of Shorts; `SHORT_PAYOFF_GATE=check`, `LONG_OPENING_CONTRACT=check` and `LONG_ARGUES=check`, which only record results; then `fix` on half once the records look right.
 
 ## What I am not recommending
 

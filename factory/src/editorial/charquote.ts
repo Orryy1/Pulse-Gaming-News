@@ -37,6 +37,8 @@ export interface CharacterQuote {
   after: string;
   /** The beat's narration before the quote was written in, so a quote that cannot be played can be taken out again. */
   original: string;
+  /** "trailer": the line is from the game's official trailer (src/assets/trailerlines.ts), not a cutscene. */
+  origin?: "trailer";
 }
 
 export const QuoteMomentSchema = z.object({
@@ -84,7 +86,8 @@ A real line from the game's own cutscene can play inside this video, in the char
 - answers is the word or words of the line, copied exactly from it, that the reaction talks back at ("wake up").
 - Keep every fact, figure and name the beat had (you may say them shorter or move them); add no new fact, figure or name except the speaking character's name.
 - The quote goes in one of the beats listed, never in the hook or the last line.
-- Full sentences with a verb, contractions, no delivery tags in square brackets, no stage directions.`;
+- Full sentences with a verb, contractions, no delivery tags in square brackets, no stage directions.
+- A line marked as a voice in the official trailer comes from the game's own marketing, not a cutscene: the trailer never says who speaks, so never name or guess the speaker; set it up as something the trailer says ("Even the trailer seems to agree:"), and treat its words as public, never as a story reveal.`;
 
 const plain = (text: string): string[] =>
   stripVoiceTags(text)
@@ -221,7 +224,7 @@ export function quoteMomentBrief(
     "Lines you may use (the game's exact words; the clip is the character saying them):",
     ...candidates.map(
       (c) =>
-        `- ${c.id}: ${c.speaker}, ${(c.end - c.start).toFixed(1)} s, ${minutes(c.start)} into the story${c.matched.length ? `, shares with the script: ${c.matched.join(", ")}` : c.fit === "general" ? ", shares no words with the script (use it only if its words truly answer a beat)" : ""}. ${JSON.stringify(c.text)}`,
+        `- ${c.id}: ${c.origin === "trailer" ? `a voice in the official trailer "${c.speaker}" (never name who says it)` : c.speaker}, ${(c.end - c.start).toFixed(1)} s, ${c.origin === "trailer" ? `${Math.round(c.start)} s into the trailer` : `${minutes(c.start)} into the story`}${c.matched.length ? `, shares with the script: ${c.matched.join(", ")}` : c.fit === "general" ? ", shares no words with the script (use it only if its words truly answer a beat)" : ""}. ${JSON.stringify(c.text)}`,
     ),
   ].join("\n");
 }
@@ -262,6 +265,7 @@ export function applyQuoteMoment(
     before,
     after,
     original: script.beats[m.beat]?.narration ?? "",
+    ...(q.origin === "trailer" ? { origin: "trailer" as const } : {}),
   };
   return {
     ...script,

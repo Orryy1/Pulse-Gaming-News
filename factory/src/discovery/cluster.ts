@@ -33,6 +33,8 @@ export interface StoryCluster {
     follow?: import("../editorial/why.ts").WhyFollow;
     /** A pre-made Short's slot (ISO): its time words are written for that moment (src/launchprep.ts). */
     airs_at?: string;
+    /** The title the launch run planned (the owner's own words): it goes on YouTube as written, never the writer's. */
+    title?: string;
     /** The Why as a numbered serial (WHY_SERIAL_ENABLED): its number, and whether the slot was a home-shelf one. */
     serial?: { number: number; home: boolean };
   };
@@ -63,6 +65,8 @@ export interface StoryCluster {
   gtaDaily?: import("../gtadaily.ts").GtaDailyStory;
   /** An episode of a "Can I beat GTA 6 without...?" challenge (src/challenge.ts): its series, number, count and links. */
   challenge?: import("../challenge.ts").ChallengeStory;
+  /** STREAM_ARCHIVE_LINKS: the YouTube stream archive a gameplay Short was cut from, at its moment (src/levers/archives.ts). */
+  streamArchive?: import("../levers/archives.ts").ArchiveLink;
   /** A search Short (SEARCH_SHORTS, src/searchq): the one query it answers, titled in the searcher's words, and its facts. */
   search?: import("../searchq/brief.ts").SearchStory;
   /** A video reply to a viewer's question (COMMENT_REPLY_SHORTS, src/commentreply.ts): the comment, its handle and video. */

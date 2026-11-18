@@ -382,7 +382,7 @@ export function progressiveNaming(
         end: m.end,
         pronoun: why === "pronoun",
         subject:
-          atSentenceStart(text, m.start) && !/^['’]s/.test(text.slice(m.end)),
+          atSentenceStart(text, m.start) && !/^['’]s\b/.test(text.slice(m.end)),
       };
     }
     pieces.push(text.slice(cursor));

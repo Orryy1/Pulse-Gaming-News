@@ -20,6 +20,7 @@ import type { RenderPlan } from "./plan.ts";
 import type { Segment } from "./timeline.ts";
 import { cardWindow } from "./shortcraft.ts";
 import { isEntryCard } from "./rankcard.ts";
+import { peopleGroups, type PersonInset } from "./people.ts";
 
 export type OverlayKind =
   | "entry"
@@ -29,7 +30,9 @@ export type OverlayKind =
   | "filler"
   | "card"
   | "sting"
-  | "shelf";
+  | "shelf"
+  | "people"
+  | "tracklist";
 
 /** Higher wins. A ranked Short's rank card (src/render/rankcard.ts) stays up for its whole entry: the rest gives way. */
 export const PRIORITY: Record<OverlayKind, number> = {
@@ -38,6 +41,11 @@ export const PRIORITY: Record<OverlayKind, number> = {
   hook: 6,
   freeze: 5,
   filler: 4,
+  // PEOPLE_INSETS (src/render/people.ts): a person's photo lands on the word that names them, so it goes before a
+  // card (which the graphics audit then moves to the free stretch beside it); the tracklist card stands in for its
+  // line's own card and meets the others as a card.
+  people: 3.5,
+  tracklist: 3.2,
   card: 3,
   sting: 2,
   shelf: 1,
@@ -53,6 +61,8 @@ export const MIN_KEEP: Record<OverlayKind, number> = {
   card: 24,
   sting: 20,
   shelf: 30,
+  people: 45,
+  tracklist: 45,
 };
 
 /** Frames the opening honesty label (flair and source line) stays up: 3 s. */
@@ -268,6 +278,10 @@ export function overlaySpans(input: {
   layout: ShortLayout;
   stamps: Array<{ at: number }>;
   sting: boolean | { from: number; frames: number };
+  /** PEOPLE_INSETS: the people named, each with when their name is said (seconds). */
+  people?: Array<Pick<PersonInset, "name" | "src" | "credit" | "at">>;
+  /** PEOPLE_INSETS: the tracklist card; its line's own card gives way to it. */
+  tracklist?: { segment: number; from: number; frames: number };
 }): Span[] {
   const { segments, words, plan, layout, stamps } = input;
   const fps = plan.fps;
@@ -284,6 +298,7 @@ export function overlaySpans(input: {
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
     if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    if (input.tracklist?.segment === i) return;
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
     out.push({ key: `card${i}`, kind: isEntryCard(s) ? "entry" : "card", from: w.from, to: w.from + w.len });
   });
@@ -293,7 +308,29 @@ export function overlaySpans(input: {
     if (it.device === "rail" || it.to <= it.from) return;
     out.push({ key: `shelf${i}`, kind: "shelf", from: it.from, to: it.to });
   });
+  for (const g of peopleGroups(input.people ?? [], fps, plan.totalFrames))
+    out.push({ key: g.key, kind: "people", from: g.from, to: g.to });
+  if (input.tracklist && input.tracklist.frames > 0)
+    out.push({ key: "tracklist", kind: "tracklist", from: input.tracklist.from, to: input.tracklist.from + input.tracklist.frames });
   return out;
+}
+
+/**
+ * On a Short in the full chrome (no one-at-a-time rule), the kinds that must still never cover another overlay (the
+ * people insets and the tracklist card): each cut to the longest stretch every other planned overlay leaves free,
+ * or dropped under its MIN_KEEP. The other overlays draw as planned.
+ */
+export function yieldingSpans(spans: Span[], kinds: OverlayKind[]): Span[] {
+  const taken: Span[] = spans.filter((s) => !kinds.includes(s.kind));
+  const out: Span[] = [];
+  const mine = spans
+    .filter((s) => kinds.includes(s.kind))
+    .sort((a, b) => PRIORITY[b.kind] - PRIORITY[a.kind] || a.from - b.from);
+  for (const s of mine) {
+    const best = freePieces(s.from, s.to, [...taken, ...out]).sort((x, y) => y[1] - y[0] - (x[1] - x[0]) || x[0] - y[0])[0];
+    if (best && best[1] - best[0] >= MIN_KEEP[s.kind]) out.push({ ...s, from: best[0], to: best[1] });
+  }
+  return out.sort((a, b) => a.from - b.from);
 }
 
 /** The frames the caption is up: from each word's start to its end plus a beat, joined across short gaps. */

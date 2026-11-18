@@ -166,6 +166,18 @@ export const ScriptSchema = z.object({
     .describe(
       "The real, well-known person this story is about when one person is the story (a director, executive, actor, streamer), as commonly written, e.g. 'Hideo Kojima'; empty when the story is about a game, a company or a product",
     ),
+  people: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Every real person the narration names (artists, developers, actors, executives), as commonly written and spelled exactly as in the narration, e.g. ['Lana Del Rey', 'Keith Richards']; empty when none. Never bands, companies, outlets or characters",
+    ),
+  tracklist: z
+    .array(z.object({ artist: z.string(), title: z.string() }))
+    .optional()
+    .describe(
+      "Only for a story about a soundtrack, album or tracklist: the songs the sources name, each with its artist and title exactly as the sources give them (title empty when the source names the artist but not the song); at most 6; omit otherwise",
+    ),
   loop_line: z
     .string()
     .describe(

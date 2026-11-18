@@ -21,6 +21,30 @@ import {
 import { speakable } from "../voice/speakable.ts";
 import type { GameCard } from "./gamedata.ts";
 import { PRIVACY_NOTICE_HTML } from "./privacy.ts";
+import { isoDuration, type AnswerPack } from "../levers/answer.ts";
+import { stamp } from "../youtube/chapters.ts";
+
+/** ANSWER_PAGES: a long video's summary, question chapters and key facts, with its length (src/levers/answer.ts). */
+export interface SitePack extends AnswerPack {
+  duration?: number;
+}
+
+/** The page's "start the video here" address (pure): what SeekToAction and every Clip point at. */
+export const seekUrl = (url: string, at: number) => `${url}?t=${Math.max(0, Math.floor(at))}`;
+
+/** schema.org Clips for the chapters (pure): each from its mark to the next (the last to the end when known). */
+export function clipsLd(url: string, chapters: SitePack["chapters"], duration?: number): object[] {
+  return chapters.map((c, i) => {
+    const end = chapters[i + 1]?.at ?? duration;
+    return {
+      "@type": "Clip",
+      name: c.title.slice(0, 100),
+      startOffset: Math.floor(c.at),
+      ...(end !== undefined && end > c.at ? { endOffset: Math.floor(end) } : {}),
+      url: seekUrl(url, c.at),
+    };
+  });
+}
 
 export interface SiteEpisode {
   id: string;
@@ -55,6 +79,22 @@ const day = (iso: string, month: "long" | "short" = "long") =>
     day: "numeric",
     timeZone: "UTC",
   });
+
+/** The answer sections of a long video's page (pure): the summary, the key facts and the chapters, each time a link. */
+export function packHtml(pack: SitePack): string {
+  const at = (t: number) => `<a href="?t=${Math.floor(t)}">${stamp(t)}</a>`;
+  return [
+    pack.summary ? `<h2>In short</h2><p class="lead">${esc(pack.summary)}</p>` : "",
+    pack.facts.length
+      ? `<h2>Key facts</h2><ul class="keyfacts">${pack.facts.map((f) => `<li>${esc(f.text)} <span class="meta">(${at(f.at)})</span></li>`).join("")}</ul>`
+      : "",
+    pack.chapters.length >= 3
+      ? `<h2>Chapters</h2><ol class="chapters">${pack.chapters.map((c) => `<li>${at(c.at)} ${esc(c.title)}</li>`).join("")}</ol>`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
 
 /** "wolf-among-us-remastered-delayed-14ffc0f4": readable, and the id's tail finds the episode. */
 export function articleSlug(
@@ -244,6 +284,7 @@ h2 small{font:800 13px Inter,sans-serif;color:var(--muted);letter-spacing:0;text
 .video{position:relative;aspect-ratio:9/16;max-width:380px;margin:20px 0;border-radius:16px;overflow:hidden;background:#000}
 .video.wide{aspect-ratio:16/9;max-width:none}.video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
 .article p{font-size:19px;line-height:1.7;color:#e9e9ec}
+.article .lead{font-size:21px;color:var(--paper)}.keyfacts li,.chapters li{margin:6px 0}.chapters a,.keyfacts a{font-variant-numeric:tabular-nums;font-weight:800}
 .btn{display:inline-block;background:var(--amber);color:var(--ink);font-weight:900;padding:12px 18px;border-radius:10px;text-decoration:none}
 .btn.ghost{background:transparent;color:var(--paper);border:1px solid var(--line)}
 .buy,.buy:visited{display:inline-block;background:var(--amber);color:var(--ink);font-weight:900;padding:12px 18px;border-radius:10px;text-decoration:none}
@@ -398,7 +439,7 @@ export function articlePage(
   base: string,
   tags: AffiliateTags,
   country?: string,
-  more: { hubs?: GameHub[]; related?: SiteEpisode[] } = {},
+  more: { hubs?: GameHub[]; related?: SiteEpisode[]; pack?: SitePack; seek?: number } = {},
 ): string {
   const s = ep.script_json;
   const title = polishTitle(s);
@@ -464,7 +505,8 @@ export function articlePage(
     .slice(0, 3);
   const body = `<div class="narrow article"><p class="meta">${day(ep.live_at)}${s.is_rumour ? " · Unconfirmed report" : ""}</p>
 <h1>${esc(title)}</h1>
-<div class="video${long ? " wide" : ""}"><iframe src="https://www.youtube-nocookie.com/embed/${esc(ep.youtube_video_id)}" title="${esc(title)}" loading="lazy" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+<div class="video${long ? " wide" : ""}"><iframe src="https://www.youtube-nocookie.com/embed/${esc(ep.youtube_video_id)}${more.seek ? `?start=${Math.floor(more.seek)}&autoplay=1` : ""}" title="${esc(title)}" loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe></div>
+${more.pack ? `${packHtml(more.pack)}\n<h2>The full story</h2>` : ""}
 ${articleParagraphs(s)
   .map((p) => `<p>${esc(p)}</p>`)
   .join("\n")}
@@ -504,11 +546,25 @@ ${ctaBlock}`;
         "@context": "https://schema.org",
         "@type": "VideoObject",
         name: title.slice(0, 100),
-        description: articleParagraphs(s)[0]?.slice(0, 300) ?? title,
+        description: (more.pack?.summary || articleParagraphs(s)[0])?.slice(0, 300) ?? title,
         thumbnailUrl: [thumb],
         uploadDate: ep.live_at,
         embedUrl: `https://www.youtube.com/embed/${ep.youtube_video_id}`,
         contentUrl: `https://www.youtube.com/watch?v=${ep.youtube_video_id}`,
+        // ANSWER_PAGES: the length, the chapters as Clips and SeekToAction, so Google can link into the video.
+        ...(more.pack?.duration ? { duration: isoDuration(more.pack.duration) } : {}),
+        ...(more.pack && more.pack.chapters.length >= 3
+          ? { hasPart: clipsLd(url, more.pack.chapters, more.pack.duration) }
+          : {}),
+        ...(more.pack
+          ? {
+              potentialAction: {
+                "@type": "SeekToAction",
+                target: `${url}?t={seek_to_second_number}`,
+                "startOffset-input": "required name=seek_to_second_number",
+              },
+            }
+          : {}),
       },
       {
         "@context": "https://schema.org",

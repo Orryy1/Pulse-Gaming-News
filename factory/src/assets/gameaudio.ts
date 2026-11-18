@@ -24,6 +24,7 @@ import { runCapped } from "../lib/child.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { loudness } from "../qa/media.ts";
 import { classifySound } from "../../mac/gameplay/soundtags.mjs";
+import { trailerSoundFor } from "./trailerlines.ts";
 
 export { musicDipAt } from "../render/gamebed.ts";
 
@@ -38,6 +39,8 @@ export interface SoundClip {
   sourceUrl?: string;
   youtubeSource?: { videoId: string };
   span?: { source: string; from: number; to: number };
+  /** Seconds into its source of the clip's first frame (a trailer clip's place in the trailer). */
+  startSeconds?: number;
 }
 
 /** What a clip's sound is (pure), from its provenance and whether its file already has vetted sound. */
@@ -97,6 +100,8 @@ export interface HeardClip {
   trimDb: number;
   /** False: kept at its under-the-voice level in the gaps too (trailers, music). */
   swell: boolean;
+  /** A trailer clip heard through its isolated voice (TRAILER_QUOTES, src/assets/trailerlines.ts): its stretch is mostly speech. */
+  voice?: boolean;
 }
 
 /** Music share at which a clip is not used, and at which it is lowered and kept down. */
@@ -135,6 +140,17 @@ export function soundPolicy(
   }
   if ((m.speech ?? 0) >= SPEECH_LOWER) trimDb += SPEECH_DB;
   return { trimDb, swell };
+}
+
+/**
+ * How a trailer clip heard through its voice mix is used (pure): like a cutscene's dialogue, a little under the
+ * narrator and up in the gaps; the music in the mix is already 20 dB down, so it never swells into a song.
+ */
+export function trailerVoicePolicy(
+  lufs: number,
+): { trimDb: number; swell: boolean } | { skip: string } {
+  if (!Number.isFinite(lufs) || lufs < SILENT_LUFS) return { skip: "silent" };
+  return { trimDb: SPEECH_DB, swell: true };
 }
 
 /** The share of Apple's sound windows with one of `labels` at or above `min` (pure). */
@@ -284,6 +300,8 @@ export async function hearClips(
     ytdlp: string;
     trailers: boolean;
     only?: ReadonlySet<number>;
+    /** TRAILER_QUOTES: a trailer clip whose stretch is mostly speech is heard through its voice mix, music 20 dB down. */
+    trailerVoice?: boolean;
   },
 ): Promise<{
   heard: HeardClip[];
@@ -295,6 +313,18 @@ export async function hearClips(
     if (o.only && !o.only.has(index)) continue;
     const kind = clipSoundKind(c);
     try {
+      // A trailer's dialogue, without its licensed music: only where the stretch on screen is mostly speech.
+      if (kind === "trailer" && !o.trailers && o.trailerVoice) {
+        const v = await trailerSoundFor(dir, c, o.dataDir);
+        if (v) {
+          const lufs = await loudness(path.join(dir, v.file));
+          const p = trailerVoicePolicy(lufs);
+          if ("skip" in p) skipped.push({ index, why: p.skip });
+          else
+            heard.push({ index, kind, file: v.file, lufs, speech: v.share, voice: true, ...p });
+          continue;
+        }
+      }
       const pre = soundPolicy(kind, { lufs: -20 }, o);
       if ("skip" in pre) {
         skipped.push({ index, why: pre.skip });
@@ -572,6 +602,7 @@ export async function buildShortBed(o: {
   underLufs: number;
   gapLufs: number;
   trailers: boolean;
+  trailerVoice?: boolean;
 }): Promise<ShortBed | undefined> {
   const work = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bed-"));
   try {
@@ -583,6 +614,7 @@ export async function buildShortBed(o: {
       ytdlp: o.ytdlp,
       trailers: o.trailers,
       only: used,
+      trailerVoice: o.trailerVoice,
     });
     if (!heard.length) {
       log("info", "game audio: no clip on screen can be heard", { skipped });
@@ -667,6 +699,7 @@ export async function longSoundClips<T extends SoundClip>(o: {
   underLufs: number;
   underGain: number;
   trailers: boolean;
+  trailerVoice?: boolean;
 }): Promise<{
   clips: T[];
   heard: number;
@@ -684,6 +717,7 @@ export async function longSoundClips<T extends SoundClip>(o: {
       ytdlp: o.ytdlp,
       trailers: o.trailers,
       only,
+      trailerVoice: o.trailerVoice,
     });
     const out = [...o.clips];
     for (const h of heard) {

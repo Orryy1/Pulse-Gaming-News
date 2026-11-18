@@ -1027,6 +1027,12 @@ export interface Config {
   characterQuotes: boolean;
   characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video
   characterQuotesShort: number; // CHARACTER_QUOTES_SHORT: the most quotes in one Short (default 1; a second only when the story fits)
+  /**
+   * TRAILER_QUOTES (on by default; 15 Nov 2026): with CHARACTER_QUOTES on, an official trailer's spoken lines
+   * (src/assets/trailerlines.ts) may be quoted like cutscene lines, inside the spoiler window too (a trailer is public),
+   * and with GAME_AUDIO_BED a trailer clip whose stretch is mostly speech is heard through its isolated voice.
+   */
+  trailerQuotes: boolean;
   /** GAME_AUDIO_BED (off by default; owner, 12 Nov 2026): the footage's own game sound under the narration, ducked
    * well under the voice, up in the gaps between sentences, silent under a character quote (src/assets/gameaudio.ts). */
   gameAudioBed: boolean;
@@ -2017,6 +2023,7 @@ export function loadConfig(): Config {
     characterQuotes: bool("CHARACTER_QUOTES", false),
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
+    trailerQuotes: bool("TRAILER_QUOTES", true),
     gameAudioBed: bool("GAME_AUDIO_BED", false),
     gameAudioShare: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_SHARE", "0.5")) || 0)),
     gameAudioUnderLufs: Math.min(-18, Math.max(-50, Number(str("GAME_AUDIO_UNDER_LUFS", "-30")) || -30)),

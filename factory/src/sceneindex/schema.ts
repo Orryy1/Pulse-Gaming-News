@@ -103,6 +103,11 @@ export interface IndexMoment {
 export interface SceneIndex {
   version: number;
   /**
+   * "trailer": an official trailer's spoken lines dressed as an index (src/assets/trailerlines.ts), never stored as an
+   * index file. Its lines are public marketing, so they may be quoted inside a spoiler window; unset is a real index.
+   */
+  origin?: "trailer";
+  /**
    * ARCHIVE_LIGHT (src/sceneindex/light.ts): "light" is built from captions, chapters, storyboard frames and
    * comments without downloading the video; "upgrading" is a light index a full build is replacing stretch by
    * stretch; unset or "full" is the full index (proxy, Whisper, per-shot text reading).

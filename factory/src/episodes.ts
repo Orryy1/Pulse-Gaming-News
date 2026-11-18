@@ -221,6 +221,8 @@ export interface EpisodeAssets {
       text: string;
       game: string;
       credit: string;
+      /** "trailer": an official trailer's line (src/assets/trailerlines.ts), not a cutscene. */
+      origin?: "trailer";
     }
   >;
 }

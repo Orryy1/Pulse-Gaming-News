@@ -11538,6 +11538,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           underLufs: s.cfg.gameAudioUnderLufs,
           underGain: GAME_UNDER,
           trailers: s.cfg.gameAudioTrailers,
+          trailerVoice: s.cfg.trailerQuotes,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -13606,6 +13607,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           underLufs: s.cfg.gameAudioUnderLufs,
           gapLufs: s.cfg.gameAudioGapLufs,
           trailers: s.cfg.gameAudioTrailers,
+          trailerVoice: s.cfg.trailerQuotes,
         })
       : undefined;
   if (s.cfg.gameAudioBed)

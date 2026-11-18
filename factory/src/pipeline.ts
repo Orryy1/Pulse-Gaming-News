@@ -9781,8 +9781,8 @@ export async function gatherMedia(
   // A hardware story still never shows one maker's hardware on a line about the other's (18 Nov 2026: a PlayStation
   // controller sat on "using Xbox Series S settings" in the Xbox cloud Short), nor on a line naming no platform.
   if (hardwareStory(script)) {
-    const ps = /(playstation|ps[345]|dualsense|ps portal)/i;
-    const xb = /(xbox|series [xs]|game pass)/i;
+    const ps = /\b(playstation|ps[345]|dualsense|ps portal)\b/i;
+    const xb = /\b(xbox|series [xs]|game pass)\b/i;
     const wrong = images.filter((a) => {
       if (!isHardwareAsset(a)) return false;
       const what = [a.provenance, a.sourceUrl, a.file, a.label].filter(Boolean).join(" ").replace(/[-_/]+/g, " ");

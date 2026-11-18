@@ -194,7 +194,7 @@ export const HASHTAG = /#[\p{L}\p{N}_]+/gu;
 export const SMALL_WORD = /^(The|A|An|And|Of|In|On|To|For|Is|It|Its|Was|At|By|With|From|This|That|Your|You)$/;
 
 /** A figure and up to three words after it, stopping at punctuation ("17% of the vote", "21 PC classics"). */
-export const FIGURE_PHRASE = /\$?\d[\d,.]*\s?(%|GB|TB|million|billion|k|m)?(\s+[\p{L}'-]+){1,3}/iu;
+export const FIGURE_PHRASE = /\$?\d[\d,.]*\s?(%|GB|TB|million|billion|k\b|m\b)?(\s+[\p{L}'-]+){1,3}/iu;
 
 /** Small words a phrase must not end on. */
 export const TRAILING_SMALL = /(\s+(of|the|a|an|to|for|and|in|on|with|at|by|from|its|your))+$/i;

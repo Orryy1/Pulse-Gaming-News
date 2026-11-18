@@ -1,4 +1,4 @@
-// Trailer voice lines (TRAILER_QUOTES, on by default; owner, 15 Nov 2026: "Shorts should use the game's own audio:
+// Trailer voice lines (TRAILER_QUOTES, off by default until a preview is checked; owner, 15 Nov 2026: "Shorts should use the game's own audio:
 // characters talking to the narrator, real voice lines from game footage, trailers and cutscenes"). In practice no
 // character quote had fired in days: every GTA VI Short asked for a scene index the game cannot have before launch, and
 // the game sound bed heard nothing because every clip on screen was a trailer (trailer music stays silent).

@@ -629,3 +629,34 @@ test("the memory reads stored plans and shapes, today's Shorts as the card", () 
     { open: "lower", close: "hold" },
   ]);
 });
+
+test("people insets count as the one overlay in every opening and closing, and arrive with a sound", async () => {
+  const { arbitrate } = await import("../src/render/cleanframe.ts");
+  const { arrivalsOf } = await import("../src/render/untemplate.ts");
+  const { segments, words, plan } = short();
+  const layout = shortLayout(segments, FPS, plan.totalFrames, plan.tailFrames);
+  // One person named during the hook, one in the last two seconds.
+  const people = [
+    { name: "Ann Example", src: "a.jpg", credit: "", at: 1 },
+    { name: "Bob Example", src: "b.jpg", credit: "", at: plan.totalFrames / FPS - 2.5 },
+  ];
+  const kept = (shape?: { open: ShortShape["open"]; close: ShortShape["close"] }) =>
+    arbitrate(overlaySpans({ segments, words, plan, layout, stamps: [], sting: false, people, shape }));
+  const at = (spans: ReturnType<typeof kept>, f: number) => spans.filter((s) => f >= s.from && f < s.to);
+  for (const open of ["card", "footage", "lower"] as const)
+    for (const close of ["card", "hold"] as const) {
+      const k = kept({ open, close });
+      for (let f = 0; f < plan.totalFrames; f++) assert.ok(at(k, f).length <= 1, `${open}/${close}: one overlay at frame ${f}`);
+    }
+  const peopleIn = (k: ReturnType<typeof kept>, a: number, b: number) => k.some((s) => s.kind === "people" && s.from < b && s.to > a);
+  // Over the hook the headline (card or lower third) wins; a full-frame opening lets the inset show.
+  assert.ok(!peopleIn(kept({ open: "card", close: "card" }), 0, 40));
+  assert.ok(!peopleIn(kept({ open: "lower", close: "card" }), 0, 40));
+  assert.ok(peopleIn(kept({ open: "footage", close: "card" }), 0, 60));
+  // At the end the return to the headline card wins; holding on the payoff lets the inset show.
+  assert.ok(!peopleIn(kept({ open: "card", close: "card" }), layout.loopFrom, plan.totalFrames));
+  assert.ok(peopleIn(kept({ open: "card", close: "hold" }), layout.loopFrom, plan.totalFrames));
+  // An inset that shows is an arrival the sparse plan may mark.
+  const arr = arrivalsOf({ plan, segments, words, stamps: [], clean: true, shape: { open: "footage", close: "hold" }, people });
+  assert.ok(arr.some((a) => a.frame >= 25 && a.frame <= 40));
+});

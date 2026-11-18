@@ -74,7 +74,8 @@ test("the shipped launch run parses, every slot is a real slot and no question r
   const seen = new Set<string>();
   for (const e of run) {
     if (e.kind !== "why") continue;
-    assert.ok(["12:00", "18:30"].includes(e.slot), e.question);
+    // Whys use 12:00 and 18:30; the owner's cloud-gaming Short (18 Nov) went in his chosen 22:00 slot.
+    assert.ok(["12:00", "18:30"].includes(e.slot) || (e.date === "2026-11-18" && e.slot === "22:00"), e.question);
     assert.ok(!seen.has(`${e.date} ${e.slot}`), `${e.date} ${e.slot} used twice`);
     seen.add(`${e.date} ${e.slot}`);
     assert.ok(!seen.has(e.question), e.question);

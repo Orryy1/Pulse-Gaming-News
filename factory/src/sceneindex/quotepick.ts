@@ -41,6 +41,8 @@ export interface QuoteCandidate {
   score: number;
   matched: string[];
   fit: "story" | "general";
+  /** "trailer": a line from the game's official trailer (src/assets/trailerlines.ts), its speaker unnamed. */
+  origin?: "trailer";
 }
 
 /** A quote longer than this is a speech, not a line: a Short has no room for it. */
@@ -250,6 +252,7 @@ export function quoteCandidates(
       score: Math.round(score * 100) / 100,
       matched,
       fit: score >= minScore ? "story" : "general",
+      ...(index.origin === "trailer" ? { origin: "trailer" as const } : {}),
     });
   }
   const story = scored

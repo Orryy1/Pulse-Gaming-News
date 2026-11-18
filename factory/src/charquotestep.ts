@@ -52,6 +52,13 @@ import { openQuoteGaps } from "./voice/quotegap.ts";
 import type { TimedWord } from "./voice/pauses.ts";
 import { FFMPEG } from "./lib/bin.ts";
 import { runCapped } from "./lib/child.ts";
+import {
+  isTrailerVideoId,
+  trailerIndexes,
+  trailerIndexFor,
+  trailerQuoteSection,
+} from "./assets/trailerlines.ts";
+import { canonicalGame } from "./assets/gamelib.ts";
 
 /** The narration's usual loudness, for a clip made before the voice exists (matched exactly once it does). */
 export const PROVISIONAL_LUFS = -16;
@@ -78,9 +85,45 @@ export function quotesAfterGaps<T extends { start: number; end?: number }>(
   });
 }
 
-/** The footage credit a quote shows: the game's cutscenes, via YouTube (pure). */
-export function quoteCredit(game: string): string {
-  return `${game.replace(/\s*\([^)]*\)\s*$/, "").trim()} cutscenes, via YouTube`;
+/** The footage credit a quote shows: the game's cutscenes, via YouTube, or its official trailer (pure). */
+export function quoteCredit(game: string, origin?: "trailer"): string {
+  const name = game.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  return origin === "trailer" ? `${name} official trailer` : `${name} cutscenes, via YouTube`;
+}
+
+/** Whether a placed quote is an official trailer's line (pure). */
+export const isTrailerQuote = (q: { origin?: string; videoId?: string }): boolean =>
+  q.origin === "trailer" || isTrailerVideoId(q.videoId);
+
+/**
+ * Candidates from several indexes as one list (pure): every line that fits the story, best first, then the filler
+ * lines taken from each index in turn, at most `max`; an ID offered twice keeps its first.
+ */
+export function mergeCandidates(
+  lists: ReadonlyArray<readonly QuoteCandidate[]>,
+  max: number,
+): QuoteCandidate[] {
+  const seen = new Set<string>();
+  const keep = (c: QuoteCandidate) => (seen.has(c.id) ? false : (seen.add(c.id), true));
+  const story = lists
+    .flatMap((l) => l.filter((c) => c.fit === "story"))
+    .sort((a, b) => b.score - a.score || a.start - b.start)
+    .filter(keep);
+  const general: QuoteCandidate[] = [];
+  const rest = lists.map((l) => l.filter((c) => c.fit !== "story"));
+  for (let k = 0; rest.some((l) => k < l.length); k++)
+    for (const l of rest) if (l[k] && keep(l[k]!)) general.push(l[k]!);
+  return [...story, ...general].slice(0, max);
+}
+
+/** The index a placed quote was taken from: its game's scene index, or the official trailer it is from. */
+export async function indexForQuote(
+  dataDir: string,
+  q: { game: string; videoId: string; origin?: string },
+): Promise<SceneIndex | undefined> {
+  return isTrailerQuote(q)
+    ? trailerIndexFor(dataDir, q.game, q.videoId)
+    : quoteIndexFor(dataDir, q.game);
 }
 
 /** The scene index for a script's game: its own folder, or the one its name is the subtitle of. */
@@ -91,6 +134,12 @@ export async function quoteIndexFor(
   if (!game.trim()) return undefined;
   const exact = await loadSceneIndex(dataDir, game);
   if (exact) return exact;
+  // "Grand Theft Auto 6" and "GTA 6" are Grand Theft Auto VI's index.
+  const canonical = canonicalGame(game);
+  if (canonical !== game.trim()) {
+    const named = await loadSceneIndex(dataDir, canonical);
+    if (named) return named;
+  }
   const slugs = await fs
     .readdir(path.join(dataDir, "sceneindex"))
     .catch(() => [] as string[]);
@@ -170,7 +219,6 @@ export async function quoteScriptStep(
     return script;
   try {
     const game = script.game_title;
-    const index = await quoteIndexFor(s.cfg.dataDir, game);
     const skip = async (why: string) => {
       await logEvent(s.db, ep.id, "character_quote", {
         used: false,
@@ -178,7 +226,16 @@ export async function quoteScriptStep(
       }).catch(() => undefined);
       return script;
     };
-    if (!index) return skip(`no scene index for ${game}`);
+    // The sources: the game's scene index (its cutscenes), and with TRAILER_QUOTES its official trailers' spoken
+    // lines (src/assets/trailerlines.ts). A trailer is public marketing, so its lines need no spoiler window.
+    const found = await quoteIndexFor(s.cfg.dataDir, game);
+    const trailers = s.cfg.trailerQuotes
+      ? await trailerIndexes(s.cfg.dataDir, game)
+      : [];
+    if (!found && !trailers.length)
+      return skip(
+        `no scene index for ${game}${s.cfg.trailerQuotes ? " and no trailer lines" : ""}`,
+      );
     const recent =
       o.recentRelease ??
       /\b(remake|remaster(?:ed)?|reimagined)\b/i.test(
@@ -188,17 +245,34 @@ export async function quoteScriptStep(
           ...script.beats.map((b) => b.narration),
         ].join(" "),
       );
-    if (!indexFitsRelease(index, recent))
-      return skip("the index is of another release");
+    const notes: string[] = [];
+    let index = found;
+    if (index && !indexFitsRelease(index, recent)) {
+      index = undefined;
+      notes.push("the index is of another release");
+    }
     const cap = o.footageCap ?? quoteFootageCap(game, o.publisherNames);
     if (cap.seconds <= 0) return skip(`${cap.key} allows no footage`);
     const now = s.now();
-    // Fail closed (12 Nov 2026): with the guard on, no quote until the spoiler windows have loaded.
-    if (s.cfg.spoilerGuard && !(o.windows ?? spoilerWindows()).length)
-      return skip("spoiler windows not loaded yet");
-    const window = s.cfg.spoilerGuard
-      ? windowFor(o.windows ?? spoilerWindows(), game, now)
-      : undefined;
+    // Fail closed (12 Nov 2026): with the guard on, no cutscene quote until the spoiler windows have loaded.
+    if (index && s.cfg.spoilerGuard && !(o.windows ?? spoilerWindows()).length) {
+      index = undefined;
+      notes.push("spoiler windows not loaded yet");
+    }
+    if (!index && !trailers.length) return skip(notes[0] ?? "no source");
+    const window =
+      index && s.cfg.spoilerGuard
+        ? windowFor(o.windows ?? spoilerWindows(), game, now)
+        : undefined;
+    const sources: Array<{ index: SceneIndex; window?: SpoilerWindow }> = [
+      ...(index ? [{ index, window }] : []),
+      ...trailers.map((t) => ({ index: t })),
+    ];
+    const indexOf = (videoId: string) =>
+      sources.find((x) => x.index.source.videoId === videoId)?.index;
+    const names = [
+      ...new Set(sources.flatMap((x) => [...x.index.cast, ...x.index.places])),
+    ];
     const speed = Math.max(1, s.cfg.shortSpeed || 1);
     const max = Math.max(1, s.cfg.characterQuotesShort ?? 1);
     const story = o.story ?? script.headline;
@@ -206,36 +280,43 @@ export async function quoteScriptStep(
     let used = 0; // seconds of quotes placed so far
     for (let k = 0; k < max; k++) {
       const narration = narrationOf({ ...next, voice_tags: undefined });
-    const estimate = (wordCount(narration) / (ESTIMATE_WPM * speed)) * 60;
-    const room =
-      (o.capSeconds ?? 58) -
-      LENGTH_MARGIN -
-      estimate -
+      const estimate = (wordCount(narration) / (ESTIMATE_WPM * speed)) * 60;
+      const room =
+        (o.capSeconds ?? 58) -
+        LENGTH_MARGIN -
+        estimate -
         used -
-      (24 / (ESTIMATE_WPM * speed)) * 60;
+        (24 / (ESTIMATE_WPM * speed)) * 60;
       const taken = new Set((next.character_quotes ?? []).map((q) => q.id));
       // A second quote keeps a beat's distance from the first: two lines back to back read as a montage.
       const placedBeats = (next.character_quotes ?? []).map((q) => q.beat);
       const beats = script.beats
         .map((_, i) => i)
         .filter((i) => placedBeats.every((b) => Math.abs(b - i) >= 2));
-      const candidates = quoteCandidates(index, `${story} ${narration}`, {
-        window,
-        now,
-        use: "short",
-        max: 10,
-        // The second only when the story genuinely calls for it: lines that fit the story, never the filler.
-        ...(k > 0 ? { general: 0 } : {}),
-      }).filter(
-        (c) =>
-          !taken.has(c.id) &&
-          playedSeconds(index, c) <= Math.min(cap.seconds - used, room),
+      const candidates = mergeCandidates(
+        sources.map((x) =>
+          quoteCandidates(x.index, `${story} ${narration}`, {
+            window: x.window,
+            now,
+            use: "short",
+            max: 10,
+            // The second only when the story genuinely calls for it: lines that fit the story, never the filler.
+            ...(k > 0 ? { general: 0 } : {}),
+          }).filter(
+            (c) =>
+              !taken.has(c.id) &&
+              playedSeconds(x.index, c) <= Math.min(cap.seconds - used, room),
+          ),
+        ),
+        10,
       );
       if (!candidates.length || !beats.length) {
         if (k === 0)
-      return skip(
-        room < 1 ? "no room in the Short's length" : "no quotable line fits",
-      );
+          return skip(
+            room < 1
+              ? "no room in the Short's length"
+              : ["no quotable line fits", ...notes].join("; "),
+          );
         await logEvent(s.db, ep.id, "character_quote", {
           used: false,
           second: true,
@@ -248,18 +329,19 @@ export async function quoteScriptStep(
         break;
       }
       const r = await writeQuoteMoment(s.llm, next, candidates, {
-      site: "quote.short",
-      wordsMax: o.wordsMax,
-      names: [...index.cast, ...index.places],
-      house: o.house,
+        site: "quote.short",
+        wordsMax: o.wordsMax,
+        names,
+        house: o.house,
         beats,
-      now,
-    });
-      const check = r.quote ? verifyQuote(index, r.quote) : undefined;
+        now,
+      });
+      const from = r.quote ? indexOf(r.quote.videoId) : undefined;
+      const check = r.quote && from ? verifyQuote(from, r.quote) : undefined;
       if (!r.quote || !check?.ok) {
         const why = !r.quote
           ? `declined: ${r.why.slice(0, 3).join(" | ").slice(0, 300)}`
-          : `the quote failed its check: ${check?.reason}`;
+          : `the quote failed its check: ${check?.reason ?? "its source is gone"}`;
         if (k === 0) return skip(why);
         await logEvent(s.db, ep.id, "character_quote", {
           used: false,
@@ -270,18 +352,19 @@ export async function quoteScriptStep(
       }
       next = r.script;
       const picked = candidates.find((c) => c.id === r.quote!.id);
-      used += picked ? playedSeconds(index, picked) : 0;
-    await logEvent(s.db, ep.id, "character_quote", {
-      used: true,
+      used += picked && from ? playedSeconds(from, picked) : 0;
+      await logEvent(s.db, ep.id, "character_quote", {
+        used: true,
         ...(k > 0 ? { second: true } : {}),
-      id: r.quote.id,
-      speaker: r.quote.speaker,
-      text: r.quote.text,
-      beat: r.quote.beat,
-      before: r.quote.before,
-      after: r.quote.after,
-      why: r.why.slice(0, 3),
-    }).catch(() => undefined);
+        ...(r.quote.origin ? { origin: r.quote.origin } : {}),
+        id: r.quote.id,
+        speaker: r.quote.speaker,
+        text: r.quote.text,
+        beat: r.quote.beat,
+        before: r.quote.before,
+        after: r.quote.after,
+        why: r.why.slice(0, 3),
+      }).catch(() => undefined);
     }
     return next;
   } catch (err) {
@@ -495,8 +578,11 @@ export async function prepareQuotes(
   for (const q of placed) {
     try {
       if (!s.cfg.characterQuotes) throw new Error("CHARACTER_QUOTES is off");
-      const index = await quoteIndexFor(s.cfg.dataDir, q.game);
-      if (!index) throw new Error("the scene index is gone");
+      const trailer = isTrailerQuote(q);
+      if (trailer && !s.cfg.trailerQuotes) throw new Error("TRAILER_QUOTES is off");
+      const index = await indexForQuote(s.cfg.dataDir, q);
+      if (!index)
+        throw new Error(trailer ? "the trailer's lines are gone" : "the scene index is gone");
       const check = verifyQuote(index, q);
       if (!check.ok) throw new Error(check.reason);
       const cached = await readPrepared(dir, q.id);
@@ -509,7 +595,16 @@ export async function prepareQuotes(
             ytdlp: s.cfg.ytdlpPath,
             targetLufs: PROVISIONAL_LUFS,
             upright: ep.lane !== "longform",
-            deps,
+            // A trailer's section is cut from the library's picture and its voice mix, never fetched from YouTube.
+            deps: trailer
+              ? {
+                  ...deps,
+                  download:
+                    deps?.download ??
+                    ((videoId, from, to, file) =>
+                      trailerQuoteSection(s.cfg.dataDir, q.game, videoId, from, to, file)),
+                }
+              : deps,
           })),
       );
       await writePrepared(dir, prepared.at(-1)!);
@@ -686,7 +781,8 @@ export async function openQuotes(
       speaker: q.speaker,
       text: q.text,
       game: q.game,
-      credit: quoteCredit(q.game),
+      credit: quoteCredit(q.game, isTrailerQuote(q) ? "trailer" : undefined),
+      ...(isTrailerQuote(q) ? { origin: "trailer" as const } : {}),
     };
   });
   await logEvent(s.db, ep.id, "character_quote_placed", {
@@ -777,7 +873,7 @@ export function fitClipsAroundQuotes<
   T extends { provenance: string; durationSeconds: number; beatIndex?: number },
 >(
   clips: T[],
-  quotes: ReadonlyArray<{ game: string; seconds: number }>,
+  quotes: ReadonlyArray<{ game: string; seconds: number; origin?: string }>,
   cutsceneLimit: number,
 ): T[] {
   if (!quotes.length) return clips;
@@ -786,7 +882,10 @@ export function fitClipsAroundQuotes<
     const cap = cutscenePublisher(q.game);
     used.set(cap.key, (used.get(cap.key) ?? 0) + q.seconds);
   }
-  let cutscenes = quotes.reduce((n, q) => n + q.seconds, 0);
+  // A trailer's line is the publisher's footage (counted above) but not a cutscene.
+  let cutscenes = quotes
+    .filter((q) => q.origin !== "trailer")
+    .reduce((n, q) => n + q.seconds, 0);
   const order = [...clips].sort(
     (a, b) =>
       Number(b.beatIndex === undefined) - Number(a.beatIndex === undefined) ||

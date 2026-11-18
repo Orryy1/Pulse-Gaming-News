@@ -38,6 +38,14 @@ import { keyTime } from "../render/longplan.ts";
 import { wrapText } from "../render/components/packs/fit.ts";
 import { CARD_WIDTH, HERO_TOP, BANDS } from "../render/layout.ts";
 import { speakable } from "../voice/speakable.ts";
+import {
+  peopleGroups,
+  tracklistSeconds,
+  tracklistText,
+  type PersonInset,
+  type TracklistPlacement,
+} from "../render/people.ts";
+import { yieldingSpans } from "../render/cleanframe.ts";
 
 /** Seconds a word on screen needs, the base for taking a graphic in, and the floor for any text at all. */
 export const READ_PER_WORD = 0.3;
@@ -62,7 +70,9 @@ export type GfxKind =
   | "take"
   | "entry"
   | "sting"
-  | "shelf";
+  | "shelf"
+  | "people"
+  | "tracklist";
 export type GfxCheck =
   | "reading"
   | "fit"
@@ -143,6 +153,10 @@ export interface ShortGfxInput {
   quotes?: Array<{ start: number; seconds: number }>;
   /** SHORT_LAYOUTS (src/render/untemplate.ts): the opening and closing drawn; absent, today's card at both ends. */
   shape?: { open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string };
+  /** PEOPLE_INSETS (src/render/people.ts): the people named, with when each name is said (seconds). */
+  people?: Array<Pick<PersonInset, "name" | "src" | "credit" | "at">>;
+  /** PEOPLE_INSETS: the tracklist card on its line. */
+  tracklist?: TracklistPlacement;
 }
 
 // ---- Text helpers ---------------------------------------------------------------------------------
@@ -461,8 +475,18 @@ export function shortElements(input: ShortGfxInput): {
     stamps: input.stamps,
     sting: false,
     shape: input.shape,
+    people: input.people,
+    tracklist: input.tracklist,
   });
-  const kept = input.clean ? arbitrate(spans) : spans;
+  // The full chrome draws everything as planned, except the insets and the tracklist, which still give way.
+  const YIELD = ["people", "tracklist"] as const;
+  const kept = input.clean
+    ? arbitrate(spans)
+    : [
+        ...spans.filter((x) => !(YIELD as readonly string[]).includes(x.kind)),
+        ...yieldingSpans(spans, [...YIELD]),
+      ];
+  const groups = peopleGroups(input.people ?? [], fps, plan.totalFrames);
   const els: GfxElement[] = [];
   for (const sp of spans) {
     let text = "";
@@ -485,6 +509,12 @@ export function shortElements(input: ShortGfxInput): {
     } else if (sp.kind === "shelf") {
       const it = plan.shelf[Number(sp.key.slice(5))];
       text = it ? Object.values(it.data).join(" ") : "";
+    } else if (sp.kind === "people") {
+      // The names are read; the licence credit under each is a legal line, not counted.
+      text = (groups.find((g) => g.key === sp.key)?.members ?? []).map((m) => m.name).join(" ");
+    } else if (sp.kind === "tracklist" && input.tracklist) {
+      // No segment: the fixer never drops the line's visual for it (the card already gave way).
+      text = tracklistText(input.tracklist);
     }
     // The kinetic filler's words are timed to the voice and read as they are said; nothing to count.
     const n = sp.kind === "filler" ? 0 : countWords(text);
@@ -505,7 +535,11 @@ export function shortElements(input: ShortGfxInput): {
       text,
       words: n,
       shown: (to - from) / fps,
-      need: readNeed(n),
+      // The tracklist turns its pages: each page needs its own reading time.
+      need:
+        sp.kind === "tracklist" && input.tracklist
+          ? tracklistSeconds(input.tracklist.tracks, input.tracklist.perPage)
+          : readNeed(n),
       keyAt: key.at,
       keyLine: key.line,
     });
@@ -640,7 +674,8 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         );
     }
     // Figures on any graphic with text, against the narration and the sources.
-    if (e.kind !== "hook" && e.kind !== "shelf" && e.text) {
+    // Names and song titles are not figures ("22", "1989"): the insets and the tracklist are left out.
+    if (e.kind !== "hook" && e.kind !== "shelf" && e.kind !== "people" && e.kind !== "tracklist" && e.text) {
       const figs = figuresIn(e.text);
       const ok = figs.filter((f) =>
         figureSupported(f, input.narration, input.sources, spoken),
@@ -752,6 +787,18 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
             "move",
           );
       }
+    }
+    // A person's inset belongs on their name: one pushed late by a higher overlay lands after the name was said.
+    if (e.kind === "people" && e.shown > 0) {
+      const g = peopleGroups(input.people ?? [], fps, plan.totalFrames).find((x) => x.key === e.key);
+      const first = g?.members[0]?.appear;
+      if (first !== undefined && (e.from - first) / fps > LATE_OK)
+        add(
+          e,
+          "alignment",
+          "warn",
+          `${g!.members[0]!.name}'s photo lands ${((e.from - first) / fps).toFixed(1)} s after the name (${clashWith(e, spans, kept)} holds the frame)`,
+        );
     }
     // Meaning: a caption repeated word for word, a generic label, or nothing to do with the narration.
     if (e.kind === "card" && e.segment !== undefined) {
@@ -904,6 +951,8 @@ function clashWith(e: GfxElement, spans: Span[], kept: Span[]): string {
         ? "the word moment"
         : k.kind === "hook"
           ? "the headline"
+          : k.kind === "people"
+            ? "a person's photo"
           : k.kind === "entry"
             ? "a rank card"
             : `the ${k.kind}`,
@@ -1019,7 +1068,7 @@ function roomFor(
   stop = Math.min(stop, total);
   const blockers = spans.filter(
     (s) =>
-      (s.kind === "stamp" || s.kind === "hook") &&
+      (s.kind === "stamp" || s.kind === "hook" || s.kind === "people" || s.kind === "tracklist") &&
       s.to > anchor &&
       s.from < stop,
   );
@@ -1177,7 +1226,7 @@ export function fixShortGraphics(input: ShortGfxInput): GfxFixResult {
     const dropExtras = new Set<unknown>();
     const now = shortElements({ ...input, segments: segs, stamps, plan: { ...input.plan, shelf, craft } });
     for (const e of now.elements) {
-      if ((e.kind !== "card" && e.kind !== "take") || e.shown >= e.need) continue;
+      if ((e.kind !== "card" && e.kind !== "take" && e.kind !== "tracklist") || e.shown >= e.need) continue;
       const hits = now.spans.filter(
         (s) => (s.kind === "filler" || s.kind === "freeze") && s.from < e.planned.to && s.to > e.planned.from,
       );

@@ -267,7 +267,7 @@ export function gameFirstShortTitle(
     // 15 Nov 2026: "Why Bully 2's canceled plans..." became "Bully: Why It 2's canceled plans": a name followed by a
     // sequel number or a part of a longer name is another game, never reworded.
     const after0 = name ? rest.slice(name.length) : "";
-    if (name && !/^\s*(?:\d|[IVX]+|:|-)/.test(after0) && /^(?:['’]s\s|\s)/.test(after0)) {
+    if (name && !/^\s*(?:\d|[IVX]+\b|:|-)/.test(after0) && /^(?:['’]s\s|\s)/.test(after0)) {
       const after = after0;
       const lead = names.includes(name) ? shortName : name;
       const word = why[1]![0]!.toUpperCase() + why[1]!.slice(1).toLowerCase();

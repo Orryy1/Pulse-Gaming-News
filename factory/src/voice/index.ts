@@ -44,27 +44,54 @@ export function providerOrder(
   }
 }
 
-/** Characters left this month on the ElevenLabs plan, or undefined if unknown (bad key, API down). */
+/** The last balance ElevenLabs gave, so one unanswered check does not stop the narrator. */
+let lastCredits: { left: number; at: number } | undefined;
+/** How long a known balance stands in for an unanswered check (job spend since then is subtracted by the caller's cushion). */
+const CREDITS_STALE_MS = 2 * 60 * 60 * 1000;
+
+/** Test hook: forget the remembered balance. */
+export function resetElevenLabsCreditsCache(): void {
+  lastCredits = undefined;
+}
+
+/**
+ * Characters left this month on the ElevenLabs plan, or undefined if unknown (bad key, API down).
+ * The subscription check is asked up to three times (it went unanswered 28 times on 18 Nov and
+ * stopped every Short it hit); when it still does not answer, a balance read in the last two hours
+ * stands in. A 401 (bad key) never uses the remembered balance.
+ */
 export async function elevenLabsCreditsLeft(
   apiKey: string,
+  opts: { tries?: number; waitMs?: number; now?: () => number } = {},
 ): Promise<number | undefined> {
-  try {
-    const res = await fetchWithTimeout(
-      "https://api.elevenlabs.io/v1/user/subscription",
-      { headers: { "xi-api-key": apiKey } },
-      15_000,
-    );
-    if (!res.ok) return undefined;
-    const s = (await res.json()) as {
-      character_count?: number;
-      character_limit?: number;
-    };
-    if (s.character_limit == null || s.character_count == null)
-      return undefined;
-    return s.character_limit - s.character_count;
-  } catch {
-    return undefined;
+  const tries = opts.tries ?? 3;
+  const waitMs = opts.waitMs ?? 2_000;
+  const now = opts.now ?? Date.now;
+  for (let i = 0; i < tries; i++) {
+    if (i) await new Promise((r) => setTimeout(r, waitMs * i));
+    try {
+      const res = await fetchWithTimeout(
+        "https://api.elevenlabs.io/v1/user/subscription",
+        { headers: { "xi-api-key": apiKey } },
+        15_000,
+      );
+      if (res.status === 401 || res.status === 403) return undefined;
+      if (!res.ok) continue;
+      const s = (await res.json()) as {
+        character_count?: number;
+        character_limit?: number;
+      };
+      if (s.character_limit == null || s.character_count == null) continue;
+      const left = s.character_limit - s.character_count;
+      lastCredits = { left, at: now() };
+      return left;
+    } catch {
+      /* try again */
+    }
   }
+  if (lastCredits && now() - lastCredits.at < CREDITS_STALE_MS)
+    return lastCredits.left;
+  return undefined;
 }
 
 /**

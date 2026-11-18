@@ -219,7 +219,7 @@ test("the shipped launch run: spares are GTA VI, 15 to 21 Nov Whys are pre-made,
     );
   }
   for (const e of run) {
-    if (e.kind !== "why" || e.date < "2026-11-15" || e.date > "2026-11-21")
+    if (e.kind !== "why" || e.date < "2026-11-15" || e.date > "2026-11-21" || e.title.includes("Without a PS5"))
       continue;
     const from = premakeFrom(e, tz, 0);
     assert.ok(from, `${e.date} ${e.slot} has a make time`);

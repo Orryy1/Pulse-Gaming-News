@@ -56,8 +56,10 @@ import { VBOX, type VStyle } from "./components/vertical/types.ts";
 import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES, spanWindow } from "./shortcraft.ts";
-import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
+import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout, yieldingSpans } from "./cleanframe.ts";
 import { lowerLineSize, silenceDipAt } from "./untemplate.ts";
+import { peopleGroups } from "./people.ts";
+import { PeopleRow, TracklistCard } from "./components/PeopleInsets.tsx";
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
@@ -557,15 +559,28 @@ export const Short: React.FC<ShortProps> = (props) => {
     () => shortLayout(props.segments, fps, durationInFrames, plan.tailFrames),
     [props.segments, fps, durationInFrames, plan.tailFrames],
   );
-  const kept = useMemo(
+  const allSpans = useMemo(
     () =>
-      clean
-        ? arbitrate(
-            overlaySpans({ segments: props.segments, words, plan, layout, stamps: props.stamps ?? [], sting: stingOn && stingAt ? stingAt : false, shape: props.shape }),
-          )
-        : undefined,
-    [clean, props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.shape],
+      overlaySpans({
+        segments: props.segments,
+        words,
+        plan,
+        layout,
+        stamps: props.stamps ?? [],
+        sting: stingOn && stingAt ? stingAt : false,
+        people: props.people,
+        tracklist: props.tracklist,
+        shape: props.shape,
+      }),
+    [props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.people, props.tracklist, props.shape],
   );
+  const kept = useMemo(() => (clean ? arbitrate(allSpans) : undefined), [clean, allSpans]);
+  // PEOPLE_INSETS (src/render/people.ts): the insets and the tracklist never cover another overlay, clean or not.
+  const peopleKept = useMemo(
+    () => (kept ?? yieldingSpans(allSpans, ["people", "tracklist"])).filter((k) => k.kind === "people" || k.kind === "tracklist"),
+    [kept, allSpans],
+  );
+  const rows = useMemo(() => peopleGroups(props.people ?? [], fps, durationInFrames), [props.people, fps, durationInFrames]);
   /** Where an overlay is drawn: as planned, or on a clean Short its kept stretch (undefined: not drawn). */
   const placed = (key: string, from: number, len: number): { from: number; len: number } | undefined => {
     if (!kept) return { from, len };
@@ -576,7 +591,10 @@ export const Short: React.FC<ShortProps> = (props) => {
   const headlineAside =
     !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
   const cardAt = (i: number) =>
-    sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
+    // The tracklist card stands in for its line's own card.
+    props.tracklist?.segment === i
+      ? undefined
+      : sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
   // SHORT_LAYOUTS: the lower third is the opening's one line of text, so the label sits out; a held close never
   // returns to frame 0, so the label does not come back for it.
@@ -858,6 +876,22 @@ export const Short: React.FC<ShortProps> = (props) => {
         ) : null,
       )}
 
+      {peopleKept.map((k) => {
+        const g = rows.find((r) => r.key === k.key);
+        if (k.kind === "people" && g)
+          return (
+            <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
+              <PeopleRow group={g} from={k.from} len={k.to - k.from} accent={accent} />
+            </Sequence>
+          );
+        if (k.kind === "tracklist" && props.tracklist)
+          return (
+            <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
+              <TracklistCard t={props.tracklist} len={k.to - k.from} accent={accent} />
+            </Sequence>
+          );
+        return null;
+      })}
       {(props.stamps ?? []).map((st, i) => (
         <Sequence
           key={`stamp${i}`}

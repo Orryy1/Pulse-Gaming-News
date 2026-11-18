@@ -1,3 +1,5 @@
+import { trialFor } from "../levers/trial.ts";
+import type { TrialGraduation } from "../levers/settings.ts";
 import { publishHeld } from "../lanes.ts";
 // Every Short that goes public on YouTube follows it to Facebook Reels,
 // Instagram Reels, TikTok and X, staggered after the YouTube publish so each
@@ -95,6 +97,8 @@ export interface SocialPosters {
     file: string,
     caption: string,
     videoUrl?: string,
+    /** IG_TRIAL_SHARE: this Reel's trial arm (src/levers/trial.ts); absent for an ordinary Reel. */
+    trial?: { graduation: TrialGraduation; refused: (message: string) => void },
   ) => Promise<string>;
   tiktok?: (file: string, caption: string, videoUrl?: string) => Promise<string>;
   x?: (text: string) => Promise<string>;
@@ -788,11 +792,24 @@ export async function crosspostTick(
         }
       }
       await logEvent(d.db, ep.id, "crosspost_started", { platform });
+      // IG_TRIAL_SHARE (src/levers/trial.ts): some Reels go to non-followers first, fixed per episode.
+      const trialArm =
+        platform === "instagram" && d.cfg.levers
+          ? trialFor(ep.id, d.cfg.levers.igTrialShare, d.cfg.levers.igTrialGraduation)
+          : undefined;
+      let trialNote: string | undefined;
       const id =
         platform === "facebook"
           ? await d.posters.facebook!(file, polishTitle(script), caption)
           : platform === "instagram"
-            ? await d.posters.instagram!(file, caption, d.videoUrl?.(ep.id))
+            ? await d.posters.instagram!(
+                file,
+                caption,
+                d.videoUrl?.(ep.id),
+                trialArm
+                  ? { graduation: trialArm, refused: (m) => void (trialNote = m.slice(0, 200)) }
+                  : undefined,
+              )
             : platform === "tiktok"
               ? await d.posters.tiktok!(file, caption, d.videoUrl?.(ep.id))
               : platform === "threads"
@@ -808,6 +825,7 @@ export async function crosspostTick(
         platform,
         id,
         ...(timing ? { timing } : {}),
+        ...(trialArm ? { trial: trialNote ? "refused" : trialArm, ...(trialNote ? { trial_error: trialNote } : {}) } : {}),
         // The weekly analytics loop's test: tagged when posted, so the definition cannot drift while it runs.
         ...(d.cfg.analyticsLoop ? { fit: isFit(traitsOf(ep)) } : {}),
       });
@@ -1093,13 +1111,14 @@ export async function buildPosters(
       p.facebookVideoDescription(videoId, cfg.facebookPageToken, description);
   }
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
-    out.instagram = async (file, caption, videoUrl) =>
+    out.instagram = async (file, caption, videoUrl, trial) =>
       p.postInstagramReel({
         accountId: cfg.instagramAccountId,
         token: cfg.instagramToken,
         file: await instagramFile(file),
         caption,
         videoUrl,
+        ...(trial ? { trial: trial.graduation, onTrialRefused: trial.refused } : {}),
       });
   if (
     cfg.crosspost.threads &&

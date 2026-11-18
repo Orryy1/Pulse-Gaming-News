@@ -105,6 +105,8 @@ export interface EpisodeAssets {
   shortThumb?: string;
   /** Which side of the Shorts thumbnail test this Short is on (src/shortthumb.ts); unset when no test ran. */
   shortThumbArm?: string;
+  /** PEOPLE_INSETS: the real people the Short names with their licensed face photos (src/assets/people.ts); [] when none. */
+  people?: import("./assets/people.ts").PersonPortrait[];
   shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
   /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" or "v3" while the sound test runs. */
   shortSoundArm?: "sparse" | "v3";
@@ -223,6 +225,8 @@ export interface EpisodeAssets {
       text: string;
       game: string;
       credit: string;
+      /** "trailer": an official trailer's line (src/assets/trailerlines.ts), not a cutscene. */
+      origin?: "trailer";
     }
   >;
 }

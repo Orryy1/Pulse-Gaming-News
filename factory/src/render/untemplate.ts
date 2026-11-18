@@ -193,6 +193,9 @@ export function arrivalsOf(input: {
   stamps: Array<{ at: number }>;
   clean: boolean;
   shape?: { open: ShortOpen; close: ShortClose };
+  /** PEOPLE_INSETS: the people named and the tracklist card, overlays like any other (src/render/cleanframe.ts). */
+  people?: Parameters<typeof overlaySpans>[0]["people"];
+  tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
 }): Arrival[] {
   const { plan, segments } = input;
   const layout = shortLayout(
@@ -209,6 +212,8 @@ export function arrivalsOf(input: {
     stamps: input.stamps,
     sting: false,
     shape: input.shape,
+    people: input.people,
+    tracklist: input.tracklist,
   });
   const drawn: Span[] = input.clean ? arbitrate(spans) : spans;
   const out: Arrival[] = [];
@@ -231,7 +236,12 @@ export function arrivalsOf(input: {
               ? "number"
               : "card",
       });
-    } else if (sp.kind === "filler" || sp.kind === "freeze")
+    } else if (
+      sp.kind === "filler" ||
+      sp.kind === "freeze" ||
+      sp.kind === "people" ||
+      sp.kind === "tracklist"
+    )
       out.push({ frame: sp.from, kind: "card" });
   }
   for (const sc of plan.scenes ?? [])
@@ -273,6 +283,9 @@ export function planSparseSfx(input: {
   stampSound: { name: string; volume: number };
   recent: readonly string[];
   shape?: { open: ShortOpen; close: ShortClose };
+  /** PEOPLE_INSETS: the people named and the tracklist card, overlays like any other (src/render/cleanframe.ts). */
+  people?: Parameters<typeof overlaySpans>[0]["people"];
+  tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
 }): SparseResult {
   const { plan, id } = input;
   const fps = plan.fps;

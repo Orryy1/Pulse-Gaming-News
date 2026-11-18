@@ -180,6 +180,7 @@ test("the planner with two speeds: the first two minutes about twice the body's 
     seg("beat", "One long chapter of narration.", 40, 600, {
       kind: "chapter",
       primary: "One",
+      secondary: "",
       items: ["2004"],
       value_a: 1,
     }),

@@ -23,6 +23,7 @@ import {
   isFactCommaQuestion,
 } from "./phrasing.ts";
 import { numberWords } from "../voice/speakable.ts";
+import { stripVoiceTags } from "../voice/tags.ts";
 import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
@@ -697,7 +698,12 @@ export function validateScript(
       problems.push(
         `The stamp "${s.stamp.text}" is longer than 14 characters.`,
       );
-    const said = spoken.toLowerCase();
+    // The spoken form reads "14.22" as "fourteen point two two", so the written lines count too: a figure the
+    // script says in figures is in the narration however the voice will read it.
+    const written = [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, s.loop_line]
+      .map((t) => stripVoiceTags(t))
+      .join(" ");
+    const said = `${spoken} ${written}`.toLowerCase();
     // A figure said in figures or in words: "3 MONTHS" for "three months", "$40" for "forty billion
     // dollars", "200,000" for "two hundred thousand". The stamp lands on the spoken form either way
     // (stampsFor); the check only took 1-3 digit figures, and two good Shorts paid for a rewrite over

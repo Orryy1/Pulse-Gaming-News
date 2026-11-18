@@ -1049,3 +1049,16 @@ test("a slow narration take is sped up to a natural pace, by at most a quarter",
   assert.equal(paceFactor(10, 10, 145), 1, "too short to judge");
   assert.equal(paceFactor(100, 60, 0), 1, "off");
 });
+
+test("a stamp on a decimal figure the narration writes in figures is found (14.22 reads aloud as fourteen point two two)", () => {
+  const s = goodScript({
+    stamp: { word: "14.22", text: "14.22", sub: "", tone: "neutral" },
+  });
+  s.beats[0]!.narration = "Firmware 14.22 landed November 2 with security fixes only.";
+  const p = validateScript(s).join(" ");
+  assert.doesNotMatch(p, /stamp's word/);
+  assert.doesNotMatch(p, /stamp's figure/);
+  // A figure the script never says still fails.
+  s.beats[0]!.narration = "Firmware 14.20 landed November 2 with security fixes only.";
+  assert.match(validateScript(s).join(" "), /stamp's figure "14.22"/);
+});

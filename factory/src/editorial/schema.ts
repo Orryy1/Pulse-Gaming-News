@@ -326,6 +326,10 @@ export type Script = z.infer<typeof ScriptSchema> & {
   explained?: boolean;
   /** A news Short's structure (src/editorial/skeletons.ts skeletonKey), under SHORT_SKELETONS; absent otherwise. */
   skeleton?: string;
+  /** SHORT_PAYOFF_GATE's gate arm: the question the hook plants and the answer held to the end (src/editorial/payoff.ts). */
+  payoff?: import("./payoff.ts").PayoffPlan;
+  /** SHORT_PAYOFF_GATE: the Short's arm and how it measured against the held-answer rules; absent while the gate is off. */
+  payoff_gate?: import("./payoff.ts").PayoffRecord;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

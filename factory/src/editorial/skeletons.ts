@@ -202,7 +202,19 @@ export interface SkeletonOptions {
   orders?: string[];
   /** Only these openings (the hook-style test's variant or its winner, src/growth.ts). */
   openings?: string[];
+  /**
+   * SHORT_PAYOFF_GATE's gate arm (src/editorial/payoff.ts): the answer is held past 60% and the last line is the
+   * punchline or verdict, so the order that gives the call first and the endings that ask or point ahead are left out
+   * (each only while something else is left).
+   */
+  payoff?: boolean;
 }
+
+/** The parts the held-answer rules can't live with: the call first, and an ending that asks or points ahead. */
+export const PAYOFF_BARRED = {
+  orders: ["call_then_proof"],
+  endings: ["fork", "name_one", "next_date"],
+};
 
 /**
  * The openings the hook-style test allows (src/growth.ts "hook_style"): its running variant for this Short, else
@@ -230,13 +242,20 @@ export function allSkeletons(opts: SkeletonOptions): Skeleton[] {
       ? o.id === "argument"
       : o.id !== "argument" && (!opts.orders || opts.orders.includes(o.id)),
   );
-  const endings = ENDINGS.filter((e) => opts.questionEndings || !e.question);
+  let endings = ENDINGS.filter((e) => opts.questionEndings || !e.question);
   const openings = OPENINGS.filter(
     (o) => !opts.openings || opts.openings.includes(o.id),
   );
+  // The held-answer gate narrows orders and endings, never to nothing (a drop's two orders still leave one).
+  const keep = <T extends SkeletonPart>(xs: T[], barred: string[]) => {
+    const left = xs.filter((x) => !barred.includes(x.id));
+    return left.length ? left : xs;
+  };
+  const gatedOrders = opts.payoff ? keep(orders, PAYOFF_BARRED.orders) : orders;
+  if (opts.payoff) endings = keep(endings, PAYOFF_BARRED.endings);
   const out: Skeleton[] = [];
   for (const opening of openings)
-    for (const order of orders)
+    for (const order of gatedOrders)
       for (const length of LENGTHS)
         for (const ending of endings) {
           const p = { opening, order, length, ending };

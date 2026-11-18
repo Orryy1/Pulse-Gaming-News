@@ -178,6 +178,8 @@ export function testConfig(
     clarityGate: [],
     clarityMin: 8,
     humanise: "off",
+    shortPayoffGate: "off",
+    shortPayoffShare: 0.5,
     sequelWinners: false,
     cutdownSlot: "15:30",
     elevenLabsLowCredits: 0,

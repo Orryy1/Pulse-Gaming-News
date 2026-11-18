@@ -634,6 +634,21 @@ export interface Config {
    * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
    * is "humanise.rewrite" (CODEX_CALLS can route it). */
   humanise: "off" | "check" | "fix";
+  /** The held-answer gate (src/editorial/payoff.ts, top creator gap plan gap 1, 18 Nov 2026: Pulse Shorts lose about 4
+   * points a second through the facts, the take lands at 65% with 38% left and the title or first frame often states
+   * the answer; all 27 breakout Shorts studied plant a question and pay it late). On news, breaking and Why Shorts in the
+   * gate's arm the writer plans one question and its answer (script.payoff), holds the answer past 60% of the words,
+   * keeps it out of the hook, headline, thumb_text and title, turns once in the middle third, takes a side in the first
+   * two sentences, lands the verdict last, rotates stock take openers and ends with no ask; a cold reader of title,
+   * first frame and hook alone must know the subject but not the answer. SHORT_PAYOFF_GATE=off (default), "check"
+   * (record pass/fail and reasons on the script's payoff_gate, change nothing) or "fix" (send the draft back to the
+   * writer once with the reasons, then accept it with a note; never drops a story). Rankings, deals and charts are
+   * untouched. Its one model step is "payoff.judge" (CODEX_CALLS=payoff routes it). */
+  shortPayoffGate: "off" | "check" | "fix";
+  /** SHORT_PAYOFF_SHARE (0-1, default 0.5): the share of covered Shorts in the gate's arm, split by episode id; the rest
+   * are the control arm, measured on the plan-free rules only. The arm is on script.payoff_gate.arm for the weekly
+   * comparison. */
+  shortPayoffShare: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1825,6 +1840,8 @@ export function loadConfig(): Config {
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
+    shortPayoffGate: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SHORT_PAYOFF_GATE", "off").trim().toLowerCase()),
+    shortPayoffShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHORT_PAYOFF_SHARE", "0.5"))))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

@@ -23,11 +23,13 @@ import {
   isFactCommaQuestion,
 } from "./phrasing.ts";
 import { numberWords } from "../voice/speakable.ts";
+import { stripVoiceTags } from "../voice/tags.ts";
 import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { skeletonRule, type Skeleton } from "./skeletons.ts";
 import { DROP_ANGLE_RULE } from "./dropangle.ts";
+import { PayoffSchema, payoffRule } from "./payoff.ts";
 import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import {
   parsePairs,
@@ -228,8 +230,14 @@ export async function writeScript(
     site?: string;
     /** The Pulse Fact Vault's verified facts and quotes for this story's games (FACT_VAULT, src/factvault). */
     vault?: string;
+    /** SHORT_PAYOFF_GATE's gate arm: the held-answer rule, and a `payoff` plan in the answer (src/editorial/payoff.ts). */
+    payoff?: boolean;
   },
 ): Promise<Script> {
+  // The gate's arm asks for the plan in the same answer; off, the schema is the one every Short has always had.
+  const schema = (opts.payoff
+    ? ScriptSchema.extend({ payoff: PayoffSchema })
+    : ScriptSchema) as unknown as typeof ScriptSchema;
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
     : "";
@@ -263,7 +271,7 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
-  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}`;
+  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}${opts.payoff ? `\n\n${payoffRule()}` : ""}`;
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
@@ -280,7 +288,7 @@ export async function writeScript(
           ...(opts.site ? { site: opts.site } : {}),
           system: scriptPrompt(opts.desk ?? true, opts.length),
           content: brief,
-          schema: ScriptSchema,
+          schema,
           draft: opts.draft,
           problems: opts.feedback,
           job: "news Short",
@@ -292,15 +300,23 @@ export async function writeScript(
       ...(opts.site ? { site: opts.site } : {}),
       system: scriptPrompt(opts.desk ?? true, opts.length),
       content: `${brief}${feedback}`,
-      schema: ScriptSchema,
+      schema,
       effort: "medium",
     }));
-  const problems = quoteProblems([
-    { narration: script.hook }, ...script.beats,
-    ...(script.desk_question?.trim() ? [{ narration: script.desk_question }] : []),
-    { narration: script.pulse_take.narration }, { narration: script.loop_line },
-  ], opts.availableQuotes);
-  if (problems.length) throw new Error(`Invalid character quote: ${problems.join(" ")}`);
+  const problems = quoteProblems(
+    [
+      { narration: script.hook },
+      ...script.beats,
+      ...(script.desk_question?.trim()
+        ? [{ narration: script.desk_question }]
+        : []),
+      { narration: script.pulse_take.narration },
+      { narration: script.loop_line },
+    ],
+    opts.availableQuotes,
+  );
+  if (problems.length)
+    throw new Error(`Invalid character quote: ${problems.join(" ")}`);
   return varyOpinion(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,
@@ -355,7 +371,9 @@ export async function factCheckRanking(
 /** The launch week's notes for the writer and the fact check: when a pre-made Short airs, and GTA VI's release date. */
 export function launchNotes(cluster: StoryCluster): string {
   const notes = [
-    cluster.why?.airs_at ? airsAtNote(new Date(cluster.why.airs_at), "Europe/London") : "",
+    cluster.why?.airs_at
+      ? airsAtNote(new Date(cluster.why.airs_at), "Europe/London")
+      : "",
     releaseDateNote(cluster.gameHint ?? cluster.headline),
   ].filter(Boolean);
   return notes.length ? `\n\n${notes.join("\n")}` : "";
@@ -617,15 +635,28 @@ export function shortYouMin(words: number): number {
 /** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
 export function midQuestions(
   s: Pick<Script, "beats" | "pulse_take">,
+  /** SHORT_PAYOFF_GATE's arm: a question inside quotation marks is a source's own words, not the narrator asking. */
+  opts: { quotedOk?: boolean } = {},
 ): string[] {
-  const text = [
+  const joined = [
     ...s.beats.map((b) => b.narration),
     s.pulse_take.narration,
   ].join(" ");
+  const text = opts.quotedOk ? withoutQuotedQuestions(joined) : joined;
   // "My verdict? Wait." (or the older "My Pulse check? Steady.") is the segment's own lead-in, not a question answered to nobody.
   return (text.match(/[^.?!]*\?/g) ?? [])
     .map((q) => q.trim())
     .filter((q) => q && !PULSE_CHECK_ASK.test(q));
+}
+
+/**
+ * The text with every quoted question taken out (pure): "Wait, what's this?" in double or single quotes, an
+ * apostrophe inside the quote ("what's") kept as part of it.
+ */
+export function withoutQuotedQuestions(text: string): string {
+  return text
+    .replace(/["“][^"”]*\?["”]/g, "QUOTE")
+    .replace(/(^|[\s(])['‘](?:[^'’]|['’](?=[a-z]))*\?['’](?=[^a-z]|$)/gi, "$1QUOTE");
 }
 
 export function validateScript(
@@ -633,6 +664,8 @@ export function validateScript(
   recent?: RecentShapes,
   /** SHORT_LENGTHS: the lane's word budget and beats; absent, 70-100 words and two to four beats. */
   length?: Pick<ScriptLength, "wordsMin" | "wordsMax" | "beatsMax">,
+  /** SHORT_PAYOFF_GATE's arm only: a quoted question may stay (midQuestions quotedOk); everywhere else as before. */
+  opts: { quotedQuestionsOk?: boolean } = {},
 ): string[] {
   const wordsMin = length?.wordsMin ?? WORDS_MIN;
   const wordsMax = length?.wordsMax ?? WORDS_MAX;
@@ -681,7 +714,12 @@ export function validateScript(
       problems.push(
         `The stamp "${s.stamp.text}" is longer than 14 characters.`,
       );
-    const said = spoken.toLowerCase();
+    // The spoken form reads "14.22" as "fourteen point two two", so the written lines count too: a figure the
+    // script says in figures is in the narration however the voice will read it.
+    const written = [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, s.loop_line]
+      .map((t) => stripVoiceTags(t))
+      .join(" ");
+    const said = `${spoken} ${written}`.toLowerCase();
     // A figure said in figures or in words: "3 MONTHS" for "three months", "$40" for "forty billion
     // dollars", "200,000" for "two hundred thousand". The stamp lands on the spoken form either way
     // (stampsFor); the check only took 1-3 digit figures, and two good Shorts paid for a rewrite over
@@ -719,7 +757,7 @@ export function validateScript(
   // The desk voice is gone (5 Nov 2026), yet takes still opened on a sceptic's question and answered it ("Why trust
   // Nintendo after September's $50 hike? No, not anytime soon."): heard alone, the narrator answers nobody. Only the
   // hook and the loop line may ask.
-  for (const q of midQuestions(s))
+  for (const q of midQuestions(s, { quotedOk: opts.quotedQuestionsOk }))
     problems.push(
       `"${q}" asks a question halfway through and then answers it, which sounds like replying to nobody; say it as a statement.`,
     );

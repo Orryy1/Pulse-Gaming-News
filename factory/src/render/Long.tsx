@@ -4937,6 +4937,7 @@ export const Long: React.FC<LongProps> = (props) => {
                     props.endLine ??
                     "A new documentary every month · Shorts every day"
                   }
+                  totalFrames={durationInFrames}
                 />
               </Sequence>
             );

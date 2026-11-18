@@ -1037,6 +1037,7 @@ export interface Config {
   gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
+  peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
    * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
@@ -2023,6 +2024,7 @@ export function loadConfig(): Config {
     gameAudioTrailers: bool("GAME_AUDIO_TRAILERS", false),
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
+  peopleInsets: bool("PEOPLE_INSETS", true),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),

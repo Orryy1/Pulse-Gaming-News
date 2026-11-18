@@ -356,6 +356,7 @@ import {
 import {
   buildSegments,
   srtFromWords,
+  type Segment,
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
@@ -853,6 +854,8 @@ import {
 import { footageGate, libraryHasFootage, markLibraryFaults, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
 import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
+import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
+import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
@@ -900,6 +903,12 @@ export interface Services {
   searchPhotos(
     query: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  /** PEOPLE_INSETS: a named person's licensed face photo in the episode folder (src/assets/people.ts); absent in tests. */
+  personPortrait?(
+    c: import("./assets/people.ts").NameCandidate,
+    dir: string,
+    slot: number,
+  ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
   /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
   searchPress?(
     game: string,
@@ -10038,6 +10047,68 @@ async function personPhoto(
   }
 }
 
+/**
+ * PEOPLE_INSETS: the real people a Short names, each with a licensed face photo (src/assets/people.ts), at most
+ * MAX_PEOPLE. A person the Short already shows full-frame (its `person` photo) gets no inset as well.
+ */
+async function gatherPeople(
+  s: Services,
+  episodeId: string,
+  dir: string,
+  script: Script,
+  images: Array<{ kind: string; label?: string }>,
+): Promise<NonNullable<EpisodeAssets["people"]>> {
+  const shown = new Set(images.filter((i) => i.kind === "photo" && i.label).map((i) => i.label!.toLowerCase()));
+  const out: NonNullable<EpisodeAssets["people"]> = [];
+  const tried: string[] = [];
+  for (const c of peopleCandidates(script)) {
+    if (out.length >= MAX_PEOPLE) break;
+    if (shown.has(c.name.toLowerCase())) continue;
+    tried.push(c.name);
+    const p = await s.personPortrait!(c, dir, out.length).catch(() => undefined);
+    if (p) out.push(p);
+  }
+  await logEvent(s.db, episodeId, "people_insets", {
+    tried,
+    found: out.map((p) => ({ name: p.name, qid: p.qid, license: p.license, page: p.pageUrl })),
+  }).catch(() => undefined);
+  return out;
+}
+
+/** The people with a photo whose names are said, with when (seconds); one never said gets no inset. */
+export function peopleOnWords(
+  people: NonNullable<EpisodeAssets["people"]>,
+  words: Array<{ text: string; start: number }>,
+): Array<{ name: string; file: string; credit: string; at: number }> {
+  return people.flatMap((p) => {
+    const at = nameSpokenAt(words, p.name);
+    return at === undefined ? [] : [{ name: p.name, file: p.file, credit: p.credit, at }];
+  });
+}
+
+/** The tracklist card of a soundtrack, album or tracklist story (src/render/people.ts), or undefined. */
+export function tracklistOf(
+  script: Script,
+  segments: Segment[],
+  words: Array<{ text: string; start: number }>,
+  plan: { fps: number; totalFrames: number },
+  insetTimes: number[],
+) {
+  const about = `${script.headline} ${script.hook} ${script.beats.map((b) => b.narration).join(" ")}`;
+  if (!soundtrackStory(about)) return undefined;
+  return placeTracklist({
+    segments,
+    words,
+    fps: plan.fps,
+    totalFrames: plan.totalFrames,
+    tracks: tracksFromScript(script),
+    // A rumour, or a list the narration calls reported or leaked, is labelled as reported.
+    rumour: script.is_rumour || /\b(reported(ly)?|leak(ed)?|rumou?r(ed)?)\b/i.test(about),
+    subtitle: mediaTitle(script.game_title),
+    insetTimes,
+  });
+}
+
 /** The footage asks of one documentary chapter's paragraphs, in order. */
 export function chapterFootage(
   script: Script,
@@ -13432,6 +13503,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const cut = made.get(heroImage.file);
     if (cut) assets.heroCut = { fg: cut.fg, x: cut.fgx };
   }
+  // PEOPLE_INSETS (src/assets/people.ts): each real person the Short names gets their own licensed face photo, found
+  // once per Short (kept in assets, so a re-render shows the same people).
+  if (
+    s.cfg.peopleInsets &&
+    s.personPortrait &&
+    assets.people === undefined &&
+    !script.entries?.length &&
+    !script.every_game
+  )
+    assets.people = await gatherPeople(s, ep.id, dir, script, assets.images ?? []);
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -13482,8 +13563,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // GRAPHICS_AUDIT (src/qa/gfxaudit.ts, src/gfxauditstep.ts): every overlay measured as it will be drawn; in fix mode
   // cards are moved onto their words, held, trimmed or dropped, repeats and unreadable strips go, and a wrong graphic
   // that cannot be dropped fails the render. What it returns is what renders.
-  const gfxIn = () =>
-    gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean });
+  // PEOPLE_INSETS: each person's photo on the first spoken word of their name; the tracklist on the line about the list.
+  const people = s.cfg.peopleInsets ? peopleOnWords(assets.people ?? [], words) : [];
+  const tracklist = s.cfg.peopleInsets
+    ? tracklistOf(script, segments, words, plan, people.map((p) => p.at))
+    : undefined;
+  const gfxIn = () => ({
+    ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean }),
+    people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
+    tracklist,
+  });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
     segments.splice(0, segments.length, ...gated.segments);
@@ -13498,6 +13587,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
     stamps: shownStamps,
     sting: false,
+    people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
+    tracklist,
   });
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
@@ -13627,6 +13718,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
         : {}),
       quoteFiles: quoteRenderFiles(assets),
+      ...(people.length ? { peopleFiles: people } : {}),
+      ...(tracklist ? { tracklist } : {}),
       ...(gameBed
         ? {
             gameBedFile: {

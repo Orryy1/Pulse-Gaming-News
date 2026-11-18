@@ -38,7 +38,9 @@ import {
   spokenSentences,
   stockOpener,
   verdictLate,
-  PAYOFF_HELD_AT,
+  absenceAnswer,
+  heldMark,
+  teaseFillers,
   PIVOT_FROM,
   PIVOT_TO,
   PayoffSchema,
@@ -82,6 +84,8 @@ const RULES = [
   "verdict",
   "opener_rotation",
   "stacked_id",
+  "tease_filler",
+  "absence_answer",
   "ending",
 ] as const;
 type BaseRule = (typeof RULES)[number];
@@ -203,7 +207,7 @@ export function baselineOf(
   rules.leak_title = leak(row.title);
   rules.leak_headline = leak(row.first_frame_text);
   rules.leak_hook = leak(row.hook);
-  rules.held_take_position = take_at >= PAYOFF_HELD_AT ? "pass" : "fail";
+  rules.held_take_position = take_at >= heldMark(total) ? "pass" : "fail";
   const early = earlyAnswer(lines.filter(Boolean), plan, subjectWords(row));
   rules.held_early_in_body = early ? "fail" : full ? "pass" : "unknown";
   if (early) notes.push(`early answer: "${early.text}"`);
@@ -242,6 +246,12 @@ export function baselineOf(
     ? "fail"
     : "pass";
   rules.ending = endingProblems(row.loop_line).length ? "fail" : "pass";
+  // Lines before the take that only stall; unseen beats can't be read.
+  const teases = teaseFillers(lines.filter(Boolean), undefined, take_at || heldMark(total), subjectWords(row));
+  rules.tease_filler = teases.length ? "fail" : full ? "pass" : "unknown";
+  for (const t of teases) notes.push(`tease: "${t}"`);
+  // The stand-in answer (the take's card and last line) is only an absence: nothing to hold.
+  rules.absence_answer = absenceAnswer(answer) ? "fail" : "pass";
   return {
     id: row.episode,
     published: row.published,

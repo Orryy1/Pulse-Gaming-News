@@ -705,6 +705,19 @@ import {
   type PayoffFinding,
   type PayoffRead,
 } from "./editorial/payoff.ts";
+import {
+  DESK_REWRITE_SITE,
+  deskArm,
+  deskChecks,
+  deskKill,
+  deskLines,
+  deskRecord,
+  deskShortProblems,
+  judgeDesk,
+  runDesk,
+  type DeskArm,
+  type DeskRecord,
+} from "./editorial/desk.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
 import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
@@ -7536,6 +7549,23 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const payoffFix = payoffGated && s.cfg.shortPayoffGate === "fix";
   const payoffSentBack: string[] = [];
   let payoffFallback: { script: Script; check: FactCheck } | undefined;
+  // SCRIPT_DESK (src/editorial/desk.ts): the same Shorts split by episode into the desk's arm (the writer states its
+  // angle first, an editor reads the settled script and, under "fix", the biggest weakness is rewritten) and the control
+  // arm (read once, unchanged), so the weekly report can set the desk's score against real retention.
+  const deskArmOf: DeskArm | undefined =
+    s.cfg.scriptDesk !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? deskArm(ep.id, s.cfg.scriptDeskShare)
+      : undefined;
+  const deskPlanned = deskArmOf === "desk";
+  const deskFix = deskPlanned && s.cfg.scriptDesk === "fix";
+  let deskKilled: DeskRecord["kill"] | undefined;
   // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
   // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
   const skeleton =
@@ -7755,6 +7785,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       dropAngle: drop,
       length,
       ...(payoffGated ? { payoff: true } : {}),
+      ...(deskPlanned ? { deskPlan: true } : {}),
       // The search lane and a reply Short each write on their own step, so CODEX_CALLS can route them.
       ...(cluster.search
         ? { site: SEARCH_WRITE_SITE }
@@ -7815,6 +7846,35 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       if (scrubbed.removed.length) {
         script = scrubbed.script;
         await logEvent(s.db, ep.id, "credits_scrubbed", { attempt, removed: scrubbed.removed });
+      }
+    }
+    // SCRIPT_DESK: the writer's own answer said whether the story can carry a Short. Under "fix" a killed story takes the
+    // thin route before its fact check is paid for (a big story still goes out, with a note); "check" only records it.
+    if (deskPlanned && attempt === 0 && !deskKilled) {
+      const k = deskKill(script.desk_plan, script.payoff);
+      if (k) {
+        deskKilled = { ...k, acted: deskFix, ...(cluster.bigStory ? { big_story: true } : {}) };
+        await logEvent(s.db, ep.id, "desk_kill", { ...deskKilled }).catch(() => undefined);
+        if (deskFix && !cluster.bigStory) {
+          await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "too thin");
+          await transition(s.db, ep.id, "selected", "rejected", {
+            script_json: {
+              ...script,
+              desk: deskRecord({ arm: "desk", mode: "fix", plan: script.desk_plan, kill: deskKilled }),
+            },
+            last_error: `too thin: editor's desk: ${k.why}`,
+          });
+          await s.notify({
+            level: "info",
+            content: `Dropped as too thin, the slot goes to the next story: "${cluster.headline}". The editor's desk: ${k.why}`.slice(0, 900),
+          });
+          return;
+        }
+        if (deskFix)
+          await s.notify({
+            level: "info",
+            content: `Big story "${cluster.headline}" can't carry a Short by the editor's desk but is going out, since big stories are always made: ${k.why}`.slice(0, 900),
+          });
       }
     }
     const { problems, thin } = houseProblems(script);
@@ -8086,6 +8146,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           dropAngle: drop,
           length,
           ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
           ...(cluster.search
             ? { site: SEARCH_WRITE_SITE }
             : cluster.reply
@@ -8118,6 +8179,102 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ...clarityLog(clarity),
       kept: script !== settled,
       before_text: shortText(settled),
+    }).catch(() => undefined);
+  }
+  // The editor's desk (SCRIPT_DESK, src/editorial/desk.ts): an editor reads the settled Short as a viewer meets it
+  // (title, first-frame text, narration; never the plan or the sources) and scores it. "fix" on the desk's arm: under
+  // the bar, one instruction a round (the biggest weakness) through the edit-based reviser, the fact guard, the house
+  // rules (the payoff gate's included) and the fact check, then a fresh read; the best version that passed is kept.
+  // "check" and the control arm: one read, recorded, nothing changed. The record goes on the script at the end.
+  let deskRec: DeskRecord | undefined;
+  if (deskArmOf) {
+    const factsOk =
+      check.verdict === "pass" &&
+      check.rumour_labelling_ok &&
+      !check.issues.some((i) => i.severity === "blocker");
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    let deskFactChecks = 0;
+    const passedCheck = new Map<Script, typeof check>();
+    const loop = await runDesk<Script>({
+      value: script,
+      mode: deskFix && factsOk && !deskKilled ? "fix" : "check",
+      min: s.cfg.scriptDeskMin,
+      rounds: s.cfg.scriptDeskRounds,
+      angle: script.desk_plan?.angle,
+      judge: (v) =>
+        judgeDesk(s.llm, {
+          title: v.youtube.title,
+          firstFrame: firstFrameText(v),
+          narration: deskLines(v),
+        }),
+      checks: (v) => deskChecks({ lines: deskLines(v), game: v.game_title, segment: pulseCheck }),
+      rewrite: async (v, instruction) => ({
+        ...v,
+        ...(await writeScript(s.llm, cluster, articles, {
+          desk: s.cfg.deskShare > 0,
+          variantNote,
+          mustLabelRumour,
+          feedback: [instruction],
+          storeData,
+          recent,
+          draft: v,
+          segment: pulseCheck,
+          noSeriesFollow: s.cfg.shortEndPayoff,
+          skeleton,
+          dropAngle: drop,
+          length,
+          ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
+          site: DESK_REWRITE_SITE,
+          editsOnly: true,
+        })),
+      }),
+      accept: async (before, after) => {
+        const guard = [
+          ...deskShortProblems(before, after, wordsLimits),
+          ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+        ];
+        if (guard.length) return guard;
+        deskFactChecks++;
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
+          shortSettledText(before),
+        );
+        const late = airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : [];
+        if (v.blockers.length || late.length) return [...v.blockers, ...late];
+        passedCheck.set(after, v.check);
+        return [];
+      },
+      // SHORT_PAYOFF_GATE: a rewrite keeps the held answer where the writer put it.
+      extra: (v) => (payoffGated && v.payoff ? [payoffKeepNote(v.payoff)] : []),
+    });
+    const keptCheck = passedCheck.get(loop.value);
+    if (loop.value !== script && keptCheck) {
+      script = loop.value;
+      check = keptCheck;
+    }
+    deskRec = deskRecord({
+      arm: deskArmOf,
+      mode: s.cfg.scriptDesk === "fix" ? "fix" : "check",
+      plan: script.desk_plan,
+      kill: deskKilled,
+      loop,
+      checks: deskFactChecks,
+    });
+    await logEvent(s.db, ep.id, "script_desk", {
+      arm: deskRec.arm,
+      mode: deskRec.mode,
+      scores: deskRec.rounds.map((r) => r.scores?.overall ?? null),
+      kept: deskRec.kept,
+      cleared: deskRec.cleared,
+      stop: deskRec.stop,
+      calls: deskRec.calls,
+      ...(deskRec.kill ? { kill: deskRec.kill.kind } : {}),
+      ...(deskRec.source_gap ? { source_gap: deskRec.source_gap } : {}),
     }).catch(() => undefined);
   }
   // The humaniser (HUMANISE, src/editorial/humanise): the full name once and the short form after, no repeated openings,
@@ -8275,6 +8432,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       sent_back: payoffSentBack.length,
     }).catch(() => undefined);
   }
+  // SCRIPT_DESK: the desk's record rides on the script beside payoff_gate (the weekly report reads arm and score).
+  if (deskRec) script = { ...script, desk: deskRec };
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
   if (skeleton) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {

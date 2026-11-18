@@ -832,7 +832,7 @@ import {
   countProducing,
   takenSlots,
 } from "./episodes.ts";
-import { footageGate, libraryHasFootage, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
+import { footageGate, libraryHasFootage, markLibraryFaults, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
 import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
@@ -13789,6 +13789,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     );
     if (banned)
       await logEvent(s.db, ep.id, "unsafe_moments_remembered", { keys: banned });
+    // The game library remembers faulted moments too, so a fresh gather cannot pick them again.
+    const libKeys = [
+      ...[...off.clips].map((i) => (withoutPlan.clips ?? [])[i]?.libKey),
+      ...[...off.images].map((i) => (withoutPlan.images ?? [])[i]?.libKey),
+    ].filter((k): k is string => !!k);
+    if (libKeys.length && script.game_title)
+      await markLibraryFaults(s.cfg.dataDir, script.game_title, libKeys, [...visionProblems, ...adSafe].join(" | "))
+        .then((n) => (n ? logEvent(s.db, ep.id, "library_faults_marked", { keys: libKeys, marked: n }) : undefined))
+        .catch(() => undefined);
     const dropped = dropOffending(withoutPlan, off);
     if (dropped.clips || dropped.images) {
       log("warn", "faulted media dropped for the retry", {

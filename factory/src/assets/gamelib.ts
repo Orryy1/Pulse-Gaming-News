@@ -634,6 +634,8 @@ export function pickForLines(
         for (const opt of options) {
           const key = assetKey(item, opt.scene);
           if (used.has(key)) continue;
+          // A scene the final check faulted (markLibraryFaults) or the tagger ruled out is never picked again.
+          if (opt.scene?.seen?.startsWith("unusable")) continue;
           if (w.key === "hook" && opt.scene && opt.scene.end - opt.scene.at < HOOK_SCENE_SECONDS) continue;
           const fit = fitScore(opt.tags, item.named, opt.seen, w);
           if (fit <= 0) continue;

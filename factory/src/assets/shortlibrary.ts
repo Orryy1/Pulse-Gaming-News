@@ -381,6 +381,36 @@ export async function shortLibraryMedia(o: {
 const p0 = (p: LibPick) => p;
 
 /**
+ * Library moments the final picture check faulted (18 Nov 2026: one "couple kissing" GTA VI trailer scene opened the
+ * Xbox cloud Short on four renders running): the scene, or the still, is marked unusable in the game's library, so
+ * no later Short in this or any episode picks it. Keys are the clips' and stills' libKey ("item@at" or "item").
+ */
+export async function markLibraryFaults(dataDir: string, game: string, keys: string[], why: string): Promise<number> {
+  if (!keys.length || !game.trim()) return 0;
+  const root = libraryRoot(dataDir);
+  const lib = await readLibrary(root, game).catch(() => undefined);
+  if (!lib) return 0;
+  const reason = `unusable: faulted by the final check (${why.slice(0, 80)})`;
+  let n = 0;
+  for (const key of keys) {
+    const [id, at] = key.split("@");
+    const item = lib.items.find((i) => i.id === id);
+    if (!item) continue;
+    if (at === undefined) {
+      if (!item.unusable) { item.unusable = "faulted by the final check"; n++; }
+      continue;
+    }
+    const scene = (item.scenes ?? []).find((sc) => String(sc.at) === at);
+    if (scene && !scene.seen.startsWith("unusable")) { scene.seen = `${reason} ${scene.seen}`.slice(0, 200); n++; }
+  }
+  if (n) {
+    const { writeLibrary } = await import("./gamelib.ts");
+    await writeLibrary(root, lib);
+  }
+  return n;
+}
+
+/**
  * Whether a picture's description shows a real map (pure): the tagger also says "map" for a corner minimap or an aerial
  * view (15 Nov 2026: 53 of GTA V's 170 items), which is not the map a line about the map's size needs.
  */

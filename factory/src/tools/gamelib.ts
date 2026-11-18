@@ -475,6 +475,16 @@ async function main(): Promise<void> {
           const master = (await res.json()) as GameLibrary;
           const mine = await readLibrary(root, master.game);
           // The master wins item by item; items only this machine has stay.
+          // A moment this machine ruled out (a final-check fault, markLibraryFaults) stays ruled out over the master's copy.
+          for (const m of master.items) {
+            const own = mine?.items.find((i) => i.id === m.id);
+            if (!own) continue;
+            if (own.unusable && !m.unusable) m.unusable = own.unusable;
+            for (const sc of m.scenes ?? []) {
+              const o = (own.scenes ?? []).find((x) => x.at === sc.at);
+              if (o?.seen.startsWith("unusable") && !sc.seen.startsWith("unusable")) sc.seen = o.seen;
+            }
+          }
           const items = [...master.items, ...(mine?.items ?? []).filter((i) => !master.items.some((m) => m.id === i.id || m.sourceUrl === i.sourceUrl))];
           const lib = { ...master, items };
           await writeLibrary(root, lib);

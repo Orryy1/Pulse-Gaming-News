@@ -229,6 +229,8 @@ import {
 } from "./fillerplan.ts";
 import { planSketchShots, type SketchDecision } from "./sketchplan.ts";
 import { DisplayShot, PhotoShot } from "./components/PhotoShot.tsx";
+import { MentionInsetView } from "./components/MentionInsets.tsx";
+import { mentionSlots, type MentionInset } from "./mentions.ts";
 import {
   planPhotoShots,
   type DisplayDecision,
@@ -352,6 +354,9 @@ export type LongProps = {
   renderDate: string;
   /** CHARACTER_QUOTES: the game's own lines, played in the silences the narration left for them. */
   quotes?: import("./props.ts").ShortQuote[];
+  /** MENTION_* (src/render/mentions.ts): the mention insets on their words, and the video's cap. */
+  mentions?: MentionInset[];
+  mentionMax?: number;
 };
 
 const resolveSrc = (src: string | null) =>
@@ -3392,6 +3397,43 @@ export const Long: React.FC<LongProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [windows, props.moments, props.variant]);
   packRef.current = packFor;
+  // MENTION_* (src/render/mentions.ts): a long video's insets go only where the frame is otherwise the footage's: inside
+  // a sentence that draws nothing of its own (no graphic, kinetic caption, name tag, pop-in picture or filler shot),
+  // never over a quote, a chapter card, a breather or the opening. One at a time, larger, top right.
+  const mentionsPlaced = useMemo(() => {
+    if (!props.mentions?.length) return [];
+    const free: Array<[number, number]> = [];
+    windows.forEach((w, k) => {
+      const raw = props.moments?.[w.entry]?.[w.moment];
+      if (!raw || fillerShots.has(`${w.entry}:${w.moment}`)) return;
+      const busy =
+        (usefulGraphic(raw.graphic) && raw.graphic.kind !== "none") ||
+        !!raw.emphasis?.trim() ||
+        !!raw.person?.trim() ||
+        props.images.some((im) => im.beatIndex === w.entry && im.moment === w.moment);
+      if (busy) return;
+      const s = spanOf(k);
+      free.push([s.from, s.from + s.len]);
+    });
+    // Everything else is taken: the complement of the free sentences, and the quotes.
+    const taken: Array<{ from: number; to: number }> = [];
+    let at = Math.max(150, 0);
+    for (const [a, z] of free.sort((x, y) => x[0] - y[0])) {
+      if (a > at) taken.push({ from: at, to: a });
+      at = Math.max(at, z);
+    }
+    taken.unshift({ from: 0, to: 150 });
+    taken.push({ from: at, to: durationInFrames });
+    for (const q of quoteSpans) taken.push({ from: q.from, to: q.from + q.frames });
+    return mentionSlots(props.mentions, {
+      fps,
+      totalFrames: durationInFrames,
+      max: props.mentionMax ?? 5,
+      layout: "long",
+      taken: taken.sort((x, y) => x.from - y.from),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.mentions, props.mentionMax, windows, props.moments, props.images, packFor, fps, durationInFrames]);
   // When the corner furniture gives way (src/render/hudyield.ts): the mark and chapter index under every
   // filler shot, the year counter under those and under every sentence graphic that is drawn.
   const hudSpans = useMemo(() => {
@@ -4689,6 +4731,11 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {mentionsPlaced.map((k) => (
+        <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
+          <MentionInsetView m={k.m} len={k.to - k.from} accent={COLOUR.amber} layout="long" />
+        </Sequence>
+      ))}
       {/* A 12 fps texture flicker over each full-screen explainer (CameraMoves.tsx TextureFlicker). */}
       {cameraMoves?.plan.boil
         ? explainerSpans.map((x, k) => (

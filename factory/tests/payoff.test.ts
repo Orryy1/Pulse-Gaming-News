@@ -555,7 +555,7 @@ test("the writer gets the held-answer rule and the plan field only in the gate's
   } as unknown as Llm;
   const cluster = {
     hash: "roads",
-    items: [item("GTA 6 roads are narrower", "IGN", "press")],
+    items: [item("GTA 6 roads are narrower", "IGN", "outlet")],
   } as never;
   await writeScript(llm, cluster, [], { mustLabelRumour: false });
   assert.ok(!reqs[0]!.content.includes("Held answer"));

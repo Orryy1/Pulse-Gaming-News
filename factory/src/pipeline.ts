@@ -7875,7 +7875,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     if (attempt === 0 && payoffFix) {
       payoffSentBack.push(...problems.filter((p) => p.startsWith("Held answer: ")));
       if (factsPassed && problems.every((p) => p.startsWith("Held answer: ")))
-        payoffFallback = { script, check };
+        // The facts passed, so its verdict is "pass" (the vault's override widens the inferred type to string).
+        payoffFallback = { script, check: { ...check, verdict: "pass" as const } };
     }
     if (
       attempt === 1 &&

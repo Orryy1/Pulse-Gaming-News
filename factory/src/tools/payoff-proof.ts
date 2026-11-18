@@ -46,6 +46,7 @@ import {
   type PayoffRead,
 } from "../editorial/payoff.ts";
 import { endingProblems } from "../editorial/shortrules.ts";
+import type { Script } from "../editorial/schema.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -298,7 +299,7 @@ export function baseline(
 interface Row {
   id: string;
   lane: string;
-  script_json: import("../editorial/schema.ts").Script;
+  script_json: Script;
   story_json: any;
 }
 
@@ -409,7 +410,7 @@ async function rewrite(inFile: string, outDir: string): Promise<void> {
         .join("\n");
       const content = `Sources:\n${items}\n\nFacts the fact check already verified for this story (use only these and the sources):\n${claims}${before.is_rumour ? "\nThis story is NOT confirmed. Keep is_rumour true and attribute every claim." : ""}\n\n${payoffRule()}`;
       const system = scriptPrompt(false, length);
-      const revise = async (draft: typeof before, problems: string[]) =>
+      const revise = async (draft: Script, problems: string[]): Promise<Script> =>
         (await reviseByEdits(llm, {
           site: "proof.write",
           system,
@@ -431,7 +432,7 @@ async function rewrite(inFile: string, outDir: string): Promise<void> {
           payoffFindings({ script: before, planned: true }).findings,
         ),
       ];
-      let current = await revise(before, first);
+      let current: Script = await revise(before, first);
       const drift = factDrift(shortText(before), shortText(current)).filter(
         (p) => !/ drops the /.test(p),
       );

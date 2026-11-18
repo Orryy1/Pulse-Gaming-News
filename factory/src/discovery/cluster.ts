@@ -33,6 +33,8 @@ export interface StoryCluster {
     follow?: import("../editorial/why.ts").WhyFollow;
     /** A pre-made Short's slot (ISO): its time words are written for that moment (src/launchprep.ts). */
     airs_at?: string;
+    /** The title the launch run planned (the owner's own words): it goes on YouTube as written, never the writer's. */
+    title?: string;
     /** The Why as a numbered serial (WHY_SERIAL_ENABLED): its number, and whether the slot was a home-shelf one. */
     serial?: { number: number; home: boolean };
   };

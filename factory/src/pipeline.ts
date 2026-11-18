@@ -2632,6 +2632,8 @@ export async function selectRunWhy(
       question: e.question,
       angle: e.angle,
       arc: e.arc,
+      // 18 Nov: the owner's "How to Play GTA 6 Without a PS5 or Series X" went up as the writer's own title.
+      ...(e.title ? { title: e.title } : {}),
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
       ...(serial ? { serial } : {}),
@@ -14682,7 +14684,8 @@ export function videoMetadata(
     ],
   );
   return {
-    title: polishTitle(script),
+    // A launch-run Why keeps the title the run planned (story_json.why.title), word for word.
+    title: ep.story_json.why?.title?.trim() || polishTitle(script),
     description,
     tags: [
       ...new Set([

@@ -83,6 +83,8 @@ import { runCapped } from "./lib/child.ts";
 import { onYtGuardAlert } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
+import { personPortrait } from "./assets/people.ts";
+import { readBoxes } from "./assets/applevision.ts";
 import { findIgdbGame, fetchIgdbArt, findIgdbSeries } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
 import { footageFirstDeps } from "./assets/footagedeps.ts";
@@ -326,6 +328,10 @@ export function createServices(db: Db, cfg: Config): Services {
         q,
       ),
     searchPress: (game) => (cfg.libraryPress ? searchPress(game) : Promise.resolve([])),
+    // PEOPLE_INSETS: a named person's own Wikidata photo, under a clear free licence, cut square on the face (Apple
+    // Vision's face finder on the Mac mini).
+    personPortrait: (c, dir, slot) =>
+      personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
     gameplayClips: async (
       game,
       franchise,

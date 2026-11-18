@@ -356,6 +356,7 @@ import {
 import {
   buildSegments,
   srtFromWords,
+  type Segment,
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
@@ -825,6 +826,24 @@ import { pruneCommentRecords } from "./youtube/replies.ts";
 import { pruneForSpace } from "./retention.ts";
 import { finishChapters } from "./youtube/chapters.ts";
 import { docPinnedComment } from "./youtube/pinned.ts";
+import {
+  answerPack,
+  keyFactLines,
+  questionChapters,
+  loopQuestions,
+  summaryLead,
+  withoutSummary,
+  keyFacts,
+  type TimedLine,
+} from "./levers/answer.ts";
+import {
+  archiveCommentLine,
+  archiveDescriptionLine,
+  archiveLinkFor,
+  readArchives,
+  readTwitchStreams,
+} from "./levers/archives.ts";
+import type { LeverSettings } from "./levers/settings.ts";
 import { latestPublicDocumentary, nextLine } from "./youtube/nextdoc.ts";
 import { communityBlock, communityDrafts } from "./social/community.ts";
 import {
@@ -851,6 +870,8 @@ import {
 import { footageGate, libraryHasFootage, markLibraryFaults, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
 import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
+import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
+import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
@@ -898,6 +919,12 @@ export interface Services {
   searchPhotos(
     query: string,
   ): Promise<import("./assets/commons.ts").CommonsImage[]>;
+  /** PEOPLE_INSETS: a named person's licensed face photo in the episode folder (src/assets/people.ts); absent in tests. */
+  personPortrait?(
+    c: import("./assets/people.ts").NameCandidate,
+    dir: string,
+    slot: number,
+  ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
   /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
   searchPress?(
     game: string,
@@ -2621,6 +2648,8 @@ export async function selectRunWhy(
       question: e.question,
       angle: e.angle,
       arc: e.arc,
+      // 18 Nov: the owner's "How to Play GTA 6 Without a PS5 or Series X" went up as the writer's own title.
+      ...(e.title ? { title: e.title } : {}),
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
       ...(serial ? { serial } : {}),
@@ -9917,8 +9946,8 @@ export async function gatherMedia(
   // A hardware story still never shows one maker's hardware on a line about the other's (18 Nov 2026: a PlayStation
   // controller sat on "using Xbox Series S settings" in the Xbox cloud Short), nor on a line naming no platform.
   if (hardwareStory(script)) {
-    const ps = /(playstation|ps[345]|dualsense|ps portal)/i;
-    const xb = /(xbox|series [xs]|game pass)/i;
+    const ps = /\b(playstation|ps[345]|dualsense|ps portal)\b/i;
+    const xb = /\b(xbox|series [xs]|game pass)\b/i;
     const wrong = images.filter((a) => {
       if (!isHardwareAsset(a)) return false;
       const what = [a.provenance, a.sourceUrl, a.file, a.label].filter(Boolean).join(" ").replace(/[-_/]+/g, " ");
@@ -10154,6 +10183,68 @@ async function personPhoto(
       error: errorMessage(err),
     });
   }
+}
+
+/**
+ * PEOPLE_INSETS: the real people a Short names, each with a licensed face photo (src/assets/people.ts), at most
+ * MAX_PEOPLE. A person the Short already shows full-frame (its `person` photo) gets no inset as well.
+ */
+async function gatherPeople(
+  s: Services,
+  episodeId: string,
+  dir: string,
+  script: Script,
+  images: Array<{ kind: string; label?: string }>,
+): Promise<NonNullable<EpisodeAssets["people"]>> {
+  const shown = new Set(images.filter((i) => i.kind === "photo" && i.label).map((i) => i.label!.toLowerCase()));
+  const out: NonNullable<EpisodeAssets["people"]> = [];
+  const tried: string[] = [];
+  for (const c of peopleCandidates(script)) {
+    if (out.length >= MAX_PEOPLE) break;
+    if (shown.has(c.name.toLowerCase())) continue;
+    tried.push(c.name);
+    const p = await s.personPortrait!(c, dir, out.length).catch(() => undefined);
+    if (p) out.push(p);
+  }
+  await logEvent(s.db, episodeId, "people_insets", {
+    tried,
+    found: out.map((p) => ({ name: p.name, qid: p.qid, license: p.license, page: p.pageUrl })),
+  }).catch(() => undefined);
+  return out;
+}
+
+/** The people with a photo whose names are said, with when (seconds); one never said gets no inset. */
+export function peopleOnWords(
+  people: NonNullable<EpisodeAssets["people"]>,
+  words: Array<{ text: string; start: number }>,
+): Array<{ name: string; file: string; credit: string; at: number }> {
+  return people.flatMap((p) => {
+    const at = nameSpokenAt(words, p.name);
+    return at === undefined ? [] : [{ name: p.name, file: p.file, credit: p.credit, at }];
+  });
+}
+
+/** The tracklist card of a soundtrack, album or tracklist story (src/render/people.ts), or undefined. */
+export function tracklistOf(
+  script: Script,
+  segments: Segment[],
+  words: Array<{ text: string; start: number }>,
+  plan: { fps: number; totalFrames: number },
+  insetTimes: number[],
+) {
+  const about = `${script.headline} ${script.hook} ${script.beats.map((b) => b.narration).join(" ")}`;
+  if (!soundtrackStory(about)) return undefined;
+  return placeTracklist({
+    segments,
+    words,
+    fps: plan.fps,
+    totalFrames: plan.totalFrames,
+    tracks: tracksFromScript(script),
+    // A rumour, or a list the narration calls reported or leaked, is labelled as reported.
+    rumour: script.is_rumour || /\b(reported(ly)?|leak(ed)?|rumou?r(ed)?)\b/i.test(about),
+    subtitle: mediaTitle(script.game_title),
+    insetTimes,
+  });
 }
 
 /** The footage asks of one documentary chapter's paragraphs, in order. */
@@ -11585,6 +11676,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           underLufs: s.cfg.gameAudioUnderLufs,
           underGain: GAME_UNDER,
           trailers: s.cfg.gameAudioTrailers,
+          trailerVoice: s.cfg.trailerQuotes,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -13550,6 +13642,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     const cut = made.get(heroImage.file);
     if (cut) assets.heroCut = { fg: cut.fg, x: cut.fgx };
   }
+  // PEOPLE_INSETS (src/assets/people.ts): each real person the Short names gets their own licensed face photo, found
+  // once per Short (kept in assets, so a re-render shows the same people).
+  if (
+    s.cfg.peopleInsets &&
+    s.personPortrait &&
+    assets.people === undefined &&
+    !script.entries?.length &&
+    !script.every_game
+  )
+    assets.people = await gatherPeople(s, ep.id, dir, script, assets.images ?? []);
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -13600,8 +13702,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // GRAPHICS_AUDIT (src/qa/gfxaudit.ts, src/gfxauditstep.ts): every overlay measured as it will be drawn; in fix mode
   // cards are moved onto their words, held, trimmed or dropped, repeats and unreadable strips go, and a wrong graphic
   // that cannot be dropped fails the render. What it returns is what renders.
-  const gfxIn = () =>
-    gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean });
+  // PEOPLE_INSETS: each person's photo on the first spoken word of their name; the tracklist on the line about the list.
+  const people = s.cfg.peopleInsets ? peopleOnWords(assets.people ?? [], words) : [];
+  const tracklist = s.cfg.peopleInsets
+    ? tracklistOf(script, segments, words, plan, people.map((p) => p.at))
+    : undefined;
+  const gfxIn = () => ({
+    ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean }),
+    people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
+    tracklist,
+  });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
     segments.splice(0, segments.length, ...gated.segments);
@@ -13616,6 +13726,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
     stamps: shownStamps,
     sting: false,
+    people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
+    tracklist,
   });
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
@@ -13633,6 +13745,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           underLufs: s.cfg.gameAudioUnderLufs,
           gapLufs: s.cfg.gameAudioGapLufs,
           trailers: s.cfg.gameAudioTrailers,
+          trailerVoice: s.cfg.trailerQuotes,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -13745,6 +13858,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
         : {}),
       quoteFiles: quoteRenderFiles(assets),
+      ...(people.length ? { peopleFiles: people } : {}),
+      ...(tracklist ? { tracklist } : {}),
       ...(gameBed
         ? {
             gameBedFile: {
@@ -14424,6 +14539,51 @@ export function longChapters(ep: Episode): string[] {
   }
 }
 
+/**
+ * The long video's narration with the time each stretch starts (ANSWER_PACK, src/levers/answer.ts): the same segments
+ * longChapters times, each marked when it opens a chapter (a chapter card or a ranking entry).
+ */
+export function longTimedLines(ep: Episode): TimedLine[] {
+  const script = ep.script_json;
+  const words = ep.assets_json?.words ?? [];
+  if (!script || !words.length) return [];
+  const duration = (ep.assets_json?.durationSeconds ?? 0) + LONG_TAIL_SECONDS;
+  const segments = openChaptersAtBreaks(
+    buildSegments(segmentInputs(script, Boolean(ep.assets_json?.desk)), words, duration),
+    ep.assets_json?.breaks,
+  );
+  // The segments carry the spoken form ("two thousand one"); the facts quote the script as written ("2001"), so each
+  // segment takes the written line of its kind in the same order (empty lines are never segments).
+  const written: Record<string, string[]> = {
+    hook: [script.hook],
+    beat: script.beats.map((x) => x.narration).filter((t) => t.trim()),
+    desk: script.desk_question ? [script.desk_question] : [],
+    take: [script.pulse_take.narration],
+    loop: [script.loop_line ?? ""],
+  };
+  const used: Record<string, number> = {};
+  return segments
+    .map((seg) => {
+      const i = used[seg.kind] ?? 0;
+      used[seg.kind] = i + 1;
+      return { seg, text: written[seg.kind]?.[i] ?? seg.text };
+    })
+    .filter(({ text }) => text.trim())
+    .map(({ seg, text }) => ({
+      start: seg.start,
+      text,
+      opensChapter:
+        seg.kind === "take" ||
+        (seg.kind === "beat" && (seg.visual?.kind === "rank" || seg.visual?.kind === "chapter")),
+    }));
+}
+
+/** The answer pack of a long video (src/levers/answer.ts): its summary, question chapters and key facts, for the site. */
+export function longAnswerPack(ep: Episode) {
+  const script = ep.script_json!;
+  return answerPack(script, finishChapters(longChapters(ep)), longTimedLines(ep));
+}
+
 export function footageCredits(
   script: Script,
   clips: Array<{ provenance: string }>,
@@ -14511,6 +14671,8 @@ export function videoMetadata(
   now = new Date(),
   /** REVIEWER_PACK (src/reviewer.ts): the standard AI line and the video's sources page on the website. */
   pack?: { siteBase: string },
+  /** The platform levers this description follows (ANSWER_PACK, STREAM_ARCHIVE_LINKS); absent: neither. */
+  levers?: Pick<LeverSettings, "answerPack" | "streamArchiveLinks">,
 ) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
@@ -14561,14 +14723,23 @@ export function videoMetadata(
     publisher,
     ep.story_json.headline,
   );
-  const body = script.youtube.description
+  const writerBody = script.youtube.description
     .trim()
     .replace(/#\w+/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
   const long = script.runtime === "long";
+  // ANSWER_PACK (src/levers/answer.ts): a long video opens on a 2 to 3 sentence summary, asks its chapters as the
+  // questions people search where that is natural, and lists its key facts with their times after the chapters.
+  const answerOn = Boolean(levers?.answerPack && long && !script.recap);
+  const summary = answerOn ? summaryLead(script) : "";
+  const body = summary ? withoutSummary(writerBody, summary) : writerBody;
   // The chapter marks YouTube reads (src/youtube/chapters.ts): 0:00 first, three or more, ten seconds apart.
-  const chapters = long ? finishChapters(longChapters(ep), body) : [];
+  const plainChapters = long ? finishChapters(longChapters(ep), writerBody) : [];
+  const chapters = answerOn ? questionChapters(plainChapters, loopQuestions(script)) : plainChapters;
+  const facts = answerOn && plainChapters.length ? keyFactLines(keyFacts(longTimedLines(ep))) : [];
+  // STREAM_ARCHIVE_LINKS (src/levers/archives.ts): a Short cut from a stream points at the archive at its moment.
+  const archive = levers?.streamArchiveLinks ? ep.story_json.streamArchive : undefined;
   // Shop links for every game and piece of hardware the video names, right under the summary.
   const shop = affiliateBlock(script, affiliate, { free: ep.lane === "free" });
   // A Why Short's long video on the same game (src/youtube/longlink.ts), under the summary.
@@ -14582,6 +14753,9 @@ export function videoMetadata(
   // The disclosure and channel lines always survive the length cut (src/authenticity.ts fitDescription).
   const description = fitDescription(
     [
+      // fitDescription drops empty lines, so the blank line after the summary travels inside it.
+      ...(summary ? [`${summary}
+`] : []),
       keywordLead(script),
       ...(ep.assets_json?.searchTerms?.length ? [searchLine(ep.assets_json.searchTerms)] : []),
       // A documentary's second line: the same "next" its end card shows (src/youtube/nextdoc.ts).
@@ -14602,7 +14776,9 @@ export function videoMetadata(
       script.is_rumour
         ? "\nThis story is unconfirmed. We will update if it is confirmed or denied."
         : "",
+      archive ? `\n${archiveDescriptionLine(archive)}` : "",
       chapters.length ? `\nChapters:\n${chapters.join("\n")}` : "",
+      facts.length ? `\n${facts.join("\n")}` : "",
       credits ? `\nSources:\n${credits}` : "",
       script.sources?.length
         ? `\nSources:\n${descriptionSources(script.sources).join("\n")}`
@@ -14644,7 +14820,8 @@ export function videoMetadata(
     ],
   );
   return {
-    title: polishTitle(script),
+    // A launch-run Why keeps the title the run planned (story_json.why.title), word for word.
+    title: ep.story_json.why?.title?.trim() || polishTitle(script),
     description,
     tags: [
       ...new Set([
@@ -14690,6 +14867,29 @@ async function addSearchTerms(s: Services, ep: Episode): Promise<void> {
     ep.id,
     JSON.stringify(ep.assets_json),
   ]);
+}
+
+/**
+ * STREAM_ARCHIVE_LINKS (src/levers/archives.ts): a gameplay Short cut from one of the owner's streams records the
+ * YouTube archive and second it came from, before its description is written. Nothing happens until the live watcher
+ * has recorded an archive, and a Short already linked keeps its link. Never blocks the upload.
+ */
+async function attachStreamArchive(s: Services, ep: Episode): Promise<void> {
+  try {
+    const g = ep.script_json?.gameplay;
+    if (!s.cfg.levers?.streamArchiveLinks || ep.lane !== "gameplay" || !g || ep.story_json.streamArchive) return;
+    const archives = readArchives(s.cfg.dataDir);
+    if (!archives.length) return;
+    const meta = await readMeta(gameplayDir(s.cfg, g.inbox_id));
+    if (!meta) return;
+    const link = archiveLinkFor(meta, readTwitchStreams(s.cfg.dataDir), archives);
+    if (!link) return;
+    ep.story_json = { ...ep.story_json, streamArchive: link };
+    await s.db.query(`UPDATE episodes SET story_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(ep.story_json)]);
+    await logEvent(s.db, ep.id, "stream_archive_linked", { ...link });
+  } catch (err) {
+    log("warn", "stream archive link failed", { episode: ep.id, error: errorMessage(err) });
+  }
 }
 
 async function stepUpload(s: Services, ep: Episode): Promise<void> {
@@ -14743,6 +14943,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
     });
     return;
   }
+  await attachStreamArchive(s, ep);
   const yt = s.youtube(accountOf(ep));
   const marker = markerTag(ep.id);
   const file = path.join(episodeDir(s.cfg, ep.id), "short.mp4");
@@ -14857,6 +15058,7 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
           s.cfg.leonidaLink,
           s.now(),
           reviewerPackFor(s.cfg),
+          s.cfg.levers,
         ),
         marker,
       ),
@@ -14921,6 +15123,7 @@ async function localizeMetadata(
       s.cfg.leonidaLink,
       s.now(),
       reviewerPackFor(s.cfg),
+      s.cfg.levers,
     );
     const loc = await translateMetadata(
       s.llm,
@@ -15095,7 +15298,9 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
         ? challengeCommentLine(ep.story_json.challenge, await nextEpisodeMade(s.db, ep.story_json.challenge))
         : "";
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
-      const q = [shortComment(script), daily].filter(Boolean).join("\n\n");
+      // STREAM_ARCHIVE_LINKS: the full stream from this moment, under the Short's own question.
+      const archive = s.cfg.levers?.streamArchiveLinks && ep.story_json.streamArchive;
+      const q = [shortComment(script), daily, archive ? archiveCommentLine(archive) : ""].filter(Boolean).join("\n\n");
       if (!q) {
         await logEvent(s.db, ep.id, "comment_skipped", { why: "no question of its own" });
         return;
@@ -15128,7 +15333,10 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
             ).catch(() => ep.story_json.why?.follow),
           )
         : "") +
-      (daily ? `\n\n${daily}` : "");
+      (daily ? `\n\n${daily}` : "") +
+      (s.cfg.levers?.streamArchiveLinks && ep.story_json.streamArchive
+        ? `\n\n${archiveCommentLine(ep.story_json.streamArchive)}`
+        : "");
     const id = await s
       .youtube(accountOf(ep))
       .insertComment(ep.youtube_video_id!, text);

@@ -77,9 +77,9 @@ export function chunkText(text: string, maxWords = 36): string[] {
 }
 
 /** "ready" once the server answers /health and (if it reports a phase) has loaded its engine. */
-async function healthy(baseUrl: string): Promise<"ready" | "warming" | "down"> {
+async function healthy(baseUrl: string, timeoutMs = 5_000): Promise<"ready" | "warming" | "down"> {
   try {
-    const res = await fetchWithTimeout(`${baseUrl}/health`, {}, 5_000);
+    const res = await fetchWithTimeout(`${baseUrl}/health`, {}, timeoutMs);
     if (!res.ok) return "down";
     const body = (await res.json().catch(() => ({}))) as { ready?: boolean };
     return body.ready === false ? "warming" : "ready";
@@ -124,7 +124,11 @@ export async function ensureLocalVoice(
   opts: LocalVoiceOptions,
   waitMs = 8 * 60_000,
 ): Promise<void> {
-  let state = await healthy(opts.baseUrl);
+  // The PC's relay (lan_relay.py) starts Liam on demand when a request arrives and holds the connection until it
+  // answers: about 30 s cold, up to 2 minutes more waiting for a GPU turn. A machine that cannot start the server
+  // itself (the Mac) waits for that first answer instead of calling it down after 5 s.
+  const remote = !canStartLocally(opts.startScript, process.platform);
+  let state = await healthy(opts.baseUrl, remote ? 180_000 : 5_000);
   if (state !== "down") await assertSpeaksOurContract(opts);
   if (state === "ready") return;
   if (state === "down") {

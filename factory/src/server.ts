@@ -131,6 +131,7 @@ import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
 import { streamWeeklyTick } from "./streamweekly/job.ts";
 import { hudVodTick } from "./hudreader/job.ts";
+import { startLeverJobs } from "./levers/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -1090,6 +1091,25 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       await logEvent(db, ep.id, "retitled", { from: was, to: title, youtube }).catch(() => undefined);
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, from: was, to: title, youtube }));
       return;
+    }
+    // Rewrites a comment the channel already posted (a broken template pin, 18 Nov): find= must match the live
+    // comment's text, so only the comment meant is touched.
+    if (url.pathname === "/admin/edit-comment" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const video = (url.searchParams.get("video") ?? "").trim();
+      const find = (url.searchParams.get("find") ?? "").trim();
+      const text = (url.searchParams.get("text") ?? "").trim();
+      const json = (code: number, body: unknown) =>
+        res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(body));
+      if (!video || find.length < 8 || !text || text.length > 1000 || /—/.test(text))
+        return json(400, { ok: false, error: "needs video, find (8+ characters) and text (1-1000, no em dash)" });
+      const yt = services.youtube();
+      const hits = (await yt.listComments(video)).filter((c) => c.text.includes(find));
+      if (hits.length !== 1)
+        return json(409, { ok: false, error: `expected one comment containing that text, found ${hits.length}` });
+      await yt.updateComment(hits[0]!.id, text);
+      log("info", "comment edited", { video, from: hits[0]!.text.slice(0, 200), to: text.slice(0, 200) });
+      return json(200, { ok: true, from: hits[0]!.text, to: text });
     }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
@@ -2150,6 +2170,13 @@ async function main(): Promise<void> {
     setTimeout(() => void liveClipsTick(cfg), 30_000);
     setInterval(() => void liveClipsTick(cfg), 15_000);
   }
+  // The platform levers (src/levers): the live watcher (LIVE_AUTOFILL), the weekly Partner Programme count
+  // (YPP_TRACKER) and the podcast flag (PODCAST_PLAYLIST). Each is off unless its setting says otherwise.
+  startLeverJobs(cfg, {
+    db,
+    token: () => accessToken(db, oauthConfig(cfg)),
+    notify: (text) => services.notify({ content: text }),
+  });
 
   // Boot checks: everything that silently stops an unattended factory, posted to Discord once.
   void (async () => {

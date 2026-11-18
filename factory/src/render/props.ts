@@ -77,6 +77,10 @@ export type ShortProps = {
   quotes?: ShortQuote[]; // CHARACTER_QUOTES: the game's own lines, played in the silences the narration left for them
   gameBed?: import("./gamebed.ts").GameBed; // GAME_AUDIO_BED: the footage's own sound under the voice (src/assets/gameaudio.ts)
   reply?: { handle: string; text: string }; // COMMENT_REPLY_SHORTS: the viewer's comment shown as a card over the opening
+  /** PEOPLE_INSETS (src/render/people.ts): each named person's licensed photo, on the word that names them. */
+  people?: import("./people.ts").PersonInset[];
+  /** PEOPLE_INSETS: the tracklist card of a soundtrack story; its line's own card gives way to it. */
+  tracklist?: import("./people.ts").TracklistPlacement;
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

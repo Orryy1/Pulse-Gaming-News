@@ -255,7 +255,8 @@ test("documentary SEO: its own lead, thumbnail line and pinned question", () => 
   const s = docToScript(draft(5));
   assert.match(keywordLead(s), /^The complete history of Grand Theft Auto/);
   assert.equal(thumbTitle(s), "The Complete History of Grand Theft Auto");
-  assert.match(pinnedComment(s), /Grand Theft Auto game/);
+  assert.match(pinnedComment(s), /Grand Theft Auto/);
+  assert.doesNotMatch(pinnedComment(s), /game was the one for you/);
 });
 
 test("Wikipedia extracts are cut to the sections a history needs", () => {

@@ -6,6 +6,7 @@ import { RUNNING_QUESTION } from "./voice.ts";
 import { writtenOpinionLead } from "./phrasing.ts";
 import type { Script } from "./schema.ts";
 import { tagChars } from "../youtube/upload.ts";
+import { docQuestion } from "../youtube/pinned.ts";
 
 export const TITLE_MAX = 60; // phones truncate around here; YouTube allows 100
 const BAD_TITLE_WORDS =
@@ -490,7 +491,7 @@ export function pinnedComment(script: Script): string {
   if (script.recap)
     return `Which story was the biggest one for you this week? ${lead} ${take}. And the question we ask every week: ${RUNNING_QUESTION.toLowerCase()} Every source is in the description.`;
   if (script.evergreen_format === "documentary")
-    return `Which ${game} game was the one for you, and which chapter of the story surprised you most? Sources for every chapter are in the description.`;
+    return `${docQuestion(game, script.headline || game)} Sources for every chapter are in the description.`;
   if (script.evergreen_format === "release_radar")
     return `Our pick: ${take}. Which one are you picking up this week?`;
   if (script.evergreen_format && /achievements$/.test(script.evergreen_format))

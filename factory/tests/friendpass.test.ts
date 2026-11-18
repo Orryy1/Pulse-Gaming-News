@@ -506,3 +506,24 @@ test("new problems are judged by kind, so a quoted word or a count doesn't make 
     1,
   );
 });
+
+test("factDrift: a name with a plus sign is the same name before and after", () => {
+  const t =
+    "Pre-orders get the Vintage Vice City Pack, and digital ones add a free month of GTA+.";
+  assert.deepEqual(factDrift(t, t), []);
+  const p = factDrift("Digital pre-orders add a free month.", t);
+  assert.ok(p.some((x) => /adds the name .*GTA\+/.test(x)), "a new GTA+ is still caught");
+});
+
+test("factDrift: credit frames include an outlet's piece, 'per' and 'puts'", async () => {
+  const { attributionFrames } = await import("../src/editorial/attribution.ts");
+  const keys = (t: string) => attributionFrames(t).map((f) => f.key);
+  assert.ok(keys("Edge's preview says GTA 6's roads are narrower.").includes("edge say"));
+  assert.ok(keys("Edge's October 29 preview says the roads are narrower.").includes("edge say"));
+  assert.ok(keys("The map is roughly double GTA 5's, per Edge.").includes("per edge"));
+  assert.ok(keys("Edge puts the map at roughly double GTA 5's size.").some((k) => k.startsWith("edge put")));
+  // Credited three ways before and after: the drop check is satisfied by any of these shapes.
+  const before = "Edge says the roads are narrower. Edge puts the map at double GTA 5's size.";
+  const after = "Edge's preview says the roads are narrower. Per Edge, the map is double GTA 5's size.";
+  assert.ok(!factDrift(before, after).some((x) => /drops an attribution/.test(x)));
+});

@@ -59,6 +59,7 @@ import { HOUSE, SHORT_TRACK_FRAMES, spanWindow } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout, yieldingSpans } from "./cleanframe.ts";
 import { peopleGroups } from "./people.ts";
 import { PeopleRow, TracklistCard } from "./components/PeopleInsets.tsx";
+import { MentionInsetView } from "./components/MentionInsets.tsx";
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
@@ -523,13 +524,17 @@ export const Short: React.FC<ShortProps> = (props) => {
         sting: stingOn && stingAt ? stingAt : false,
         people: props.people,
         tracklist: props.tracklist,
+        mentions: props.mentions,
       }),
-    [props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.people, props.tracklist],
+    [props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.people, props.tracklist, props.mentions],
   );
   const kept = useMemo(() => (clean ? arbitrate(allSpans) : undefined), [clean, allSpans]);
   // PEOPLE_INSETS (src/render/people.ts): the insets and the tracklist never cover another overlay, clean or not.
   const peopleKept = useMemo(
-    () => (kept ?? yieldingSpans(allSpans, ["people", "tracklist"])).filter((k) => k.kind === "people" || k.kind === "tracklist"),
+    () =>
+      (kept ?? yieldingSpans(allSpans, ["people", "tracklist", "mention"])).filter(
+        (k) => k.kind === "people" || k.kind === "tracklist" || k.kind === "mention",
+      ),
     [kept, allSpans],
   );
   const rows = useMemo(() => peopleGroups(props.people ?? [], fps, durationInFrames), [props.people, fps, durationInFrames]);
@@ -544,7 +549,9 @@ export const Short: React.FC<ShortProps> = (props) => {
     !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
   const cardAt = (i: number) =>
     // The tracklist card stands in for its line's own card.
-    props.tracklist?.segment === i
+    props.tracklist?.segment === i ||
+    // MENTION_*: an inset stands in for its beat's card (cleanframe.ts settleMentions left the card out of the spans).
+    (props.mentions?.length && !allSpans.some((x) => x.key === `card${i}`))
       ? undefined
       : sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
@@ -817,6 +824,13 @@ export const Short: React.FC<ShortProps> = (props) => {
           return (
             <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
               <PeopleRow group={g} from={k.from} len={k.to - k.from} accent={accent} />
+            </Sequence>
+          );
+        const mention = k.kind === "mention" ? props.mentions?.find((x) => x.key === k.key) : undefined;
+        if (mention)
+          return (
+            <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
+              <MentionInsetView m={mention.m} len={k.to - k.from} accent={accent} layout="short" />
             </Sequence>
           );
         if (k.kind === "tracklist" && props.tracklist)

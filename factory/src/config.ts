@@ -1044,6 +1044,16 @@ export interface Config {
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
+  /** MENTION_* (src/render/mentions.ts, src/assets/mentions.ts): a small picture of the exact thing a word names pops
+   * up on that word, one setting per kind, all off by default; MENTION_MAX_PER_SHORT caps a Short (a long video adds
+   * one a minute). */
+  mentionGames: boolean; // MENTION_GAMES: another game's official Steam capsule on its name; compared games side by side
+  mentionLogos: boolean; // MENTION_LOGOS: a studio's or publisher's own logo (Wikidata's, on Commons) on its name only
+  mentionCharacters: boolean; // MENTION_CHARACTERS: a fictional character's official art from the publisher's site
+  mentionRealPlaces: boolean; // MENTION_REALPLACES: a free Commons photo of a real place beside its game version
+  mentionPlatforms: boolean; // MENTION_PLATFORMS: a row of Pulse-drawn platform marks when platforms are listed
+  mentionReceipts: boolean; // MENTION_RECEIPTS: "Bloomberg reported": the outlet and date, from the story's own sources
+  mentionMaxPerShort: number; // MENTION_MAX_PER_SHORT: most mention insets in a Short (default 5)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
    * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
@@ -2032,6 +2042,13 @@ export function loadConfig(): Config {
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   peopleInsets: bool("PEOPLE_INSETS", true),
+  mentionGames: bool("MENTION_GAMES", false),
+  mentionLogos: bool("MENTION_LOGOS", false),
+  mentionCharacters: bool("MENTION_CHARACTERS", false),
+  mentionRealPlaces: bool("MENTION_REALPLACES", false),
+  mentionPlatforms: bool("MENTION_PLATFORMS", false),
+  mentionReceipts: bool("MENTION_RECEIPTS", false),
+  mentionMaxPerShort: Math.min(8, Math.max(0, int("MENTION_MAX_PER_SHORT", 5))),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),

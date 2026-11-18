@@ -259,13 +259,13 @@ export function peopleCandidates(s: PeopleScript): NameCandidate[] {
 
 // ---- Licence rules ------------------------------------------------------------------------------------------
 
-const FREE =
+export const FREE =
   /^(cc0|cc[ -]by(-sa)?([ -][\d.]+)?(\s+\w+)?|public domain|pd\b|pd-)/i;
 /** Never a cover, logo, poster or screenshot: only a photo of the person. */
 const NOT_A_PORTRAIT =
   /logo|icon|cover|album|single|poster|screenshot|box ?art|artwork|signature|\.svg|\.gif|flag of|coat of arms|banner|ticket|vinyl|record sleeve/i;
 /** Agency, press and promotional pictures: never, whatever licence a page claims for them. */
-const PRESS =
+export const PRESS =
   /getty|shutterstock|alamy|wireimage|filmmagic|afp|reuters|associated press|\bap photo|press (photo|image|kit)|promotional|publicity|courtesy of|epa\b|invision|rex features|splash news/i;
 
 /** What a Commons file page says about a photo. */

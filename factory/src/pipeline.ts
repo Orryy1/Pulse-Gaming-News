@@ -856,6 +856,8 @@ import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
 import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
 import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
+import { mentionsOnWords, type MentionsFound, type MentionInput } from "./assets/mentions.ts";
+import { mentionCap, mentionSlots, type MentionKind, type MentionLayout, type MentionInset, type MentionSlot } from "./render/mentions.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
@@ -909,6 +911,10 @@ export interface Services {
     dir: string,
     slot: number,
   ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
+  /** MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts); absent in tests. */
+  findMentions?(
+    input: import("./assets/mentions.ts").MentionInput,
+  ): Promise<import("./assets/mentions.ts").MentionAsset[]>;
   /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
   searchPress?(
     game: string,
@@ -10075,6 +10081,78 @@ async function gatherPeople(
   return out;
 }
 
+/** MENTION_*: the mention kinds switched on (src/render/mentions.ts), in a fixed order. */
+export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts">): MentionKind[] {
+  const on: Array<[MentionKind, boolean]> = [
+    ["game", cfg.mentionGames],
+    ["logo", cfg.mentionLogos],
+    ["character", cfg.mentionCharacters],
+    ["realplace", cfg.mentionRealPlaces],
+    ["platform", cfg.mentionPlatforms],
+    ["receipt", cfg.mentionReceipts],
+  ];
+  return on.filter(([, v]) => v).map(([k]) => k);
+}
+
+/** What the mention gather reads from a script, a story and its assets (pure). */
+export function mentionInputOf(o: {
+  dir: string;
+  kinds: MentionKind[];
+  script: {
+    hook?: string;
+    beats?: Array<{ narration?: string; footage?: { keywords?: string[] } }>;
+    pulse_take?: { narration?: string };
+    loop_line?: string;
+    game_title?: string;
+    attribution?: string;
+    youtube?: { tags?: string[] };
+    sources?: string[];
+  };
+  story?: { items?: Array<{ url?: string; title?: string; source?: string; summary?: string; sourceKind?: string; publishedAt?: string }> } | null;
+  assets: { steam?: { appId: number; name: string }; images?: Array<{ file: string; label?: string; kind?: string; sourceUrl?: string; provenance?: string; aspect?: number }> };
+  docSources?: Array<string | { url?: string; source?: string }>;
+}): MentionInput {
+  const sc = o.script;
+  const spoken = [sc.hook ?? "", ...(sc.beats ?? []).map((b) => b.narration ?? ""), sc.pulse_take?.narration ?? "", sc.loop_line ?? ""].join(" ");
+  return {
+    dir: o.dir,
+    kinds: o.kinds,
+    spoken,
+    listed: [...(sc.beats ?? []).flatMap((b) => b.footage?.keywords ?? []), ...(sc.youtube?.tags ?? [])],
+    mainGame: sc.game_title ?? "",
+    ...(o.assets.steam ? { mainSteam: { appId: o.assets.steam.appId, name: o.assets.steam.name } } : {}),
+    attribution: sc.attribution,
+    items: o.story?.items ?? [],
+    docSources: o.docSources ?? sc.sources,
+    images: o.assets.images,
+  };
+}
+
+/** Whether the gather kept in an episode's assets looked for these kinds (otherwise it runs again). */
+export const mentionsCover = (found: MentionsFound | undefined, kinds: MentionKind[]): boolean =>
+  !!found && kinds.every((k) => found.kinds.includes(k));
+
+/**
+ * MENTION_*: the mention insets of a video on its words, scheduled (src/render/mentions.ts mentionSlots), the pictures
+ * as episode-relative paths. [] when every kind is off. A long video passes no schedule here: its composition fits the
+ * insets around its own sentence graphics (Long.tsx), so it gets the placed list and the cap instead.
+ */
+export function mentionPlacement(
+  cfg: Parameters<typeof mentionKinds>[0] & Pick<Config, "mentionMaxPerShort">,
+  found: MentionsFound | undefined,
+  words: Array<{ text: string; start: number }>,
+  plan: { fps: number; totalFrames: number },
+  layout: MentionLayout,
+  /** Frames something else always holds (a Short's hook headline): never entered. */
+  taken: Array<{ from: number; to: number }> = [],
+): { insets: MentionInset[]; slots: MentionSlot[]; max: number } {
+  const kinds = new Set(mentionKinds(cfg));
+  const max = mentionCap(layout, cfg.mentionMaxPerShort, plan.totalFrames / plan.fps);
+  if (!kinds.size || !max) return { insets: [], slots: [], max };
+  const insets = mentionsOnWords(found?.items ?? [], words, { kinds });
+  return { insets, slots: mentionSlots(insets, { fps: plan.fps, totalFrames: plan.totalFrames, max, layout, taken }), max };
+}
+
 /** The people with a photo whose names are said, with when (seconds); one never said gets no inset. */
 export function peopleOnWords(
   people: NonNullable<EpisodeAssets["people"]>,
@@ -12340,6 +12418,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // The render runs past the narration's tail by the end card; the plan and the chapter marks do not change.
   const renderSeconds = duration + (endCard ? END_CARD_SECONDS : 0);
+  // MENTION_* (src/assets/mentions.ts): the mention insets' pictures, found once for the kinds switched on, from what
+  // the narration actually says; the composition fits them around its own sentence graphics (Long.tsx).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !mentionsCover(assets.mentions, kinds)) {
+      const input = mentionInputOf({ dir, kinds, script: script as never, story: ep.story_json as never, assets: assets as never });
+      input.spoken = words.map((w) => w.text).join(" ");
+      const items = await s.findMentions(input).catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
+  const longMentions = mentionPlacement(s.cfg, assets.mentions, words, { fps: 30, totalFrames: Math.round(renderSeconds * 30) }, "long");
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -12410,6 +12504,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         plan,
         renderDate: s.now().toISOString().slice(0, 10),
         quoteFiles: quoteRenderFiles(assets),
+        ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
@@ -13514,6 +13609,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     !script.every_game
   )
     assets.people = await gatherPeople(s, ep.id, dir, script, assets.images ?? []);
+  // MENTION_* (src/assets/mentions.ts): the pictures behind the mention insets, found once for the kinds switched on
+  // (kept in assets, so a re-render shows the same pictures).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !script.every_game && !mentionsCover(assets.mentions, kinds)) {
+      const items = await s
+        .findMentions(mentionInputOf({ dir, kinds, script, story: ep.story_json as never, assets }))
+        .catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -13569,10 +13679,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tracklist = s.cfg.peopleInsets
     ? tracklistOf(script, segments, words, plan, people.map((p) => p.at))
     : undefined;
+  // MENTION_*: the mention insets on their words, scheduled once here so the audit and the render agree.
+  const mentions = mentionPlacement(s.cfg, assets.mentions, words, plan, "short", [
+    { from: 0, to: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames).hookEnd },
+  ]).slots;
   const gfxIn = () => ({
     ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean }),
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
@@ -13590,6 +13705,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     sting: false,
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
@@ -13722,6 +13838,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       quoteFiles: quoteRenderFiles(assets),
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
+      ...(mentions.length ? { mentionFiles: mentions } : {}),
       ...(gameBed
         ? {
             gameBedFile: {

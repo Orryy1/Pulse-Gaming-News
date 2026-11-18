@@ -285,3 +285,30 @@ Found while trying to run the paid proofs: the Claude API key refuses every call
 **Limits.** Eight scripts per period; different stories in each period; both judges are Claude models and may favour Claude's style; newer Shorts have had less time to collect views. Raw files: `D:\pulse-data\scratch\creator-gap-1118\blind\`.
 
 **What it means for the builds.** Until 1 December, or until the cap is raised, any new rule that is switched on will be tested on Codex's writing. The experiment log's rows 1 and 2 (friend voice and narrator, judged 3 December) have been Codex tests all along and should be relabelled.
+
+## Editor's loop test, 18 Nov night: how close to 10 can the scripts get
+
+Martin asked whether the blind scores could be brought closer to 10. Tested at no cost: an Opus helper ran an editor's loop on the same 24 published scripts (state the angle, draft, judge harshly, rewrite the single biggest weakness, two rounds, drop stories that cannot carry a Short), using only the facts already in each script. The 24 rewrites, 12 transcripts of breakout Shorts from top human creators and 8 of the originals were shuffled and scored blind by two fresh judges (agreement 0.86).
+
+| Scripts | Overall | Clarity | Hook | Payoff | Voice | Human | At 7 or more |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Pulse originals (8, control) | 3.9 | 4.6 | 5.1 | 3.2 | 3.9 | 3.3 | 0 of 8 |
+| Pulse after the editor's loop (24) | 6.9 | 7.4 | 7.3 | 6.4 | 6.8 | 6.4 | 14 of 24 |
+| Top human creators' breakout Shorts (12) | 5.25 | 5.5 | 6.2 | 5.1 | 6.6 | 7.4 | 3 of 12 |
+
+**Reading.**
+
+- 23 of 24 scripts improved, by 2.5 points on average. All three writer periods end at about 7 (7.0, 6.6, 7.0), so the loop closes most of the gap between Claude-written and Codex-written drafts.
+- None reached 8 with both judges. What holds them at 7 is not wording: the stories' research has no "why" and no first-hand quote, four of the 24 stories should not have run at all, and the endings still read as tidy formula lines. The judges' lowest marks for the rewrites are payoff and "human".
+- The breakout human scripts score 5.25 on paper, from 3 to 7.5. Their only clear lead is sounding human (7.4 against 6.4). So a script that reads as a 10 is not what makes a Short break out; in the first test judged quality did not predict views either. The script is one input beside the story, the voice, the footage and the first seconds.
+- Honest ceiling: about 7 from editing alone, about 8 with better research and story choice. Ten is not a real target on this scale, since the best human hits do not reach it.
+
+**Limits.** Claude-family writer and judges, so some shared taste is likely; human scripts are transcripts of longer, looser videos; self-contained rewrites could not use sources. Only live retention and comments can prove the gain. Raw files: `D:\pulse-data\scratch\creator-gap-1118\blind2\`.
+
+**What is being built from it.** Branch `claude/gap-desk` (on top of `claude/gap-payoff`), setting `SCRIPT_DESK=off|check|fix`, off by default: the angle sentence before writing, an independent editor's read on the six measures, one targeted rewrite per round, the kill rule through the existing thin-story route, a cost cap, and a weekly table that sets the editor's score against real retention so the judge can be calibrated.
+
+**What editing cannot fix, added to the second wave.**
+
+- Research per story must carry the reason behind the news and one quote from a person involved (links to gap 5, voices, and the `no_primary_sources` note in the long-form build).
+- The newsroom should refuse search-help, obvious-answer and promotion stories before they reach a writer (links to gap 6, the premise test).
+- A spoken pass for endings and rhythm, since "human" is where real creators still lead.

@@ -30,6 +30,8 @@ import { reviseByEdits } from "./revise.ts";
 import { skeletonRule, type Skeleton } from "./skeletons.ts";
 import { DROP_ANGLE_RULE } from "./dropangle.ts";
 import { PayoffSchema, payoffRule } from "./payoff.ts";
+import { DeskPlanSchema, deskPlanRule } from "./desk.ts";
+import type { ZodTypeAny } from "zod";
 import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import {
   parsePairs,
@@ -232,12 +234,20 @@ export async function writeScript(
     vault?: string;
     /** SHORT_PAYOFF_GATE's gate arm: the held-answer rule, and a `payoff` plan in the answer (src/editorial/payoff.ts). */
     payoff?: boolean;
+    /** SCRIPT_DESK's desk arm: the angle, mode and kill stated first, in a `desk_plan` in the same answer (src/editorial/desk.ts). */
+    deskPlan?: boolean;
+    /** The desk's rewrite: edits to the draft only; when they don't apply it throws instead of writing the draft again. */
+    editsOnly?: boolean;
   },
 ): Promise<Script> {
-  // The gate's arm asks for the plan in the same answer; off, the schema is the one every Short has always had.
-  const schema = (opts.payoff
-    ? ScriptSchema.extend({ payoff: PayoffSchema })
-    : ScriptSchema) as unknown as typeof ScriptSchema;
+  // The gate's and the desk's arms ask for their plans in the same answer; off, the schema is the one every Short has
+  // always had.
+  const plans: Record<string, ZodTypeAny> = {};
+  if (opts.payoff) plans.payoff = PayoffSchema;
+  if (opts.deskPlan) plans.desk_plan = DeskPlanSchema;
+  const schema = (
+    Object.keys(plans).length ? ScriptSchema.extend(plans) : ScriptSchema
+  ) as unknown as typeof ScriptSchema;
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
     : "";
@@ -271,7 +281,7 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
-  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}${opts.payoff ? `\n\n${payoffRule()}` : ""}`;
+  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}${opts.payoff ? `\n\n${payoffRule()}` : ""}${opts.deskPlan ? `\n\n${deskPlanRule(!!opts.payoff)}` : ""}`;
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
@@ -294,6 +304,8 @@ export async function writeScript(
           job: "news Short",
         })
       : undefined;
+  if (opts.editsOnly && !edited)
+    throw new Error("the edits did not apply to the draft");
   const script =
     edited ??
     (await llm.structured({
@@ -656,7 +668,10 @@ export function midQuestions(
 export function withoutQuotedQuestions(text: string): string {
   return text
     .replace(/["“][^"”]*\?["”]/g, "QUOTE")
-    .replace(/(^|[\s(])['‘](?:[^'’]|['’](?=[a-z]))*\?['’](?=[^a-z]|$)/gi, "$1QUOTE");
+    .replace(
+      /(^|[\s(])['‘](?:[^'’]|['’](?=[a-z]))*\?['’](?=[^a-z]|$)/gi,
+      "$1QUOTE",
+    );
 }
 
 export function validateScript(
@@ -716,7 +731,12 @@ export function validateScript(
       );
     // The spoken form reads "14.22" as "fourteen point two two", so the written lines count too: a figure the
     // script says in figures is in the narration however the voice will read it.
-    const written = [s.hook, ...s.beats.map((b) => b.narration), s.pulse_take.narration, s.loop_line]
+    const written = [
+      s.hook,
+      ...s.beats.map((b) => b.narration),
+      s.pulse_take.narration,
+      s.loop_line,
+    ]
       .map((t) => stripVoiceTags(t))
       .join(" ");
     const said = `${spoken} ${written}`.toLowerCase();

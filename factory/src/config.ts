@@ -649,6 +649,34 @@ export interface Config {
    * are the control arm, measured on the plan-free rules only. The arm is on script.payoff_gate.arm for the weekly
    * comparison. */
   shortPayoffShare: number;
+  /** The script editor's desk (src/editorial/desk.ts, top creator gap plan writer check, 18 Nov 2026: blind judges
+   * scored 24 published Pulse scripts at 3.9/10; an editor's loop run by hand on the same stories and facts took them to
+   * 6.9, 23 of 24 improved, against 5.25 for 12 breakout human Shorts). On news, breaking and Why Shorts in the desk's arm
+   * the writer states, in its own call, "The most interesting true thing is X, and it matters to Y because Z", the mode
+   * and whether the story can carry a Short (desk_plan: absence, common knowledge, promotion or list kill it; a missing
+   * key fact is recorded as source_gap). Then an editor ("desk.judge", mid tier, never the writer's plan or sources)
+   * reads title, first-frame text and narration and scores clarity, hook, payoff, voice, human and overall 1-10 with
+   * its biggest weakness, beside deterministic checks (banned lines, the full name over twice, a formula ending, a
+   * repeated fact). SCRIPT_DESK=off (default), "check" (read once and record on script.desk, change nothing; a kill is
+   * only recorded) or "fix" (under SCRIPT_DESK_MIN overall or any score under 5: one instruction, the biggest weakness,
+   * through the edit-based reviser ("desk.rewrite"), the fact guard and the fact check, then read again; best version
+   * kept; a killed story takes the thin route, a big story still goes out with a note). Control-arm Shorts get one read
+   * so the weekly report can set desk score against real retention. It runs after the friend pass and the clarity gate,
+   * before the humaniser, and after the payoff gate's rules, which it keeps (newProblems); CODEX_CALLS=desk routes both
+   * steps. Cost by the price table (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10 per million in/out): a read about $0.01 (Sonnet,
+   * ~1,200 in, ~600 out with thinking), a rewrite about $0.08-0.10 (Opus edits on the writer's ~8k-token brief), its
+   * fact check about $0.04 (Opus), the angle about $0.001 more writer output. Per desk-arm Short: $0.01 when the first
+   * read clears, about $0.14 for one round, about $0.28 at the cap (3 reads, 2 rewrites, 2 fact checks); a control-arm
+   * Short $0.01. At SCRIPT_DESK_SHARE 0.5 and two rounds on most Shorts, about $0.13 a covered Short on average. */
+  scriptDesk: "off" | "check" | "fix";
+  /** SCRIPT_DESK_SHARE (0-1, default 0.5): the share of covered Shorts in the desk's arm, split by episode id; the arm is
+   * on script.desk.arm for the weekly comparison. */
+  scriptDeskShare: number;
+  /** SCRIPT_DESK_MIN (1-10, default 7): the overall score that clears the desk without a rewrite. */
+  scriptDeskMin: number;
+  /** SCRIPT_DESK_ROUNDS (1-3, default 2): rewrite rounds at most; the desk also stops when a read clears or no score
+   * moves. The call cap follows: one read per version (rounds + 1) and one rewrite and fact check per round. */
+  scriptDeskRounds: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1842,6 +1870,10 @@ export function loadConfig(): Config {
     humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
     shortPayoffGate: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SHORT_PAYOFF_GATE", "off").trim().toLowerCase()),
     shortPayoffShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHORT_PAYOFF_SHARE", "0.5"))))),
+    scriptDesk: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SCRIPT_DESK", "off").trim().toLowerCase()),
+    scriptDeskShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_DESK_SHARE", "0.5"))))),
+    scriptDeskMin: Math.min(10, Math.max(1, int("SCRIPT_DESK_MIN", 7))),
+    scriptDeskRounds: Math.min(3, Math.max(1, int("SCRIPT_DESK_ROUNDS", 2))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

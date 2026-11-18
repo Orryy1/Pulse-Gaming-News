@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import { PayoffReadSchema, type PayoffPlan, type PayoffRead } from "../src/editorial/payoff.ts";
+import { DeskReadSchema, type DeskPlan, type DeskRead } from "../src/editorial/desk.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -89,6 +90,14 @@ interface Fakes {
   payoffScripts?: Script[];
   /** The held-answer cold reads in order, then a clean one. */
   payoffReads?: PayoffRead[];
+  /** SCRIPT_DESK's arm asks with the desk plan in the schema: these drafts in order, then `script` with deskPlanFixture. */
+  deskScripts?: Script[];
+  /** The editor's reads in order, then one that clears the bar. */
+  deskReads?: DeskRead[];
+  /** The desk rewrite's edits in order, then none (an edit that finds nothing). */
+  deskEdits?: Array<{ edits: Array<{ find: string; replace: string }> }>;
+  /** Every request whose schema carried the desk plan, and every editor's read, for the assertions. */
+  deskSeen?: { plans: string[]; reads: string[] };
   factChecks: FactCheck[];
   pick: number;
   passReason?: string;
@@ -172,6 +181,21 @@ function fakeLlm(f: Fakes): Llm {
         } as z.infer<S>;
       }
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
+      // The desk's arm: the Short's schema plus the desk plan (and the payoff plan when the gate is on too).
+      const shape = (schema as { shape?: Record<string, unknown> }).shape;
+      if (shape?.desk_plan) {
+        (f.deskSeen ??= { plans: [], reads: [] }).plans.push(String(content ?? ""));
+        return (f.deskScripts?.shift() ?? {
+          ...f.script,
+          desk_plan: deskPlanFixture,
+        }) as z.infer<S>;
+      }
+      if (schema === (DeskReadSchema as unknown)) {
+        (f.deskSeen ??= { plans: [], reads: [] }).reads.push(String(content ?? ""));
+        return (f.deskReads?.shift() ?? deskRead(8)) as z.infer<S>;
+      }
+      if (shape?.edits && String(content ?? "").includes("Editor's desk:"))
+        return (f.deskEdits?.shift() ?? { edits: [] }) as z.infer<S>;
       // The gate's arm: the Short's schema plus its payoff plan.
       if ((schema as { shape?: Record<string, unknown> }).shape?.payoff)
         return (f.payoffScripts?.shift() ?? f.script) as z.infer<S>;
@@ -1417,6 +1441,161 @@ test("SHORT_PAYOFF_GATE: an answer that is only an absence is recorded under che
     `SELECT status, last_error FROM episodes`,
   );
   assert.ok(dropped.some((r) => r.status === "rejected" && /too thin/.test(r.last_error ?? "")), JSON.stringify(dropped));
+});
+
+const deskPlanFixture: DeskPlan = {
+  angle:
+    "The most interesting true thing is that Bethesda's last delay came back better, and it matters to Starfield players because this one may too.",
+  mode: "verdict",
+  kill: "none",
+  kill_reason: "",
+  source_gap: "",
+};
+function deskRead(overall: number): DeskRead {
+  return {
+    clarity: overall,
+    hook: overall,
+    payoff: overall,
+    voice: overall,
+    human: overall,
+    overall,
+    note: `The hook only restates the headline (scored ${overall}).`,
+  };
+}
+const deskHook =
+  "Starfield's second expansion slipped to early 2027, and that's familiar.";
+
+test("SCRIPT_DESK: off changes nothing; check reads, records and leaves the script alone; the control arm is read once with no plan", async () => {
+  const offSeen = { plans: [] as string[], reads: [] as string[] };
+  const off = await setup({}, { deskSeen: offSeen });
+  await tick(off.s);
+  const plain = await only(off.db);
+  assert.equal(plain.status, "published", plain.last_error ?? "");
+  assert.equal(plain.script_json?.desk, undefined);
+  assert.deepEqual(offSeen, { plans: [], reads: [] }, "off: no plan asked, no read paid for");
+
+  // check, every covered Short in the desk's arm, a harsh read: recorded, the script exactly as written.
+  const seen = { plans: [] as string[], reads: [] as string[] };
+  const chk = await setup(
+    { scriptDesk: "check", scriptDeskShare: 1 },
+    { deskReads: [deskRead(2)], deskSeen: seen },
+  );
+  await tick(chk.s);
+  const ep = await only(chk.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  const rec = ep.script_json!.desk!;
+  assert.equal(rec.arm, "desk");
+  assert.equal(rec.mode, "check");
+  assert.equal(rec.angle, deskPlanFixture.angle);
+  assert.equal(rec.hold_mode, "verdict");
+  assert.equal(rec.rounds.length, 1);
+  assert.equal(rec.rounds[0]!.scores?.overall, 2);
+  assert.equal(rec.stop, "check");
+  assert.deepEqual(rec.calls, { judge: 1, rewrite: 0, check: 0 });
+  assert.equal(ep.script_json!.hook, goodScript().hook, "check never rewrites");
+  assert.ok(seen.plans.length >= 1 && seen.plans[0]!.includes("Editor's desk"), "the angle is asked in the writer's own call");
+  assert.equal(seen.reads.length, 1);
+  assert.ok(!seen.reads[0]!.includes(deskPlanFixture.angle), "the editor never sees the plan");
+  const ev = await chk.db.query<{ detail: { arm: string; stop: string } }>(
+    `SELECT detail FROM events WHERE kind = 'script_desk'`,
+  );
+  assert.equal(ev[0]?.detail.stop, "check");
+
+  // The control arm: no plan asked for, one read for the calibration, nothing changed.
+  const ctlSeen = { plans: [] as string[], reads: [] as string[] };
+  const ctl = await setup({ scriptDesk: "fix", scriptDeskShare: 0 }, { deskReads: [deskRead(3)], deskSeen: ctlSeen });
+  await tick(ctl.s);
+  const c = await only(ctl.db);
+  assert.equal(c.status, "published", c.last_error ?? "");
+  assert.equal(c.script_json!.desk!.arm, "control");
+  assert.equal(c.script_json!.desk!.rounds_used, 0);
+  assert.equal(c.script_json!.hook, goodScript().hook);
+  assert.equal(ctlSeen.plans.length, 0, "the control arm's writer sees what it always saw");
+  assert.equal(ctlSeen.reads.length, 1);
+});
+
+test("SCRIPT_DESK=fix: a script under the bar is rewritten through the fact check and read again; a worse rewrite is never kept", async () => {
+  const fix = await setup(
+    { scriptDesk: "fix", scriptDeskShare: 1 },
+    {
+      deskReads: [deskRead(4), deskRead(8)],
+      deskEdits: [{ edits: [{ find: goodScript().hook, replace: deskHook }] }],
+    },
+  );
+  await tick(fix.s);
+  const ep = await only(fix.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  const rec = ep.script_json!.desk!;
+  assert.equal(ep.script_json!.hook, deskHook, JSON.stringify(rec.rounds));
+  assert.equal(rec.kept, 1);
+  assert.equal(rec.cleared, true);
+  assert.equal(rec.stop, "cleared");
+  assert.deepEqual(rec.calls, { judge: 2, rewrite: 1, check: 1 });
+  assert.match(rec.rounds[1]!.instruction!, /The hook only restates the headline \(scored 4\)/);
+
+  // The rewrite reads worse: the script as written goes out.
+  const worse = await setup(
+    { scriptDesk: "fix", scriptDeskShare: 1, scriptDeskRounds: 1 },
+    {
+      deskReads: [deskRead(5), deskRead(4)],
+      deskEdits: [{ edits: [{ find: goodScript().hook, replace: deskHook }] }],
+    },
+  );
+  await tick(worse.s);
+  const w = await only(worse.db);
+  assert.equal(w.status, "published", w.last_error ?? "");
+  assert.equal(w.script_json!.hook, goodScript().hook);
+  assert.equal(w.script_json!.desk!.kept, 0);
+  assert.equal(w.script_json!.desk!.stop, "rounds");
+
+  // The rewrite fails its fact check: never kept, and no read is paid for it.
+  const refused = await setup(
+    { scriptDesk: "fix", scriptDeskShare: 1, scriptDeskRounds: 1 },
+    {
+      deskReads: [deskRead(4)],
+      deskEdits: [{ edits: [{ find: goodScript().hook, replace: deskHook }] }],
+      factChecks: [
+        { verdict: "pass", issues: [], rumour_labelling_ok: true, summary: "ok" },
+        {
+          verdict: "fail",
+          issues: [{ quote: "and that's familiar", problem: "unsupported", severity: "blocker" }],
+          rumour_labelling_ok: true,
+          summary: "no",
+        },
+      ],
+    },
+  );
+  await tick(refused.s);
+  const r = await only(refused.db);
+  assert.equal(r.status, "published", r.last_error ?? "");
+  assert.equal(r.script_json!.hook, goodScript().hook);
+  assert.ok(r.script_json!.desk!.rounds[1]!.refused?.some((x) => /unsupported/.test(x)));
+  assert.deepEqual(r.script_json!.desk!.calls, { judge: 1, rewrite: 1, check: 1 });
+});
+
+test("SCRIPT_DESK: a story the writer says can't carry a Short is recorded under check and takes the thin route under fix", async () => {
+  const killed: Script = {
+    ...goodScript(),
+    desk_plan: { ...deskPlanFixture, kill: "promotion", kill_reason: "A sale with no question in it." },
+  };
+  const chk = await setup({ scriptDesk: "check", scriptDeskShare: 1 }, { deskScripts: [killed] });
+  await tick(chk.s);
+  const ep = await only(chk.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  assert.equal(ep.script_json!.desk!.kill?.kind, "promotion");
+  assert.equal(ep.script_json!.desk!.kill?.acted, false);
+
+  const fixSeen = { plans: [] as string[], reads: [] as string[] };
+  const fix = await setup({ scriptDesk: "fix", scriptDeskShare: 1 }, { deskScripts: [killed], deskSeen: fixSeen });
+  await tick(fix.s);
+  const rows = await fix.db.query<{ status: string; last_error: string | null }>(`SELECT status, last_error FROM episodes`);
+  assert.ok(
+    rows.some((x) => x.status === "rejected" && /too thin: editor's desk: A sale with no question in it\./.test(x.last_error ?? "")),
+    JSON.stringify(rows),
+  );
+  assert.equal(fixSeen.reads.length, 0, "no read and no fact check are paid for a killed story");
+  const ev = await fix.db.query(`SELECT 1 FROM events WHERE kind = 'desk_kill'`);
+  assert.equal(ev.length, 1);
 });
 
 test("FIRST_COMMENT_STRICT: a Short gets its own closing question alone, or no comment at all", async () => {

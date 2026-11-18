@@ -254,3 +254,34 @@ All three branches are pushed and not merged. Every setting below is **off** unt
 - Whether a voice is human or AI was partly judgement; only one channel discloses it.
 - Pulse's renders survive for only 9 of the 18 chosen Shorts and 1 of 3 long videos, so sound and picture measures rest on those.
 - Pulse has 10 new subscribers in the window. Any per-format subscriber rate is noise; comments per 1,000 views and retention are the measures to judge by.
+
+## Writer check, 18 Nov evening: who has been writing, and how good is it
+
+Found while trying to run the paid proofs: the Claude API key refuses every call ("You have reached your specified API usage limits. You will regain access on 2026-12-01"). The Mac mini's usage records show Claude last answered on 11 Nov at 21:35. From 12 Nov every text step has been written by Codex through the automatic fallback, and Codex also wrote most of 8 to 11 Nov during the trial.
+
+**What happened to views (news Shorts, public views on 18 Nov).**
+
+| Period | Writer | Shorts | Median views | Over 500 views | Median watched |
+| --- | --- | --- | --- | --- | --- |
+| 1 to 7 Nov | Claude | 28 | 178 | 6 | 56% |
+| 8 to 11 Nov | Mostly Codex, old voice rules | 22 | 876 | 14 | 64% |
+| 12 to 17 Nov | Codex, friend voice, new narrator | 27 | 122 | 3 | 59% |
+
+**What blind judges said about the writing.** 24 published scripts, 8 picked at random from each period, shuffled and unlabelled, scored 1 to 10 by two judges who did not know the writers (Sonnet 5.5 and Opus 5.5; they agreed closely, rank correlation 0.81).
+
+| Period | Overall | Hook | Payoff | Clarity | Voice | Human | Scripts at 5 or more |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 to 7 Nov, Claude | 5.25 | 6.8 | 5.1 | 5.8 | 5.1 | 4.6 | 6 of 8 |
+| 8 to 11 Nov, mostly Codex | 4.12 | 5.4 | 3.8 | 5.3 | 4.1 | 3.7 | 2 of 8 |
+| 12 to 17 Nov, Codex with friend voice | 3.56 | 4.5 | 3.2 | 5.3 | 4.0 | 3.4 | 1 of 8 |
+
+**Reading.**
+
+- The Codex-written scripts are judged weaker, by about 1.1 to 1.7 points out of 10, mostly on the hook and on holding something back. Clarity is about level.
+- Judged script quality did not predict views in this sample (rank correlation minus 0.03). The best run of views came in a Codex period, on the Ocarina and GTA news wave. Topic and timing decided the views; the writing decides whether viewers stay, comment and subscribe.
+- Even the Claude-written scripts average 5.25, which the judges were told is "average for a competent channel". The lowest scores for every writer are on payoff, which is exactly what gap 1 is built to fix.
+- The judges' notes name the same template lines again and again: "Pulse check: steady", "Tomorrow brings another Why", documentary plugs at the end, forced quips.
+
+**Limits.** Eight scripts per period; different stories in each period; both judges are Claude models and may favour Claude's style; newer Shorts have had less time to collect views. Raw files: `D:\pulse-data\scratch\creator-gap-1118\blind\`.
+
+**What it means for the builds.** Until 1 December, or until the cap is raised, any new rule that is switched on will be tested on Codex's writing. The experiment log's rows 1 and 2 (friend voice and narrator, judged 3 December) have been Codex tests all along and should be relabelled.

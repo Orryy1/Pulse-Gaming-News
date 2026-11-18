@@ -2,6 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   OPENER_WINDOW,
+  absenceAnswer,
+  heldMark,
+  holdMode,
+  statesSide,
+  teaseFillers,
   SEGMENT_OPENERS,
   PAYOFF_JUDGE_SITE,
   answerKeys,
@@ -40,7 +45,11 @@ import {
   allSkeletons,
   pickSkeleton,
 } from "../src/editorial/skeletons.ts";
-import { writeScript } from "../src/editorial/editorial.ts";
+import {
+  validateScript,
+  withoutQuotedQuestions,
+  writeScript,
+} from "../src/editorial/editorial.ts";
 import { siteListed } from "../src/editorial/codex.ts";
 import type { Llm } from "../src/editorial/llm.ts";
 import type { Script } from "../src/editorial/schema.ts";
@@ -55,6 +64,7 @@ const roadsPlan: PayoffPlan = {
   answer_line:
     "So the roads shrank to make room for the crowd, not to slow you down.",
   side: "a smart call",
+  verdict: "a smart trade",
 };
 
 function roads(over: Partial<Script> = {}): Script {
@@ -317,6 +327,7 @@ test("a script that gives the answer away fails held, the leaks, the turn and th
     answer_line:
       "Bethesda's delays usually mean better content, so this is not a red flag.",
     side: "not worried",
+    verdict: "not a red flag",
   };
   const leaky = withPlan(
     goodScript({
@@ -582,4 +593,126 @@ test("the rule and the keep note read plainly, with no em dash", () => {
     assert.ok(!t.includes("—"));
   assert.match(payoffRule(), /after 60% of the words/);
   assert.match(payoffKeepNote(roadsPlan), /must not give the answer/);
+});
+
+test("an answer that is only an absence is not held: it is recorded as absence_answer", () => {
+  for (const a of [
+    "Rockstar's launch post doesn't explain earnings or cash penalties.",
+    "Nothing says so yet.",
+    "Sony hasn't said why.",
+    "It's still unconfirmed.",
+    "Nobody knows yet.",
+  ])
+    assert.equal(absenceAnswer(a), true, a);
+  assert.equal(absenceAnswer(roadsPlan.answer), false);
+  const plan: PayoffPlan = {
+    angle: "verdict",
+    question: "Does the failed score mean you'll lose cash?",
+    answer: "Nothing says so yet: Rockstar's launch post doesn't explain earnings.",
+    answer_line: "Rockstar's launch post doesn't explain earnings at all.",
+    side: "too early",
+    verdict: "too early to worry",
+  };
+  const r = payoffFindings({ script: withPlan(roads(), plan), planned: true }).findings;
+  assert.ok(r.some((f) => f.rule === "absence_answer"));
+  assert.ok(!r.some((f) => f.rule === "held" || f.rule.startsWith("leak_")), "nothing is held");
+  assert.equal(payoffRecord({ arm: "gate", mode: "check", findings: r }).pass, false);
+});
+
+test("a news angle may say the news in the hook; only the verdict is checked for leaks", () => {
+  assert.equal(holdMode("why"), "reason");
+  assert.equal(holdMode("verdict"), "verdict");
+  assert.equal(holdMode("changes"), "verdict");
+  assert.equal(holdMode("deadline"), "verdict");
+  const plan: PayoffPlan = {
+    angle: "verdict",
+    question: "With no online at launch, is GTA 6's Ultimate Edition still worth $20 over Standard?",
+    answer: "If you are buying for multiplayer, the $20 premium is poor value at launch, so keep the cash for now.",
+    answer_line: "Until then, that $20 premium won't get you multiplayer, so it's poor value if friends are your reason.",
+    side: "looks odd now",
+    verdict: "poor value, keep the cash",
+  };
+  const base = goodScript({
+    game_title: "Grand Theft Auto VI",
+    hook: "GTA 6 launches without online, and the Ultimate Edition looks odd now.",
+    headline: "GTA 6 Ultimate Buys No Multiplayer",
+    youtube: { title: "GTA 6's $20 Ultimate Premium Buys No Multiplayer", description: "", tags: [] },
+  });
+  const rules = (p: PayoffPlan) =>
+    payoffFindings({ script: withPlan(base, p), planned: true }).findings.map((f) => f.rule);
+  assert.ok(!rules(plan).includes("leak_title"), "the news in the title is fine");
+  assert.ok(rules({ ...plan, angle: "why" }).includes("leak_title"), "a why angle holds the whole answer");
+  const leaky = { ...base, youtube: { ...base.youtube, title: "GTA 6's Ultimate Edition Is Poor Value" } };
+  assert.ok(
+    payoffFindings({ script: withPlan(leaky, plan), planned: true }).findings.some((f) => f.rule === "leak_title"),
+    "the call itself in the title still leaks",
+  );
+  assert.match(payoffRule(), /hook may say the news plainly/);
+  assert.match(payoffRule(), /holds the reason/);
+});
+
+test("the held mark is 55% under 90 words and 60% otherwise", () => {
+  assert.equal(heldMark(80), 0.55);
+  assert.equal(heldMark(89), 0.55);
+  assert.equal(heldMark(90), 0.6);
+  const words = (n: number) => Array(n).fill("word").join(" ") + ".";
+  const plan: PayoffPlan = { ...roadsPlan, answer_line: "So the roads shrank to make room for the crowd." };
+  // 46 words before the answer line, 10 in it, 24 after: 80 words, the answer at 57.5%.
+  const short = goodScript({
+    hook: "Rockstar made GTA 6's roads narrower, and it's a smart call.",
+    beats: [
+      { narration: words(18), visual: { kind: "none", primary: "", secondary: "" } },
+      { narration: `But ${words(17)}`, visual: { kind: "none", primary: "", secondary: "" } },
+    ],
+    pulse_take: { label: "", narration: `So the roads shrank to make room for the crowd. I think ${words(12)}`, on_screen: "" },
+    loop_line: words(8),
+  });
+  const held = (s: Script) => payoffFindings({ script: withPlan(s, plan), planned: true }).findings.filter((f) => f.rule === "held");
+  assert.deepEqual(held(short), [], "57% passes in a short script");
+  const long = { ...short, loop_line: words(30) };
+  assert.ok(held(long).length > 0, "over 90 words the same answer is early");
+});
+
+test("a stalling line before the answer is tease filler: advisory under check, a reason under fix", () => {
+  const lines = [
+    "Sony's patched the PS5 twice in 11 days, right before GTA 6.",
+    "But the notes leave out the part that reportedly matters most if you're buying GTA 6.",
+    "But the reason he left goes back to 1996.",
+    "Push Square says GTA 6 reportedly won't boot without 14.22.",
+  ];
+  assert.deepEqual(teaseFillers(lines, 3, 0.6, "Grand Theft Auto VI"), [lines[1]]);
+  assert.deepEqual(teaseFillers(lines, 1, 0.6, "Grand Theft Auto VI"), [], "only lines before the answer");
+  const tease = { rule: "tease_filler" as const, problem: "x", advisory: true };
+  assert.equal(payoffRecord({ arm: "gate", mode: "check", findings: [tease] }).pass, true);
+  assert.equal(payoffRecord({ arm: "gate", mode: "fix", findings: [tease] }).pass, false);
+  assert.deepEqual(payoffFeedback([tease]), ["Held answer: x"], "fix sends it back with the rest");
+});
+
+test("value calls and imperative calls count as a side and a verdict", () => {
+  for (const t of [
+    "Keep the cash for now, it's the easy call.",
+    "That's poor value if friends are your reason.",
+    "One download is a fair price.",
+    "Believable streets are worth giving up space.",
+    "I like that.",
+    "I'll take that over room to spare.",
+    "Buy Standard and wait for the reviews.",
+    "Don't pre-order yet.",
+  ])
+    assert.equal(statesSide(t), true, t);
+  assert.equal(verdictLate(["A plain fact here.", "Another plain fact.", "Keep the cash for now, it's the easy call."]), true);
+});
+
+test("a quoted question may stay in the gate's arm; a narrator's own question never", () => {
+  const s = goodScript();
+  s.beats[1]!.narration = "Playtests lost the moments where you stop and wonder, 'Wait, what's this?' in every town.";
+  const q = (o: Parameters<typeof validateScript>[3]) =>
+    validateScript(s, undefined, undefined, o).filter((p) => /asks a question halfway/.test(p));
+  assert.equal(q({}).length, 1, "off: as before");
+  assert.equal(q({ quotedQuestionsOk: true }).length, 0);
+  s.beats[1]!.narration = 'IGN asked "Will it run on PS5?" and Sony said yes.';
+  assert.equal(q({ quotedQuestionsOk: true }).length, 0, "double quotes too");
+  s.beats[1]!.narration = "Why trust them? Not yet.";
+  assert.equal(q({ quotedQuestionsOk: true }).length, 1, "the narrator's own question still goes back");
+  assert.equal(withoutQuotedQuestions("He said 'what's next?' then left."), "He said QUOTE then left.");
 });

@@ -634,15 +634,28 @@ export function shortYouMin(words: number): number {
 /** Questions inside the body or the take (pure); the hook and loop line may ask, nothing between them does. */
 export function midQuestions(
   s: Pick<Script, "beats" | "pulse_take">,
+  /** SHORT_PAYOFF_GATE's arm: a question inside quotation marks is a source's own words, not the narrator asking. */
+  opts: { quotedOk?: boolean } = {},
 ): string[] {
-  const text = [
+  const joined = [
     ...s.beats.map((b) => b.narration),
     s.pulse_take.narration,
   ].join(" ");
+  const text = opts.quotedOk ? withoutQuotedQuestions(joined) : joined;
   // "My verdict? Wait." (or the older "My Pulse check? Steady.") is the segment's own lead-in, not a question answered to nobody.
   return (text.match(/[^.?!]*\?/g) ?? [])
     .map((q) => q.trim())
     .filter((q) => q && !PULSE_CHECK_ASK.test(q));
+}
+
+/**
+ * The text with every quoted question taken out (pure): "Wait, what's this?" in double or single quotes, an
+ * apostrophe inside the quote ("what's") kept as part of it.
+ */
+export function withoutQuotedQuestions(text: string): string {
+  return text
+    .replace(/["“][^"”]*\?["”]/g, "QUOTE")
+    .replace(/(^|[\s(])['‘](?:[^'’]|['’](?=[a-z]))*\?['’](?=[^a-z]|$)/gi, "$1QUOTE");
 }
 
 export function validateScript(
@@ -650,6 +663,8 @@ export function validateScript(
   recent?: RecentShapes,
   /** SHORT_LENGTHS: the lane's word budget and beats; absent, 70-100 words and two to four beats. */
   length?: Pick<ScriptLength, "wordsMin" | "wordsMax" | "beatsMax">,
+  /** SHORT_PAYOFF_GATE's arm only: a quoted question may stay (midQuestions quotedOk); everywhere else as before. */
+  opts: { quotedQuestionsOk?: boolean } = {},
 ): string[] {
   const wordsMin = length?.wordsMin ?? WORDS_MIN;
   const wordsMax = length?.wordsMax ?? WORDS_MAX;
@@ -741,7 +756,7 @@ export function validateScript(
   // The desk voice is gone (5 Nov 2026), yet takes still opened on a sceptic's question and answered it ("Why trust
   // Nintendo after September's $50 hike? No, not anytime soon."): heard alone, the narrator answers nobody. Only the
   // hook and the loop line may ask.
-  for (const q of midQuestions(s))
+  for (const q of midQuestions(s, { quotedOk: opts.quotedQuestionsOk }))
     problems.push(
       `"${q}" asks a question halfway through and then answers it, which sounds like replying to nobody; say it as a statement.`,
     );

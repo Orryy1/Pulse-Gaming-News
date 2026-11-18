@@ -700,6 +700,7 @@ import {
   readFindings,
   readPayoff,
   SEGMENT_OPENERS,
+  ABSENCE_PROBLEM,
   type PayoffArm,
   type PayoffFinding,
   type PayoffRead,
@@ -7595,7 +7596,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
-    const problems = validateScript(sc, recent, length);
+    // SHORT_PAYOFF_GATE's arm may keep a source's own quoted question ("Wait, what's this?"); elsewhere as before.
+    const problems = validateScript(sc, recent, length, payoffGated ? { quotedQuestionsOk: true } : {});
     // A GTA File part (src/gtafile.ts) never reads as an announcement and says its part number first; a numbered
     // Why is titled "Why [game] [claim]" and opens on a claim (src/editorial/why.ts).
     if (cluster.gtaFile)
@@ -7630,18 +7632,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
-    if (payoffFix)
-      problems.push(
-        ...payoffFeedback(
-          payoffFindings({
-            script: sc,
-            recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
-            exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
-            endingChecked: s.cfg.shortEndPayoff,
-            planned: true,
-          }).findings,
-        ),
-      );
+    if (payoffFix) {
+      const gateFindings = payoffFindings({
+        script: sc,
+        recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+        exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+        endingChecked: s.cfg.shortEndPayoff,
+        planned: true,
+      }).findings;
+      problems.push(...payoffFeedback(gateFindings));
+      // An answer that is only "the sources don't say" is a thin story: after the one rewrite its slot goes to the
+      // next story (a big story still goes out, as with any thin one), never a held-back non-answer.
+      if (gateFindings.some((f) => f.rule === "absence_answer")) thin.push(ABSENCE_PROBLEM);
+    }
     if (drop) problems.push(...detailListProblems(sc));
     // SHORT_ARGUES_CHECK (src/qa/argues.ts): a draft that only narrates its picture goes back to the writer once.
     if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
@@ -7874,7 +7877,11 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     // fails its fact check, this draft goes out instead, so the gate never costs a story its slot.
     if (attempt === 0 && payoffFix) {
       payoffSentBack.push(...problems.filter((p) => p.startsWith("Held answer: ")));
-      if (factsPassed && problems.every((p) => p.startsWith("Held answer: ")))
+      if (
+        factsPassed &&
+        problems.every((p) => p.startsWith("Held answer: ")) &&
+        !problems.some((p) => p.includes(ABSENCE_PROBLEM))
+      )
         // The facts passed, so its verdict is "pass" (the vault's override widens the inferred type to string).
         payoffFallback = { script, check: { ...check, verdict: "pass" as const } };
     }

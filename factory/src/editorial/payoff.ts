@@ -30,6 +30,14 @@ import { stripVoiceTags } from "../voice/tags.ts";
 export const PAYOFF_JUDGE_SITE = "payoff.judge";
 /** The answer sentence may not start before this share of the spoken words. */
 export const PAYOFF_HELD_AT = 0.6;
+/** A Short under SHORT_SCRIPT_WORDS words holds its answer to this mark instead: 60% of 80 words leaves too few after it. */
+export const PAYOFF_HELD_AT_SHORT = 0.55;
+export const SHORT_SCRIPT_WORDS = 90;
+
+/** The held mark for a script of this many spoken words (pure). */
+export function heldMark(words: number): number {
+  return words < SHORT_SCRIPT_WORDS ? PAYOFF_HELD_AT_SHORT : PAYOFF_HELD_AT;
+}
 /** The middle third, where the turn belongs. */
 export const PIVOT_FROM = 1 / 3;
 export const PIVOT_TO = 2 / 3;
@@ -70,8 +78,37 @@ export const PayoffSchema = z.object({
     .describe(
       'The side the narrator takes in the first two sentences, in a few words ("a smart call", "a bad deal")',
     ),
+  verdict: z
+    .string()
+    .describe(
+      'The narrator\'s final call in a few words ("poor value, keep the cash", "the right trade"). For changes, deadline and verdict angles this is what is held back',
+    ),
 });
 export type PayoffPlan = z.infer<typeof PayoffSchema>;
+
+/**
+ * What a Short holds back, by its angle (pure). "reason": a why story holds the reason, the cause the hook asks
+ * about. "verdict": plain news whose news is the draw (what changes, what to do before a date, the call) may say the
+ * news in the hook and holds the narrator's verdict or the consequence.
+ */
+export type HoldMode = "reason" | "verdict";
+export function holdMode(angle: PayoffAngle | undefined): HoldMode {
+  return angle === "why" || angle === undefined ? "reason" : "verdict";
+}
+
+// An answer that is only an absence ("the post doesn't say", "nobody knows yet") is not worth holding: held to the
+// end it is a bait and switch. Such a story is thin, not a Short.
+const ABSENCE =
+  /\b(?:(?:doesn'?t|does not|didn'?t|did not|hasn'?t|has not|haven'?t|have not|won'?t|isn'?t|aren'?t|wasn'?t)\s+(?:yet\s+)?(?:say|said|explain|explained|confirm|confirmed|mention|mentioned|detail|detailed|reveal|revealed|address|addressed|announce|announced|clarif(?:y|ied)|spell(?:ed)? out)|unconfirmed|(?:nothing|no one|nobody|no source|no official word)\s+(?:yet\s+)?(?:says|confirms|knows|has said|explains)|nobody knows|no one knows|not (?:yet )?(?:confirmed|known|announced|said|clear)|still unknown|remains? unclear|no word (?:yet )?on|too early to (?:say|tell))\b/i;
+
+/** Whether a planned answer is only an absence of information (pure). */
+export function absenceAnswer(answer: string): boolean {
+  return ABSENCE.test(stripVoiceTags(answer));
+}
+
+/** The words the writer is sent back with for an absence answer; the pipeline also reads it as a thin story. */
+export const ABSENCE_PROBLEM =
+  "The planned answer is only that the sources don't say. Holding that to the end is a bait and switch: find a real answer in the sources and plan around it, or set thin_reason to say plainly why this story has nothing for the viewer yet.";
 
 export const PAYOFF_RULES = [
   "plan",
@@ -85,12 +122,16 @@ export const PAYOFF_RULES = [
   "opener",
   "ending",
   "read",
+  "absence_answer",
+  "tease_filler",
 ] as const;
 export type PayoffRule = (typeof PAYOFF_RULES)[number];
 
 export interface PayoffFinding {
   rule: PayoffRule;
   problem: string;
+  /** Advice only under "check": recorded, but the Short still passes (fix mode sends it back like the rest). */
+  advisory?: boolean;
 }
 
 /** What the gate leaves on the script (`payoff_gate`), for the episode page and the weekly arm comparison. */
@@ -145,18 +186,25 @@ export function payoffArm(episodeId: string, share: number): PayoffArm {
 export function payoffRule(): string {
   return `Held answer (this Short is built around one open question):
 - Before writing, pick one angle and fill "payoff": why it happened, what it changes for the player, what the player can do before a date, or your verdict. An announcement on its own is never the angle; open on its consequence, not on "X was announced".
-- The hook plants the question or the contradiction plainly, so a viewer knows exactly what the Short is about, but it does not give the answer. Clear about the question is not the same as giving the answer away.
-- Where this Short's structure asks for a surprise or a verdict in the hook, that is the premise or your lean, never the answer.
-- The headline, thumb_text and the YouTube title state the premise only: the thing that happened and the question it raises, never the answer or the verdict.
+- What you hold back depends on the angle:
+  - A "why" angle holds the reason. The hook says what happened and asks why, and the cause comes late. Example: hook "Ocarina of Time's remake had fast travel, until its producer pulled it." The reason (warps cost the game its moments of discovery) waits for the last 40%.
+  - A "changes", "deadline" or "verdict" angle is news people want to hear, so the hook may say the news plainly. What you hold back is your verdict or the consequence for the player. Example: hook "GTA 6 launches without online, and that changes the Ultimate Edition." The call (it's poor value for now, so keep the cash) waits for the last 40%.
+- The hook plants the question or the contradiction plainly, so a viewer knows exactly what the Short is about, but it does not give the held part away. Clear about the question is not the same as giving the answer away.
+- Where this Short's structure asks for a surprise or a verdict in the hook, that is the premise or your lean, never the held part.
+- The headline, thumb_text and the YouTube title state the premise only: the thing that happened and the question it raises, never the held reason or verdict.
+- If the only honest answer is that the sources don't say ("the post doesn't explain it", "nobody knows yet"), don't build a Short around holding that back. Set thin_reason instead.
+- No filler to stall before the answer ("here's the thing", "the part that matters most", "the reason goes back to"). Every line before it carries a fact.
 - Take a side within the first two sentences: one plain lean, said once, with a reason that follows logically. Aim any edge at a company, a price or a decision, never at players.
 - One turn in the middle third: a sentence with "but", "except", "the catch" or "until" that changes how the facts look.
-- The sentence that gives the answer starts after 60% of the words. Copy it exactly into payoff.answer_line. The verdict lands in the last third.
+- The sentence that gives the held part starts after 60% of the words (55% in a Short under 90 words). Copy it exactly into payoff.answer_line. The verdict lands in the last third.
 - The last line is the punchline or the verdict, and then stop. No question to the viewer, no ask.
 - No stacked "I'd" lines, and no "you" or "I" where a person wouldn't say it. Anything unconfirmed stays plainly unconfirmed in the answer too ("reportedly", "if the leak is right"). Every fact stays exactly as the sources give it.`;
 }
 
 /** What a later rewrite (the clarity gate's) is told so it keeps the held answer where the writer put it. */
-export function payoffKeepNote(plan: Pick<PayoffPlan, "question" | "answer">): string {
+export function payoffKeepNote(
+  plan: Pick<PayoffPlan, "question" | "answer">,
+): string {
   return `This Short holds its answer back on purpose. The hook may say the question plainly ("${plan.question.trim()}") but must not give the answer ("${plan.answer.trim()}"), and the sentence that gives it stays in the last 40% of the words.`;
 }
 
@@ -201,17 +249,31 @@ export function contentTokens(text: string): string[] {
 
 const isNumber = (t: string) => /\d/.test(t);
 
-const ROMAN: Record<string, string> = { ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" };
+const ROMAN: Record<string, string> = {
+  ii: "2",
+  iii: "3",
+  iv: "4",
+  v: "5",
+  vi: "6",
+  vii: "7",
+  viii: "8",
+  ix: "9",
+  x: "10",
+};
 
 /**
  * The game's name as fans write it, as tokens (pure): its words, its roman numeral as a figure and its initials
  * ("Grand Theft Auto VI" gives gta and 6 too), so the subject never counts as part of the answer.
  */
 export function gameAliases(game: string): Set<string> {
-  const words = game.replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  const words = game
+    .replace(/[^A-Za-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
   const out = new Set(contentTokens(game));
   const plain = words.filter((w) => !/^[IVX]+$/.test(w) && !/^\d+$/.test(w));
-  if (plain.length >= 2) out.add(plain.map((w) => w[0]!.toLowerCase()).join(""));
+  if (plain.length >= 2)
+    out.add(plain.map((w) => w[0]!.toLowerCase()).join(""));
   for (const w of words) {
     const r = ROMAN[w.toLowerCase()];
     if (r && /^[IVX]+$/.test(w)) out.add(r);
@@ -265,13 +327,18 @@ export function keyPairs(answer: string, keys: string[]): string[] {
  * by side, or at least two keys and half of them (one long key when the answer has only one). `answer` (the plan's
  * answer sentence) lets the pairs count.
  */
-export function leaksAnswer(text: string, keys: string[], answer = ""): boolean {
+export function leaksAnswer(
+  text: string,
+  keys: string[],
+  answer = "",
+): boolean {
   if (!keys.length || !text.trim()) return false;
   const hit = keysIn(text, keys);
   if (hit.some(isNumber)) return true;
   if (answer) {
     const said = ` ${contentTokens(text).join(" ")} `;
-    if (keyPairs(answer, keys).some((p) => said.includes(` ${p} `))) return true;
+    if (keyPairs(answer, keys).some((p) => said.includes(` ${p} `)))
+      return true;
   }
   if (keys.length === 1) return hit.length === 1 && hit[0]!.length >= 5;
   return hit.length >= 2 && hit.length / keys.length >= 0.5;
@@ -353,15 +420,50 @@ export function earlyAnswer(
   lines: string[],
   plan: Pick<PayoffPlan, "question" | "answer">,
   game = "",
+  mark = PAYOFF_HELD_AT,
 ): SpokenSentence | undefined {
   const keys = answerKeys(plan, game);
   if (keys.length < 2) return undefined;
   const { sentences, total } = spokenSentences(lines);
   return sentences.find(
     (s) =>
-      s.start / total < PAYOFF_HELD_AT &&
+      s.start / total < mark &&
       keysIn(s.text, keys).length / keys.length >= 0.75,
   );
+}
+
+// ---------------------------------------------------------------- stalling before the answer
+
+// Lines that only promise the answer is coming. With a fact in them they are a fair setup, not filler.
+const TEASE =
+  /\b(?:here'?s the thing|here'?s why|the part that (?:\w+ )?matters(?: most)?|what (?:really )?matters most|the reason (?:\w+ )?goes back|the real (?:story|reason) is|but there'?s more|wait for it|you'?ll see why|more on that in a (?:second|moment)|it'?s not what you think|the answer might surprise you|and that'?s where it gets interesting|that'?s where things get interesting)\b/i;
+
+/**
+ * Sentences before the answer that stall: a teasing phrase and no fact, where a fact is a figure or a name that is
+ * not the game's own (pure). `answerIndex` is the answer sentence's position, else the held mark decides.
+ */
+export function teaseFillers(
+  lines: string[],
+  answerIndex: number | undefined,
+  mark = PAYOFF_HELD_AT,
+  game = "",
+): string[] {
+  const { sentences, total } = spokenSentences(lines);
+  const aliases = gameAliases(game);
+  const hasFact = (text: string) => {
+    const words = stripVoiceTags(text).split(/\s+/).slice(1);
+    return words.some((w) => {
+      const t = contentTokens(w)[0];
+      if (!t || aliases.has(t)) return false;
+      return /\d/.test(t) || /^[A-Z]/.test(w.replace(/^["“'‘(]+/, ""));
+    });
+  };
+  return sentences
+    .filter((x, i) =>
+      answerIndex !== undefined ? i < answerIndex : x.start / total < mark,
+    )
+    .filter((x) => TEASE.test(x.text) && !hasFact(x.text))
+    .map((x) => x.text);
 }
 
 // ---------------------------------------------------------------- the turn, the side and the verdict
@@ -389,7 +491,7 @@ export function pivotAt(lines: string[]): number | undefined {
 // A stated lean: first-person takes, value words and calls on a decision. Leans towards finding one: this is a check
 // on a missing side, not a style judge.
 const OPINION =
-  /\b(I think|we think|I'd|I'm|I'll|I don't|I can't|I want|I love|I hate|honestly|frankly|if you ask me|my (take|verdict|bet|call|money|guess|read)|the way I see it|should(n't)?|worth (it|the|waiting|buying)|not worth|mistake|smart|brilliant|clever|bold|greedy|cheeky|risky|weird|odd|strange|genius|bad (sign|news|deal|call|move|idea|look)|good (sign|news|deal|call|move|idea)|great (sign|news|deal|call|move|idea)|right (call|trade|move)|wrong (call|move)|makes sense|doesn't make sense|no-brainer|red flag|win for|loss for|hard to (justify|argue|defend)|easy (win|call)|skip it|wait for|don't buy|don't pre-?order|buy it|for once|finally|frustrating|annoying|baffling|wild|ridiculous|absurd|fair|unfair|overpriced|a steal|a bargain|rip-?off|lazy|clearly|obviously|of course)\b/i;
+  /\b(I think|we think|I like|I love|I'll take|poor value|good value|great value|bad value|fair price|fair deal|worth giving up|keep the cash|keep your (cash|money)|save your money|buy (the )?(Standard|Ultimate|Deluxe)|wait for|skip it|easy call|the call is|I'd|I'm|I'll|I don't|I can't|I want|I love|I hate|honestly|frankly|if you ask me|my (take|verdict|bet|call|money|guess|read)|the way I see it|should(n't)?|worth (it|the|waiting|buying)|not worth|mistake|smart|brilliant|clever|bold|greedy|cheeky|risky|weird|odd|strange|genius|bad (sign|news|deal|call|move|idea|look)|good (sign|news|deal|call|move|idea)|great (sign|news|deal|call|move|idea)|right (call|trade|move)|wrong (call|move)|makes sense|doesn't make sense|no-brainer|red flag|win for|loss for|hard to (justify|argue|defend)|easy (win|call)|skip it|wait for|don't buy|don't pre-?order|buy it|for once|finally|frustrating|annoying|baffling|wild|ridiculous|absurd|fair|unfair|overpriced|a steal|a bargain|rip-?off|lazy|clearly|obviously|of course)\b/i;
 
 /** Whether a sentence states a lean (pure). */
 export function statesSide(text: string): boolean {
@@ -472,7 +574,8 @@ export function openerProblems(
   for (const id of stockFrames(take)) {
     if (exempt.includes(id) || !window.some((w) => w.has(id))) continue;
     const line =
-      spokenSentences([take]).sentences.find((s) => stockOpener(s.text) === id)?.text ?? take;
+      spokenSentences([take]).sentences.find((s) => stockOpener(s.text) === id)
+        ?.text ?? take;
     const lead = stripVoiceTags(line).trim().split(/\s+/).slice(0, 3).join(" ");
     out.push(
       `The take opens a line on the stock opener "${lead}", which one of the last ${OPENER_WINDOW} Shorts also used; say that line another way, starting on the point itself.`,
@@ -548,44 +651,63 @@ export function payoffFindings(o: PayoffInput): {
         rule: "plan",
         problem: `Fill in "payoff": the question the hook plants, its answer, the answer's sentence copied from the narration, the angle and your side.`,
       });
+    else if (absenceAnswer(plan.answer))
+      // Nothing to hold: the story is thin. Recorded under "check"; under "fix" the pipeline routes it as thin.
+      findings.push({ rule: "absence_answer", problem: ABSENCE_PROBLEM });
     else {
+      const mode = holdMode(plan.angle);
+      const total = spokenSentences(lines).total;
+      const mark = heldMark(total);
+      const pct = Math.round(mark * 100);
+      const what = mode === "reason" ? "the answer" : "your verdict";
       const found = findAnswer(lines, plan, s.game_title);
       if (!found)
         findings.push({
           rule: "held",
-          problem: `The answer ("${plan.answer}") is never said plainly; give it in one sentence after 60% of the words and copy that sentence into payoff.answer_line.`,
+          problem: `${mode === "reason" ? `The answer ("${plan.answer}")` : `Your verdict ("${plan.verdict || plan.answer}")`} is never said plainly; give it in one sentence after ${pct}% of the words and copy that sentence into payoff.answer_line.`,
         });
       else {
         answerAt = found.at;
-        if (found.at < PAYOFF_HELD_AT)
+        if (found.at < mark)
           findings.push({
             rule: "held",
-            problem: `The answer arrives at ${Math.round(found.at * 100)}% of the words; hold it until after 60%, and spend the beats before it on the evidence and the turn.`,
+            problem: `${what === "the answer" ? "The answer" : "Your verdict"} arrives at ${Math.round(found.at * 100)}% of the words; hold it until after ${pct}%, and spend the beats before it on the evidence and the turn.`,
           });
       }
+      // Under the verdict mode the news may be in the hook; only the call itself is checked for leaks.
+      const held =
+        mode === "verdict" && plan.verdict?.trim()
+          ? { question: plan.question, answer: plan.verdict }
+          : plan;
       // A sentence before the mark that already says it, when the answer line itself was not already flagged early.
-      const early = earlyAnswer(lines, plan, s.game_title);
-      if (early && (!found || found.at >= PAYOFF_HELD_AT))
+      const early = earlyAnswer(lines, held, s.game_title, mark);
+      if (early && (!found || found.at >= mark))
         findings.push({
           rule: "held",
-          problem: `"${early.text}" already gives the answer before 60% of the words; keep the facts but hold that conclusion for the end.`,
+          problem: `"${early.text}" already gives ${what} before ${pct}% of the words; keep the facts but hold that conclusion for the end.`,
         });
-      const keys = answerKeys(plan, s.game_title);
-      if (leaksAnswer(s.hook, keys, plan.answer))
+      const keys = answerKeys(held, s.game_title);
+      if (leaksAnswer(s.hook, keys, held.answer))
         findings.push({
           rule: "leak_hook",
-          problem: `The hook gives the answer away ("${s.hook.trim()}"); make it plant the question or the contradiction plainly instead.`,
+          problem: `The hook gives ${what} away ("${s.hook.trim()}"); ${mode === "reason" ? "make it plant the question or the contradiction plainly instead" : "keep the news in it but leave the call for the end"}.`,
         });
       const frame = firstFrameText(s);
-      if (leaksAnswer(frame, keys, plan.answer))
+      if (leaksAnswer(frame, keys, held.answer))
         findings.push({
           rule: "leak_headline",
-          problem: `The on-screen headline or thumb_text gives the answer away ("${frame}"); state the premise only.`,
+          problem: `The on-screen headline or thumb_text gives ${what} away ("${frame}"); state the premise only.`,
         });
-      if (leaksAnswer(s.youtube?.title ?? "", keys, plan.answer))
+      if (leaksAnswer(s.youtube?.title ?? "", keys, held.answer))
         findings.push({
           rule: "leak_title",
-          problem: `The title gives the answer away ("${s.youtube.title}"); state the premise only, the thing that happened and the question it raises.`,
+          problem: `The title gives ${what} away ("${s.youtube.title}"); state the premise only, the thing that happened and the question it raises.`,
+        });
+      for (const t of teaseFillers(lines, found?.index, mark, s.game_title))
+        findings.push({
+          rule: "tease_filler",
+          advisory: true,
+          problem: `"${t}" stalls without a fact; replace it with a fact that builds toward ${what}, or cut it.`,
         });
     }
   }
@@ -605,7 +727,11 @@ export function payoffFindings(o: PayoffInput): {
       rule: "verdict",
       problem: `No verdict in the last third; land the narrator's call there, said once.`,
     });
-  for (const p of openerProblems(s.pulse_take.narration, o.recentTakes, o.exemptOpeners))
+  for (const p of openerProblems(
+    s.pulse_take.narration,
+    o.recentTakes,
+    o.exemptOpeners,
+  ))
     findings.push({ rule: "opener", problem: p });
   if (!o.endingChecked)
     for (const p of endingProblems(s.loop_line))
@@ -710,7 +836,8 @@ export function payoffRecord(o: {
   return {
     arm: o.arm,
     mode: o.mode,
-    pass: !findings.length,
+    // Under "check" an advisory finding (tease filler) is recorded but does not fail the Short.
+    pass: !findings.some((f) => !(f.advisory && o.mode === "check")),
     findings,
     ...(o.answerAt !== undefined
       ? { answer_at: Number(o.answerAt.toFixed(3)) }

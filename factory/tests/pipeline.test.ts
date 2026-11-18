@@ -1292,6 +1292,7 @@ const heldPlan: PayoffPlan = {
   answer: "No, Bethesda's past delays came back better, so this looks like a good sign.",
   answer_line: "That track record is why this delay looks like a good sign, not a red flag.",
   side: "not worried",
+  verdict: "a good sign",
 };
 function heldScript(): Script {
   const base = goodScript();
@@ -1392,6 +1393,30 @@ test("SHORT_PAYOFF_GATE=fix: the draft goes back once with the reasons; a rewrit
   assert.equal(kept.script_json!.payoff_gate!.pass, false);
   const ev = await fall.db.query(`SELECT 1 FROM events WHERE kind = 'payoff_gate_fallback'`);
   assert.equal(ev.length, 1);
+});
+
+test("SHORT_PAYOFF_GATE: an answer that is only an absence is recorded under check and routed as thin under fix", async () => {
+  const absent: Script = {
+    ...heldScript(),
+    payoff: {
+      ...heldPlan,
+      answer: "Bethesda hasn't said why, and nothing confirms a reason yet.",
+      answer_line: "That track record is why this delay looks like a good sign, not a red flag.",
+    },
+  };
+  const chk = await setup({ shortPayoffGate: "check", shortPayoffShare: 1 }, { payoffScripts: [absent] });
+  await tick(chk.s);
+  const ep = await only(chk.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  assert.ok(ep.script_json!.payoff_gate!.findings.some((f) => f.rule === "absence_answer"));
+
+  // fix: sent back once, still an absence after the rewrite, so the slot goes to the next story.
+  const fix = await setup({ shortPayoffGate: "fix", shortPayoffShare: 1 }, { payoffScripts: [absent, absent] });
+  await tick(fix.s);
+  const dropped = await fix.db.query<{ status: string; last_error: string | null }>(
+    `SELECT status, last_error FROM episodes`,
+  );
+  assert.ok(dropped.some((r) => r.status === "rejected" && /too thin/.test(r.last_error ?? "")), JSON.stringify(dropped));
 });
 
 test("FIRST_COMMENT_STRICT: a Short gets its own closing question alone, or no comment at all", async () => {

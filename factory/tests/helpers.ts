@@ -11,6 +11,7 @@ import { liveClipsSettings } from "../src/liveclips/settings.ts";
 import { streamWeeklySettings } from "../src/streamweekly/settings.ts";
 import { learnSettings } from "../src/learn/settings.ts";
 import { hudSettings } from "../src/hudreader/settings.ts";
+import { leverSettings } from "../src/levers/settings.ts";
 import { subsLearnSettings } from "../src/subslearn/settings.ts";
 import { packagingSettings } from "../src/packaging/settings.ts";
 import type { FeedItem } from "../src/discovery/rss.ts";
@@ -536,6 +537,7 @@ export function testConfig(
     streamWeekly: streamWeeklySettings({}),
     learn: learnSettings({}),
     hud: hudSettings({}),
+    levers: leverSettings({}),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
     characterQuotes: false,

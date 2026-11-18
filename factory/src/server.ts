@@ -131,6 +131,7 @@ import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
 import { streamWeeklyTick } from "./streamweekly/job.ts";
 import { hudVodTick } from "./hudreader/job.ts";
+import { startLeverJobs } from "./levers/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -2169,6 +2170,13 @@ async function main(): Promise<void> {
     setTimeout(() => void liveClipsTick(cfg), 30_000);
     setInterval(() => void liveClipsTick(cfg), 15_000);
   }
+  // The platform levers (src/levers): the live watcher (LIVE_AUTOFILL), the weekly Partner Programme count
+  // (YPP_TRACKER) and the podcast flag (PODCAST_PLAYLIST). Each is off unless its setting says otherwise.
+  startLeverJobs(cfg, {
+    db,
+    token: () => accessToken(db, oauthConfig(cfg)),
+    notify: (text) => services.notify({ content: text }),
+  });
 
   // Boot checks: everything that silently stops an unattended factory, posted to Discord once.
   void (async () => {

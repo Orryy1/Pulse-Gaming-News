@@ -196,6 +196,8 @@ export function arrivalsOf(input: {
   /** PEOPLE_INSETS: the people named and the tracklist card, overlays like any other (src/render/cleanframe.ts). */
   people?: Parameters<typeof overlaySpans>[0]["people"];
   tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
+  /** MENTION_*: the scheduled mention insets, overlays like any other; each stands in for its beat's card. */
+  mentions?: Parameters<typeof overlaySpans>[0]["mentions"];
 }): Arrival[] {
   const { plan, segments } = input;
   const layout = shortLayout(
@@ -214,6 +216,7 @@ export function arrivalsOf(input: {
     shape: input.shape,
     people: input.people,
     tracklist: input.tracklist,
+    mentions: input.mentions,
   });
   const drawn: Span[] = input.clean ? arbitrate(spans) : spans;
   const out: Arrival[] = [];
@@ -240,7 +243,8 @@ export function arrivalsOf(input: {
       sp.kind === "filler" ||
       sp.kind === "freeze" ||
       sp.kind === "people" ||
-      sp.kind === "tracklist"
+      sp.kind === "tracklist" ||
+      sp.kind === "mention"
     )
       out.push({ frame: sp.from, kind: "card" });
   }
@@ -286,6 +290,8 @@ export function planSparseSfx(input: {
   /** PEOPLE_INSETS: the people named and the tracklist card, overlays like any other (src/render/cleanframe.ts). */
   people?: Parameters<typeof overlaySpans>[0]["people"];
   tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
+  /** MENTION_*: the scheduled mention insets, overlays like any other; each stands in for its beat's card. */
+  mentions?: Parameters<typeof overlaySpans>[0]["mentions"];
 }): SparseResult {
   const { plan, id } = input;
   const fps = plan.fps;

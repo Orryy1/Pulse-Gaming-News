@@ -613,8 +613,11 @@ export interface RenderInput {
     | "quotes"
     | "gameBed"
     | "people"
+    | "mentions"
   > & {
     audioFile: string | null;
+    /** MENTION_*: the scheduled mention insets, each picture's src relative to the episode folder. */
+    mentionFiles?: import("./mentions.ts").MentionSlot[];
     /** PEOPLE_INSETS: the people's face photos, relative to the episode folder, with when each name is said. */
     peopleFiles?: Array<{ name: string; file: string; credit: string; at: number }>;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
@@ -689,8 +692,11 @@ export interface LongRenderInput {
     | "voiceFx"
     | "pocketBeds"
     | "quotes"
+    | "mentions"
   > & {
     audioFile: string | null;
+    /** MENTION_*: the mention insets on their words, each picture's src relative to the episode folder. */
+    mentionFiles?: import("./mentions.ts").MentionInset[];
     /** The narration's texture slices (src/render/voicefx.ts makeVoiceFx), relative to the episode folder. */
     voiceFxFiles?: Array<{
       kind: "phone" | "reverb";
@@ -775,10 +781,12 @@ export function longProps(
     next,
     voiceFxFiles,
     quoteFiles,
+    mentionFiles,
     ...rest
   } = p;
   return {
     ...rest,
+    ...(mentionFiles?.length ? { mentions: mentionUrls(mentionFiles, filesUrl) } : {}),
     ...(quoteFiles?.length
       ? {
           quotes: quoteFiles.map(({ file, ...q }) => ({
@@ -1087,6 +1095,17 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
   }
 }
 
+/** MENTION_*: each mention picture's episode-relative path as a URL on the loopback server. */
+export function mentionUrls<T extends { pictures: Array<{ src: string }> }>(list: T[], filesUrl: string): T[];
+export function mentionUrls<T extends { m: { pictures: Array<{ src: string }> } }>(list: T[], filesUrl: string): T[];
+export function mentionUrls(list: any[], filesUrl: string): any[] {
+  const fix = (m: { pictures: Array<{ src: string }> }) => ({
+    ...m,
+    pictures: m.pictures.map((p) => ({ ...p, src: /^https?:/.test(p.src) ? p.src : `${filesUrl}/${webPath(p.src)}` })),
+  });
+  return list.map((x) => ("m" in x ? { ...x, m: fix(x.m) } : fix(x)));
+}
+
 export async function renderShort(input: RenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
@@ -1100,10 +1119,12 @@ export async function renderShort(input: RenderInput): Promise<void> {
       quoteFiles,
       gameBedFile,
       peopleFiles,
+      mentionFiles,
       ...rest
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      ...(mentionFiles?.length ? { mentions: mentionUrls(mentionFiles, files.url) } : {}),
       ...(peopleFiles?.length
         ? {
             people: peopleFiles.map(({ file, ...p }) => ({

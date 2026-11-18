@@ -634,6 +634,49 @@ export interface Config {
    * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
    * is "humanise.rewrite" (CODEX_CALLS can route it). */
   humanise: "off" | "check" | "fix";
+  /** The held-answer gate (src/editorial/payoff.ts, top creator gap plan gap 1, 18 Nov 2026: Pulse Shorts lose about 4
+   * points a second through the facts, the take lands at 65% with 38% left and the title or first frame often states
+   * the answer; all 27 breakout Shorts studied plant a question and pay it late). On news, breaking and Why Shorts in the
+   * gate's arm the writer plans one question and its answer (script.payoff), holds the answer past 60% of the words,
+   * keeps it out of the hook, headline, thumb_text and title, turns once in the middle third, takes a side in the first
+   * two sentences, lands the verdict last, rotates stock take openers and ends with no ask; a cold reader of title,
+   * first frame and hook alone must know the subject but not the answer. SHORT_PAYOFF_GATE=off (default), "check"
+   * (record pass/fail and reasons on the script's payoff_gate, change nothing) or "fix" (send the draft back to the
+   * writer once with the reasons, then accept it with a note; never drops a story). Rankings, deals and charts are
+   * untouched. Its one model step is "payoff.judge" (CODEX_CALLS=payoff routes it). */
+  shortPayoffGate: "off" | "check" | "fix";
+  /** SHORT_PAYOFF_SHARE (0-1, default 0.5): the share of covered Shorts in the gate's arm, split by episode id; the rest
+   * are the control arm, measured on the plan-free rules only. The arm is on script.payoff_gate.arm for the weekly
+   * comparison. */
+  shortPayoffShare: number;
+  /** The script editor's desk (src/editorial/desk.ts, top creator gap plan writer check, 18 Nov 2026: blind judges
+   * scored 24 published Pulse scripts at 3.9/10; an editor's loop run by hand on the same stories and facts took them to
+   * 6.9, 23 of 24 improved, against 5.25 for 12 breakout human Shorts). On news, breaking and Why Shorts in the desk's arm
+   * the writer states, in its own call, "The most interesting true thing is X, and it matters to Y because Z", the mode
+   * and whether the story can carry a Short (desk_plan: absence, common knowledge, promotion or list kill it; a missing
+   * key fact is recorded as source_gap). Then an editor ("desk.judge", mid tier, never the writer's plan or sources)
+   * reads title, first-frame text and narration and scores clarity, hook, payoff, voice, human and overall 1-10 with
+   * its biggest weakness, beside deterministic checks (banned lines, the full name over twice, a formula ending, a
+   * repeated fact). SCRIPT_DESK=off (default), "check" (read once and record on script.desk, change nothing; a kill is
+   * only recorded) or "fix" (under SCRIPT_DESK_MIN overall or any score under 5: one instruction, the biggest weakness,
+   * through the edit-based reviser ("desk.rewrite"), the fact guard and the fact check, then read again; best version
+   * kept; a killed story takes the thin route, a big story still goes out with a note). Control-arm Shorts get one read
+   * so the weekly report can set desk score against real retention. It runs after the friend pass and the clarity gate,
+   * before the humaniser, and after the payoff gate's rules, which it keeps (newProblems); CODEX_CALLS=desk routes both
+   * steps. Cost by the price table (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10 per million in/out): a read about $0.01 (Sonnet,
+   * ~1,200 in, ~600 out with thinking), a rewrite about $0.08-0.10 (Opus edits on the writer's ~8k-token brief), its
+   * fact check about $0.04 (Opus), the angle about $0.001 more writer output. Per desk-arm Short: $0.01 when the first
+   * read clears, about $0.14 for one round, about $0.28 at the cap (3 reads, 2 rewrites, 2 fact checks); a control-arm
+   * Short $0.01. At SCRIPT_DESK_SHARE 0.5 and two rounds on most Shorts, about $0.13 a covered Short on average. */
+  scriptDesk: "off" | "check" | "fix";
+  /** SCRIPT_DESK_SHARE (0-1, default 0.5): the share of covered Shorts in the desk's arm, split by episode id; the arm is
+   * on script.desk.arm for the weekly comparison. */
+  scriptDeskShare: number;
+  /** SCRIPT_DESK_MIN (1-10, default 7): the overall score that clears the desk without a rewrite. */
+  scriptDeskMin: number;
+  /** SCRIPT_DESK_ROUNDS (1-3, default 2): rewrite rounds at most; the desk also stops when a read clears or no score
+   * moves. The call cap follows: one read per version (rounds + 1) and one rewrite and fact check per round. */
+  scriptDeskRounds: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1044,6 +1087,16 @@ export interface Config {
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
+  /** MENTION_* (src/render/mentions.ts, src/assets/mentions.ts): a small picture of the exact thing a word names pops
+   * up on that word, one setting per kind, all off by default; MENTION_MAX_PER_SHORT caps a Short (a long video adds
+   * one a minute). */
+  mentionGames: boolean; // MENTION_GAMES: another game's official Steam capsule on its name; compared games side by side
+  mentionLogos: boolean; // MENTION_LOGOS: a studio's or publisher's own logo (Wikidata's, on Commons) on its name only
+  mentionCharacters: boolean; // MENTION_CHARACTERS: a fictional character's official art from the publisher's site
+  mentionRealPlaces: boolean; // MENTION_REALPLACES: a free Commons photo of a real place beside its game version
+  mentionPlatforms: boolean; // MENTION_PLATFORMS: a row of Pulse-drawn platform marks when platforms are listed
+  mentionReceipts: boolean; // MENTION_RECEIPTS: "Bloomberg reported": the outlet and date, from the story's own sources
+  mentionMaxPerShort: number; // MENTION_MAX_PER_SHORT: most mention insets in a Short (default 5)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
    * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
@@ -1849,6 +1902,12 @@ export function loadConfig(): Config {
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
+    shortPayoffGate: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SHORT_PAYOFF_GATE", "off").trim().toLowerCase()),
+    shortPayoffShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHORT_PAYOFF_SHARE", "0.5"))))),
+    scriptDesk: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SCRIPT_DESK", "off").trim().toLowerCase()),
+    scriptDeskShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_DESK_SHARE", "0.5"))))),
+    scriptDeskMin: Math.min(10, Math.max(1, int("SCRIPT_DESK_MIN", 7))),
+    scriptDeskRounds: Math.min(3, Math.max(1, int("SCRIPT_DESK_ROUNDS", 2))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),
@@ -2066,6 +2125,13 @@ export function loadConfig(): Config {
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   peopleInsets: bool("PEOPLE_INSETS", true),
+  mentionGames: bool("MENTION_GAMES", false),
+  mentionLogos: bool("MENTION_LOGOS", false),
+  mentionCharacters: bool("MENTION_CHARACTERS", false),
+  mentionRealPlaces: bool("MENTION_REALPLACES", false),
+  mentionPlatforms: bool("MENTION_PLATFORMS", false),
+  mentionReceipts: bool("MENTION_RECEIPTS", false),
+  mentionMaxPerShort: Math.min(8, Math.max(0, int("MENTION_MAX_PER_SHORT", 5))),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),

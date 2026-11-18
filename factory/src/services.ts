@@ -84,6 +84,8 @@ import { onYtGuardAlert } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { personPortrait } from "./assets/people.ts";
+import { findMentions } from "./assets/mentions.ts";
+import { siteFor } from "./assets/publishersite.ts";
 import { readBoxes } from "./assets/applevision.ts";
 import { findIgdbGame, fetchIgdbArt, findIgdbSeries } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
@@ -332,6 +334,14 @@ export function createServices(db: Db, cfg: Config): Services {
     // Vision's face finder on the Mac mini).
     personPortrait: (c, dir, slot) =>
       personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
+    // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
+    // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    findMentions: (input) =>
+      findMentions(input, {
+        findSteamApp,
+        siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
+        faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [],
+      }),
     gameplayClips: async (
       game,
       franchise,

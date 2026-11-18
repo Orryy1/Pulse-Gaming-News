@@ -39,7 +39,7 @@ export interface Frame {
 }
 
 const VERBS =
-  "says|said|say|reports|reported|report|confirms|confirmed|confirm|told|tells|tell|notes|noted|writes|wrote|estimates|estimated|claims|claimed|explains|explained|admits|admitted|insists|insisted|measured|measures|lists|listed|puts it|put it|announced|announces|revealed|reveals|states|stated";
+  "says|said|say|reports|reported|report|confirms|confirmed|confirm|told|tells|tell|notes|noted|writes|wrote|estimates|estimated|claims|claimed|explains|explained|admits|admitted|insists|insisted|measured|measures|lists|listed|puts it|put it|announced|announces|revealed|reveals|states|stated|puts|put|pegs|pegged|places|placed";
 const NOT_A_SOURCE = new Set(
   "it he she they that this the we i you there which who what one someone nobody everyone his her their its and but so then now yes no also later still once those these both others some many most players fans gamers".split(
     " ",
@@ -55,6 +55,13 @@ const SAYS = new RegExp(
   `\\b(${NAME})(?:'s?|’s?)?\\s+(?:also\\s+|later\\s+|again\\s+|even\\s+|then\\s+)?(${VERBS})\\b`,
   "g",
 );
+// "Edge's preview says", "IGN's review notes": the outlet's own piece is the credit.
+const PIECE_SAYS = new RegExp(
+  `\\b(${NAME})(?:'s|’s)\\s+(?:own\\s+)?(?:[A-Z][a-z]+\\s+\\d{1,2}\\s+)?(?:preview|review|report|post|listing|story|article|piece|video|interview|tracker|data|page|notes|blog|newswire|site|launch post|FAQ|feature|hands-on)\\s+(?:also\\s+|even\\s+)?(${VERBS})\\b`,
+  "g",
+);
+// "per Edge", "per the official listing".
+const PER = new RegExp(`\\b[Pp]er\\s+((?:the\\s+)?${NAME})`, "g");
 const INTERVIEW = new RegExp(
   `\\b[Ii]n an?\\s+(?:\\d{4}\\s+)?interview with\\s+(${NAME})`,
   "g",
@@ -105,6 +112,16 @@ export function attributionFrames(text: string): Frame[] {
     const who = whoKey(m[1]!);
     const key = `${who} ${lemma(m[2]!)}`;
     out.push({ key, shape: key, phrase: m[0], word: wordAt(t, m.index!) });
+  }
+  for (const m of t.matchAll(PIECE_SAYS)) {
+    if (NOT_A_SOURCE.has(m[1]!.split(/\s+/)[0]!.toLowerCase())) continue;
+    const key = `${whoKey(m[1]!)} ${lemma(m[2]!)}`;
+    // The plain SAYS pattern can't see past the piece's name, so this is a frame of its own.
+    out.push({ key, shape: key, phrase: m[0], word: wordAt(t, m.index!) });
+  }
+  for (const m of t.matchAll(PER)) {
+    const key = `per ${whoKey(m[1]!)}`;
+    out.push({ key, shape: "per", phrase: m[0], word: wordAt(t, m.index!) });
   }
   for (const m of t.matchAll(INTERVIEW)) {
     const key = `interview with ${whoKey(m[1]!)}`;

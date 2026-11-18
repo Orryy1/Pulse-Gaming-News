@@ -54,6 +54,8 @@ import {
   type PostingFavour,
 } from "./loopfeedback.ts";
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
+import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
+import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -215,6 +217,10 @@ export interface EpisodeInfo {
   long: boolean;
   /** The Short's structure (SHORT_SKELETONS, src/editorial/skeletons.ts), when it was written to one. */
   skeleton?: string;
+  /** The held-answer test's arm and whether the Short passed every rule (SHORT_PAYOFF_GATE, src/editorial/payoff.ts). */
+  payoff?: { arm: PayoffArm; pass: boolean };
+  /** The editor's desk's arm and the kept version's overall score (SCRIPT_DESK, src/editorial/desk.ts). */
+  desk?: { arm: DeskArm; overall?: number };
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1411,6 +1417,12 @@ export async function runAnalyticsLoop(
       wpm: metric("wpm"),
       long: sc?.runtime === "long" || r.lane === "longform",
       ...(sc?.skeleton ? { skeleton: sc.skeleton } : {}),
+      ...(sc?.payoff_gate
+        ? { payoff: { arm: sc.payoff_gate.arm, pass: sc.payoff_gate.pass } }
+        : {}),
+      ...(sc?.desk
+        ? { desk: { arm: sc.desk.arm, overall: sc.desk.scores?.overall } }
+        : {}),
       series: seriesTagFor(
         {
           lane: r.lane,
@@ -1922,6 +1934,41 @@ export async function runAnalyticsLoop(
       .map((e) => e.skeleton),
   );
   if (structures) signalLines.push(structures);
+  // SHORT_PAYOFF_GATE: the two arms of the held-answer test side by side (YouTube views, viewed share and comments).
+  const payoffLine = payoffArmLine(
+    [...eps.values()]
+      .filter((e) => !e.long && e.live_at >= periodStart && e.payoff)
+      .map((e) => {
+        const y = yt.get(e.id);
+        return {
+          arm: e.payoff!.arm,
+          pass: e.payoff!.pass,
+          views: y?.views,
+          viewed_pct: y?.viewed_pct,
+          comments: y?.comments,
+        };
+      }),
+  );
+  if (payoffLine) signalLines.push(payoffLine);
+  // SCRIPT_DESK: the desk's score against average viewed and comments per 1,000 views, by arm and by score band, and the
+  // rank correlation with average viewed from 20 Shorts: the judge calibrated against real retention.
+  signalLines.push(
+    ...deskLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.desk)
+        .map((e) => {
+          const y = yt.get(e.id);
+          return {
+            arm: e.desk!.arm,
+            overall: e.desk!.overall,
+            views: y?.views,
+            viewed_pct: y?.viewed_pct,
+            comments: y?.comments,
+          };
+        }),
+      spearman,
+    ),
+  );
   const signal = (
     label: string,
     p: LoopPlatform,

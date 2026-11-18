@@ -146,6 +146,7 @@ export function soundShort(o: {
   /** PEOPLE_INSETS: the insets and the tracklist card, which arrive on screen like cards. */
   people?: Parameters<typeof planSparseSfx>[0]["people"];
   tracklist?: Parameters<typeof planSparseSfx>[0]["tracklist"];
+  mentions?: Parameters<typeof planSparseSfx>[0]["mentions"];
   memory: ShortMemory | undefined;
   assets: { shortSoundArm?: "sparse" | "v3" };
   v3: () => SfxCue[];
@@ -176,6 +177,7 @@ export function soundShort(o: {
     shape: o.shape,
     people: o.people,
     tracklist: o.tracklist,
+    mentions: o.mentions,
   });
   o.plan.sfx = r.sfx;
   o.plan.soundPlan = "sparse";

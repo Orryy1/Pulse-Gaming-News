@@ -46,6 +46,7 @@ import {
   type TracklistPlacement,
 } from "../render/people.ts";
 import { yieldingSpans } from "../render/cleanframe.ts";
+import { mentionNeedFrames, mentionText, type MentionSlot } from "../render/mentions.ts";
 
 /** Seconds a word on screen needs, the base for taking a graphic in, and the floor for any text at all. */
 export const READ_PER_WORD = 0.3;
@@ -72,6 +73,7 @@ export type GfxKind =
   | "sting"
   | "shelf"
   | "people"
+  | "mention"
   | "tracklist";
 export type GfxCheck =
   | "reading"
@@ -157,6 +159,8 @@ export interface ShortGfxInput {
   people?: Array<Pick<PersonInset, "name" | "src" | "credit" | "at">>;
   /** PEOPLE_INSETS: the tracklist card on its line. */
   tracklist?: TracklistPlacement;
+  /** MENTION_* (src/render/mentions.ts): the scheduled mention insets; each stands in for its beat's card. */
+  mentions?: MentionSlot[];
 }
 
 // ---- Text helpers ---------------------------------------------------------------------------------
@@ -477,9 +481,10 @@ export function shortElements(input: ShortGfxInput): {
     shape: input.shape,
     people: input.people,
     tracklist: input.tracklist,
+    mentions: input.mentions,
   });
   // The full chrome draws everything as planned, except the insets and the tracklist, which still give way.
-  const YIELD = ["people", "tracklist"] as const;
+  const YIELD = ["people", "tracklist", "mention"] as const;
   const kept = input.clean
     ? arbitrate(spans)
     : [
@@ -512,6 +517,10 @@ export function shortElements(input: ShortGfxInput): {
     } else if (sp.kind === "people") {
       // The names are read; the licence credit under each is a legal line, not counted.
       text = (groups.find((g) => g.key === sp.key)?.members ?? []).map((m) => m.name).join(" ");
+    } else if (sp.kind === "mention") {
+      // The inset's names (a receipt's outlet and date); a photo credit is a legal line, not counted.
+      const m = input.mentions?.find((x) => x.key === sp.key)?.m;
+      text = m ? mentionText(m) : "";
     } else if (sp.kind === "tracklist" && input.tracklist) {
       // No segment: the fixer never drops the line's visual for it (the card already gave way).
       text = tracklistText(input.tracklist);
@@ -539,6 +548,11 @@ export function shortElements(input: ShortGfxInput): {
       need:
         sp.kind === "tracklist" && input.tracklist
           ? tracklistSeconds(input.tracklist.tracks, input.tracklist.perPage)
+          : sp.kind === "mention"
+            ? (() => {
+                const m = input.mentions?.find((x) => x.key === sp.key)?.m;
+                return m ? mentionNeedFrames(m, fps) / fps : readNeed(n);
+              })()
           : readNeed(n),
       keyAt: key.at,
       keyLine: key.line,
@@ -675,7 +689,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
     }
     // Figures on any graphic with text, against the narration and the sources.
     // Names and song titles are not figures ("22", "1989"): the insets and the tracklist are left out.
-    if (e.kind !== "hook" && e.kind !== "shelf" && e.kind !== "people" && e.kind !== "tracklist" && e.text) {
+    if (e.kind !== "hook" && e.kind !== "shelf" && e.kind !== "people" && e.kind !== "mention" && e.kind !== "tracklist" && e.text) {
       const figs = figuresIn(e.text);
       const ok = figs.filter((f) =>
         figureSupported(f, input.narration, input.sources, spoken),
@@ -953,6 +967,8 @@ function clashWith(e: GfxElement, spans: Span[], kept: Span[]): string {
           ? "the headline"
           : k.kind === "people"
             ? "a person's photo"
+          : k.kind === "mention"
+            ? "a mention inset"
           : k.kind === "entry"
             ? "a rank card"
             : `the ${k.kind}`,
@@ -1068,7 +1084,7 @@ function roomFor(
   stop = Math.min(stop, total);
   const blockers = spans.filter(
     (s) =>
-      (s.kind === "stamp" || s.kind === "hook" || s.kind === "people" || s.kind === "tracklist") &&
+      (s.kind === "stamp" || s.kind === "hook" || s.kind === "people" || s.kind === "mention" || s.kind === "tracklist") &&
       s.to > anchor &&
       s.from < stop,
   );

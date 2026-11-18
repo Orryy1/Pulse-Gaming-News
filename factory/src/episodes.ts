@@ -107,6 +107,8 @@ export interface EpisodeAssets {
   shortThumbArm?: string;
   /** PEOPLE_INSETS: the real people the Short names with their licensed face photos (src/assets/people.ts); [] when none. */
   people?: import("./assets/people.ts").PersonPortrait[];
+  /** MENTION_*: the mention insets' pictures for the kinds the gather looked for (src/assets/mentions.ts). */
+  mentions?: import("./assets/mentions.ts").MentionsFound;
   shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
   /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" or "v3" while the sound test runs. */
   shortSoundArm?: "sparse" | "v3";

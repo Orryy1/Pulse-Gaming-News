@@ -82,6 +82,8 @@ export type ShortProps = {
   people?: import("./people.ts").PersonInset[];
   /** PEOPLE_INSETS: the tracklist card of a soundtrack story; its line's own card gives way to it. */
   tracklist?: import("./people.ts").TracklistPlacement;
+  /** MENTION_* (src/render/mentions.ts): the mention insets, scheduled on their words; each stands in for its beat's card. */
+  mentions?: import("./mentions.ts").MentionSlot[];
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

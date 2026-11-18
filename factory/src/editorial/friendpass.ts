@@ -200,7 +200,8 @@ const lowerWords = (t: string) =>
     stripVoiceTags(t)
       .toLowerCase()
       .replace(/[’‘]/g, "'")
-      .split(/[^a-z0-9$%.'-]+/)
+      // "+" stays part of a word: "GTA+" is a name of its own, and namesOf keeps it whole.
+      .split(/[^a-z0-9$%.'+-]+/)
       .map((w) =>
         w
           .replace(/^'+|'+$/g, "")

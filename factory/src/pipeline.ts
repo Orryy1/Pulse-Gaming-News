@@ -269,7 +269,7 @@ import { cutPortrait } from "./assets/localvision.ts";
 import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
-import type { VisionQa } from "./editorial/schema.ts";
+import type { FactCheck, VisionQa } from "./editorial/schema.ts";
 import { narrationSummary, type NarrationCheck } from "./qa/narration.ts";
 import type { YouTubeClient } from "./youtube/upload.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
@@ -691,6 +691,35 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
+import {
+  firstFrameText,
+  payoffApplies,
+  payoffArm,
+  payoffFeedback,
+  payoffFindings,
+  payoffKeepNote,
+  payoffRecord,
+  readFindings,
+  readPayoff,
+  SEGMENT_OPENERS,
+  ABSENCE_PROBLEM,
+  type PayoffArm,
+  type PayoffFinding,
+  type PayoffRead,
+} from "./editorial/payoff.ts";
+import {
+  DESK_REWRITE_SITE,
+  deskArm,
+  deskChecks,
+  deskKill,
+  deskLines,
+  deskRecord,
+  deskShortProblems,
+  judgeDesk,
+  runDesk,
+  type DeskArm,
+  type DeskRecord,
+} from "./editorial/desk.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
 import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
@@ -857,6 +886,8 @@ import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
 import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
 import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
+import { mentionsOnWords, type MentionsFound, type MentionInput } from "./assets/mentions.ts";
+import { mentionCap, mentionSlots, type MentionKind, type MentionLayout, type MentionInset, type MentionSlot } from "./render/mentions.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
@@ -910,6 +941,10 @@ export interface Services {
     dir: string,
     slot: number,
   ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
+  /** MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts); absent in tests. */
+  findMentions?(
+    input: import("./assets/mentions.ts").MentionInput,
+  ): Promise<import("./assets/mentions.ts").MentionAsset[]>;
   /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
   searchPress?(
     game: string,
@@ -7531,6 +7566,42 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
   // DROP_ANGLE (src/editorial/dropangle.ts): an official drop is written as one reframing idea, never a detail list.
   const drop = s.cfg.dropAngle && !cluster.why && !cluster.reply && isOfficialDrop(cluster);
+  // SHORT_PAYOFF_GATE (src/editorial/payoff.ts): news, breaking and Why Shorts split by episode into the gate's arm
+  // (one question planned, the answer held past 60% and kept out of the hook, headline and title) and the control arm.
+  // The arm is kept on the script so the weekly report can compare them; a retry keeps its arm.
+  const payoffArmOf: PayoffArm | undefined =
+    s.cfg.shortPayoffGate !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? payoffArm(ep.id, s.cfg.shortPayoffShare)
+      : undefined;
+  const payoffGated = payoffArmOf === "gate";
+  // "fix": the deterministic rules join the house rules (the draft goes back once, then out with a note).
+  const payoffFix = payoffGated && s.cfg.shortPayoffGate === "fix";
+  const payoffSentBack: string[] = [];
+  let payoffFallback: { script: Script; check: FactCheck } | undefined;
+  // SCRIPT_DESK (src/editorial/desk.ts): the same Shorts split by episode into the desk's arm (the writer states its
+  // angle first, an editor reads the settled script and, under "fix", the biggest weakness is rewritten) and the control
+  // arm (read once, unchanged), so the weekly report can set the desk's score against real retention.
+  const deskArmOf: DeskArm | undefined =
+    s.cfg.scriptDesk !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? deskArm(ep.id, s.cfg.scriptDeskShare)
+      : undefined;
+  const deskPlanned = deskArmOf === "desk";
+  const deskFix = deskPlanned && s.cfg.scriptDesk === "fix";
+  let deskKilled: DeskRecord["kill"] | undefined;
   // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
   // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
   const skeleton =
@@ -7540,6 +7611,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           argument,
           openings: hookStyleOpenings(test, testDefaults),
           ...(drop ? { orders: ["call_then_proof", "one_detail"] } : {}),
+          ...(payoffGated ? { payoff: true } : {}),
         })
       : undefined;
   // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
@@ -7590,7 +7662,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
-    const problems = validateScript(sc, recent, length);
+    // SHORT_PAYOFF_GATE's arm may keep a source's own quoted question ("Wait, what's this?"); elsewhere as before.
+    const problems = validateScript(sc, recent, length, payoffGated ? { quotedQuestionsOk: true } : {});
     // A GTA File part (src/gtafile.ts) never reads as an announcement and says its part number first; a numbered
     // Why is titled "Why [game] [claim]" and opens on a claim (src/editorial/why.ts).
     if (cluster.gtaFile)
@@ -7625,6 +7698,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
+    if (payoffFix) {
+      const gateFindings = payoffFindings({
+        script: sc,
+        recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+        exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+        endingChecked: s.cfg.shortEndPayoff,
+        planned: true,
+      }).findings;
+      problems.push(...payoffFeedback(gateFindings));
+      // An answer that is only "the sources don't say" is a thin story: after the one rewrite its slot goes to the
+      // next story (a big story still goes out, as with any thin one), never a held-back non-answer.
+      if (gateFindings.some((f) => f.rule === "absence_answer")) thin.push(ABSENCE_PROBLEM);
+    }
     if (drop) problems.push(...detailListProblems(sc));
     // SHORT_ARGUES_CHECK (src/qa/argues.ts): a draft that only narrates its picture goes back to the writer once.
     if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
@@ -7734,6 +7820,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       skeleton,
       dropAngle: drop,
       length,
+      ...(payoffGated ? { payoff: true } : {}),
+      ...(deskPlanned ? { deskPlan: true } : {}),
       // The search lane and a reply Short each write on their own step, so CODEX_CALLS can route them.
       ...(cluster.search
         ? { site: SEARCH_WRITE_SITE }
@@ -7796,6 +7884,35 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         await logEvent(s.db, ep.id, "credits_scrubbed", { attempt, removed: scrubbed.removed });
       }
     }
+    // SCRIPT_DESK: the writer's own answer said whether the story can carry a Short. Under "fix" a killed story takes the
+    // thin route before its fact check is paid for (a big story still goes out, with a note); "check" only records it.
+    if (deskPlanned && attempt === 0 && !deskKilled) {
+      const k = deskKill(script.desk_plan, script.payoff);
+      if (k) {
+        deskKilled = { ...k, acted: deskFix, ...(cluster.bigStory ? { big_story: true } : {}) };
+        await logEvent(s.db, ep.id, "desk_kill", { ...deskKilled }).catch(() => undefined);
+        if (deskFix && !cluster.bigStory) {
+          await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "too thin");
+          await transition(s.db, ep.id, "selected", "rejected", {
+            script_json: {
+              ...script,
+              desk: deskRecord({ arm: "desk", mode: "fix", plan: script.desk_plan, kill: deskKilled }),
+            },
+            last_error: `too thin: editor's desk: ${k.why}`,
+          });
+          await s.notify({
+            level: "info",
+            content: `Dropped as too thin, the slot goes to the next story: "${cluster.headline}". The editor's desk: ${k.why}`.slice(0, 900),
+          });
+          return;
+        }
+        if (deskFix)
+          await s.notify({
+            level: "info",
+            content: `Big story "${cluster.headline}" can't carry a Short by the editor's desk but is going out, since big stories are always made: ${k.why}`.slice(0, 900),
+          });
+      }
+    }
     const { problems, thin } = houseProblems(script);
     check = await factCheck(
       s.llm,
@@ -7829,18 +7946,53 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     }
     // A line that repeats a claim our fact check already rejected goes back to the writer (FACT_VAULT=read and above).
     if (newsVault) problems.push(...newsVault.warnings([narrationOf(script)]));
-    if (
-      check.verdict === "pass" &&
-      check.rumour_labelling_ok &&
-      blockers.length === 0 &&
-      problems.length === 0
-    )
-      break;
+    // SHORT_PAYOFF_GATE=fix: the first draft's title, first-frame text and hook read cold (the one model step); what
+    // gives the answer away, or leaves the subject unclear, goes back to the writer with the rest.
+    if (payoffFix && attempt === 0 && script.payoff) {
+      const draft = script;
+      const read = await readPayoff(s.llm, {
+        title: draft.youtube.title,
+        firstFrame: firstFrameText(draft),
+        hook: draft.hook,
+        question: draft.payoff!.question,
+        answer: draft.payoff!.answer,
+      }).catch((err) => {
+        log("warn", "payoff cold read failed; the draft goes on unread", { episode: ep.id, error: errorMessage(err) });
+        return undefined;
+      });
+      if (read) problems.push(...payoffFeedback(readFindings(read)));
+    }
+    const factsPassed = check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0;
+    if (factsPassed && problems.length === 0) break;
     feedback = [
       ...blockers,
       ...problems,
       ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."]),
     ];
+    // A first draft whose facts passed and that went back only for the held-answer rules is kept: if the rewrite then
+    // fails its fact check, this draft goes out instead, so the gate never costs a story its slot.
+    if (attempt === 0 && payoffFix) {
+      payoffSentBack.push(...problems.filter((p) => p.startsWith("Held answer: ")));
+      if (
+        factsPassed &&
+        problems.every((p) => p.startsWith("Held answer: ")) &&
+        !problems.some((p) => p.includes(ABSENCE_PROBLEM))
+      )
+        // The facts passed, so its verdict is "pass" (the vault's override widens the inferred type to string).
+        payoffFallback = { script, check: { ...check, verdict: "pass" as const } };
+    }
+    if (
+      attempt === 1 &&
+      payoffFallback &&
+      (check.verdict === "fail" || blockers.length > 0 || !check.rumour_labelling_ok)
+    ) {
+      await logEvent(s.db, ep.id, "payoff_gate_fallback", {
+        why: feedback.slice(0, 6),
+      }).catch(() => undefined);
+      script = payoffFallback.script;
+      check = payoffFallback.check;
+      break;
+    }
     if (attempt === 1) {
       // House-style misses alone are accepted with a warning; facts are not.
       if (
@@ -8029,6 +8181,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           skeleton,
           dropAngle: drop,
           length,
+          ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
           ...(cluster.search
             ? { site: SEARCH_WRITE_SITE }
             : cluster.reply
@@ -8040,6 +8194,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           plain,
           min: s.cfg.clarityMin,
           wordsMax: wordsLimits.wordsMax,
+          // SHORT_PAYOFF_GATE: a plainer hook still plants the question; the answer stays where the writer held it.
+          ...(payoffGated && v.payoff ? { extra: [payoffKeepNote(v.payoff)] } : {}),
         }),
       accept,
     });
@@ -8059,6 +8215,102 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ...clarityLog(clarity),
       kept: script !== settled,
       before_text: shortText(settled),
+    }).catch(() => undefined);
+  }
+  // The editor's desk (SCRIPT_DESK, src/editorial/desk.ts): an editor reads the settled Short as a viewer meets it
+  // (title, first-frame text, narration; never the plan or the sources) and scores it. "fix" on the desk's arm: under
+  // the bar, one instruction a round (the biggest weakness) through the edit-based reviser, the fact guard, the house
+  // rules (the payoff gate's included) and the fact check, then a fresh read; the best version that passed is kept.
+  // "check" and the control arm: one read, recorded, nothing changed. The record goes on the script at the end.
+  let deskRec: DeskRecord | undefined;
+  if (deskArmOf) {
+    const factsOk =
+      check.verdict === "pass" &&
+      check.rumour_labelling_ok &&
+      !check.issues.some((i) => i.severity === "blocker");
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    let deskFactChecks = 0;
+    const passedCheck = new Map<Script, typeof check>();
+    const loop = await runDesk<Script>({
+      value: script,
+      mode: deskFix && factsOk && !deskKilled ? "fix" : "check",
+      min: s.cfg.scriptDeskMin,
+      rounds: s.cfg.scriptDeskRounds,
+      angle: script.desk_plan?.angle,
+      judge: (v) =>
+        judgeDesk(s.llm, {
+          title: v.youtube.title,
+          firstFrame: firstFrameText(v),
+          narration: deskLines(v),
+        }),
+      checks: (v) => deskChecks({ lines: deskLines(v), game: v.game_title, segment: pulseCheck }),
+      rewrite: async (v, instruction) => ({
+        ...v,
+        ...(await writeScript(s.llm, cluster, articles, {
+          desk: s.cfg.deskShare > 0,
+          variantNote,
+          mustLabelRumour,
+          feedback: [instruction],
+          storeData,
+          recent,
+          draft: v,
+          segment: pulseCheck,
+          noSeriesFollow: s.cfg.shortEndPayoff,
+          skeleton,
+          dropAngle: drop,
+          length,
+          ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
+          site: DESK_REWRITE_SITE,
+          editsOnly: true,
+        })),
+      }),
+      accept: async (before, after) => {
+        const guard = [
+          ...deskShortProblems(before, after, wordsLimits),
+          ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+        ];
+        if (guard.length) return guard;
+        deskFactChecks++;
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
+          shortSettledText(before),
+        );
+        const late = airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : [];
+        if (v.blockers.length || late.length) return [...v.blockers, ...late];
+        passedCheck.set(after, v.check);
+        return [];
+      },
+      // SHORT_PAYOFF_GATE: a rewrite keeps the held answer where the writer put it.
+      extra: (v) => (payoffGated && v.payoff ? [payoffKeepNote(v.payoff)] : []),
+    });
+    const keptCheck = passedCheck.get(loop.value);
+    if (loop.value !== script && keptCheck) {
+      script = loop.value;
+      check = keptCheck;
+    }
+    deskRec = deskRecord({
+      arm: deskArmOf,
+      mode: s.cfg.scriptDesk === "fix" ? "fix" : "check",
+      plan: script.desk_plan,
+      kill: deskKilled,
+      loop,
+      checks: deskFactChecks,
+    });
+    await logEvent(s.db, ep.id, "script_desk", {
+      arm: deskRec.arm,
+      mode: deskRec.mode,
+      scores: deskRec.rounds.map((r) => r.scores?.overall ?? null),
+      kept: deskRec.kept,
+      cleared: deskRec.cleared,
+      stop: deskRec.stop,
+      calls: deskRec.calls,
+      ...(deskRec.kill ? { kill: deskRec.kill.kind } : {}),
+      ...(deskRec.source_gap ? { source_gap: deskRec.source_gap } : {}),
     }).catch(() => undefined);
   }
   // The humaniser (HUMANISE, src/editorial/humanise): the full name once and the short form after, no repeated openings,
@@ -8169,6 +8421,55 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       },
     };
   await guardScript(s, ep, script, "after writing");
+  // SHORT_PAYOFF_GATE: the finished script measured against the held-answer rules, recorded on it with its arm (the
+  // weekly report compares the arms). The gate's arm gets the cold read of title, first frame and hook too; the control
+  // arm only the rules that need no plan. Measuring never changes the script.
+  if (payoffArmOf) {
+    const gated = payoffArmOf === "gate";
+    const measured = payoffFindings({
+      script,
+      recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+            exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+      endingChecked: false,
+      planned: gated,
+    });
+    const settledScript = script;
+    const read: PayoffRead | undefined =
+      gated && settledScript.payoff
+        ? await readPayoff(s.llm, {
+            title: settledScript.youtube.title,
+            firstFrame: firstFrameText(settledScript),
+            hook: settledScript.hook,
+            question: settledScript.payoff.question,
+            answer: settledScript.payoff.answer,
+          }).catch((err) => {
+            log("warn", "payoff cold read failed; recorded without it", { episode: ep.id, error: errorMessage(err) });
+            return undefined;
+          })
+        : undefined;
+    const record = payoffRecord({
+      arm: payoffArmOf,
+      mode: s.cfg.shortPayoffGate === "fix" ? "fix" : "check",
+      findings: measured.findings,
+      answerAt: measured.answerAt,
+      pivot: measured.pivot,
+      read,
+      sentBack: payoffSentBack,
+    });
+    script = { ...script, payoff_gate: record };
+    await logEvent(s.db, ep.id, "payoff_gate", {
+      arm: record.arm,
+      mode: record.mode,
+      pass: record.pass,
+      rules: record.findings.map((f: PayoffFinding) => f.rule),
+      findings: record.findings.slice(0, 8).map((f: PayoffFinding) => f.problem),
+      answer_at: record.answer_at,
+      pivot_at: record.pivot_at,
+      sent_back: payoffSentBack.length,
+    }).catch(() => undefined);
+  }
+  // SCRIPT_DESK: the desk's record rides on the script beside payoff_gate (the weekly report reads arm and score).
+  if (deskRec) script = { ...script, desk: deskRec };
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
   if (skeleton) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {
@@ -10076,6 +10377,78 @@ async function gatherPeople(
     found: out.map((p) => ({ name: p.name, qid: p.qid, license: p.license, page: p.pageUrl })),
   }).catch(() => undefined);
   return out;
+}
+
+/** MENTION_*: the mention kinds switched on (src/render/mentions.ts), in a fixed order. */
+export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts">): MentionKind[] {
+  const on: Array<[MentionKind, boolean]> = [
+    ["game", cfg.mentionGames],
+    ["logo", cfg.mentionLogos],
+    ["character", cfg.mentionCharacters],
+    ["realplace", cfg.mentionRealPlaces],
+    ["platform", cfg.mentionPlatforms],
+    ["receipt", cfg.mentionReceipts],
+  ];
+  return on.filter(([, v]) => v).map(([k]) => k);
+}
+
+/** What the mention gather reads from a script, a story and its assets (pure). */
+export function mentionInputOf(o: {
+  dir: string;
+  kinds: MentionKind[];
+  script: {
+    hook?: string;
+    beats?: Array<{ narration?: string; footage?: { keywords?: string[] } }>;
+    pulse_take?: { narration?: string };
+    loop_line?: string;
+    game_title?: string;
+    attribution?: string;
+    youtube?: { tags?: string[] };
+    sources?: string[];
+  };
+  story?: { items?: Array<{ url?: string; title?: string; source?: string; summary?: string; sourceKind?: string; publishedAt?: string }> } | null;
+  assets: { steam?: { appId: number; name: string }; images?: Array<{ file: string; label?: string; kind?: string; sourceUrl?: string; provenance?: string; aspect?: number }> };
+  docSources?: Array<string | { url?: string; source?: string }>;
+}): MentionInput {
+  const sc = o.script;
+  const spoken = [sc.hook ?? "", ...(sc.beats ?? []).map((b) => b.narration ?? ""), sc.pulse_take?.narration ?? "", sc.loop_line ?? ""].join(" ");
+  return {
+    dir: o.dir,
+    kinds: o.kinds,
+    spoken,
+    listed: [...(sc.beats ?? []).flatMap((b) => b.footage?.keywords ?? []), ...(sc.youtube?.tags ?? [])],
+    mainGame: sc.game_title ?? "",
+    ...(o.assets.steam ? { mainSteam: { appId: o.assets.steam.appId, name: o.assets.steam.name } } : {}),
+    attribution: sc.attribution,
+    items: o.story?.items ?? [],
+    docSources: o.docSources ?? sc.sources,
+    images: o.assets.images,
+  };
+}
+
+/** Whether the gather kept in an episode's assets looked for these kinds (otherwise it runs again). */
+export const mentionsCover = (found: MentionsFound | undefined, kinds: MentionKind[]): boolean =>
+  !!found && kinds.every((k) => found.kinds.includes(k));
+
+/**
+ * MENTION_*: the mention insets of a video on its words, scheduled (src/render/mentions.ts mentionSlots), the pictures
+ * as episode-relative paths. [] when every kind is off. A long video passes no schedule here: its composition fits the
+ * insets around its own sentence graphics (Long.tsx), so it gets the placed list and the cap instead.
+ */
+export function mentionPlacement(
+  cfg: Parameters<typeof mentionKinds>[0] & Pick<Config, "mentionMaxPerShort">,
+  found: MentionsFound | undefined,
+  words: Array<{ text: string; start: number }>,
+  plan: { fps: number; totalFrames: number },
+  layout: MentionLayout,
+  /** Frames something else always holds (a Short's hook headline): never entered. */
+  taken: Array<{ from: number; to: number }> = [],
+): { insets: MentionInset[]; slots: MentionSlot[]; max: number } {
+  const kinds = new Set(mentionKinds(cfg));
+  const max = mentionCap(layout, cfg.mentionMaxPerShort, plan.totalFrames / plan.fps);
+  if (!kinds.size || !max) return { insets: [], slots: [], max };
+  const insets = mentionsOnWords(found?.items ?? [], words, { kinds });
+  return { insets, slots: mentionSlots(insets, { fps: plan.fps, totalFrames: plan.totalFrames, max, layout, taken }), max };
 }
 
 /** The people with a photo whose names are said, with when (seconds); one never said gets no inset. */
@@ -12343,6 +12716,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // The render runs past the narration's tail by the end card; the plan and the chapter marks do not change.
   const renderSeconds = duration + (endCard ? END_CARD_SECONDS : 0);
+  // MENTION_* (src/assets/mentions.ts): the mention insets' pictures, found once for the kinds switched on, from what
+  // the narration actually says; the composition fits them around its own sentence graphics (Long.tsx).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !mentionsCover(assets.mentions, kinds)) {
+      const input = mentionInputOf({ dir, kinds, script: script as never, story: ep.story_json as never, assets: assets as never });
+      input.spoken = words.map((w) => w.text).join(" ");
+      const items = await s.findMentions(input).catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
+  const longMentions = mentionPlacement(s.cfg, assets.mentions, words, { fps: 30, totalFrames: Math.round(renderSeconds * 30) }, "long");
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -12413,6 +12802,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         plan,
         renderDate: s.now().toISOString().slice(0, 10),
         quoteFiles: quoteRenderFiles(assets),
+        ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
@@ -13517,6 +13907,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     !script.every_game
   )
     assets.people = await gatherPeople(s, ep.id, dir, script, assets.images ?? []);
+  // MENTION_* (src/assets/mentions.ts): the pictures behind the mention insets, found once for the kinds switched on
+  // (kept in assets, so a re-render shows the same pictures).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !script.every_game && !mentionsCover(assets.mentions, kinds)) {
+      const items = await s
+        .findMentions(mentionInputOf({ dir, kinds, script, story: ep.story_json as never, assets }))
+        .catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -13589,10 +13994,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     assets,
   });
   if (assets.shortShape) await logEvent(s.db, ep.id, "short_shape", assets.shortShape);
+  // MENTION_*: the mention insets on their words, scheduled once here so the audit and the render agree.
+  const mentions = mentionPlacement(s.cfg, assets.mentions, words, plan, "short", [
+    { from: 0, to: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames).hookEnd },
+  ]).slots;
   const gfxIn = () => ({
     ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean, shape }),
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
@@ -13611,6 +14021,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     shape,
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
   // SHORT_SOUND_PLAN (src/untemplatestep.ts): on the sparse side, effects only where the gated cards and stamps land.
   if (s.cfg.shortSoundPlan === "sparse" || plan.soundPlan === "sparse") {
@@ -13627,6 +14038,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       shape,
       people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
       tracklist,
+      mentions,
       memory: untemplateMemory,
       assets,
       v3: () => {
@@ -13774,6 +14186,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       quoteFiles: quoteRenderFiles(assets),
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
+      ...(mentions.length ? { mentionFiles: mentions } : {}),
       // SHORT_LAYOUTS: the chosen opening and closing (src/render/untemplate.ts); absent, today's card at both ends.
       ...(shape ? { shape } : {}),
       ...(gameBed

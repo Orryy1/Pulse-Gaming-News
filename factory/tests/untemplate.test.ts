@@ -630,7 +630,7 @@ test("the memory reads stored plans and shapes, today's Shorts as the card", () 
   ]);
 });
 
-test("people insets count as the one overlay in every opening and closing, and arrive with a sound", async () => {
+test("people and mention insets count as the one overlay in every opening and closing, and arrive with a sound", async () => {
   const { arbitrate } = await import("../src/render/cleanframe.ts");
   const { arrivalsOf } = await import("../src/render/untemplate.ts");
   const { segments, words, plan } = short();
@@ -640,8 +640,17 @@ test("people insets count as the one overlay in every opening and closing, and a
     { name: "Ann Example", src: "a.jpg", credit: "", at: 1 },
     { name: "Bob Example", src: "b.jpg", credit: "", at: plan.totalFrames / FPS - 2.5 },
   ];
+  // A mention inset on the second beat's word (MENTION_*), standing in for that beat's card.
+  const mentions = [
+    {
+      key: "mention0",
+      from: 10 * FPS + 15,
+      to: 10 * FPS + 15 + 84,
+      m: { kind: "game" as const, key: "rival", at: 10.5, pictures: [{ src: "r.jpg", label: "Rival" }] },
+    },
+  ];
   const kept = (shape?: { open: ShortShape["open"]; close: ShortShape["close"] }) =>
-    arbitrate(overlaySpans({ segments, words, plan, layout, stamps: [], sting: false, people, shape }));
+    arbitrate(overlaySpans({ segments, words, plan, layout, stamps: [], sting: false, people, mentions, shape }));
   const at = (spans: ReturnType<typeof kept>, f: number) => spans.filter((s) => f >= s.from && f < s.to);
   for (const open of ["card", "footage", "lower"] as const)
     for (const close of ["card", "hold"] as const) {
@@ -657,6 +666,11 @@ test("people insets count as the one overlay in every opening and closing, and a
   assert.ok(!peopleIn(kept({ open: "card", close: "card" }), layout.loopFrom, plan.totalFrames));
   assert.ok(peopleIn(kept({ open: "card", close: "hold" }), layout.loopFrom, plan.totalFrames));
   // An inset that shows is an arrival the sparse plan may mark.
-  const arr = arrivalsOf({ plan, segments, words, stamps: [], clean: true, shape: { open: "footage", close: "hold" }, people });
+  const arr = arrivalsOf({ plan, segments, words, stamps: [], clean: true, shape: { open: "footage", close: "hold" }, people, mentions });
   assert.ok(arr.some((a) => a.frame >= 25 && a.frame <= 40));
+  // The mention inset is drawn in every shape (on its word, in place of its beat's card), and is an arrival too.
+  for (const open of ["card", "footage", "lower"] as const)
+    for (const close of ["card", "hold"] as const)
+      assert.ok(kept({ open, close }).some((s) => s.kind === "mention"), `${open}/${close}: mention shown`);
+  assert.ok(arr.some((a) => Math.abs(a.frame - mentions[0]!.from) <= 3));
 });

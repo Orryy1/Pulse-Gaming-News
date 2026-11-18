@@ -74,8 +74,16 @@ const RunDocSchema = z.object({
     .optional(),
   /** The fewest usable tests this entry needs: under it, it does not run and the slot goes back to the usual lanes. */
   min_evidence: z.number().optional(),
-  /** "guide": told as the player's own journey, when LONG_GUIDE_FORMAT is on (src/editorial/longrules.ts). */
-  format: z.literal("guide").optional(),
+  /**
+   * "guide": told as the player's own journey, when LONG_GUIDE_FORMAT is on (src/editorial/longrules.ts). "claims": a
+   * "claims tested" commentary (verdict by 2:15, three to six numbered claims each ruled true, half true or wrong) when
+   * LONG_ARGUES isn't off (src/editorial/argues.ts); off, it runs as a documentary.
+   */
+  format: z.enum(["guide", "claims"]).optional(),
+  /** LONG_ARGUES: a franchise history's brief (thesis, something exclusive, a finish line), checked by its guard. */
+  brief: z
+    .object({ thesis: z.string().optional(), exclusive: z.string().optional(), finish_line: z.string().optional() })
+    .optional(),
   /** Read at write time and added to every chapter's source, so a verdict can name who said it. */
   sources: z.array(SourceSchema).optional(),
   /**
@@ -197,6 +205,7 @@ export function docRunDue(
         franchise: e.franchise,
         wiki: e.wiki,
         ...(e.format ? { format: e.format } : {}),
+        ...(e.brief ? { brief: e.brief } : {}),
         ...(e.premiere ? { premiere: true } : {}),
         ...(e.sources?.length ? { sources: e.sources } : {}),
         ...(e.search_query || e.thumb || e.chapters || e.facts_file

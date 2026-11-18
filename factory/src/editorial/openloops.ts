@@ -45,7 +45,51 @@ export const OpenLoopSchema = z.object({
     .int()
     .describe("The later chapter number that answers it, never chapter 1"),
 });
-export type OpenLoop = z.infer<typeof OpenLoopSchema>;
+export type OpenLoop = z.infer<typeof OpenLoopSchema> & {
+  /** LONG_OPENING_CONTRACT=fix: the one finish line, raised in the cold open and paid in the last chapter. */
+  finish_line?: boolean;
+};
+
+/**
+ * The loop an outline writes under the opening contract (src/editorial/longcontract.ts FINISH_LINE_RULE): the same,
+ * with the finish-line mark. Only the contract's outline asks for it, so the outline schema is unchanged when it's off.
+ */
+export const FinishLoopSchema = OpenLoopSchema.extend({
+  finish_line: z
+    .boolean()
+    .optional()
+    .describe("True on exactly one loop: the finish line, raised in the cold open and answered in the last chapter"),
+});
+
+/**
+ * The finish line a grounded plan keeps (pure): at most one loop keeps the mark, and only when it's raised in the cold
+ * open and answered in the last chapter; a misplaced mark comes off (the loop stays as an ordinary one) and is named.
+ */
+export function groundFinishLine(
+  loops: readonly OpenLoop[],
+  chapters: number,
+): { loops: OpenLoop[]; removed: string[] } {
+  const removed: string[] = [];
+  let kept = false;
+  const out = loops.map((l) => {
+    if (!l.finish_line) return l;
+    const { finish_line: _mark, ...plain } = l;
+    if (kept) {
+      removed.push(`finish line "${l.question}": a second one`);
+      return plain;
+    }
+    if (l.plant_chapter !== 0 || l.payoff_chapter !== chapters) {
+      removed.push(
+        `finish line "${l.question}": raised in ${l.plant_chapter === 0 ? "the cold open" : `chapter ${l.plant_chapter}`} and answered in chapter ${l.payoff_chapter} of ${chapters}`,
+      );
+      return plain;
+    }
+    kept = true;
+    return l;
+  });
+  if (!kept && loops.length) removed.push("no finish line kept");
+  return { loops: out, removed };
+}
 
 /** The outline prompt's rule, so the planner and the tests agree on it. */
 export const OPEN_LOOP_RULE = `Open loops: in "open_loops" list ${OPEN_LOOPS_MIN}-${OPEN_LOOPS_MAX} questions this documentary raises early and answers later, the way the best documentaries keep a viewer watching. Each is one short question a viewer would ask (5-16 words, ending in a question mark) about something the sources can answer for certain, never a rumour. plant_chapter is where it is first raised (0 for the cold open, else the chapter number); payoff_chapter is the later chapter that answers it, at least one chapter after it is raised and never chapter 1. Spread them out: at most one raised and one answered in any chapter (the cold open may raise two).`;
@@ -346,6 +390,8 @@ export interface LoopPlacement {
   question: string;
   plant: { entry: number; moment: number };
   payoff: { entry: number; moment: number };
+  /** The finish line (LONG_OPENING_CONTRACT): the loop the video drives towards. */
+  finish?: boolean;
 }
 
 /**
@@ -375,6 +421,7 @@ export function placeOpenLoops(
       question: l.question,
       plant: { entry: l.plant_chapter - 1, moment: plant },
       payoff: { entry: l.payoff_chapter - 1, moment: payoff },
+      ...(l.finish_line ? { finish: true } : {}),
     });
   }
   return { placed, removed };

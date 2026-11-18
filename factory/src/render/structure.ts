@@ -489,6 +489,67 @@ export function shotCap(
   return { still: Number.POSITIVE_INFINITY, clip: Number.POSITIVE_INFINITY };
 }
 
+// ---------------------------------------------------------------- two speeds (LONG_OPENING_CONTRACT)
+
+/**
+ * The opening contract's edit (src/editorial/longcontract.ts, gap 3 of the top creator plan): hit long videos cut their
+ * first two minutes 1.5 to 2.5 times faster than their bodies (about 20 cuts a minute against 10). Inside the first
+ * TWO_SPEED_SECONDS a still holds at most TWO_SPEED_STILL frames and footage TWO_SPEED_CLIP, half the body's usual
+ * still; the body keeps its own pace. A filler graphic keeps its sentence's timing (a quote card is read, not cut).
+ */
+export const TWO_SPEED_SECONDS = 120;
+export const TWO_SPEED_STILL = 90; // 3 s, half the body's 6 s still
+export const TWO_SPEED_CLIP = 120; // 4 s
+/** No shot in the opening runs longer than this, unless a quote is on screen. */
+export const TWO_SPEED_LONGEST_SECONDS = 6;
+
+/** A cap with the two-speed opening laid over it (pure): tighter of the two inside the opening, unchanged after. */
+export function twoSpeedCap(
+  frame: number,
+  fps: number,
+  base: { still: number; clip: number },
+): { still: number; clip: number } {
+  if (frame >= TWO_SPEED_SECONDS * fps) return base;
+  return { still: Math.min(base.still, TWO_SPEED_STILL), clip: Math.min(base.clip, TWO_SPEED_CLIP) };
+}
+
+export interface OpeningPace {
+  /** Shot changes a minute in the first TWO_SPEED_SECONDS. */
+  openingPerMinute: number;
+  /** Shot changes a minute after it. */
+  bodyPerMinute: number;
+  /** opening / body: the contract aims at about 2. */
+  ratio: number;
+  longestOpeningSeconds: number;
+  /** Opening shots over TWO_SPEED_LONGEST_SECONDS with no quote on screen. */
+  overLongest: number;
+}
+
+/**
+ * The plan's two speeds (pure): shot starts a minute in the opening against the body, and the opening's longest shot.
+ * `quote` says whether a shot carries a quote on screen (those may hold).
+ */
+export function openingPace(
+  plan: Pick<LongPlan, "fps" | "shots" | "totalFrames" | "tailFrames">,
+  quote: (shot: LongShot) => boolean = () => false,
+): OpeningPace {
+  const cut = TWO_SPEED_SECONDS * plan.fps;
+  const end = Math.max(cut + plan.fps, plan.totalFrames - (plan.tailFrames ?? 0));
+  const open = plan.shots.filter((x) => x.start < cut);
+  const body = plan.shots.filter((x) => x.start >= cut && x.start < end);
+  const openingPerMinute = open.length / (Math.min(cut, end) / plan.fps / 60);
+  const bodyPerMinute = body.length / ((end - cut) / plan.fps / 60);
+  const lens = open.map((x) => (Math.min(x.end, cut) - x.start) / plan.fps);
+  const r = (x: number) => Math.round(x * 10) / 10;
+  return {
+    openingPerMinute: r(openingPerMinute),
+    bodyPerMinute: r(bodyPerMinute),
+    ratio: bodyPerMinute ? r(openingPerMinute / bodyPerMinute) : 0,
+    longestOpeningSeconds: r(Math.max(0, ...lens)),
+    overLongest: open.filter((x, i) => lens[i]! > TWO_SPEED_LONGEST_SECONDS && !quote(x)).length,
+  };
+}
+
 // ---------------------------------------------------------------- bookend ending
 
 /** The ending's echo starts this many seconds before the last word and runs to the end of the plan. */

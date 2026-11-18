@@ -55,6 +55,15 @@ export interface LongRules {
   retro?: boolean;
   /** LONG_CHAPTER_CADENCE: paragraphs that start a new moment carry a plain "mark" for the chapter list. */
   chapterMarks?: boolean;
+  /**
+   * LONG_OPENING_CONTRACT=fix (src/editorial/longcontract.ts): the outline marks a finish line, the intro follows the
+   * contract (in place of the stacked hook, which the caller sets to 0), and chapters hand over by contrast.
+   */
+  contract?: boolean;
+  /** LONG_OPENING_CONTRACT=fix: honest first-person takes each documentary chapter needs (0 or unset: as before). */
+  takesMin?: number;
+  /** LONG_ARGUES with a run entry of format "claims": a "claims tested" commentary (src/editorial/argues.ts). */
+  claims?: boolean;
 }
 
 /** How a retrospective's chapter runs (the brief's section and focus say what it covers). */

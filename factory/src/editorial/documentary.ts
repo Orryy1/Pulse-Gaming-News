@@ -43,6 +43,7 @@ import {
   OPEN_LOOP_RULE,
   openLoopRule,
   OpenLoopSchema,
+  FinishLoopSchema,
   bookendEchoProblems,
   deriveOpenLoops,
   loopBrief,
@@ -52,6 +53,18 @@ import {
   type OpenLoop,
 } from "./openloops.ts";
 import { sentencesOf } from "./longform.ts";
+import {
+  FINISH_LINE_RULE,
+  buyerFramingProblems,
+  contractChapterRule,
+  contractOpeningRule,
+  isBuyerGuide,
+  openingLengthProblems,
+  questionProblems,
+  quoteOpeningProblems,
+  type DatedQuote,
+} from "./longcontract.ts";
+import { CLAIMS_CHAPTER_SHAPE, CLAIMS_OPENING_RULE, CLAIMS_OUTLINE_RULE } from "./argues.ts";
 import { writerNoteProblems } from "./writernotes.ts";
 import { EVIDENCE_RULE } from "./evidence.ts";
 import { plannedOutlineBrief } from "../plannedoc.ts";
@@ -340,7 +353,12 @@ export type DocTopic = z.infer<typeof DocTopicSchema> & {
   /** Approved gameplay tests that count as a source for this documentary alone (src/editorial/testevidence.ts). */
   test_records?: import("./testevidence.ts").TestRecord[];
   /** A planned entry's own format (src/shortrun.ts): a guide follows the player's journey when LONG_GUIDE_FORMAT is on. */
-  format?: "guide" | "everygame" | "retro";
+  format?: "guide" | "everygame" | "retro" | "claims";
+  /**
+   * LONG_ARGUES (src/editorial/argues.ts franchiseGuardProblems): what makes a franchise history worth making. A planned
+   * entry may carry it; the picker never does.
+   */
+  brief?: import("./argues.ts").FranchiseBrief;
   /** "everygame" (src/editorial/everygame.ts): the series' roster, one chapter per game in release order. */
   roster?: import("./everygame.ts").SeriesRoster;
   /** A "why it died" film (src/whydied.ts, WHY_DIED_ENABLED): the game, the loss its title carries, its length. */
@@ -516,6 +534,17 @@ export const DocOutlineSchema = z.object({
 });
 export type DocOutline = z.infer<typeof DocOutlineSchema>;
 
+/** The outline under the opening contract (LONG_OPENING_CONTRACT=fix): its loops may carry the finish-line mark. */
+export const DocOutlineFinishSchema = DocOutlineSchema.extend({
+  open_loops: z
+    .array(FinishLoopSchema)
+    .max(14)
+    .optional()
+    .describe(
+      "Questions the video raises early and answers in a later chapter, as many as the brief says; exactly one is the finish line",
+    ),
+});
+
 export async function outlineDoc(
   llm: Llm,
   topic: DocTopic,
@@ -531,11 +560,17 @@ export async function outlineDoc(
         what: r.guide ? "guide" : "documentary",
       })
     : OPEN_LOOP_RULE;
-  const loops = opts.openLoops ? `\n\n${rule}` : "";
+  const loops = opts.openLoops
+    ? `\n\n${rule}${r.contract ? `\n${FINISH_LINE_RULE}` : ""}`
+    : "";
   return llm.structured({
     site: "doc.outline",
     system:
-      (r.guide
+      (r.claims
+        ? `${HOUSE}
+
+${CLAIMS_OUTLINE_RULE}`
+        : r.guide
         ? `${HOUSE}
 
 ${GUIDE_OUTLINE_RULE}`
@@ -548,7 +583,7 @@ Plan a single-story documentary told in turning points, in time order, ${DOC_CHA
 Plan a franchise documentary told game by game in release order, ${DOC_CHAPTERS_MIN}-${DOC_CHAPTERS_MAX} chapters, one per major game. Choose the games whose development stories matter most; fold spin-offs into a neighboring chapter's story. Chapter titles must be searchable on their own and name the game's turning point as a mini-headline ("GTA III and the Leap to 3D", "The Hot Coffee Mess"), never a topic label. The title is one thesis question or claim about the franchise ("When Did Call of Duty Stop Being Call of Duty?"), never "The Complete History of" or "Evolution of". Write the question the documentary answers.`) +
       loops,
     content: `${topic.kind === "story" ? "Story" : "Franchise"}: ${topic.franchise}\nWorking title: ${topic.title_idea}\nAngle: ${topic.angle}${plannedOutlineBrief(topic.planned)}\n\n${topic.kind === "story" ? "Overview" : "Franchise overview"} (research notes):\n${franchiseNotes || "(not available)"}`,
-    schema: DocOutlineSchema,
+    schema: r.contract && opts.openLoops ? DocOutlineFinishSchema : DocOutlineSchema,
     effort: "medium",
   });
 }
@@ -610,6 +645,7 @@ export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
     rules.namePayoff ? LOOP_NAME_RULE : "",
     rules.verdicts ? VERDICT_RULE : "",
     rules.chapterMarks ? CHAPTER_MARK_RULE : "",
+    rules.contract || rules.takesMin ? contractChapterRule(rules.takesMin ?? 0) : "",
   ]
     .filter(Boolean)
     .map((x) => `\n${x}`)
@@ -617,7 +653,7 @@ export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
   return `${HOUSE}
 
 Write one chapter of a ${rules.guide ? "launch guide" : rules.retro ? "full retrospective of one game, spoilers and all" : "game-by-game franchise documentary"}, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
-${rules.guide ? guideChapterShape(rules.chapterAction) : rules.retro ? RETRO_CHAPTER_SHAPE : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
+${rules.claims ? CLAIMS_CHAPTER_SHAPE : rules.guide ? guideChapterShape(rules.chapterAction) : rules.retro ? RETRO_CHAPTER_SHAPE : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
 Hold attention the way the best documentaries do:
 ${rules.chapterAction ? "" : `- The last sentence of the chapter either looks forward, naming what's coming without saying how it ends (a calm that won't last, a choice that will cost someone), or, in about one chapter in three, lands on a plain consequence: what this chapter changed, said flatly. You're told which below. Word it fresh every time, and never "In the next chapter".
 `}- A hard number or a two-sided contrast at least every other paragraph ($399 against $499, 58 million against 117 million), always from the source. Never more than two figures in one sentence, and a date's year only the first time that date comes up in the chapter.
@@ -730,7 +766,7 @@ export async function writeChapter(
     ? "This chapter ends on a plain consequence: what it changed, said flatly, with no tease."
     : "This chapter ends looking forward: name what's coming without saying how it ends.";
   const loops = loopBrief(ctx.loops ?? [], ctx.index + 1);
-  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\nThis chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\n${sourceHeading(ctx.source)}:\n${briefText(ctx.source)}${quoteBrief(ctx.availableQuotes)}${ctx.availableQuotes?.length ? " A quote paragraph may be shorter than the paragraph word limit." : ""}`;
+  const brief = `Documentary: ${ctx.outline.title}\nChapters:\n${others}\n\n${rules.claims ? `This is claim number ${ctx.index + 1} of ${ctx.outline.chapters.length}.\n` : ""}This chapter: ${ctx.plan.chapter_title}\nGame: ${ctx.plan.game_title} (${ctx.plan.year}, ${ctx.plan.platforms})\nFocus: ${ctx.plan.focus}\n${ending}${loops ? `\n${loops}` : ""}${ctx.previousEnding ? `\n\nThe previous chapter ended: "${ctx.previousEnding}"` : ""}${saidBlock}${priorBlock}\n\n${sourceHeading(ctx.source)}:\n${briefText(ctx.source)}${quoteBrief(ctx.availableQuotes)}${ctx.availableQuotes?.length ? " A quote paragraph may be shorter than the paragraph word limit." : ""}`;
   const edited =
     ctx.draft && ctx.feedback?.length
       ? await reviseByEdits(llm, {
@@ -1599,6 +1635,8 @@ export async function writeBookends(
     feedback?: string[];
     /** The long-video rules this script runs under (src/editorial/longrules.ts). */
     rules?: LongRules;
+    /** LONG_OPENING_CONTRACT=fix: the source's dated quotes, the only ones the opening may use (datedQuotesIn). */
+    quotes?: readonly DatedQuote[];
   } = {},
 ): Promise<DocBookends> {
   const rules = opts.rules ?? NO_LONG_RULES;
@@ -1628,7 +1666,7 @@ export async function writeBookends(
 
 Write the intro and outro of a finished ${rules.guide ? "launch guide" : "documentary"}.
 ${rules.hookStack ? `${hookStackRule(rules.hookStack, rules.guide ? "guide" : "documentary")}${rules.verdicts ? `\nRight after the surprises, one line teaches the three verdicts this video gives every claim: confirmed, reported and busted, in those words.` : ""}${rules.youFloor ? `\n${youRule(rules.youFloor)}` : ""}\nThe intro runs 120-220 spoken words.` : `The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.`}
-The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
+${rules.contract ? `${contractOpeningRule({ title: outline.youtube?.title || outline.title, buyer: isBuyerGuide(outline.youtube?.title || outline.title, rules.guide ? "guide" : "documentary"), quotes: opts.quotes })}\n` : ""}${rules.claims ? `${CLAIMS_OPENING_RULE}\n` : ""}The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
     content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (research notes):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
     schema: DocBookendsSchema,
     effort: "medium",
@@ -1647,9 +1685,23 @@ export function validateBookends(
     /** The long-video rules, with the chapters' narrations, so a stacked hook's promises are checked as paid. */
     rules?: LongRules;
     chapters?: readonly string[];
+    /**
+     * LONG_OPENING_CONTRACT=fix: the title the opening serves and the source's dated quotes; the contract's opening
+     * checks replace the intro's usual word range (src/editorial/longcontract.ts).
+     */
+    contract?: { title: string; quotes?: readonly DatedQuote[] };
   } = {},
 ): string[] {
   const p: string[] = [];
+  if (opts.rules?.contract && opts.contract) {
+    const kind = opts.rules.guide ? "guide" : "documentary";
+    p.push(
+      ...buyerFramingProblems(b.intro.narration, opts.contract.title, kind),
+      ...questionProblems(b.intro.narration, opts.contract.title),
+      ...openingLengthProblems(b.intro.narration),
+      ...quoteOpeningProblems(b.intro.narration, opts.contract.quotes ?? []),
+    );
+  }
   if (opts.rules?.hookStack)
     p.push(
       ...hookStackProblems(
@@ -1668,7 +1720,10 @@ export function validateBookends(
   if (opts.echo)
     p.push(...bookendEchoProblems(b.intro.narration, b.outro.narration));
   const i = wordCount(b.intro.narration);
-  if (i < 90 || i > 230) p.push(`The intro is ${i} words; it must be 110-200.`);
+  // Under the opening contract its own cap holds (openingLengthProblems above); a cold open still says something.
+  if (opts.rules?.contract && opts.contract) {
+    if (i < 35) p.push(`The intro is ${i} words; it needs at least 40 to ask the question and plant the finish line.`);
+  } else if (i < 90 || i > 230) p.push(`The intro is ${i} words; it must be 110-200.`);
   p.push(...advertiserProblems(`${b.intro.narration} ${b.outro.narration}`));
   // Stock lines and copied example lines ("And that was only the start of it" opened both GTA documentaries).
   p.push(...phraseProblems(`${b.intro.narration} ${b.outro.narration}`));

@@ -45,6 +45,16 @@ import {
 } from "./longrules.ts";
 import { DOC_BEAT_KINDS, groundBeats } from "./beats.ts";
 import {
+  ARGUES_PLAN_RULE,
+  RANKING_I_PER_1000,
+  arguesEntryRule,
+  entryWordRange,
+  iPer1000,
+  inviteProblems,
+  thumbVerdictProblems,
+  verdictLineProblems,
+} from "./argues.ts";
+import {
   EvergreenTopicSchema,
   type EvergreenTopic,
   type EvergreenCandidate,
@@ -280,6 +290,12 @@ export interface LongformOptions {
   soundBeats?: boolean;
   /** The long-video rules this script runs under (src/editorial/longrules.ts). */
   rules?: LongRules;
+  /**
+   * LONG_ARGUES (src/editorial/argues.ts): "fix" gives the plan and every entry the argument's rules (the fight inside
+   * 30 s, a verdict thumbnail, unequal time, an "I" verdict closing each entry) and sends a miss back once. "check" and
+   * "off" write as before; the pipeline measures in "check".
+   */
+  argues?: "off" | "check" | "fix";
 }
 
 /** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
@@ -393,17 +409,17 @@ export const LongformEntryBodySchema = LongformEntrySchema.pick({
 });
 
 function planPrompt(opts: LongformOptions = {}): string {
-  return `${longformPrompt(opts)}
+  return `${longformPrompt(opts)}${opts.argues === "fix" ? `\n${ARGUES_PLAN_RULE}` : ""}
 
 This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
 }
 
-function entryPrompt(rules: LongRules = NO_LONG_RULES): string {
+function entryPrompt(rules: LongRules = NO_LONG_RULES, argues?: [number, number]): string {
   return `${HOUSE}
 
 You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), ${rules.sentenceGate ? "ten to sixteen short sentences" : "three to five sentences"}: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). Say the game's full title once, then the short form people use; a person's role goes with their first mention in the video only. In the whole video "we think" comes at most twice and "in fairness" and "which, fair" once each at most. footage names an in-game moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In one entry that means one such line, often the last one handing over to the next entry; never reuse the wording of a re-hook already in the video (they are listed).
-List every factual claim in this entry in "claims".${ruleLines(rules)}`;
+List every factual claim in this entry in "claims".${ruleLines(rules)}${argues ? `\n${arguesEntryRule(argues)}` : ""}`;
 }
 
 /** The shot list for one entry: as many moments as the narration has sentences, numbered to match. */
@@ -529,6 +545,17 @@ export async function writeLongform(
       [],
     ),
     ...loopProblems(sentencesOf(plan.intro.narration), loops, 0),
+    // LONG_ARGUES=fix: the fight named inside 30 s and the verdict on the thumbnail.
+    ...(opts.argues === "fix"
+      ? [
+          ...inviteProblems(plan.intro.narration, plan.entries.map((x) => x.game_title)),
+          ...thumbVerdictProblems(
+            plan.youtube.thumb_text,
+            plan.youtube.title,
+            plan.entries.map((x) => x.game_title),
+          ),
+        ]
+      : []),
   ];
   if (hookMisses.length) {
     revisions--;
@@ -596,9 +623,12 @@ Re-hooks already in the video (never reuse their wording):
 ${hooks.map((h) => `- ${h}`).join("\n")}`
           : ""
       }${fb}`;
+    // LONG_ARGUES=fix: time follows interest, so this entry's length depends on where it sits.
+    const range =
+      opts.argues === "fix" ? entryWordRange(written.length, order.length) : undefined;
     let body = await llm.structured({
       site: "longform.write",
-      system: entryPrompt(rules),
+      system: entryPrompt(rules, range),
       content,
       schema: LongformEntryBodySchema,
       effort: "medium",
@@ -614,12 +644,16 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
         ? namedPayoffProblems(sentencesOf(body.narration), loops, spokenAt)
         : []),
     ].filter((x): x is string => Boolean(x));
-    if (misses.length && revisions > 0) {
-      revisions--;
+    // LONG_ARGUES=fix: a verdict to close on, the entry's own length and the narrator's "I"; each entry goes back once
+    // for these, outside the shared rule budget.
+    const argued = range ? arguesEntryProblems(body.narration, e.game_title, range) : [];
+    if ((misses.length && revisions > 0) || argued.length) {
+      if (misses.length && revisions > 0) revisions--;
+      misses.push(...argued);
       body =
         (await reviseByEdits(llm, {
           site: "longform.write",
-          system: entryPrompt(rules),
+          system: entryPrompt(rules, range),
           content,
           schema: LongformEntryBodySchema,
           draft: body,
@@ -661,6 +695,28 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
 
 const wordCount = (t: string) => t.trim().split(/\s+/).filter(Boolean).length;
 
+/** LONG_ARGUES=fix: what one entry misses (pure): its closing verdict, its own length, and enough "I". */
+export function arguesEntryProblems(
+  narration: string,
+  title: string,
+  range: [number, number],
+): string[] {
+  const p = verdictLineProblems(narration, title);
+  const n = wordCount(narration);
+  if (n < range[0] || n > range[1])
+    p.push(`"${title}" is ${n} words; at its place in the ranking it runs ${range[0]}-${range[1]}.`);
+  if (iPer1000(narration) < RANKING_I_PER_1000)
+    p.push(
+      `"${title}" says "I" ${Math.round((iPer1000(narration) * n) / 1000)} times; say what you think in the first person about ${Math.max(2, Math.ceil((RANKING_I_PER_1000 * n) / 1000))} times, each time as an opinion.`,
+    );
+  return p;
+}
+
+/** The longest a ranking may run, in words: unequal time gives the top three more (LONG_ARGUES=fix). */
+export function longWordsMax(argues = false): number {
+  return argues ? 3600 : LONG_WORDS_MAX;
+}
+
 export function narrationOfLongform(e: LongformScript): string {
   const entries = [...e.entries].sort((a, b) => b.rank - a.rank);
   return [
@@ -673,6 +729,8 @@ export function narrationOfLongform(e: LongformScript): string {
 export function validateLongform(
   e: LongformScript,
   rules: LongRules = NO_LONG_RULES,
+  /** LONG_ARGUES=fix: entries are held to their place's own length (entryWordRange), and the total may run longer. */
+  opts: { argues?: boolean } = {},
 ): string[] {
   const [introMin, introMax] = introWords(rules);
   const p: string[] = [];
@@ -687,10 +745,11 @@ export function validateLongform(
     p.push(
       `${roles[0]}'s role is spelled out more than once; give it on first mention only, then the surname.`,
     );
-  if (words < LONG_WORDS_MIN || words > LONG_WORDS_MAX)
+  if (words < LONG_WORDS_MIN || words > longWordsMax(opts.argues))
     p.push(
-      `Spoken word count is ${words}; it must be ${LONG_WORDS_MIN}-${LONG_WORDS_MAX}.`,
+      `Spoken word count is ${words}; it must be ${LONG_WORDS_MIN}-${longWordsMax(opts.argues)}.`,
     );
+  const spokenOrder = [...e.entries].sort((a, b) => b.rank - a.rank);
   if (
     e.entries.length < LONG_ENTRIES_MIN ||
     e.entries.length > LONG_ENTRIES_MAX
@@ -743,10 +802,13 @@ export function validateLongform(
         );
     }
     const n = wordCount(x.narration);
-    if (n < LONG_ENTRY_WORDS_MIN || n > LONG_ENTRY_WORDS_MAX)
-      p.push(
-        `Entry "${x.game_title}" has ${n} words; it must be ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX}.`,
-      );
+    const [lo, hi] = opts.argues
+      ? entryWordRange(spokenOrder.indexOf(x), spokenOrder.length)
+      : [LONG_ENTRY_WORDS_MIN, LONG_ENTRY_WORDS_MAX];
+    // Under the argument's ranges a writer's near miss is the send-back's job; only a wild one is a fault here.
+    const slack = opts.argues ? 30 : 0;
+    if (n < lo - slack || n > hi + slack)
+      p.push(`Entry "${x.game_title}" has ${n} words; it must be ${lo}-${hi}.`);
     if (wordCount(x.verdict_chip) > 4 || !x.verdict_chip.trim())
       p.push(`Entry "${x.game_title}" verdict chip must be 1-4 words.`);
     if (x.year < 1970 || x.year > 2030)

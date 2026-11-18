@@ -1689,7 +1689,7 @@ export function validateBookends(
      * LONG_OPENING_CONTRACT=fix: the title the opening serves and the source's dated quotes; the contract's opening
      * checks replace the intro's usual word range (src/editorial/longcontract.ts).
      */
-    contract?: { title: string; quotes?: readonly DatedQuote[] };
+    contract?: { title: string; quotes?: readonly DatedQuote[]; sources?: readonly string[] };
   } = {},
 ): string[] {
   const p: string[] = [];
@@ -1698,8 +1698,8 @@ export function validateBookends(
     p.push(
       ...buyerFramingProblems(b.intro.narration, opts.contract.title, kind),
       ...questionProblems(b.intro.narration, opts.contract.title),
-      ...openingLengthProblems(b.intro.narration),
-      ...quoteOpeningProblems(b.intro.narration, opts.contract.quotes ?? []),
+      ...openingLengthProblems(b.intro.narration, opts.contract.quotes ?? []),
+      ...quoteOpeningProblems(b.intro.narration, opts.contract.quotes ?? [], opts.contract.sources ?? []),
     );
   }
   if (opts.rules?.hookStack)

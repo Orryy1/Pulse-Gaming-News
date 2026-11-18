@@ -136,11 +136,16 @@ test("the central question: where it lands and whether it is the title's", () =>
   );
 });
 
-test("opening length: 90 words, or 140 with a quoted primary source", () => {
+test("opening length: 90 words, or 140 only with one of the source's full dated quotes", () => {
   assert.deepEqual(openingLengthProblems(words(OPENING_WORDS_MAX)), []);
   assert.match(openingLengthProblems(words(128)).join(" "), /128 words/);
-  const quoted = `${words(100)} Sam Houser said "we wanted the whole state in one box" in 2004.`;
-  assert.deepEqual(openingLengthProblems(quoted), []);
+  const dated = [{ quote: "we wanted the whole state in one box", sentence: "In 2004 Sam Houser said it." }];
+  const quoted = `In 2004, Sam Houser said "we wanted the whole state in one box". ${words(90)}`;
+  assert.deepEqual(openingLengthProblems(quoted, dated), []);
+  // A quote that isn't the source's dated one earns nothing; nor does any quote when the sources aren't known.
+  assert.match(openingLengthProblems(quoted).join(" "), /keep it to 90/);
+  const short = `Rockstar called it "a love letter". ${words(100)}`;
+  assert.match(openingLengthProblems(short, dated).join(" "), /keep it to 90/);
 });
 
 test("dated quotes: only quotations in a dated sentence with a speaking verb, never made up", () => {
@@ -317,7 +322,7 @@ test("the judge's word joins the report: its failures are problems, its seams wi
   });
   assert.match(j.problems.join(" "), /Judge: the first sentence/);
   assert.match(j.problems.join(" "), /Chapters 1 and 2/);
-  assert.equal(j.measures.handovers[0]!.contrast, false);
+  assert.equal(j.measures.handovers[0]!.judge, false);
 });
 
 test("a stored script as the contract reads it: chapters at chapter beats, entries at rank beats", () => {

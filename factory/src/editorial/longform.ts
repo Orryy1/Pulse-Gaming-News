@@ -46,14 +46,14 @@ import {
 import { DOC_BEAT_KINDS, groundBeats } from "./beats.ts";
 import {
   ARGUES_PLAN_RULE,
-  RANKING_I_PER_1000,
   arguesEntryRule,
   entryWordRange,
-  iPer1000,
+  iShortfall,
   inviteProblems,
   thumbVerdictProblems,
   verdictLineProblems,
 } from "./argues.ts";
+import { OPENING_WORDS_MAX, openingLengthProblems, stockOpenerProblems } from "./longcontract.ts";
 import {
   EvergreenTopicSchema,
   type EvergreenTopic,
@@ -296,6 +296,16 @@ export interface LongformOptions {
    * "off" write as before; the pipeline measures in "check".
    */
   argues?: "off" | "check" | "fix";
+  /**
+   * LONG_OPENING_CONTRACT: a ranking is a long video too, so with either setting on "fix" its intro is held to the
+   * contract's 90 words (openingCapOn).
+   */
+  contract?: "off" | "check" | "fix";
+}
+
+/** Whether a ranking's intro is held to the contract's 90-word cap while it's written (pure). */
+export function openingCapOn(opts: Pick<LongformOptions, "argues" | "contract">): boolean {
+  return opts.contract === "fix" || opts.argues === "fix";
 }
 
 /** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
@@ -306,7 +316,8 @@ export function hookRule(punchy = false): string {
 }
 
 /** The intro's word range: a stacked hook has more to say (LONG_HOOK_STACK). */
-export function introWords(rules: LongRules = NO_LONG_RULES): [number, number] {
+export function introWords(rules: LongRules = NO_LONG_RULES, capped = false): [number, number] {
+  if (capped) return [40, OPENING_WORDS_MAX];
   return rules.hookStack ? [90, 200] : LONG_INTRO_WORDS;
 }
 
@@ -409,7 +420,7 @@ export const LongformEntryBodySchema = LongformEntrySchema.pick({
 });
 
 function planPrompt(opts: LongformOptions = {}): string {
-  return `${longformPrompt(opts)}${opts.argues === "fix" ? `\n${ARGUES_PLAN_RULE}` : ""}
+  return `${longformPrompt(opts)}${opts.argues === "fix" ? `\n${ARGUES_PLAN_RULE}` : ""}${openingCapOn(opts) ? `\nThe intro is at most ${OPENING_WORDS_MAX} spoken words (this overrides the intro length above).` : ""}
 
 This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
 }
@@ -556,6 +567,8 @@ export async function writeLongform(
           ),
         ]
       : []),
+    // A ranking is a long video: the contract's 90-word opening (LONG_OPENING_CONTRACT or LONG_ARGUES on fix).
+    ...(openingCapOn(opts) ? openingLengthProblems(plan.intro.narration) : []),
   ];
   if (hookMisses.length) {
     revisions--;
@@ -646,7 +659,7 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
     ].filter((x): x is string => Boolean(x));
     // LONG_ARGUES=fix: a verdict to close on, the entry's own length and the narrator's "I"; each entry goes back once
     // for these, outside the shared rule budget.
-    const argued = range ? arguesEntryProblems(body.narration, e.game_title, range) : [];
+    const argued = range ? arguesEntryProblems(body.narration, e.game_title, range, before_) : [];
     if ((misses.length && revisions > 0) || argued.length) {
       if (misses.length && revisions > 0) revisions--;
       misses.push(...argued);
@@ -700,15 +713,16 @@ export function arguesEntryProblems(
   narration: string,
   title: string,
   range: [number, number],
+  /** The narration already written (intro and earlier entries): "I" is measured across the video, not per entry. */
+  before: readonly string[] = [],
 ): string[] {
   const p = verdictLineProblems(narration, title);
   const n = wordCount(narration);
   if (n < range[0] || n > range[1])
     p.push(`"${title}" is ${n} words; at its place in the ranking it runs ${range[0]}-${range[1]}.`);
-  if (iPer1000(narration) < RANKING_I_PER_1000)
-    p.push(
-      `"${title}" says "I" ${Math.round((iPer1000(narration) * n) / 1000)} times; say what you think in the first person about ${Math.max(2, Math.ceil((RANKING_I_PER_1000 * n) / 1000))} times, each time as an opinion.`,
-    );
+  const i = iShortfall(before, narration);
+  if (i) p.push(i);
+  p.push(...stockOpenerProblems(before.join(" "), narration));
   return p;
 }
 
@@ -730,9 +744,9 @@ export function validateLongform(
   e: LongformScript,
   rules: LongRules = NO_LONG_RULES,
   /** LONG_ARGUES=fix: entries are held to their place's own length (entryWordRange), and the total may run longer. */
-  opts: { argues?: boolean } = {},
+  opts: { argues?: boolean; openingCap?: boolean } = {},
 ): string[] {
-  const [introMin, introMax] = introWords(rules);
+  const [introMin, introMax] = introWords(rules, opts.openingCap);
   const p: string[] = [];
   const spokenText = narrationOfLongform(e);
   const words = wordCount(spokenText);

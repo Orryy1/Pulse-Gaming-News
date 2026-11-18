@@ -172,7 +172,7 @@ import {
 } from "./editorial/longrules.ts";
 import { openingPace, structureLine, structureSummary } from "./render/structure.ts";
 import { contractRules, openingQuotes, recordLongChecks } from "./longcontractstep.ts";
-import { takeProblems } from "./editorial/longcontract.ts";
+import { stockOpenerProblems, takeProblems } from "./editorial/longcontract.ts";
 import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
@@ -4450,10 +4450,17 @@ async function stepScriptDocumentary(
         }
       }
       // LONG_OPENING_CONTRACT=fix: two honest takes a chapter, asked once, on the first draft.
-      if (attempt === 0 && rules.takesMin)
+      if (attempt === 0 && rules.takesMin) {
+        const said = chapter.paragraphs.map((x) => x.narration).join(" ");
         problems.push(
-          ...takeProblems(chapter.paragraphs.map((x) => x.narration).join(" "), rules.takesMin),
+          ...takeProblems(said, rules.takesMin),
+          // No stock opener ("I think", "Honestly") opens more than two takes in the whole video.
+          ...stockOpenerProblems(
+            chapters.map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" ")).join(" "),
+            said,
+          ),
         );
+      }
       let unsupported: string[];
       if (strict) {
         const items = await checkChapterItems(s.llm, chapter, source).catch(
@@ -4787,7 +4794,16 @@ async function stepScriptDocumentary(
     chapters: chapters.map((c) =>
       c.chapter.paragraphs.map((x) => x.narration).join(" "),
     ),
-    ...(rules.contract ? { quotes, contract: { title: finalTitle, quotes } } : {}),
+    ...(rules.contract
+      ? {
+          quotes,
+          contract: {
+            title: finalTitle,
+            quotes,
+            sources: [franchise?.text ?? "", ...chapters.map((c) => c.source.text)],
+          },
+        }
+      : {}),
   };
   let bookends = await writeBookends(
     s.llm,
@@ -4910,11 +4926,24 @@ async function stepScriptDocumentary(
   for (const u of runSources.urls)
     if (!script.sources?.includes(u)) (script.sources ??= []).push(u);
   // LONG_OPENING_CONTRACT and LONG_ARGUES on the record (check and fix); off, nothing is measured or called.
+  // A finish line the outline planned but placement dropped (findFinishPlant, findFinishPayoff): a finding.
+  const finishGone = warnings.find((w) => /^finish line ".*": never (raised|answered)$/.test(w));
+  const finishQuestion = openLoops.loops.find((l) => l.finish_line)?.question;
   const longChecks = await recordLongChecks(s, ep.id, script, {
     kind: rules.claims ? "claims" : rules.guide ? "guide" : "documentary",
     quotes,
     topic,
     fixed: contractSentBack,
+    sources: [franchise?.text ?? "", ...chapters.map((c) => c.source.text)],
+    sourceUrls: [franchise?.url ?? "", ...chapters.map((c) => c.source.url), ...runSources.urls],
+    ...(finishQuestion && finishGone
+      ? {
+          finishMissing: {
+            question: finishQuestion,
+            why: finishGone.endsWith("never answered") ? ("not paid" as const) : ("not planted" as const),
+          },
+        }
+      : {}),
   });
   warnings.push(...longChecks.warnings);
   await guardScript(s, ep, script, "after writing");
@@ -6977,9 +7006,13 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       soundBeats: s.cfg.docSoundBeats,
       rules,
       argues: s.cfg.longArgues,
+      contract: s.cfg.longOpeningContract,
     });
     const problems = [
-      ...validateLongform(draft, rules, { argues: s.cfg.longArgues === "fix" }),
+      ...validateLongform(draft, rules, {
+        argues: s.cfg.longArgues === "fix",
+        openingCap: s.cfg.longArgues === "fix" || s.cfg.longOpeningContract === "fix",
+      }),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
       // RANKING_STANCE (src/stance.ts): the ranking's title takes a side, and nothing past Part 2.
       ...(s.cfg.rankingStance

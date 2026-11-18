@@ -147,7 +147,7 @@ test("a ranking's report: the published GTA shape fails, an argued one passes", 
       entry("Game 5", 420, true),
     ].map((c) => ({
       ...c,
-      text: `I think this matters. I said so. I mean it. I stand by it. ${c.text}`,
+      text: `I said so. I mean it. I stand by it. I'd argue it. ${c.text}`,
     })),
     thumbText: "BEST: 5 / WORST: 0",
   };

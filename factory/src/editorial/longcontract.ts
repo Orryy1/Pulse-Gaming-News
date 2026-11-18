@@ -18,7 +18,7 @@ import { z } from "zod";
 import type { Llm } from "./llm.ts";
 import type { Script } from "./schema.ts";
 import { sentencesOf } from "./longform.ts";
-import { loopTokens } from "./openloops.ts";
+import { findFinishPayoff, findFinishPlant, loopTokens, nameTokens } from "./openloops.ts";
 import { outsideQuotes } from "./voice.ts";
 
 export type ContractMode = "off" | "check" | "fix";
@@ -256,9 +256,14 @@ export function quotedPassages(text: string): string[] {
   return out;
 }
 
-export function openingLengthProblems(hook: string): string[] {
+/**
+ * The opening's length (pure): OPENING_WORDS_MAX, or OPENING_QUOTE_WORDS_MAX when it says one of the source's full
+ * dated quotes (`quotes`, datedQuotesIn). A short quote is a real voice (primaryVoiceIn) but earns no extra words, and
+ * without the sources nothing earns them.
+ */
+export function openingLengthProblems(hook: string, quotes: readonly DatedQuote[] = []): string[] {
   const n = wc(hook);
-  const quoted = quotedPassages(hook).length > 0;
+  const quoted = usesDatedQuote(hook, quotes, n);
   const most = quoted ? OPENING_QUOTE_WORDS_MAX : OPENING_WORDS_MAX;
   return n > most
     ? [
@@ -309,23 +314,59 @@ const flatWords = (t: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
-/** Whether the opening's first QUOTE_WITHIN_SECONDS say one of the source's dated quotes, five words running at least. */
+/** The opening's first `words` words (pure). */
+const headOf = (hook: string, words: number) => wordsIn(hook).slice(0, words).join(" ");
+const HEAD_WORDS = Math.round((QUOTE_WITHIN_SECONDS * LONG_WPM) / 60);
+
+/** Whether a text says one of the source's dated quotes, five words running at least, inside its first `words` (pure). */
+export function usesDatedQuote(hook: string, quotes: readonly DatedQuote[], words = HEAD_WORDS): boolean {
+  const head = flatWords(headOf(hook, words));
+  return quotes.some((q) => {
+    const w = flatWords(q.quote).split(" ");
+    for (let i = 0; i + 5 <= w.length; i++) if (head.includes(w.slice(i, i + 5).join(" "))) return true;
+    return false;
+  });
+}
+
+const PUBLISHER =
+  /\b(rockstar|take-two|square enix|sony|playstation|microsoft|xbox|nintendo|valve|ubisoft|capcom|sega|bandai namco|konami|activision|blizzard|ea|electronic arts|bethesda|cd projekt)\b/i;
+
+/**
+ * A real voice in the first QUOTE_WITHIN_SECONDS (pure): a quotation of two words or more that is word for word in the
+ * stored sources, in a sentence that says who said it (a named person, or the publisher). Short quotes count here even
+ * though they don't earn the longer opening. Without sources nothing can be checked, so nothing counts.
+ */
+export function primaryVoiceIn(hook: string, sources: readonly string[]): string | undefined {
+  if (!sources.length) return undefined;
+  const hay = flatWords(sources.join(" "));
+  for (const sentence of sentencesOf(headOf(hook, HEAD_WORDS))) {
+    const named = nameTokens(` ${sentence}`).size > 0 || PUBLISHER.test(sentence);
+    if (!named || !SPOKE.test(sentence)) continue;
+    for (const m of sentence.matchAll(/[“"]([^”"]{3,320})[”"]/g)) {
+      const q = flatWords(m[1]!);
+      if (q.split(" ").length >= 2 && hay.includes(q)) return m[1]!.trim();
+    }
+  }
+  return undefined;
+}
+
+/** Whether a documentary's sources are only encyclopaedia summaries (pure), so the real-voice rule can never fire. */
+export function noPrimarySources(urls: readonly string[]): boolean {
+  const own = urls.filter(Boolean);
+  return own.length > 0 && own.every((u) => /wikipedia\.org|wikimedia\.org|fandom\.com|wikiwand\.com/i.test(u));
+}
+
+/**
+ * Whether the opening's first QUOTE_WITHIN_SECONDS use the source's real voice (pure): one of its dated quotes, or a
+ * short primary quote found word for word in the sources (`sources`).
+ */
 export function quoteOpeningProblems(
   hook: string,
   quotes: readonly DatedQuote[],
+  sources: readonly string[] = [],
 ): string[] {
   if (!quotes.length) return [];
-  const head = flatWords(
-    wordsIn(hook)
-      .slice(0, Math.round((QUOTE_WITHIN_SECONDS * LONG_WPM) / 60))
-      .join(" "),
-  );
-  const used = quotes.some((q) => {
-    const w = flatWords(q.quote).split(" ");
-    for (let i = 0; i + 5 <= w.length; i++)
-      if (head.includes(w.slice(i, i + 5).join(" "))) return true;
-    return false;
-  });
+  const used = usesDatedQuote(hook, quotes) || primaryVoiceIn(hook, sources) !== undefined;
   return used
     ? []
     : [
@@ -340,6 +381,8 @@ export function quoteOpeningProblems(
 
 export interface FinishLine {
   question: string;
+  /** False when the opening never raises it (its plant sentence is -1): a finding, never sentence 0. */
+  planted: boolean;
   plantSeconds: number;
   /** The payoff's place in the runtime, 0 to 1. */
   payShare: number;
@@ -361,12 +404,11 @@ export function finishLineOf(d: LongDoc): FinishLine | undefined {
       )[0];
   if (!pick) return undefined;
   const total = Math.max(1, docSeconds(d));
+  const planted = pick.plant.moment >= 0;
   return {
     question: pick.question,
-    plantSeconds: secondsAt(
-      d,
-      sentenceStart(d, pick.plant.entry, pick.plant.moment),
-    ),
+    planted,
+    plantSeconds: planted ? secondsAt(d, sentenceStart(d, pick.plant.entry, pick.plant.moment)) : Number.POSITIVE_INFINITY,
     payShare:
       secondsAt(d, sentenceStart(d, pick.payoff.entry, pick.payoff.moment)) /
       total,
@@ -380,7 +422,8 @@ export function finishLineProblems(d: LongDoc): string[] {
       `No finish line: plant one question or goal before ${FINISH_PLANT_SECONDS} seconds and pay it in the last 15% of the video.`,
     ];
   const p: string[] = [];
-  if (f.plantSeconds > FINISH_PLANT_SECONDS)
+  if (!f.planted) p.push(`The finish line ("${f.question}") is not planted in the opening: raise it there, in its own words.`);
+  else if (f.plantSeconds > FINISH_PLANT_SECONDS)
     p.push(
       `The finish line ("${f.question}") is planted at ${Math.round(f.plantSeconds)} s; plant it before ${FINISH_PLANT_SECONDS} s.`,
     );
@@ -396,7 +439,7 @@ export function finishLineProblems(d: LongDoc): string[] {
 // A light feeling lexicon: enough to tell praise from cost and joy from threat at a chapter's seam. The judge reads the
 // pairs this cannot settle; a rule this crude never sends a chapter back on its own.
 const UP =
-  /\b(success\w*|triumph\w*|hit|record\w*|sold|best-?selling|praise\w*|acclaim\w*|loved|celebrat\w*|won|wins|breakthrough|freedom|finally|perfect\w*|boom\w*|thriv\w*|saved|rescue\w*|beloved|legend\w*|masterpiece|delight\w*|soared|peak|golden|smash)\b/i;
+  /\b(success\w*|triumph\w*|hit|sold|best-?selling|praise\w*|acclaim\w*|loved|celebrat\w*|won|wins|breakthrough|freedom|perfect\w*|boom\w*|thriv\w*|saved|rescue\w*|beloved|legend\w*|masterpiece|delight\w*|soared|peak|golden|smash)\b/i;
 const DOWN =
   /\b(cost\w*|cut|cuts|lost|loss|los(?:e|ing)|delay\w*|problem\w*|crunch|backlash|fail\w*|threat\w*|trouble\w*|shut\w*|broke\w*|flop\w*|risk\w*|fear\w*|doubt\w*|collaps\w*|lawsuit\w*|controvers\w*|criticis\w*|anger|angry|worse|worst|struggl\w*|danger\w*|warning|price|pressure|abandon\w*|cancel\w*|never|without|gone|empty)\b/i;
 
@@ -451,6 +494,49 @@ export function takesPerChapter(d: LongDoc): number[] {
   return d.chapters.map((c) => takesIn(c.text).length);
 }
 
+/** Opinion openers that read as a template when they come round: each may open at most STOCK_OPENER_MAX takes a video. */
+export const STOCK_OPENERS: Array<[string, RegExp]> = [
+  ["I'll be honest", /^(?:and |but |so |look, )?i['’]ll be honest\b/i],
+  ["Honestly", /^(?:and |but |so )?honestly\b/i],
+  ["To be honest", /^(?:and |but |so )?to be honest\b/i],
+  ["I think", /^(?:and |but |so |still, )?i think\b/i],
+  ["I'd say", /^(?:and |but |so )?i['’]d say\b/i],
+  ["If you ask me", /^(?:and |but |so )?if you ask me\b/i],
+  ["Personally", /^(?:and |but |so )?personally\b/i],
+  ["For me", /^(?:and |but |so )?for me\b/i],
+  ["In my opinion", /^(?:and |but |so )?in my (?:opinion|view)\b/i],
+  ["Frankly", /^(?:and |but |so )?frankly\b/i],
+  ["I reckon", /^(?:and |but |so )?i reckon\b/i],
+];
+export const STOCK_OPENER_MAX = 2;
+
+/** How often each stock opener starts a sentence in the narration (pure, quotations left out). */
+export function stockOpenerCounts(text: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const s of sentencesOf(outsideQuotes(text)))
+    for (const [name, re] of STOCK_OPENERS)
+      if (re.test(s.trim())) {
+        out[name] = (out[name] ?? 0) + 1;
+        break;
+      }
+  return out;
+}
+
+/**
+ * Stock openers over STOCK_OPENER_MAX across the video (pure). `before` is the narration already written, so a writer
+ * is told only about an opener its own draft pushes over the limit; with no draft, the whole text is judged.
+ */
+export function stockOpenerProblems(before: string, draft?: string): string[] {
+  const all = stockOpenerCounts(draft === undefined ? before : `${before} ${draft}`);
+  const mine = draft === undefined ? all : stockOpenerCounts(draft);
+  return Object.entries(all)
+    .filter(([name, n]) => n > STOCK_OPENER_MAX && (mine[name] ?? 0) > 0)
+    .map(
+      ([name, n]) =>
+        `"${name}" opens ${n} takes in this video; at most ${STOCK_OPENER_MAX}. Start the others on the point itself.`,
+    );
+}
+
 export function takeProblems(
   chapterText: string,
   least = TAKES_PER_CHAPTER,
@@ -459,7 +545,7 @@ export function takeProblems(
   return n >= least
     ? []
     : [
-        `This chapter has ${n} honest first-person take${n === 1 ? "" : "s"}; give it at least ${least}: "I think", "I'd have", "I'll be honest", each one earned by the fact just given and clear on its own. Never claim to have played, owned or been there.`,
+        `This chapter has ${n} honest first-person take${n === 1 ? "" : "s"}; give it at least ${least}, each one your own judgement of the fact just given, clear on its own and opening on its point rather than on a stock phrase. Never claim to have played, owned or been there.`,
       ];
 }
 
@@ -492,7 +578,7 @@ export function contractOpeningRule(o: {
 
 /** The chapter rules a contract adds (fix): honest takes, and a hand-over by contrast. */
 export function contractChapterRule(takes: number, series = false): string {
-  return `${takes > 0 ? `- At least ${takes} honest first-person takes in this chapter ("I think that was the right call", "I'll be honest, this one stings"), each earned by the fact just given, each clear on its own. Never claim to have played, owned or been there.\n` : ""}- Hand over by contrast: the chapter's first line carries the opposite feeling to the last line of the chapter before (praise then cost, joy then threat, calm then trouble), and its last line sets up a turn the next chapter will contrast.${series ? " A series part ends on the next threat." : ""}`;
+  return `${takes > 0 ? `- At least ${takes} honest first-person takes in this chapter, each your own judgement of the fact just given, each clear on its own. Open each on its point, not on a stock phrase, and never open two the same way. Never claim to have played, owned or been there.\n` : ""}- Hand over by contrast: the chapter's first line carries the opposite feeling to the last line of the chapter before (praise then cost, joy then threat, calm then trouble), and its last line sets up a turn the next chapter will answer. Make the turn in the content itself, in whatever words fit.${series ? " A series part ends on the next threat." : ""}`;
 }
 
 // ---------------------------------------------------------------- the report
@@ -509,9 +595,16 @@ export interface ContractReport {
     firstChapterSeconds: number;
     finishLine?: FinishLine;
     takes: number[];
-    handovers: Array<{ after: number; contrast: boolean | undefined }>;
+    /** Each seam: the word list's reading (recorded only) and, once judged, the judge's, which alone decides. */
+    handovers: Array<{ after: number; lexicon: boolean | undefined; judge?: boolean }>;
     quoteInOpening: boolean;
+    /** A short primary quote from the sources in the first 30 s (primaryVoiceIn), when the sources are known. */
+    realVoice?: string;
+    /** Takes per stock opener across the video (STOCK_OPENERS). */
+    stockOpeners: Record<string, number>;
   };
+  /** Advice for the planner that never sends anything back: "no_primary_sources". */
+  advisories: string[];
 }
 
 /**
@@ -520,7 +613,15 @@ export interface ContractReport {
  */
 export function contractReport(
   d: LongDoc,
-  o: { quotes?: readonly DatedQuote[] } = {},
+  o: {
+    quotes?: readonly DatedQuote[];
+    /** The source texts, so a short primary quote in the opening can be found word for word. */
+    sources?: readonly string[];
+    /** The source URLs: only encyclopaedia pages is the advisory "no_primary_sources". */
+    sourceUrls?: readonly string[];
+    /** A finish line the outline planned that placement dropped (never raised, or never answered). */
+    finishMissing?: { question: string; why: "not planted" | "not paid" };
+  } = {},
 ): ContractReport {
   const q = questionAt(d.hook);
   const takes = d.kind === "ranking" ? [] : takesPerChapter(d);
@@ -528,9 +629,19 @@ export function contractReport(
   const problems = [
     ...buyerFramingProblems(d.hook, d.title, d.kind),
     ...(d.kind === "ranking" ? [] : questionProblems(d.hook, d.title)),
-    ...(d.kind === "ranking" ? [] : finishLineProblems(d)),
-    ...openingLengthProblems(d.hook),
-    ...quoteOpeningProblems(d.hook, o.quotes ?? []),
+    ...(d.kind === "ranking"
+      ? []
+      : o.finishMissing && !d.loops?.some((l) => l.finish)
+        ? [
+            o.finishMissing.why === "not planted"
+              ? `The finish line ("${o.finishMissing.question}") is not planted in the opening: raise it there, in its own words.`
+              : `The finish line ("${o.finishMissing.question}") is never paid: answer it in the last chapter.`,
+          ]
+        : finishLineProblems(d)),
+    // A ranking is a long video too: the same 90-word cap.
+    ...openingLengthProblems(d.hook, o.quotes ?? []),
+    ...quoteOpeningProblems(d.hook, o.quotes ?? [], o.sources ?? []),
+    ...stockOpenerProblems(partsOf(d).join(" ")),
     ...takes.flatMap((n, i) =>
       n >= TAKES_PER_CHAPTER
         ? []
@@ -538,13 +649,9 @@ export function contractReport(
             `Chapter ${i + 1} has ${n} first-person take${n === 1 ? "" : "s"} (at least ${TAKES_PER_CHAPTER}).`,
           ],
     ),
-    ...handovers
-      .filter((h) => h.contrast === false)
-      .map(
-        (h) =>
-          `Chapters ${h.after} and ${h.after + 1} hand over on the same feeling ("${h.last.slice(0, 60)}" / "${h.first.slice(0, 60)}").`,
-      ),
+    // Hand-overs: the word list is a record, never a verdict; only the judge (withJudgement) can fail a seam.
   ];
+  const voice = o.sources ? primaryVoiceIn(d.hook, o.sources) : undefined;
   return {
     pass: problems.length === 0,
     problems,
@@ -560,13 +667,12 @@ export function contractReport(
       firstChapterSeconds: Math.round(secondsAt(d, partStart(d, 1)) * 10) / 10,
       ...(finishLineOf(d) ? { finishLine: finishLineOf(d) } : {}),
       takes,
-      handovers: handovers.map((h) => ({
-        after: h.after,
-        contrast: h.contrast,
-      })),
-      quoteInOpening:
-        quotedPassages(wordsIn(d.hook).slice(0, 75).join(" ")).length > 0,
+      handovers: handovers.map((h) => ({ after: h.after, lexicon: h.contrast })),
+      quoteInOpening: quotedPassages(wordsIn(d.hook).slice(0, 75).join(" ")).length > 0,
+      ...(voice ? { realVoice: voice } : {}),
+      stockOpeners: stockOpenerCounts(partsOf(d).join(" ")),
     },
+    advisories: d.kind !== "ranking" && o.sourceUrls && noPrimarySources(o.sourceUrls) ? ["no_primary_sources"] : [],
   };
 }
 
@@ -627,21 +733,57 @@ export function withJudgement(
   if (!j.question_is_title)
     problems.push("Judge: the opening question isn't the title's question.");
   const seams = new Map(j.handovers.map((h) => [h.after, h.contrast]));
-  const handovers = r.measures.handovers.map((h) => ({
-    after: h.after,
-    contrast: seams.get(h.after) ?? h.contrast,
-  }));
+  const handovers = r.measures.handovers.map((h) => ({ ...h, ...(seams.has(h.after) ? { judge: seams.get(h.after)! } : {}) }));
   for (const h of handovers)
-    if (
-      h.contrast === false &&
-      !problems.some((p) => p.startsWith(`Chapters ${h.after} and `))
-    )
-      problems.push(
-        `Chapters ${h.after} and ${h.after + 1} hand over on the same feeling (judge).`,
-      );
+    if (h.judge === false) problems.push(`Chapters ${h.after} and ${h.after + 1} hand over on the same feeling (judge).`);
   return {
     pass: problems.length === 0,
     problems,
     measures: { ...r.measures, handovers },
+    advisories: r.advisories,
+  };
+}
+
+// ---------------------------------------------------------------- a rewritten opening, measured
+
+/**
+ * A long video with a new opening and its finish line, as the checks read it (pure, for the proof tool and tests).
+ * The payoff is the writer's own line: the last-chapter sentence it names, else it joins the end of the last chapter
+ * (an outro line); only with no line given does a matching sentence stand in. An unmatched plant stays -1, which
+ * finishLineProblems reports as "not planted in the opening".
+ */
+export function withRewrittenOpening(
+  d: LongDoc,
+  intro: string,
+  finish: { question: string; payoff?: string },
+): LongDoc {
+  const hook = sentencesOf(intro);
+  const last = d.chapters.length - 1;
+  const sentences = sentencesOf(d.chapters[last]?.text ?? "");
+  const chapters = d.chapters.map((c) => ({ ...c }));
+  let at: number;
+  if (finish.payoff?.trim()) {
+    const named = findFinishPayoff(finish.question, sentences, finish.payoff);
+    const flat = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const isWriters = named >= 0 && flat(sentences[named]!).includes(flat(finish.payoff).slice(0, 40));
+    if (isWriters) at = named;
+    else {
+      chapters[last] = { ...chapters[last]!, text: `${chapters[last]!.text} ${finish.payoff.trim()}` };
+      at = sentences.length;
+    }
+  } else at = findFinishPayoff(finish.question, sentences);
+  return {
+    ...d,
+    hook: intro,
+    chapters,
+    times: undefined,
+    loops: [
+      {
+        question: finish.question,
+        plant: { entry: -1, moment: findFinishPlant(finish.question, hook) },
+        payoff: { entry: last, moment: at },
+        finish: true,
+      },
+    ],
   };
 }

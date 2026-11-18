@@ -17,7 +17,9 @@ import {
   LONG_WPM,
   docWords,
   partStart,
+  partsOf,
   secondsAt,
+  stockOpenerProblems,
   type LongDoc,
 } from "./longcontract.ts";
 
@@ -68,7 +70,7 @@ export function verdictLineProblems(text: string, title: string): string[] {
   return endsOnVerdict(text)
     ? []
     : [
-        `"${title}" doesn't end on a verdict. Close it on one line in your own voice that says where you'd put it and why ("I'd still play this over GTA 3 tonight, and that's the whole case"), before any hand-over to the next entry.`,
+        `"${title}" doesn't end on a verdict. Close it on one line in your own first person that says where you'd put it and why, before any hand-over to the next entry.`,
       ];
 }
 
@@ -234,6 +236,7 @@ export function rankingReport(d: LongDoc): RankingReport {
     ...invite,
     ...unequalTimeProblems(seconds, titles),
     ...thumbVerdictProblems(d.thumbText, d.title, titles),
+    ...stockOpenerProblems(partsOf(d).join(" ")),
   ];
   return {
     pass: problems.length === 0,
@@ -260,7 +263,25 @@ export const ARGUES_PLAN_RULE = `This ranking is an argument, told by one person
 
 /** The entry rules (fix): its own word range, a closing verdict and the narrator's "I". */
 export function arguesEntryRule(range: [number, number]): string {
-  return `This ranking is one person's argument. This entry is ${range[0]}-${range[1]} spoken words (this overrides the usual entry length). It ends on a one-line verdict in your own first person ("I'd still play this over GTA 3 tonight", "I put it here, and I'll defend it"); a short hand-over line to the next entry may follow it. Say "I" where you are judging, about ${RANKING_I_PER_1000 / 10} times in every 100 words across the video, always as opinion, never as a claim to have played, owned or been there.`;
+  const short = range[1] < SHORT_ENTRY_WORDS;
+  return `This ranking is one person's argument. This entry is ${range[0]}-${range[1]} spoken words (this overrides the usual entry length). It ends on a one-line verdict in your own first person that says where you'd put it and why; a short hand-over line to the next entry may follow it.${short ? "" : ` Across the whole video the narrator says "I" about ${RANKING_I_PER_1000 / 10} times in every 100 words, where he is judging, always as opinion.`} Open each opinion on its point, not on a stock phrase. Never claim to have played, owned or been there.`;
+}
+
+/** Entries shorter than this need only their closing "I" verdict: no extra "I" lines are asked of them. */
+export const SHORT_ENTRY_WORDS = 150;
+
+/**
+ * The ranking's "I" rate, measured across the whole video (pure). `before` is the narration so far; a draft is told to
+ * say more only when the video so far is under RANKING_I_PER_1000, the draft itself is under it, and the draft is at
+ * least SHORT_ENTRY_WORDS long. Undefined: nothing to ask.
+ */
+export function iShortfall(before: readonly string[], draft: string): string | undefined {
+  const n = wc(draft);
+  if (n < SHORT_ENTRY_WORDS) return undefined;
+  if (iPer1000([...before, draft].join(" ")) >= RANKING_I_PER_1000) return undefined;
+  if (iPer1000(draft) >= RANKING_I_PER_1000) return undefined;
+  const want = Math.max(1, Math.ceil((RANKING_I_PER_1000 * n) / 1000) - Math.round((iPer1000(draft) * n) / 1000));
+  return `The video so far says "I" under ${RANKING_I_PER_1000} times per 1,000 words. In this entry, give about ${want} more of your own judgements in the first person, each as an opinion and each opening on its point.`;
 }
 
 // ---------------------------------------------------------------- claims, tested (commentary)
@@ -272,7 +293,7 @@ export const CLAIMS_OUTLINE_RULE = `Plan a commentary in the shape "claims teste
 export const CLAIMS_CHAPTER_SHAPE = `This is one claim of a commentary that tests claims; the brief gives its number. Open with a spoken signpost that numbers it ("Claim number two: ..." or "The second claim is ..."), then who makes it and why it sounds right, then the evidence from the SOURCE. Close with the ruling in one plain line in your own voice: "So that one is true", "so I'd call that half true" or "so that one is wrong". Anything leaked or reported but not confirmed is called unconfirmed in the same sentence that states it.`;
 
 /** The commentary's opening (fix): a verdict by 2:15 and the other side given fairly first. */
-export const CLAIMS_OPENING_RULE = `This commentary takes a side early: give your verdict in the first person by about 2 minutes 15 seconds ("I think most of it holds up, and here's where it doesn't"). Before that, give the other side its best case fairly in a few sentences ("to be fair, the case for it is..."). Then say how many claims you'll test.`;
+export const CLAIMS_OPENING_RULE = `This commentary takes a side early: give your verdict in the first person by about 2 minutes 15 seconds, opening on the verdict itself rather than on a stock phrase. Before that, give the other side its best case fairly in a few sentences. Then say how many claims you'll test.`;
 
 const SIGNPOST =
   /\b(?:claim|number|point)\s+(?:one|two|three|four|five|six|[1-6])\b|\b(?:first|second|third|fourth|fifth|sixth|next|last|final)\s+(?:claim|one up|point)\b/i;

@@ -88,6 +88,11 @@ export async function recordLongChecks(
     topic?: { kind?: string; format?: string; brief?: FranchiseBrief };
     /** What a "fix" send-back already tried, for the note. */
     fixed?: string[];
+    /** The source texts and URLs: a short primary quote is found in them, and only encyclopaedia pages is advised. */
+    sources?: readonly string[];
+    sourceUrls?: readonly string[];
+    /** A planned finish line that placement dropped. */
+    finishMissing?: { question: string; why: "not planted" | "not paid" };
   },
 ): Promise<LongRecord> {
   const out: LongRecord = { warnings: [] };
@@ -96,7 +101,7 @@ export async function recordLongChecks(
   if (contract === "off" && argues === "off") return out;
   const doc = longDocOfScript(script, { kind: o.kind });
   if (contract !== "off") {
-    let report = contractReport(doc, { quotes: o.quotes });
+    let report = contractReport(doc, { quotes: o.quotes, sources: o.sources, sourceUrls: o.sourceUrls, finishMissing: o.finishMissing });
     let judged = false;
     if (o.kind !== "ranking")
       try {
@@ -113,6 +118,8 @@ export async function recordLongChecks(
       pass: report.pass,
       problems: report.problems,
       measures: report.measures,
+      // Advice for the planner (no_primary_sources: the real-voice rule can't fire); never sent back.
+      advisories: report.advisories,
       judged,
       ...(o.fixed?.length ? { sent_back: o.fixed } : {}),
     };

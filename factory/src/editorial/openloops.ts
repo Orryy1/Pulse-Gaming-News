@@ -385,6 +385,50 @@ export function loopProblems(
   return p;
 }
 
+/**
+ * The sentence that plants a finish line (pure): the opening sentence sharing most of the question's content words,
+ * without needing its names or figures to repeat ("So which launch promises can you trust?" plants "Which GTA 6 launch
+ * promises can you trust?"); a question wins a tie. -1 when none shares enough: a finding, never sentence 0.
+ */
+export function findFinishPlant(question: string, sentences: readonly string[]): number {
+  const q = loopTokens(question);
+  const need = Math.max(2, Math.ceil(q.size * 0.4));
+  let best = -1;
+  let score = 0;
+  for (const [i, s] of sentences.entries()) {
+    const n = [...loopTokens(s)].filter((t) => q.has(t)).length + (/\?\s*["”]?$/.test(s.trim()) ? 0.5 : 0);
+    if (n >= need && n > score) {
+      best = i;
+      score = n;
+    }
+  }
+  return best;
+}
+
+/** Phrases a writer uses to say this sentence is the answer ("so that's why ...", "my answer to ..."). */
+const ANSWERS = /\b(that['’]s (?:why|how|what|the answer)|(?:my|the) answer(?: to)?|which is why|and that['’]s)\b/i;
+
+/**
+ * The sentence that pays a finish line (pure): the writer's own payoff first, then a sentence that answers in so many
+ * words, and only then the best word match (findPayoff), so an incidental line that happens to share words never
+ * stands in for the answer. `flagged` is the writer's payoff line when it named one.
+ */
+export function findFinishPayoff(question: string, sentences: readonly string[], flagged?: string): number {
+  const flat = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  if (flagged?.trim()) {
+    const f = flat(flagged);
+    const at = sentences.findIndex((s) => flat(s) === f || (f.length > 20 && flat(s).includes(f)));
+    if (at >= 0) return at;
+  }
+  const q = loopTokens(question);
+  const need = Math.max(2, Math.ceil(q.size * 0.4));
+  for (let i = sentences.length - 1; i >= 0; i--) {
+    const s = sentences[i]!;
+    if (ANSWERS.test(s) && [...loopTokens(s)].filter((t) => q.has(t)).length >= need) return i;
+  }
+  return findPayoff(question, sentences);
+}
+
 /** Where a loop sits in the finished script: entry -1 is the cold open (the hook), moment the sentence index. */
 export interface LoopPlacement {
   question: string;
@@ -409,11 +453,16 @@ export function placeOpenLoops(
   for (const l of loops) {
     const plantIn =
       l.plant_chapter === 0 ? hook : (chapters[l.plant_chapter - 1] ?? []);
-    const plant = findPlant(l.question, plantIn, l.plant_chapter === 0);
-    const payoff = findPayoff(l.question, chapters[l.payoff_chapter - 1] ?? []);
+    // A finish line has its own matching (findFinishPlant, findFinishPayoff); every other loop as before.
+    const plant = l.finish_line
+      ? findFinishPlant(l.question, plantIn)
+      : findPlant(l.question, plantIn, l.plant_chapter === 0);
+    const payoff = l.finish_line
+      ? findFinishPayoff(l.question, chapters[l.payoff_chapter - 1] ?? [])
+      : findPayoff(l.question, chapters[l.payoff_chapter - 1] ?? []);
     if (plant < 0 || payoff < 0) {
       removed.push(
-        `open loop "${l.question}": ${plant < 0 ? "never raised" : "never answered"}`,
+        `${l.finish_line ? "finish line" : "open loop"} "${l.question}": ${plant < 0 ? "never raised" : "never answered"}`,
       );
       continue;
     }

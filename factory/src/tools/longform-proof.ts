@@ -28,12 +28,12 @@ import {
 import type { Script } from "../editorial/schema.ts";
 import { voiceFor } from "../editorial/voice.ts";
 import { sentencesOf } from "../editorial/longform.ts";
-import { findPayoff, findPlant } from "../editorial/openloops.ts";
 import {
   FINISH_LINE_RULE,
   contractOpeningRule,
   contractReport,
   isBuyerGuide,
+  withRewrittenOpening,
   longDocOfScript,
   type ContractReport,
   type LongDoc,
@@ -58,6 +58,9 @@ const flag = (name: string) =>
 const files = args.filter((a) => !a.startsWith("--"));
 const outDir = path.resolve(flag("out") ?? "longform-proof");
 const useLlm = args.includes("--llm");
+// --rewrites=<file>: a writer's rewrites (openings, finish lines, sample chapters, ranking entries) measured free.
+const rewritesFile = flag("rewrites");
+const rewrites = rewritesFile ? JSON.parse(fs.readFileSync(rewritesFile, "utf8")) : undefined;
 const replanOn = args.includes("--replan");
 const maxUsd = Number(flag("max-usd") ?? 3);
 if (!files.length) {
@@ -229,34 +232,7 @@ const OpeningSchema = z.object({
 type Opening = z.infer<typeof OpeningSchema>;
 
 function openingDoc(d: LongDoc, o: Opening): LongDoc {
-  const hook = sentencesOf(o.intro);
-  const lastIdx = d.chapters.length - 1;
-  const lastSentences = sentencesOf(d.chapters[lastIdx]?.text ?? "");
-  let at = findPayoff(o.finish_line.question, lastSentences);
-  const chapters = d.chapters.map((c) => ({ ...c }));
-  if (at < 0) {
-    // A payoff the writer added as the outro's new last line: it becomes the last chapter's last sentence here.
-    chapters[lastIdx] = {
-      ...chapters[lastIdx]!,
-      text: `${chapters[lastIdx]!.text} ${o.finish_line.payoff}`,
-    };
-    at = lastSentences.length;
-  }
-  const plant = Math.max(0, findPlant(o.finish_line.question, hook, true));
-  return {
-    ...d,
-    hook: o.intro,
-    chapters,
-    times: undefined,
-    loops: [
-      {
-        question: o.finish_line.question,
-        plant: { entry: -1, moment: plant },
-        payoff: { entry: lastIdx, moment: at },
-        finish: true,
-      },
-    ],
-  };
+  return withRewrittenOpening(d, o.intro, o.finish_line);
 }
 
 async function rewriteOpening(
@@ -386,6 +362,38 @@ const llm = useLlm
   : undefined;
 const results: Array<Record<string, unknown>> = [];
 
+/** A stored video with a writer's rewrites laid in (pure): only the parts the rewrite file holds change. */
+function withRewrites(d: LongDoc, id: string): LongDoc | undefined {
+  const doc = rewrites?.documentaries?.find((x: any) => x.id === id);
+  if (doc) {
+    const f = doc.finishLine?.after;
+    let out = withRewrittenOpening(d, doc.opening.after, { question: f?.question ?? "", payoff: f?.payoffWritten });
+    const n = doc.sampleChapter?.number;
+    if (n && doc.sampleChapter.after) {
+      out = { ...out, chapters: out.chapters.map((c, i) => (i === n - 1 ? { ...c, text: doc.sampleChapter.after } : c)) };
+      const next = doc.handover?.nextChapterNewOpening;
+      if (next && out.chapters[n]) {
+        // The next chapter's new first lines replace the sentences they stand for.
+        const old = sentencesOf(out.chapters[n]!.text);
+        const added = sentencesOf(next);
+        const keep = old.slice(added.length - 1);
+        out = { ...out, chapters: out.chapters.map((c, i) => (i === n ? { ...c, text: [...added, ...keep].join(" ") } : c)) };
+      }
+    }
+    return out;
+  }
+  const rank = rewrites?.ranking?.id === id ? rewrites.ranking : undefined;
+  if (!rank) return undefined;
+  const byTitle = new Map<string, string>((rank.entries ?? []).map((e: any) => [e.title, e.after]));
+  return {
+    ...d,
+    hook: rank.intro?.after ?? d.hook,
+    thumbText: rank.thumb?.after ?? d.thumbText,
+    chapters: d.chapters.map((c) => (byTitle.has(c.title) ? { ...c, text: byTitle.get(c.title)! } : c)),
+    times: undefined,
+  };
+}
+
 for (const file of files) {
   const r = JSON.parse(fs.readFileSync(file, "utf8")) as Row;
   const kind = kindOf(r);
@@ -394,7 +402,8 @@ for (const file of files) {
     words: r.assets_json?.words,
   });
   const all = [d.hook, ...d.chapters.map((c) => c.text), d.outro].join(" ");
-  const contract = contractReport(d);
+  const urls = (r.script_json as { sources?: string[] }).sources ?? [];
+  const contract = contractReport(d, { sourceUrls: urls });
   const ranking = kind === "ranking" ? rankingReport(d) : undefined;
   const stored = r.assets_json?.longPlan
     ? openingPace(r.assets_json.longPlan)
@@ -463,6 +472,23 @@ for (const file of files) {
       } else console.log(`  rewrite failed: ${w.error}`);
     }
   }
+  const rw = rewrites ? withRewrites(d, r.id) : undefined;
+  if (rw) {
+    const allAfter = [rw.hook, ...rw.chapters.map((c) => c.text), rw.outro].join(" ");
+    const c2 = contractReport(rw, { sourceUrls: urls });
+    const r2 = kind === "ranking" ? rankingReport(rw) : undefined;
+    out.rewritten = { contract: c2, ...(r2 ? { ranking: r2 } : {}), iPer1000: Math.round(iPer1000(allAfter) * 10) / 10 };
+    console.log(`  WITH THE REWRITES: contract ${c2.pass ? "PASS" : "FAIL"}; opening ${c2.measures.hookWords} words; question at word ${c2.measures.questionAtWords ?? "never"}; "I" ${Math.round(iPer1000(allAfter) * 10) / 10} per 1,000`);
+    if (c2.measures.finishLine)
+      console.log(`   finish line: ${c2.measures.finishLine.planted ? `planted at ${Math.round(c2.measures.finishLine.plantSeconds)} s` : "NOT PLANTED"}, paid at ${Math.round(c2.measures.finishLine.payShare * 100)}%`);
+    console.log(`   stock openers: ${JSON.stringify(c2.measures.stockOpeners)}; advisories: ${c2.advisories.join(", ") || "none"}`);
+    for (const x of c2.problems) console.log(`   - ${x}`);
+    if (r2) {
+      console.log(`   argues: ${r2.pass ? "PASS" : "FAIL"} (verdicts ${r2.measures.verdictEntries}/${r2.measures.entries}, entries ${r2.measures.entrySeconds.join(", ")} s)`);
+      for (const x of r2.problems) console.log(`   - ${x}`);
+    }
+  }
+  if (contract.advisories.length) console.log(`  advisories: ${contract.advisories.join(", ")}`);
   results.push(out);
 }
 

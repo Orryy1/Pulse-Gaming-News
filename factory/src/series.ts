@@ -8,6 +8,7 @@
 //   "verdict"      Buy, Wait or Skip (claude/series-look)
 //   "news_control" the scheduled news Short, unchanged format: the control arm
 //   "gta_daily"    GTA 6 Day N, the launch weeks' daily from the owner's streams (src/gtadaily.ts)
+//   "challenge"    "Can I beat GTA 6 without...?", challenge episodes from the owner's streams (src/challenge.ts)
 // A writer or selector that knows its Short's series sets `series` on the script, or on the story (story_json) before
 // writing; seriesTagFor keeps that value and only fills in "why" and "news_control" for Shorts nobody tagged, so older
 // Shorts are read the same way. Breaking, ranking, deals, gameplay and rumour Shorts carry no tag.
@@ -21,6 +22,7 @@ export const SERIES_TAGS = [
   "verdict",
   "news_control",
   "gta_daily",
+  "challenge",
 ] as const;
 export type SeriesTag = (typeof SERIES_TAGS)[number];
 
@@ -30,6 +32,7 @@ export const SERIES_NAMES: Record<SeriesTag, string> = {
   verdict: "Buy, Wait or Skip",
   news_control: "Control: news",
   gta_daily: "GTA 6 Day by Day",
+  challenge: "Can I Beat It Without",
 };
 
 /** The day the series switch on: Shorts live from then are series Shorts in the readings and the fit test. */
@@ -43,7 +46,7 @@ export function isSeriesTag(x: unknown): x is SeriesTag {
 
 /** The three named series (everything but the control). */
 export function isSerial(tag: SeriesTag | undefined): boolean {
-  return tag === "why" || tag === "gta_file" || tag === "verdict" || tag === "gta_daily";
+  return tag === "why" || tag === "gta_file" || tag === "verdict" || tag === "gta_daily" || tag === "challenge";
 }
 
 /**
@@ -79,6 +82,7 @@ export const GROUP_ORDER: SeriesGroup[] = [
   "gta_file",
   "verdict",
   "gta_daily",
+  "challenge",
   "news_control",
   "gta_news",
   "other",

@@ -458,7 +458,7 @@ export async function sceneIndexTick(
         `--comments=${cfg.archiveComments ?? 300}`,
         ...(job.recentRelease ? ["--recent"] : []),
       ]);
-      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20" });
+      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background" });
       const lightOut = lr.code === 75 ? "waiting" : turnOutcome(lr.stdout) || "waiting";
       await writeQueue(cfg.dataDir, afterTurn(await readQueue(cfg.dataDir), job.game, lightOut, now()));
       log("info", "scene index: light turn finished", { game: job.game, outcome: lightOut });
@@ -490,6 +490,8 @@ export async function sceneIndexTick(
       SCENE_INDEX_CHUNK_MINUTES: String(cfg.sceneIndexChunkMinutes),
       SCENE_INDEX_MAX_HOURS: String(cfg.sceneIndexMaxHours),
       MACRUN_WAIT_MIN: "20",
+      // Library work: the YouTube guard gives it the background share and pauses it first (src/lib/ytguard.ts).
+      YT_CLASS: "background",
       // ARCHIVE_PROXY=delete: the build removes the proxy once every stretch is indexed.
       ...(cfg.archiveProxy === "delete" ? { SCENE_INDEX_RELEASE_PROXY: "delete" } : {}),
     };

@@ -294,6 +294,10 @@ export type Script = z.infer<typeof ScriptSchema> & {
     | "buy_wait_skip";
   /** "The Story of Every [series] Game" (src/editorial/everygame.ts): each beat's game, year, hardware and year stamp. */
   every_game?: import("./everygame.ts").EveryGameMeta;
+  /** A "why it died" film (src/whydied.ts, WHY_DIED_ENABLED): the game, the concrete loss its title carries, the target length. */
+  why_died?: import("../whydied.ts").WhyDiedMeta;
+  /** LONG_CHAPTER_CADENCE: the story's moments inside chapters, each a plain label on the beat it starts (src/strandframe.ts). */
+  moment_marks?: Array<{ beat: number; label: string }>;
   /** "long" for the weekly 16:9 ranking video; absent or "short" otherwise. */
   runtime?: "short" | "long";
   /** Long-form: the one criterion the ranking uses, shown under the title. */
@@ -322,6 +326,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     /** A Short cut from a weekly guide (src/funnel.ts): the guide's title, and the test arm ("none": no pointer). */
     guide?: string;
     funnel?: "link" | "none";
+    /** FUNNEL_ALL_LONGS: what the parent is, for the spoken and shown link ("guide" when absent). */
+    kind?: "guide" | "documentary" | "video";
   };
   /** A gameplay Short from the owner's own recordings: the test, its answer and the Leonida Intel page it belongs to. */
   gameplay?: {

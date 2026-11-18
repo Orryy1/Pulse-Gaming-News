@@ -4,6 +4,10 @@
 # before the PC side is enabled, and the data comes home between the two.
 #   bash mac/rollback.sh check     what it would do: sizes, what is running, how many episodes are new. Changes nothing.
 #   bash mac/rollback.sh go        does it; refuses while the Mac renders or uploads (FORCE_ROLLBACK=1 overrides)
+#   bash mac/rollback.sh release <bad> <good>
+#                                  code only, the Mac stays the factory: back to the code kept beside it before the
+#                                  last deploy (factory-prev), <bad> marked so it is never deployed again, restarted.
+#                                  The canary (src/tools/canary.ts) runs this when a deploy makes things worse.
 # What comes home: the database, new episodes, site, engage, admin, discord, usage, abtests, tokens, gameplay clips and
 # manifests, and the alert ledger. The PC's old copy of the database stays beside it as db.before-rollback-<time>.
 # Left on the Mac, ready for another try: code, its .env, the seed. Scheduled tasks to switch back by hand are listed at
@@ -97,5 +101,28 @@ By hand now (the main chat's to change):
   - Code: this PC's branch may be behind what the Mac ran (mac/deploy.sh pushes to GitHub). Fast-forward it first.
 NOTE
   ;;
-*) sed -n 2,10p "$0" ;;
+release)
+  bad=${2:?the bad commit}
+  good=${3:?the commit to go back to}
+  echo "== code back to $good on the Mac (from factory-prev), $bad marked bad"
+  # The same steps as mac/run.sh's own boot rollback, for a release that ran but behaved worse.
+  on_mac "R=\$HOME/PulseFactory; L=\$R/factory; P=\$R/factory-prev
+    [ -d \"\$P/src\" ] || { echo 'no previous code kept beside the factory: nothing changed'; exit 3; }
+    cd \"\$L\" || exit 3
+    mkdir -p data/admin
+    echo $bad > data/admin/bad_release
+    deps=no; cmp -s package-lock.json \"\$P/package-lock.json\" || deps=yes
+    rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules --exclude /public/music/es \"\$P/\" \"\$L/\" || exit 4
+    [ \$deps = yes ] && { npm ci --no-audit --no-fund >/dev/null 2>&1 || exit 4; }
+    echo $good > data/admin/release
+    echo $good > data/admin/good_release
+    launchctl kickstart -k gui/\$(id -u)/com.pulse.factory"
+  for i in $(seq 1 60); do
+    sleep 5
+    if on_mac "curl -sf -m 5 http://127.0.0.1:8080/health >/dev/null"; then echo "back on $good and answering"; exit 0; fi
+  done
+  echo "the factory did not answer within five minutes of going back; launchd keeps restarting it"
+  exit 1
+  ;;
+*) sed -n 2,14p "$0" ;;
 esac

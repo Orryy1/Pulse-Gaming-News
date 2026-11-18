@@ -169,7 +169,7 @@ export async function readGrowthState(db: Db): Promise<GrowthState> {
   return { done: [] };
 }
 
-async function writeGrowthState(db: Db, state: GrowthState): Promise<void> {
+export async function writeGrowthState(db: Db, state: GrowthState): Promise<void> {
   await db.query(
     `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
     [STATE_KEY, JSON.stringify(state)],
@@ -248,6 +248,18 @@ export async function growthDefaults(
     const o = await readOverride(db, overrideKey(test.key));
     if (o === undefined) continue;
     out.push({ test, variant: o >= 1 ? "B" : "A" });
+  }
+  return out;
+}
+
+/** Winners recorded as plain keys (a holdout's pinned baseline, src/learn/holdout.ts) in growthDefaults' shape. */
+export function pinnedGrowthDefaults(
+  pinned: Array<{ key: string; variant: Variant }>,
+): Array<{ test: GrowthTest; variant: Variant }> {
+  const out: Array<{ test: GrowthTest; variant: Variant }> = [];
+  for (const p of pinned) {
+    const test = testByKey(p.key);
+    if (test) out.push({ test, variant: p.variant });
   }
   return out;
 }
@@ -455,7 +467,8 @@ export interface Judgement {
  * bootstrap draws, and by at least 2 points, wins, unless its average percentage viewed trails the other
  * side's by more than 2 points.
  */
-export function judgeTest(rows: TestShort[], seed = 7): Judgement {
+/** `winProb`: the share of draws a side must win (WIN_PROB; the bandit asks for more, src/learn/bandit.ts). */
+export function judgeTest(rows: TestShort[], seed = 7, winProb = WIN_PROB): Judgement {
   const ra = rows.filter((r) => r.variant === "A");
   const rb = rows.filter((r) => r.variant === "B");
   const a = sideStat(ra);
@@ -469,7 +482,7 @@ export function judgeTest(rows: TestShort[], seed = 7): Judgement {
     seed,
   );
   const candidate: Variant | undefined =
-    prob >= WIN_PROB ? "B" : prob <= 1 - WIN_PROB ? "A" : undefined;
+    prob >= winProb ? "B" : prob <= 1 - winProb ? "A" : undefined;
   if (!candidate || Math.abs(b.hold3 - a.hold3) < MIN_GAP)
     return { enough, prob, a, b, reason: "too_close" };
   const [win, lose] = candidate === "B" ? [b, a] : [a, b];

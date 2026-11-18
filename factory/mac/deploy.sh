@@ -7,6 +7,11 @@
 #   bash mac/deploy.sh --restart              settings changed, no new code: wait for quiet, then restart
 #   DEPLOY_WAIT_MINUTES=30   how long to wait for a quiet moment (default 30), then give up changing nothing
 #   DEPLOY_DRY=1             say what it would do, changing nothing
+#   DEPLOY_FLIGHTSIM=2       first fly the new code for 2 simulated days with every fault (src/tools/flightsim.ts) and
+#                            refuse on a broken invariant (default 0: off). DEPLOY_FLIGHTSIM_FAULTS picks the faults
+#                            (default all); DEPLOY_FLIGHTSIM_OVERRIDE=1 deploys anyway and says so.
+#   DEPLOY_CANARY_MINUTES=20 after it is up, watch it for 20 minutes against the hour before (src/tools/canary.ts); on a
+#                            regression go back to the previous code (mac/rollback.sh release) and tell Discord (default 0: off)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 LIVE_BRANCH=claude/epic-pasteur-7s143q
@@ -28,6 +33,23 @@ if ! git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
 fi
 echo "deploying $(git log --oneline -1 "$new")"
 git log --oneline "$old..$new" | head -20 || true
+fi
+
+# The flight simulator on the code being deployed: whole days of the factory with faults, in minutes, nothing real touched.
+if [ -n "$new" ] && [ "${DEPLOY_FLIGHTSIM:-0}" -gt 0 ] 2>/dev/null; then
+  simdir=.
+  if [ "$(git rev-parse HEAD)" != "$new" ] || ! git diff --quiet HEAD -- . ; then
+    # Another commit than the one checked out here: its own copy, with this folder's packages.
+    simdir=$(mktemp -d)
+    git archive "$new" . | tar -x -C "$simdir"
+    if command -v cmd >/dev/null 2>&1; then cmd //c mklink //J "$(cygpath -w "$simdir/node_modules")" "$(cygpath -w "$PWD/node_modules")" >/dev/null
+    else ln -s "$PWD/node_modules" "$simdir/node_modules"; fi
+  fi
+  echo "flight simulator: ${DEPLOY_FLIGHTSIM} simulated days, faults ${DEPLOY_FLIGHTSIM_FAULTS:-all}"
+  if ! (cd "$simdir" && node --import tsx src/tools/flightsim.ts --days "$DEPLOY_FLIGHTSIM" --faults "${DEPLOY_FLIGHTSIM_FAULTS:-all}"); then
+    if [ "${DEPLOY_FLIGHTSIM_OVERRIDE:-}" = 1 ]; then echo "flight simulator found a broken invariant; DEPLOY_FLIGHTSIM_OVERRIDE=1, so deploying anyway"
+    else echo "refused: the flight simulator found a broken invariant (above). Fix it, or DEPLOY_FLIGHTSIM_OVERRIDE=1 to deploy anyway."; exit 2; fi
+  fi
 fi
 
 # Why not now: the same checks as the hook, read from here so the wait is visible.
@@ -54,6 +76,7 @@ if [ -z "$new" ]; then
   exit 1
 fi
 # The push is the deploy (mac/post-receive): typecheck, keep the old code, switch, restart.
+deployed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 git push "$remote" "$new:refs/heads/$LIVE_BRANCH"
 # Keep GitHub and the PC's branch in step, so a later rollback starts from the same code.
 git update-ref "refs/heads/$LIVE_BRANCH" "$new" "$(git rev-parse "refs/heads/$LIVE_BRANCH")" 2>/dev/null || echo "note: the PC's $LIVE_BRANCH is checked out; leaving it (see the rollback notes)"
@@ -63,7 +86,15 @@ for i in $(seq 1 60); do
   sleep 5
   if on_mac "curl -sf -m 5 http://127.0.0.1:\${PULSE_PORT:-8080}/health >/dev/null"; then
     running=$(on_mac 'cat ${PULSE_ROOT:-$HOME/PulseFactory}/factory/data/admin/release 2>/dev/null')
-    if [ "$running" = "$new" ]; then echo "up on $new"; exit 0; fi
+    if [ "$running" = "$new" ]; then
+      echo "up on $new"
+      # The canary: watched against the hour before; a regression goes back to $old by itself (exit 3) and says so.
+      if [ "${DEPLOY_CANARY_MINUTES:-0}" -gt 0 ] 2>/dev/null; then
+        node --import tsx src/tools/canary.ts --host "$host" --minutes "$DEPLOY_CANARY_MINUTES" --release "$new" --good "$old" --since "$deployed_at"
+        exit $?
+      fi
+      exit 0
+    fi
     echo "up, but on $running rather than $new: it may have rolled back; read data/logs on the Mac"; exit 1
   fi
 done

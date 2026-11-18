@@ -15,7 +15,7 @@ import {
   overlapsSpeech,
   type SpeechSpan,
 } from "./applesound.ts";
-import { capFootage, DEFAULT_FOOTAGE_SECONDS } from "./footage.ts";
+import { capFootage, defaultFootageSeconds } from "./footage.ts";
 import { franchisePublisher, PUBLISHER_CHANNELS } from "./officialTrailer.ts";
 import {
   matchClips,
@@ -504,7 +504,7 @@ export function cutscenePublisher(
     ? { key: rule.name, seconds: rule.clipSeconds }
     : {
         key: `game:${gameTitle.toLowerCase().trim()}`,
-        seconds: DEFAULT_FOOTAGE_SECONDS,
+        seconds: defaultFootageSeconds(),
       };
 }
 

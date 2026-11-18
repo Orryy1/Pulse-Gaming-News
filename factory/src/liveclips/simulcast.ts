@@ -1,7 +1,8 @@
 // Simulcast prep (owner's brief, 12 Nov 2026): the owner may stream to Pulse Gaming's YouTube channel as well as
-// Twitch, so the archived streams add public watch hours toward the Partner Programme. Pulse never starts, schedules
-// or changes a broadcast and never touches channel settings: this file only writes text (a title and description for
-// the day, chapters from the VOD index after the stream) and asks YouTube, read only, whether live streaming is on.
+// Twitch, so the archived streams add public watch hours toward the Partner Programme. This file only writes text (a
+// title and description for the day, chapters from the VOD index after the stream) and asks YouTube, read only,
+// whether live streaming is on. The broadcast itself is made by the Twitch-to-YouTube relay (src/relay, STREAM_RELAY,
+// owner's brief 14 Nov 2026), which uses this title and description; nothing here touches channel settings.
 
 import type { VodIndex } from "../vodindex/schema.ts";
 
@@ -58,11 +59,19 @@ export function streamTitle(o: {
   day: number;
   /** What today is about, in the owner's words ("escaping 5 stars on foot"); optional. */
   plan?: string;
+  /** 2 and up: the broadcast was cut off (a Content ID stop, a YouTube fault) and this one carries on. */
+  part?: number;
 }): string {
   const short = /grand theft auto vi\b/i.test(o.game) ? "GTA 6" : o.game;
-  const plan = o.plan ? tidy(o.plan) : "First Playthrough";
-  return `${short} LIVE Day ${o.day}: ${plan}`.slice(0, 99);
+  // "First Playthrough" is only true of a new game (GTA VI from launch); older games he replays get a neutral line (15 Nov 2026).
+  const plan = o.plan ? tidy(o.plan) : short === "GTA 6" ? "First Playthrough" : "Live Gameplay";
+  const part = o.part && o.part > 1 ? ` (part ${o.part})` : "";
+  return `${`${short} LIVE Day ${o.day}: ${plan}`.slice(0, 99 - part.length)}${part}`;
 }
+
+/** The disclosure every stream description carries. */
+export const STREAM_AI_LINE =
+  "The gameplay and voice are live and real. The title, description and chapters are written with AI tools and checked automatically.";
 
 /** The stream's description (pure): keywords first, what to expect, the chapters once the stream is over. */
 export function streamDescription(o: {
@@ -71,6 +80,8 @@ export function streamDescription(o: {
   date: string;
   chapters?: Chapter[];
   twitch?: string;
+  /** The disclosure line (on by default): the gameplay is real, the words around it are written with AI tools. */
+  aiLine?: boolean;
 }): string {
   const short = /grand theft auto vi\b/i.test(o.game) ? "GTA 6" : o.game;
   const lines = [
@@ -82,6 +93,7 @@ export function streamDescription(o: {
   ];
   if (o.twitch)
     lines.push("", `Also live on Twitch: https://www.twitch.tv/${o.twitch}`);
+  if (o.aiLine !== false) lines.push("", STREAM_AI_LINE);
   if (o.chapters?.length)
     lines.push(
       "",

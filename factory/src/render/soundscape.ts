@@ -7,7 +7,14 @@
 // ringing high tones, no jolts. Every file is matched for perceived loudness, so a level here means the
 // same thing for every sound. Pitched sounds come tuned to each music bed's key.
 
-import type { Mood } from "./musicplan.ts";
+import { MOODS, type Mood } from "./musicplan.ts";
+import { LIBRARY_BEDS, LIBRARY_GRID, LIBRARY_MOODS } from "./bedlibrary.ts";
+import { SIGNATURE_LIBRARY } from "./signaturelib.ts";
+
+/** The series-signature beds (src/render/signature.ts), by file name: their key and bar grid. */
+const SIGNATURE_BEDS = Object.values(SIGNATURE_LIBRARY).flatMap((e) =>
+  e?.bed ? [{ name: e.bed.split("/").pop()!, key: e.key, grid: e.grid }] : [],
+);
 
 export const SFX = {
   air: ["v3/air-1", "v3/air-2", "v3/air-3"],
@@ -102,9 +109,13 @@ export const BED_GRID: Record<
   "mood_tense_1.wav": { bar: 2.5, first: 0.0257, loop: 130.0053 },
   "mood_tense_2.wav": { bar: 2.4, first: 0.0306, loop: 134.4 },
   "mood_triumph_1.wav": { bar: 2.0, first: 0.0209, loop: 136.0 },
+  // The 15 Nov 2026 library (src/render/bedlibrary.ts), measured the same way by picklibrary.py.
+  ...LIBRARY_GRID,
 };
-export const bedGridOf = (src: string | null | undefined) =>
-  BED_GRID[(src ?? "").split(/[\\/]/).pop() ?? ""];
+export const bedGridOf = (src: string | null | undefined) => {
+  const name = (src ?? "").split(/[\\/]/).pop() ?? "";
+  return BED_GRID[name] ?? SIGNATURE_BEDS.find((b) => b.name === name)?.grid;
+};
 
 // ---------------------------------------------------------------- era beds (30 Oct 2026)
 /**
@@ -149,20 +160,22 @@ export const sfxFile = (name: string) => `sfx/${name}.mp3`;
  * candidates): seamless beat-cut loops of about two minutes, loudness-matched, almost nothing in the
  * speech band, no lead melody, no breakdowns, each in D or E major so the tuned sounds fit.
  */
-export const BEDS = [
+export const BEDS: ReadonlyArray<{ file: string; key: "D" | "E" }> = [
   { file: "music/bed_1.wav", key: "E" },
   { file: "music/bed_2.wav", key: "D" },
   { file: "music/bed_3.wav", key: "D" },
   { file: "music/bed_4.wav", key: "E" },
-] as const;
+  // 15 Nov 2026 (owner: "Shouldn't we have way more than 4 beds?"): the library made by src/tools/sfxlab/genlibrary.py
+  // and picked by picklibrary.py, so a Short's bed rotates without repeats (src/render/bedrotation.ts).
+  ...LIBRARY_BEDS,
+];
 /**
  * The mood beds (public/music/mood_*, chosen by src/tools/sfxlab/pickmoods.py from ElevenLabs Music takes, 28 Oct
  * 2026): a long video's chapter plays the one that fits its era or story (src/render/musicplan.ts). A mood
  * with no bed that passed the measurement keeps the house beds.
  */
-export const MOOD_BEDS: Record<
-  Mood,
-  ReadonlyArray<{ file: string; key: "D" | "E" }>
+const FIRST_MOOD_BEDS: Partial<
+  Record<Mood, ReadonlyArray<{ file: string; key: "D" | "E" }>>
 > = {
   tense: [
     { file: "music/mood_tense_1.wav", key: "D" },
@@ -172,6 +185,19 @@ export const MOOD_BEDS: Record<
   triumph: [{ file: "music/mood_triumph_1.wav", key: "D" }],
   reflective: [{ file: "music/mood_reflective_1.wav", key: "D" }],
 };
+/** Every mood's beds: the first ones, then the 15 Nov 2026 library's (src/render/bedlibrary.ts). */
+export const MOOD_BEDS: Record<
+  Mood,
+  ReadonlyArray<{ file: string; key: "D" | "E" }>
+> = Object.fromEntries(
+  MOODS.map((m) => [
+    m,
+    [
+      ...(FIRST_MOOD_BEDS[m] ?? []),
+      ...LIBRARY_MOODS.filter((b) => b.mood === m).map(({ file, key }) => ({ file, key })),
+    ],
+  ]),
+) as unknown as Record<Mood, ReadonlyArray<{ file: string; key: "D" | "E" }>>;
 export const bedFor = (variant: number) =>
   BEDS[((variant % BEDS.length) + BEDS.length) % BEDS.length]!.file;
 
@@ -187,6 +213,7 @@ const MUSIC_KEY: Record<string, "D" | "E"> = {
   "music_2.mp3": "D",
   "music_3.mp3": "E",
   "music_4.mp3": "E",
+  ...Object.fromEntries(SIGNATURE_BEDS.map((b) => [b.name, b.key])),
 };
 const TUNED = new Set<string>([
   SFX.sting,

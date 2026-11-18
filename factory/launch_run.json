@@ -894,7 +894,8 @@
     "wiki": "Grand Theft Auto VI",
     "angle": "Mechanics only, never story. For each pre-launch claim in the test records say whether it held: true, wrong or not known yet, from what that clip showed and nothing more. Say what was tested on Xbox Series X and when. A record shows one attempt, so never turn it into a rule about the whole game. Under six usable tests this video does not run.",
     "evidence": [],
-    "min_evidence": 6
+    "min_evidence": 6,
+    "premiere": true
   },
   {
     "kind": "spare",
@@ -954,5 +955,22 @@
     "make_at": "2026-11-16T03:00:00Z",
     "from": "2026-11-19",
     "until": "2026-11-23"
+  },
+  {
+    "kind": "doc",
+    "date": "2026-12-19",
+    "slot": "20:00",
+    "make_hours_before": 40,
+    "title": "GTA 6 Story Recap: Everything That Happens (Full Spoilers)",
+    "thumb": "FULL STORY",
+    "franchise": "Grand Theft Auto VI",
+    "wiki": "Grand Theft Auto VI",
+    "angle": "The whole story of GTA 6, from the first scene to the last, told in the order it happens as we played it on our own streams. Full spoilers, ending included: the very first line says so, so anyone who has not finished can stop. Each chapter is one part of the story, named after its turning point. Say what happens and who does it, plainly and in order, from what the game's own scenes show and say; never guess at a scene we did not see. Lucia and Jason are the leads. No reception, sales or making-of: only the story.",
+    "story_recap": {
+      "game": "Grand Theft Auto VI",
+      "short": "GTA 6",
+      "until": "2027-01-31",
+      "minutes": 60
+    }
   }
 ]

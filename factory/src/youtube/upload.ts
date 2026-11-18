@@ -974,6 +974,70 @@ export class YouTubeClient {
     return changed;
   }
 
+  /** A live video's title, privacy and thumbnail address (videos.list, one unit); undefined when it is gone. */
+  async liveVideo(
+    videoId: string,
+  ): Promise<
+    { title: string; privacyStatus: string; thumbUrl?: string } | undefined
+  > {
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet,status&id=${encodeURIComponent(videoId)}`,
+      {
+        headers: await this.auth(),
+      },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const v = ((await res.json()) as any).items?.[0];
+    if (!v) return undefined;
+    const t = v.snippet?.thumbnails ?? {};
+    return {
+      title: String(v.snippet?.title ?? ""),
+      privacyStatus: String(v.status?.privacyStatus ?? ""),
+      thumbUrl: (t.medium ?? t.high ?? t.default)?.url,
+    };
+  }
+
+  /**
+   * The Packaging Lab's second chance (src/packaging/secondchance.ts): a new title on a live video and nothing else.
+   * Only the snippet is sent (never status, so privacy cannot change), with the description, tags, category and
+   * languages read back first. Refuses when the live title is not `expected`: someone changed it by hand.
+   */
+  async retitle(
+    videoId: string,
+    expected: string,
+    title: string,
+  ): Promise<void> {
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet&id=${encodeURIComponent(videoId)}`,
+      {
+        headers: await this.auth(),
+      },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const sn = ((await res.json()) as any).items?.[0]?.snippet;
+    if (!sn) throw new Error(`video ${videoId} not found`);
+    if (String(sn.title) !== expected)
+      throw new Error(
+        `the live title is not the one the factory set ("${String(sn.title).slice(0, 80)}"); left alone`,
+      );
+    const put = await this.fetchFn(`${API}/videos?part=snippet`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({
+        id: videoId,
+        snippet: {
+          title,
+          description: sn.description,
+          categoryId: sn.categoryId,
+          tags: sn.tags,
+          defaultLanguage: sn.defaultLanguage,
+          defaultAudioLanguage: sn.defaultAudioLanguage,
+        },
+      }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update (title)");
+  }
+
   /** Makes a video public now, keeping its other status fields as they are. */
   async makePublic(videoId: string): Promise<void> {
     await this.setPrivacy(videoId, "public");

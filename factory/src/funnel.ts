@@ -39,6 +39,43 @@ export const FUNNEL_CTA = "FULL GUIDE: LINK BELOW";
 
 export type FunnelArm = "link" | "none";
 
+/** What the long video is, as the cut says it (FUNNEL_ALL_LONGS): a weekly guide, a documentary or any other long video. */
+export type FunnelKind = "guide" | "documentary" | "video";
+
+/** The parent's kind (pure): a weekly guide, a documentary-shaped film (documentary, "why it died", every game), else a video. */
+export function funnelKind(
+  parent: Pick<Script, "evergreen_format" | "every_game" | "recap" | "explained">,
+  guide: boolean,
+): FunnelKind {
+  if (guide) return "guide";
+  if (parent.evergreen_format === "documentary" || parent.every_game || parent.explained) return "documentary";
+  return "video";
+}
+
+/** The line said over the end card in the link arm, for this kind of long video. */
+export function funnelLine(kind: FunnelKind = "guide"): string {
+  return kind === "guide" ? FUNNEL_LINE : `The full ${kind} is linked just below.`;
+}
+
+/** The end card's words in the link arm, for this kind of long video. */
+export function funnelCta(kind: FunnelKind = "guide"): string {
+  return kind === "guide" ? FUNNEL_CTA : `FULL ${kind.toUpperCase()}: LINK BELOW`;
+}
+
+/**
+ * Whether a published long video takes funnel cuts (pure): the weekly guide always (FUNNEL_TEST), every other long strand
+ * with chapters under FUNNEL_ALL_LONGS. A ranking is left out: its own cutdowns already link to it, one per entry.
+ */
+export function funnelParent(
+  parent: Pick<Script, "evergreen_format" | "beats">,
+  guide: boolean,
+  allLongs: boolean,
+): boolean {
+  if (guide) return true;
+  if (!allLongs || parent.evergreen_format === "ranking") return false;
+  return chapterBeats(parent).length >= 2;
+}
+
 /** The arm for an episode: `hash` is unitHash(`funnel:${id}`) (src/pipeline.ts), in [0, 1). */
 export function funnelArm(hash: number, share: number): FunnelArm {
   return share > 0 && hash < share ? "link" : "none";
@@ -128,11 +165,14 @@ export async function writeFunnelCopy(
     guideTitle: string;
     chapterTitle: string;
     narration: string;
+    /** FUNNEL_ALL_LONGS: the parent's kind; a guide when absent. */
+    kind?: FunnelKind;
   },
 ): Promise<CutdownCopy> {
+  const kind = o.kind ?? "guide";
   return llm.structured({
     tier: "mid",
-    system: `You package a YouTube Short cut from Pulse Gaming's long guide video. The Short is one chapter's opening: a practical thing the player can do in their own game. Write copy a player stops scrolling for. American English, AP style (no serial comma). Advertiser-friendly: no violence words in titles. Never promise what the clip does not show. Do not mention the full video or a link: that is added separately.\n\n${voiceFor("cutdown")}`,
+    system: `You package a YouTube Short cut from Pulse Gaming's long ${kind === "guide" ? "guide video" : kind}. The Short is one chapter's opening: ${kind === "guide" ? "a practical thing the player can do in their own game" : "one turning point of the story, told so it stands on its own"}. Write copy a player stops scrolling for. American English, AP style (no serial comma). Advertiser-friendly: no violence words in titles. Never promise what the clip does not show. Do not mention the full video or a link: that is added separately.\n\n${voiceFor("cutdown")}`,
     content: `Game: ${o.game}\nFull guide: "${o.guideTitle}"\nThis Short: the chapter "${o.chapterTitle}"\nNarration: ${o.narration}`,
     schema: FunnelCopySchema,
     effort: "low",
@@ -146,6 +186,7 @@ export function funnelScript(
   copy: CutdownCopy,
   parentVideoId: string,
   arm: FunnelArm,
+  kind: FunnelKind = "guide",
 ): Script {
   const starts = chapterBeats(parent);
   const chapter = starts.indexOf(beatIndex);
@@ -165,13 +206,13 @@ export function funnelScript(
         visual: { kind: "none", primary: "", secondary: "" },
       },
     ],
-    pulse_take: { label: "GUIDE", narration: "", on_screen: chapterTitle },
-    loop_line: arm === "link" ? FUNNEL_LINE : "",
+    pulse_take: { label: kind === "guide" ? "GUIDE" : "CHAPTER", narration: "", on_screen: chapterTitle },
+    loop_line: arm === "link" ? funnelLine(kind) : "",
     is_rumour: false,
     attribution: "",
     youtube: {
       title: copy.youtube_title,
-      description: `${copy.description.trim()}${arm === "link" ? `\n\nThe full guide: ${link}` : ""}`,
+      description: `${copy.description.trim()}${arm === "link" ? `\n\nThe full ${kind}: ${link}` : ""}`,
       tags: [...new Set([game, ...parent.youtube.tags])].slice(0, 15),
     },
     claims: [],
@@ -184,6 +225,7 @@ export function funnelScript(
       theme: game,
       guide: parent.youtube.title,
       funnel: arm,
+      ...(kind !== "guide" ? { kind } : {}),
     },
   };
 }

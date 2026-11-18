@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { runCapped } from "../lib/child.ts";
 import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
-import { YTDLP_TEXT } from "../lib/bin.ts";
+import { FFPROBE, YTDLP_TEXT } from "../lib/bin.ts";
 import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { stillBigText } from "./cliptext.ts";
 import type { VisualAsset } from "./steam.ts";
@@ -137,11 +137,16 @@ export const PUBLISHER_CHANNELS: PublisherRule[] = [
  * table above, e.g. "Rockstar Games=20,Nintendo=20". Read on every use, after the .env has loaded; unset keeps the table.
  */
 export function publisherFootageOverride(name: string): number | undefined {
+  // "*=180" (15 Nov 2026, owner: "why is there any limit?") sets every publisher and the default at once; a named
+  // publisher still wins over the star.
+  let star: number | undefined;
   for (const part of (process.env.PUBLISHER_FOOTAGE_SECONDS ?? "").split(",")) {
     const [k, v] = part.split("=").map((x) => x.trim());
-    if (k && v !== undefined && k.toLowerCase() === name.toLowerCase() && Number.isFinite(Number(v))) return Math.max(0, Number(v));
+    if (!k || v === undefined || !Number.isFinite(Number(v))) continue;
+    if (k.toLowerCase() === name.toLowerCase()) return Math.max(0, Number(v));
+    if (k === "*") star = Math.max(0, Number(v));
   }
-  return undefined;
+  return star;
 }
 for (const rule of PUBLISHER_CHANNELS) {
   const base = rule.clipSeconds;
@@ -647,17 +652,10 @@ export async function downloadTrailer(
     }
     throw err;
   }
+  // The length is read off the file, not asked of YouTube: one request less per trailer (the YouTube guard, 14 Nov).
   const { stdout } = await run(
-    ytdlp,
-    [
-      "--no-playlist",
-      "--no-warnings",
-      "--print",
-      "duration",
-      /^https?:/.test(videoId)
-        ? videoId
-        : `https://www.youtube.com/watch?v=${videoId}`,
-    ],
+    FFPROBE,
+    ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", dest],
     { timeout: 60_000 },
   ).catch(() => ({ stdout: "0" }));
   const d = Number(String(stdout).trim());
@@ -757,6 +755,11 @@ export interface OfficialMediaOptions {
    * trailer as stills, matched to the lines like footage. No moving footage is used; 0 keeps only the thumbnail.
    */
   stillFrames?: number;
+  /**
+   * The publisher's own trailer files already on disk (the game library, from the publisher's site): used first, with
+   * no YouTube search or download (YouTube refused downloads from 14 Nov 2026). Same matching, same publisher cap.
+   */
+  localTrailers?: (gameTitle: string) => Promise<Array<{ file: string; name: string; url: string; publisher: string }>>;
 }
 
 /** The sharpest of a few frames across a stretch, largest JPEG first (fine detail costs bytes): at most `take`, kept apart. */
@@ -932,6 +935,13 @@ export async function officialMedia(
 ): Promise<OfficialMedia> {
   const none: OfficialMedia = { clips: [], stills: [] };
   if (!o.gameTitle.trim()) return none;
+  if (o.localTrailers && !o.story) {
+    const local = await siteTrailerMedia(o).catch((err) => {
+      log("warn", "publisher site trailers failed", { game: o.gameTitle, error: errorMessage(err) });
+      return undefined;
+    });
+    if (local) return local;
+  }
   if (o.quotaOk && !(await o.quotaOk())) {
     log("info", "official trailer search skipped: quota reserved for uploads", {
       game: o.gameTitle,
@@ -1049,6 +1059,53 @@ export async function officialMedia(
       error: errorMessage(err),
     });
     await fs.rm(work, { recursive: true, force: true });
+  }
+  return out;
+}
+
+/**
+ * Footage from the publisher's own trailer files on disk (the game library): linked into the episode's work folder (the
+ * matcher removes its work folder afterwards; the library's copies stay), matched to the lines like a YouTube trailer,
+ * under the owner's footage cap. Undefined when there are none, so the YouTube route runs as before.
+ */
+async function siteTrailerMedia(o: OfficialMediaOptions): Promise<OfficialMedia | undefined> {
+  const files = (await o.localTrailers!(o.gameTitle)).slice(0, 4);
+  if (!files.length) return undefined;
+  const owner = franchisePublisher(o.gameTitle) ?? files[0]!.publisher;
+  const rule = PUBLISHER_CHANNELS.find((r) => r.name === owner);
+  const clipSeconds = rule?.clipSeconds ?? 14;
+  const first = files[0]!;
+  const out: OfficialMedia = {
+    storyVideo: false,
+    trailer: { videoId: first.url, title: first.name, publisher: owner, channelTitle: `${owner} (official site)`, url: first.url, clipSeconds },
+    clips: [],
+    stills: [],
+  };
+  if (clipSeconds <= 0 || o.maxClips <= 0 || !o.targets.length) return out;
+  const work = path.join(o.episodeDir, "trailers");
+  await fs.mkdir(work, { recursive: true });
+  const trailers: Array<{ file: string; name: string; url: string; total: number }> = [];
+  for (const [i, t] of files.entries()) {
+    const link = path.join(work, `site_${i}.mp4`);
+    await fs.rm(link, { force: true });
+    await fs.link(t.file, link).catch(() => fs.copyFile(t.file, link));
+    const { stdout } = await run(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", link], { timeout: 60_000 }).catch(() => ({ stdout: "0" }));
+    trailers.push({ file: link, name: t.name, url: t.url, total: Number(String(stdout).trim()) || 120 });
+  }
+  try {
+    out.clips = await matchClips({
+      trailers,
+      episodeDir: o.episodeDir,
+      targets: o.targets,
+      maxClips: o.maxClips,
+      llm: o.llm,
+      prefix: "site",
+      fillSeconds: o.fill?.seconds ? Math.min(o.fill.seconds, clipSeconds) : undefined,
+      textCheck: o.fill?.textCheck,
+      describe: (t, seconds, at) => `Official trailer "${t.name}" from ${owner}'s own site (${t.url}), publisher: ${owner}, ${seconds}s at ${at.toFixed(1)}s, muted`,
+    });
+  } finally {
+    await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
   return out;
 }

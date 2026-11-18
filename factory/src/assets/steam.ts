@@ -30,7 +30,11 @@ export interface VisualAsset {
   youtubeSource?: { videoId: string; title: string; uploader: string };
   sourceSectionId?: string;
   assignedTargetKey?: string;
-  cutsceneMatch?: { targetKey?: string; requestedTarget?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
+  cutsceneMatch?: {
+    targetKey?: string;
+    requestedTarget?: string;
+    how: "chapter" | "caption" | "scene upload" | "spread" | "index";
+  };
   width?: number;
   height?: number;
   durationSeconds?: number;
@@ -79,6 +83,8 @@ export interface SteamFacts {
   /** A short background from the game's Wikipedia article (development, release, sales, reception, legacy). */
   background?: string;
   backgroundUrl?: string;
+  /** The Pulse Fact Vault's verified facts for this game, with their primary sources (FACT_VAULT, src/factvault). */
+  vault?: string;
 }
 
 const ROMAN: Record<string, number> = {
@@ -171,9 +177,14 @@ export function bestMatch(
     const have = tokens(it.name);
     let shared = 0;
     for (const t of want) if (have.has(t)) shared++;
-    // Penalise extra words so "Hades" doesn't pick "Hades II Soundtrack".
-    const score =
-      shared / want.size - Math.max(0, have.size - want.size) * 0.08;
+    // Penalise extra words so "Hades" doesn't pick "Hades II Soundtrack". A listing that is exactly the game's name
+    // before a colon or dash ("Bully: Scholarship Edition") is the game itself: 15 Nov 2026, "Bully" picked the indie
+    // "Bully Beatdown" over Rockstar's game because the edition subtitle cost two words.
+    const head = it.name.split(/\s*[:–—]\s*|\s+-\s+/)[0] ?? it.name;
+    const exactHead = nameWords(head).join(" ") === nameWords(term).join(" ");
+    const score = exactHead
+      ? 1
+      : shared / want.size - Math.max(0, have.size - want.size) * 0.08;
     if (score > bestScore) {
       bestScore = score;
       best = it;
@@ -289,6 +300,7 @@ export function factsText(f: SteamFacts): string {
     `Data fetched: ${f.fetchedAt}`,
     f.background &&
       `Background notes: ${f.background.replace(/\s+/g, " ").trim()}`,
+    f.vault,
   ];
   return lines.filter(Boolean).join("\n");
 }

@@ -2,6 +2,7 @@
 // brand assets. Returns false for anything that is not the website so the
 // factory's own routes (approvals, OAuth, health) carry on as before.
 
+import { disclosureLine } from "../reviewer.ts";
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
@@ -30,6 +31,7 @@ import {
   rssFeed,
   shell,
   SITE_EPISODES_SQL,
+  sourcesPage,
   sitemapXml,
   staticPage,
   videosPage,
@@ -85,7 +87,7 @@ async function channelVideos(cfg: Config): Promise<ChannelVideo[]> {
 }
 
 const SITE_PATH =
-  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|media$|privacy$|disclosure$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|[a-f0-9]{32}\.txt$|img\/|assets\/(fonts|icon-))/;
+  /^\/($|news(\/|$)|games(\/|$)|videos$|about$|media$|privacy$|disclosure$|sources\/[A-Za-z0-9]{4,40}$|rss\.xml$|sitemap\.xml$|news-sitemap\.xml$|robots\.txt$|[a-f0-9]{32}\.txt$|img\/|assets\/(fonts|icon-))/;
 
 /** A cut-down copy made once and kept: the story's thumbnail or art as a 960x540 JPEG, or the logo at an icon size. */
 async function derived(
@@ -363,6 +365,24 @@ export async function handleSite(
   }
   if (p === "/videos")
     return (html(200, videosPage(await channelVideos(cfg), eps, base)), true);
+  // REVIEWER_PACK (src/reviewer.ts): a video's sources. Its article's sources when the site lists it, else a page
+  // of its own (a cut from a long video); only published videos, found by the id's tail.
+  const src = p.match(/^\/sources\/([A-Za-z0-9]{4,40})$/);
+  if (src) {
+    const tail = src[1]!;
+    const listed = eps.find((e) => e.id.endsWith(`_${tail}`));
+    if (listed) {
+      res.writeHead(301, { location: `/news/${articleSlug(listed)}#sources` }).end();
+      return true;
+    }
+    const [ep] = await db.query<SiteEpisode>(
+      `SELECT id, lane, youtube_video_id, script_json, story_json, created_at FROM episodes
+        WHERE id LIKE '%\\_' || $1 AND status = 'published' AND youtube_video_id IS NOT NULL LIMIT 1`,
+      [tail],
+    );
+    if (!ep?.script_json) return (notFound(), true);
+    return (html(200, sourcesPage(ep, base, disclosureLine(ep.script_json)), "public, max-age=3600"), true);
+  }
   const page = staticPage(p.slice(1), base);
   if (page) return (html(200, page, "public, max-age=3600"), true);
   return (notFound(), true);

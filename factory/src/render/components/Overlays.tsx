@@ -56,6 +56,13 @@ function useEnter(delayFrames = 0, config = SPRING.ENTER) {
   return spring({ frame: frame - delayFrames, fps, config });
 }
 
+/** The band behind the brand row: dark at the top edge, gone by the end of the source line. */
+export const BRAND_SCRIM =
+  "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.42) 55%, rgba(0,0,0,0) 100%)";
+/** A tight dark edge and a soft halo, so the white wordmark reads on any picture. */
+export const BRAND_SHADOW =
+  "0 0 2px rgba(0,0,0,0.9), 0 2px 6px rgba(0,0,0,0.75), 0 0 18px rgba(0,0,0,0.55)";
+
 /** Brand row (lockup and story chip) at y 150 and the source lower-third under it. */
 export const TopBar: React.FC<{
   chip: string;
@@ -75,6 +82,19 @@ export const TopBar: React.FC<{
   const source = sourceLine(attribution);
   return (
     <AbsoluteFill>
+      {/* A soft dark band behind the brand row and source line: over a near-white picture the white PULSE wordmark
+          vanished and the final check failed the Short for it 21 times on 12-14 Nov 2026. Faint over dark footage. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: SAFE.top + (source ? 190 : 140),
+          background: BRAND_SCRIM,
+          pointerEvents: "none",
+        }}
+      />
       <div
         style={{
           position: "absolute",
@@ -102,6 +122,7 @@ export const TopBar: React.FC<{
             color: COLOUR.paper,
             letterSpacing: 2,
             lineHeight: 1,
+            textShadow: BRAND_SHADOW,
           }}
         >
           PULSE<span style={{ color: COLOUR.amber }}>.</span>

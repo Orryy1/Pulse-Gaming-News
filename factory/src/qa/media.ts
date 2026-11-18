@@ -71,6 +71,22 @@ export async function loudness(file: string): Promise<number> {
 }
 
 export async function blackSeconds(file: string): Promise<number> {
+  return (await blackSpans(file)).reduce((s, b) => s + b.end - b.start, 0);
+}
+
+/** The black stretches blackdetect finds (pure parse of its log). */
+export function parseBlackSpans(
+  stderr: string,
+): Array<{ start: number; end: number }> {
+  return [
+    ...stderr.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)/g),
+  ].map((m) => ({ start: Number(m[1]), end: Number(m[2]) }));
+}
+
+/** Where the video goes black for 0.4 s or more, so the retry can swap the shot on screen there. */
+export async function blackSpans(
+  file: string,
+): Promise<Array<{ start: number; end: number }>> {
   const { stderr } = await run(
     FFMPEG,
     [
@@ -89,10 +105,7 @@ export async function blackSeconds(file: string): Promise<number> {
       maxBuffer: 64 * 1024 * 1024,
     },
   );
-  return [...stderr.matchAll(/black_duration:([\d.]+)/g)].reduce(
-    (s, m) => s + Number(m[1]),
-    0,
-  );
+  return parseBlackSpans(stderr);
 }
 
 /**
@@ -235,7 +248,8 @@ export async function technicalQa(
   const want = { width: band.width ?? 1080, height: band.height ?? 1920 };
   const p = await probe(file);
   const lufs = await loudness(file);
-  const black = await blackSeconds(file);
+  const spans = await blackSpans(file);
+  const black = spans.reduce((s, b) => s + b.end - b.start, 0);
   const problems: string[] = [];
   if (p.width !== want.width || p.height !== want.height)
     problems.push(
@@ -259,7 +273,11 @@ export async function technicalQa(
     problems.push(
       `Integrated loudness ${lufs} LUFS is outside -18.5 to -13.5.`,
     );
-  if (black > 0.8) problems.push(`${black.toFixed(1)}s of black frames.`);
+  // Where, too: the retry swaps the shot on screen there (src/qa/retry.ts) instead of rendering the same black again.
+  if (black > 0.8)
+    problems.push(
+      `${black.toFixed(1)}s of black frames (at ${spans.map((b) => `${b.start.toFixed(1)}-${b.end.toFixed(1)}`).join(", ")}s).`,
+    );
   const flashes = unplannedFlashes(
     await blackFlashes(file, p.durationSeconds).catch(() => []),
     band.chapterStarts,

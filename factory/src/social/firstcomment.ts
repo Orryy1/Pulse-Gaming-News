@@ -40,6 +40,18 @@ export function shortComment(script: Script): string {
   return arguableQuestion(script);
 }
 
+/** A link, a hashtag or a mention: never in the channel's first comment (item 19). */
+const LINKISH = /https?:\/\/|www\.|\.com\b|#\w|@\w/i;
+
+/**
+ * FIRST_COMMENT_STRICT: the comment under any Short, of any format, is its own closing question and nothing else;
+ * empty (post nothing) when it has none, or when the question carries a link, hashtag or mention.
+ */
+export function strictShortComment(script: Script): string {
+  const q = arguableQuestion(script);
+  return q && !LINKISH.test(q) ? q : "";
+}
+
 export function firstComment(script: Script): string {
   let text = pinnedComment(script);
   // "Our verdict: STEADY: a name, no date yet" reads as a machine's label, whichever words lead it.

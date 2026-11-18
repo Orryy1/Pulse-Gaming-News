@@ -1270,6 +1270,34 @@ test("SHORT_SKELETONS: a news Short is written to a structure, kept on the scrip
   assert.deepEqual((await recentShapes(db, "other")).skeletons, [structure.key]);
 });
 
+test("FIRST_COMMENT_STRICT: a Short gets its own closing question alone, or no comment at all", async () => {
+  // Off: the default script ends on a statement, so the stock comment still goes out.
+  const off = await setup();
+  await tick(off.s);
+  assert.equal(off.f.comments.length, 1);
+  // On, no question of its own: nothing is posted and the skip is logged.
+  const none = await setup({ firstCommentStrict: true, firstCommentQuestion: true });
+  await tick(none.s);
+  assert.equal((await only(none.db)).status, "published");
+  assert.equal(none.f.comments.length, 0);
+  const skipped = await none.db.query<{ detail: { why: string } }>(
+    `SELECT detail FROM events WHERE kind = 'comment_skipped'`,
+  );
+  assert.equal(skipped[0]?.detail.why, "no question of its own");
+  // On, a real closing question (a ranking too): that question alone, no stock tail.
+  const q = "Would you put Halo 3 above Reach, or is that the wrong call?";
+  const asked = await setup({ firstCommentStrict: true }, { script: goodScript({ loop_line: q }) });
+  await tick(asked.s);
+  assert.deepEqual(asked.f.comments, [q]);
+  // A question carrying a link or a hashtag is not posted.
+  const linked = await setup(
+    { firstCommentStrict: true },
+    { script: goodScript({ loop_line: "Is this the best Halo ever made? #halo #gaming" }) },
+  );
+  await tick(linked.s);
+  assert.equal(linked.f.comments.length, 0);
+});
+
 test("SHORT_ARGUES_CHECK: a Short that only narrates its picture goes back to the writer once, then out with a note, never held", async () => {
   const flat = goodScript({
     hook: "Here is the new Starfield expansion trailer.",

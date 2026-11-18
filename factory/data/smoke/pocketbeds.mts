@@ -5,7 +5,8 @@
 // all plain in a long pause or a breather. The copies are FLAC (lossless, no encoder delay), so they stay
 // sample-aligned with the WAV beds and the crossfade cannot comb. CPU only, a few seconds a bed.
 //
-//   node --import tsx data/smoke/pocketbeds.mts make    # (re)make public/music/pocket/*.flac and rights.json
+//   node --import tsx data/smoke/pocketbeds.mts make    # make the missing public/music/pocket/*.flac, rewrite rights.json
+//   node --import tsx data/smoke/pocketbeds.mts remake  # remake every copy (a bed's file changed)
 //   node --import tsx data/smoke/pocketbeds.mts check   # every copy present, as long as its bed, dipped
 //
 // The dip: ffmpeg equalizer at 2.7 kHz, 1.5 octaves wide (about 1.6 to 4.5 kHz), -6 dB at its centre. The
@@ -67,13 +68,15 @@ function samples(file: string): number {
 const sha256 = (file: string) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const BAND = "highpass=f=2000,highpass=f=2000,lowpass=f=4000,lowpass=f=4000";
 
-function make() {
+function make(all: boolean) {
   const rights: Array<Record<string, string>> = [];
   for (const rel of beds) {
     const src = path.join(ROOT, "public", rel);
     const dst = path.join(ROOT, "public", pocketOf(rel));
     fs.mkdirSync(path.dirname(dst), { recursive: true });
-    ff(["-y", "-loglevel", "error", "-i", src, "-af", POCKET_EQ, "-c:a", "flac", "-compression_level", "8", dst]);
+    // A copy already made stays byte for byte (a newer ffmpeg would write new bytes and churn git for nothing).
+    if (all || !fs.existsSync(dst))
+      ff(["-y", "-loglevel", "error", "-i", src, "-af", POCKET_EQ, "-c:a", "flac", "-compression_level", "8", dst]);
     console.log(`${rel} -> ${pocketOf(rel)}`);
     rights.push({
       file: path.basename(dst),
@@ -114,7 +117,7 @@ export function checkPocketBeds(): string[] {
 
 const mode = process.argv[2] ?? "check";
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (mode === "make") make();
+  if (mode === "make" || mode === "remake") make(mode === "remake");
   const problems = checkPocketBeds();
   if (problems.length) {
     for (const p of problems) console.error(`FAIL ${p}`);

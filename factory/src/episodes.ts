@@ -105,6 +105,7 @@ export interface EpisodeAssets {
   shortThumb?: string;
   /** Which side of the Shorts thumbnail test this Short is on (src/shortthumb.ts); unset when no test ran. */
   shortThumbArm?: string;
+  shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
@@ -129,6 +130,8 @@ export interface EpisodeAssets {
     focusX?: number;
     forWords?: string;
     role?: "hook";
+    /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
+    libKey?: string;
     layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
@@ -158,6 +161,10 @@ export interface EpisodeAssets {
     span?: { source: string; from: number; to: number };
     /** APPLE_SMART_CROP: the subject-following upright crop (src/render/smartcrop.ts), made once on the Mac. */
     crop?: import("./render/smartcrop.ts").ClipCrop;
+    /** The sentence this clip was chosen for (GAME_LIBRARY): the planner puts it under those words. */
+    forWords?: string;
+    /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
+    libKey?: string;
   }>;
   steam?: {
     appId: number;
@@ -193,6 +200,7 @@ export interface EpisodeAssets {
   breaks?: Array<{ start: number; end: number }>; // a documentary's breathers before each chapter (seconds, narration silent)
   thumb?: string; // thumb.jpg for the long-form video
   thumbVariants?: string[]; // thumb_b.jpg, thumb_c.jpg: extra designs for YouTube's Test & compare
+  packaging?: import("./packaging/lab.ts").PackagingRecord; // PACKAGING_LAB: the scored title and thumbnails, the second chance
   eraDropped?: boolean; // the store page was of a later version than the release the Short is about
   officialTrailer?: {
     videoId: string;

@@ -95,6 +95,30 @@ export class Helix {
       : undefined;
   }
 
+  /** The stream when the channel is live, by login in one call (streams?user_login=, the relay's check). */
+  async liveByLogin(login: string): Promise<LiveStream | undefined> {
+    const j = await this.get<{
+      data: Array<{
+        id: string;
+        started_at: string;
+        title: string;
+        game_name: string;
+        viewer_count: number;
+        type: string;
+      }>;
+    }>(`streams?user_login=${encodeURIComponent(login)}&type=live`);
+    const s = j.data.find((x) => x.type === "live");
+    return s
+      ? {
+          id: s.id,
+          startedAt: s.started_at,
+          title: s.title,
+          game: s.game_name,
+          viewers: s.viewer_count,
+        }
+      : undefined;
+  }
+
   /** Clips viewers made since a time (Helix lists them within a minute or two of being made). */
   async clipsSince(login: string, since: string): Promise<ViewerClip[]> {
     const j = await this.get<{

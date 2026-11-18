@@ -16,6 +16,7 @@ import {
 } from "./GameplayShort.tsx";
 import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
+import { MascotSheet, SHEET_H, SHEET_W } from "./MascotSheet.tsx";
 import {
   StreamWeekly,
   SAMPLE_STREAM_WEEKLY,
@@ -68,6 +69,8 @@ import {
 
 export const RemotionRoot: React.FC = () => (
   <>
+    {/* Pip the mascot: every reaction on one sheet (src/render/MascotSheet.tsx). */}
+    <Still id="PulseMascotSheet" component={MascotSheet} width={SHEET_W} height={SHEET_H} defaultProps={{ frame: 30 }} />
     <Composition
       id="PulseLab"
       component={Lab}

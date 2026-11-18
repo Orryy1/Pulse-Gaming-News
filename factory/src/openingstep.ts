@@ -57,23 +57,29 @@ export interface OpeningLook {
 export function adSafeProblem(l: OpeningLook | undefined): string | undefined {
   if (!l) return "not screened";
   if (l.gore) return "gore or blood";
-  if (l.nudity) return "nudity";
+  if (l.nudity) return "nudity or suggestive content";
   if (l.weapon) return "a weapon aimed at the viewer";
   if (l.shocking) return "shocking imagery";
   return undefined;
 }
 
+/** The publisher's own trailer footage of this game, by its provenance (pure): the game's picture whatever it looks like. */
+export function officialTrailerOf(c: Pick<Clip, "provenance" | "label">, game?: string): boolean {
+  return /^Official trailer "/.test(c.provenance) && !!game && clipOfGame(c, game) && !clipOfOtherGame(c, game);
+}
+
 /** Why a frame may not open the Short, or undefined (pure): ad-safe and the game's own picture. */
-export function openerProblem(l: OpeningLook | undefined): string | undefined {
+export function openerProblem(l: OpeningLook | undefined, officialFootage = false): string | undefined {
   return (
     adSafeProblem(l) ??
-    (l!.gameplay
+    (officialFootage || l!.gameplay
       ? undefined
       : "not the game's own picture (a card, logo or art)")
   );
 }
 
 const OWN = /^Pulse's own gameplay capture/;
+import { comparedGames, namesGame } from "./assets/linevisuals.ts";
 const CUTSCENE = /^Cutscenes for "/;
 const PLAYTHROUGH = /^Gameplay "/;
 const NOT_FOOTAGE = /^Portrait of |shown on (?:the )?hardware|not footage/i;
@@ -86,6 +92,12 @@ const norm = (s: string) =>
     .trim();
 
 /** True when the clip's provenance names the game (its distinctive words, at least two of them or all there are). */
+/** A clip that names another numbered game of the same series and not this one ("Grand Theft Auto V" in a GTA VI Short). */
+export function clipOfOtherGame(clip: Pick<Clip, "provenance" | "label">, game: string): boolean {
+  const hay = `${clip.provenance} ${clip.label ?? ""}`;
+  return !namesGame(hay, game) && comparedGames({ game_title: game, hook: hay, beats: [] }).length > 0;
+}
+
 export function clipOfGame(
   clip: Pick<Clip, "provenance" | "label">,
   game: string,
@@ -138,6 +150,8 @@ export function openingCandidates(
         !NOT_FOOTAGE.test(c.provenance),
     )
     .filter(({ c }) => winner === undefined || c.beatIndex !== winner)
+    // A clip of another game of the series (a comparison line's footage) never opens the Short.
+    .filter(({ c }) => !o.game || !clipOfOtherGame(c, o.game))
     .filter(
       ({ c }) =>
         !(
@@ -227,8 +241,8 @@ export function shotsInFirst(
 
 const PROMPT = `You check one frame from the first seconds of a YouTube Short about a video game, for advertisers. Answer with JSON.
 gameplay: true when the frame is the game's own moving picture (gameplay or an in-game cutscene) filling the frame; false for a logo, a title or text card, a menu, a store page, box art or a key art poster, a real-world photo or person, or a black or blank frame.
-gore: blood, wounds, gore, dead bodies, dismemberment or an execution.
-nudity: nudity or sexual content.
+gore: blood, wounds, gore, dead bodies, dismemberment, an execution, or a graphic kill (a person or character being shot, stabbed, run over or killed on screen).
+nudity: nudity or sexual content, and (the final check's rule, word for word in substance) any sexualised or suggestive person or character, drawn or real, anywhere in the frame: underwear, lingerie or a bikini on show, visible cleavage or a revealing top, a bent-over, twerking or pole-dancing pose, a nightclub shot that dwells on bodies, or a crop dominated by a chest, bare torso, buttocks, groin or thighs. When unsure, answer true.
 weapon: a gun or weapon aimed straight at the viewer.
 shocking: disturbing or shocking imagery: torture, a horror creature's face filling the frame, drug use, self-harm.
 strength: 0 to 10, how striking this is as the very first frame a viewer sees: one clear subject near the centre, bright and readable on a phone, in action or a striking view; 0 for an empty, muddy or dark frame.`;
@@ -330,6 +344,8 @@ export interface OpeningDeps {
 }
 
 export interface OpeningResult {
+  /** The first-seven-seconds screen, once the plan is made (the pipeline fills it in). */
+  seconds?: SecondsResult;
   ok: boolean;
   why: string;
   clip?: string; // the opening clip's file
@@ -337,6 +353,8 @@ export interface OpeningResult {
   window?: { from: number; to: number };
   strength?: number;
   tried: Array<{ file: string; problem?: string; strength?: number }>;
+  /** Nothing was screened because the vision model did not answer: not a verdict on the footage. */
+  unchecked?: boolean;
 }
 
 async function cutClip(
@@ -412,15 +430,17 @@ export async function chooseOpening(
       if (tried.every((t) => t.problem === "the vision model could not judge it")) break;
       continue;
     }
+    const official = officialTrailerOf(c, o.game);
     const moments = times
       .map((t, k) => ({ t, l: looks[k] }))
-      .filter((m) => !openerProblem(m.l))
+      .filter((m) => !openerProblem(m.l, official))
       .sort((a, b) => b.l!.strength - a.l!.strength);
     if (!moments.length) {
       tried.push({
         file: c.file,
         problem: openerProblem(
-          looks.find((l) => openerProblem(l) !== "not screened"),
+          looks.find((l) => openerProblem(l, official) !== "not screened"),
+          official,
         ),
       });
       continue;
@@ -439,7 +459,7 @@ export async function chooseOpening(
         wt,
       );
       const wl = await Promise.all(wf.map((f) => look(f)));
-      problem = wl.map(openerProblem).find(Boolean);
+      problem = wl.map((l) => openerProblem(l, official)).find(Boolean);
       if (!problem) {
         chosen = { w, strength: m.l!.strength };
         break;
@@ -546,10 +566,11 @@ export async function chooseOpening(
     };
   }
   // The relay is down or the model cannot read these frames: nothing was screened, so no opening is made.
-  const why = tried.every((t) => t.problem === "the vision model could not judge it")
+  const unchecked = tried.every((t) => t.problem === "the vision model could not judge it");
+  const why = unchecked
     ? "the local vision model did not answer: opening left as planned"
     : "no candidate passed the opening check";
-  return { ok: false, why, tried };
+  return { ok: false, why, tried, ...(unchecked ? { unchecked: true } : {}) };
 }
 
 // ---------------------------------------------------------------- the first seven seconds
@@ -653,5 +674,65 @@ export async function checkFirstSeconds(
     };
     out.replaced.push({ shot: w.index, problem, with: img.file });
   }
+  return out;
+}
+
+// ---------------------------------------------------------------- the caption over the opening and the ad-safe gate
+
+/** Words that carry nothing alone on a first frame. */
+const CAPTION_FILLER = new Set(
+  "a an the and or but of to in on at for with from by is are was were be been it its this that these those you your i we our they their his her just now new why how what who when where there here so as about into over after before".split(
+    " ",
+  ),
+);
+
+/**
+ * The one or two caption words over the opening footage (pure; SHORT_OPEN_WORDS): no headline box, no sentence. The
+ * writer's hook words first, else the headline's words that are not the game's name; upper case, punctuation off.
+ * Empty when nothing is left: the footage then opens with no words at all.
+ */
+export function openingCaption(
+  o: { thumbText?: string; headline: string; game: string },
+  max = 2,
+): string {
+  const n = Math.max(1, Math.min(2, Math.round(max)));
+  const clean = (w: string) => w.replace(/^[^\p{L}\p{N}$£€#]+|[^\p{L}\p{N}%]+$/gu, "");
+  const gameWords = new Set(norm(o.game).split(" ").filter(Boolean));
+  const pick = (text: string | undefined, dropGame: boolean) =>
+    (text ?? "")
+      .split(/\s+/)
+      .map(clean)
+      .filter(Boolean)
+      .filter((w) => !CAPTION_FILLER.has(w.toLowerCase()))
+      .filter((w) => !dropGame || !gameWords.has(norm(w.replace(/['’]s$/i, ""))))
+      .slice(0, n);
+  const words = pick(o.thumbText, false);
+  const out = words.length ? words : pick(o.headline, true);
+  return out.join(" ").toUpperCase();
+}
+
+/** Why the Short's cover (frame 0, or the designed search tile) may not stand, or undefined (pure). */
+export function coverProblem(l: OpeningLook | undefined): string | undefined {
+  if (!l) return undefined; // not screened: the relay is down, nothing is claimed either way
+  return adSafeProblem(l);
+}
+
+/**
+ * SHORT_AD_SAFE_GATE (pure): what stops a rendered Short. A shot in the first seven seconds that failed the screen and
+ * found no safe picture to take its place, or a cover frame that fails it. Unscreened frames (relay down) do not stop
+ * it; they are logged by the caller.
+ */
+export function adSafeGateProblems(
+  seconds: Pick<SecondsResult, "replaced"> | undefined,
+  cover: OpeningLook | undefined,
+): string[] {
+  const out: string[] = [];
+  for (const r of seconds?.replaced ?? [])
+    if (!r.with && r.problem !== "not screened")
+      out.push(
+        `ad safety: shot ${r.shot} in the first ${AD_SAFE_SECONDS} seconds shows ${r.problem}`,
+      );
+  const c = coverProblem(cover);
+  if (c) out.push(`ad safety: the cover frame shows ${c}`);
   return out;
 }

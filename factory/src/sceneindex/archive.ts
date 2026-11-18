@@ -880,6 +880,8 @@ export async function archiveTick(
       DATA_DIR: cfg.dataDir,
       YTDLP_PATH: cfg.ytdlpPath,
       MACRUN_WAIT_MIN: "20",
+      // Library work: the YouTube guard gives it the background share and pauses it first (src/lib/ytguard.ts).
+      YT_CLASS: "background",
     };
     const r = await (
       deps.run ??

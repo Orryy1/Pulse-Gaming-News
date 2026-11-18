@@ -476,7 +476,9 @@ export function pinnedComment(script: Script): string {
     return `${script.gameplay.question} ${script.gameplay.result} What should we test next? The best ideas get tested in a future Short.`;
   if (script.cutdown?.funnel)
     return script.cutdown.funnel === "link"
-      ? `${script.cutdown.question.trim()} The full guide, every step from real play: https://youtu.be/${script.cutdown.parent_video}`
+      ? script.cutdown.kind && script.cutdown.kind !== "guide"
+        ? `${script.cutdown.question.trim()} The full ${script.cutdown.kind}: https://youtu.be/${script.cutdown.parent_video}`
+        : `${script.cutdown.question.trim()} The full guide, every step from real play: https://youtu.be/${script.cutdown.parent_video}`
       : script.cutdown.question.trim();
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;

@@ -190,7 +190,7 @@ export function speakTitles(text: string): string {
       .replace(
         // A lone V or X is a numeral only after a series that numbers its games ("Metal Gear Solid V" came
         // out as "Vai", 25 Oct 2026); "Mega Man X" and "Xbox Series X" keep their letters.
-        /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Rocky|Halo|Gears of War|Metal Gear Solid|Resident Evil|Dragon Quest|Kingdom Hearts|Street Fighter|Tekken|Far Cry|Fallout|Diablo|Persona|Battlefield|Dark Souls|Borderlands|Hitman) (V|X)\b/g,
+        /\b(Grand Theft Auto|GTA|Elder Scrolls|Final Fantasy|Civilization|Civ|Rocky|Halo|Gears of War|Metal Gear Solid|Resident Evil|Dragon Quest|Kingdom Hearts|Street Fighter|Tekken|Far Cry|Fallout|Diablo|Persona|Battlefield|Dark Souls|Borderlands|Hitman) (V|X)\b/g,
         (_m, series: string, n: string) => `${series} ${romanValue(n)}`,
       )
       // A possessive or a hyphen after the numeral still counts ("GTA VI's trailer" came out as "viy's",
@@ -450,6 +450,18 @@ const SAID_AS_WORDS: Array<[RegExp, Said]> = [
   [/\bBotW\b/g, "Breath of the Wild"],
   [/\bTotK\b/g, "Tears of the Kingdom"],
   [/\bRDR\s?2\b/g, "Red Dead 2"],
+  // Fan short forms said as the names fans say (the humaniser, 14 Nov 2026): typed as letters, spoken as words.
+  [/\bBG\s?3\b/g, "Baldur's Gate 3"],
+  [/\bSF\s?6\b/g, "Street Fighter 6"],
+  [/\bMK\s?1\b/g, "Mortal Kombat 1"],
+  [/\bHL\s?2\b/g, "Half-Life 2"],
+  [/\bCP\s?2077\b/g, "Cyberpunk 2077"],
+  [/\bMHW\b/g, "Monster Hunter World"],
+  [/\bTOTK\b/g, "Tears of the Kingdom"],
+  [/\bBOTW\b/g, "Breath of the Wild"],
+  [/\bOoT\b/g, "Ocarina of Time"],
+  [/\bHZD\b/g, "Horizon Zero Dawn"],
+  [/\bGoW\b/g, "God of War"],
   // A series' letters and its number, run together or spaced: the full name, as people say it.
   [/\bFF\s?(\d{1,2}|[IVX]{1,5})\b/g, "Final Fantasy $1"],
   [/\bRE\s?([2-9])\b/g, "Resident Evil $1"],

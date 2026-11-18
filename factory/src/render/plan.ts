@@ -57,6 +57,8 @@ export interface PlanClip {
   cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
 
   role?: "hook"; // chosen for the opening line
+  /** The sentence it was chosen for (GAME_LIBRARY): within its line it plays under those words first. */
+  forWords?: string;
   /** GAME_AUDIO_BED on: the clip's own sound can be heard (a cutscene, the owner's capture, talk-free gameplay). */
   heard?: boolean;
 }
@@ -162,7 +164,7 @@ export interface RenderPlan {
   scenes?: PlannedScene[];
 }
 
-const QUIET_KINDS = new Set([
+export const QUIET_KINDS = new Set([
   "report",
   "versus",
   "specs",
@@ -399,6 +401,36 @@ export function splitAtThen<T extends { start: number; end: number; segment: num
   return joined;
 }
 
+const wordsOf = (s: string) => s.toLowerCase().replace(/[^a-z0-9' ]/g, "").split(/\s+/).filter(Boolean);
+const saidIn = (words: Word[], cut: { start: number; end: number }) =>
+  new Set(words.filter((w) => toFrame(w.start) >= cut.start - 1 && toFrame(w.start) < cut.end).flatMap((w) => wordsOf(w.text)));
+
+/** Among a line's clips, the one chosen for the words said over this cut (half its sentence is said here), if any. */
+export function clipForWords(clips: PlanClip[], among: number[], words: Word[], cut: { start: number; end: number }): number | undefined {
+  const said = saidIn(words, cut);
+  let best: number | undefined;
+  let bestScore = 0;
+  for (const i of among) {
+    const want = wordsOf(clips[i]!.forWords ?? "");
+    if (!want.length) continue;
+    const hits = want.filter((w) => said.has(w)).length;
+    const score = Math.max(hits / want.length, said.size >= 3 ? hits / said.size : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = i;
+    }
+  }
+  return bestScore >= 0.5 ? best : undefined;
+}
+
+/** A clip chosen for a sentence none of whose words are said over this cut. */
+function wordsElsewhere(clip: PlanClip, words: Word[], cut: { start: number; end: number }): boolean {
+  const want = wordsOf(clip.forWords ?? "");
+  if (!want.length) return false;
+  const said = saidIn(words, cut);
+  return want.filter((w) => said.has(w)).length / want.length < 0.2;
+}
+
 /** The still chosen for the words spoken over this cut: at least half of its clause is said here. */
 export function pictureForWords(
   images: PlanImage[],
@@ -419,7 +451,8 @@ export function pictureForWords(
     if (!im.forWords || im.then || uses[i]! >= 1 || (last?.type === "image" && last.index === i)) continue;
     const want = norm(im.forWords);
     if (!want.length) continue;
-    const score = want.filter((w) => said.has(w)).length / want.length;
+    const hits = want.filter((w) => said.has(w)).length;
+    const score = Math.max(hits / want.length, said.size >= 3 ? hits / said.size : 0);
     if (score > bestScore) {
       bestScore = score;
       best = i;
@@ -724,7 +757,14 @@ export function planShots(
         (cl.beatIndex !== undefined && cl.beatIndex < beatsBefore)
       );
     });
-    const pick = own.length
+    // A clip chosen for the very words over this shot goes first; one chosen for another sentence of the line waits.
+    const worded = own.length ? clipForWords(clips, own, input.words, c) : undefined;
+    const ownNow = worded === undefined ? own.filter((i) => !wordsElsewhere(clips[i]!, input.words, c)) : [];
+    const pick = worded !== undefined
+      ? worded
+      : ownNow.length
+        ? fresh(ownNow)
+        : own.length
       ? fresh(own)
       : ownOnly
         ? undefined
@@ -823,7 +863,11 @@ export function planShots(
           ? winnerBeat
           : undefined;
     // A picture the editor chose for these very words comes first, whatever else this line would do.
-    const chosen = c.then || isOpening || isClosing ? undefined : pictureForWords(images, input.words, c, stillUses, last);
+    const wordClip =
+      footageFirst && !c.then && !isOpening
+        ? clipForWords(clips, clipOrder.filter((i) => clipLeft(i) >= MIN_SHOT), input.words, c)
+        : undefined;
+    const chosen = c.then || isOpening || isClosing || wordClip !== undefined ? undefined : pictureForWords(images, input.words, c, stillUses, last);
     if (chosen !== undefined) {
       stillUses[chosen]!++;
       media = { type: "image", index: chosen };

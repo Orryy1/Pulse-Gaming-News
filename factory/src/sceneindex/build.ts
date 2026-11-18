@@ -9,6 +9,7 @@
 // Steps 3 and 4 are separate on purpose: reading and listening need only this machine, looking needs the PC's GPU.
 
 import { execFile } from "node:child_process";
+import { guardedYt } from "../lib/ytguard.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -23,7 +24,9 @@ import { parseSignalStats } from "../assets/clipscore.ts";
 import { readText, type OcrPage } from "../assets/ocr.ts";
 import { transcribeWords } from "../qa/narration.ts";
 import {
+  baseGameOf,
   betterSource,
+  isGameplayIndex,
   emptySceneIndex,
   indexComplete,
   loadSceneIndex,
@@ -52,19 +55,23 @@ import { DESCRIBE_RECHECK, describeGate } from "./describegate.ts";
 import { groundedCast, tidyIndex } from "./tidy.ts";
 
 const exec = promisify(execFile);
+// yt-dlp calls to YouTube go through the YouTube guard (budget, spacing, bot-check pause); the scene-index child
+// runs with YT_CLASS=background, so its calls take the background share.
 const run = (
   cmd: string,
   args: string[],
   o: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv } = {},
 ) =>
-  exec(cmd, args, {
-    cwd: o.cwd,
-    env: o.env,
-    timeout: o.timeout ?? 30 * 60_000,
-    maxBuffer: 64 * 1024 * 1024,
-    windowsHide: true,
-    killSignal: "SIGKILL",
-  });
+  guardedYt(cmd, args, () =>
+    exec(cmd, args, {
+      cwd: o.cwd,
+      env: o.env,
+      timeout: o.timeout ?? 30 * 60_000,
+      maxBuffer: 64 * 1024 * 1024,
+      windowsHide: true,
+      killSignal: "SIGKILL",
+    }),
+  );
 
 /** Frames a second the cut scan looks at: enough to place a cut within a tenth of a second, a third of the decoding. */
 export const SCAN_FPS = 10;
@@ -104,6 +111,12 @@ export function sourceKind(title: string): SceneSource["kind"] {
   ) && !/\b(walkthrough|playthrough|longplay|full\s+gameplay)\b/i.test(title)
     ? "movie"
     : "playthrough";
+}
+
+/** A gameplay index's searches (schema.ts gameplayIndexName): no-commentary full playthroughs only. */
+export function playthroughQueries(game: string): string[] {
+  const g = game.trim();
+  return g ? [`${g} no commentary full playthrough`, `${g} full game walkthrough no commentary`, `${g} longplay no commentary`] : [];
 }
 
 /** The launch fetcher's searches: full movies and all cutscenes, then no-commentary full playthroughs. */
@@ -157,12 +170,13 @@ export function sourceQueries(game: string): string[] {
 export function pickSource(
   candidates: CutsceneUpload[],
   game: string,
-  o: { recentRelease?: boolean; maxHours?: number; complete?: boolean; releasedOn?: string; siblings?: string[] } = {},
+  o: { recentRelease?: boolean; maxHours?: number; complete?: boolean; releasedOn?: string; siblings?: string[]; playthroughOnly?: boolean } = {},
 ): (CutsceneUpload & { kind: SceneSource["kind"] }) | undefined {
-  if (o.complete) return pickComplete(candidates, game, o);
+  if (o.complete && !o.playthroughOnly) return pickComplete(candidates, game, o);
   const max = (o.maxHours ?? 12) * 3600;
   const fits = candidates.filter((c) => c.duration <= max);
-  const movie = pickCutsceneUpload(
+  // A gameplay index (schema.ts gameplayIndexName) takes a no-commentary playthrough and never a cutscene movie.
+  const movie = o.playthroughOnly ? undefined : pickCutsceneUpload(
     fits.filter((c) => sourceKind(c.title) === "movie" && c.duration >= 1200),
     game,
     o,
@@ -440,7 +454,13 @@ export async function chooseSource(
   deps: BuildDeps = {},
 ): Promise<SceneSource | undefined> {
   const hits: CutsceneUpload[] = [];
-  for (const query of o.complete ? launchQueries(game) : sourceQueries(game)) {
+  // A gameplay index searches for its game's playthroughs and keeps only those (playthroughQueries, pickSource).
+  const gameplay = isGameplayIndex(game);
+  if (gameplay) {
+    game = baseGameOf(game);
+    o = { ...o, playthroughOnly: true } as typeof o;
+  }
+  for (const query of gameplay ? playthroughQueries(game) : o.complete ? launchQueries(game) : sourceQueries(game)) {
     try {
       hits.push(
         ...(await (deps.search?.(query) ?? searchUploads(query, s.ytdlp))),
@@ -631,8 +651,12 @@ export function frameSource(
  * ARCHIVE_PROXY=delete: a full index's proxy removed once every stretch of the source is indexed (the index keeps
  * what it was; describing and prechecks fetch short sections from YouTube instead). Returns the bytes freed.
  */
-export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "dataDir">, now: Date): Promise<number> {
+export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "dataDir">, now: Date, freeGb?: () => Promise<number>): Promise<number> {
   if (!indexComplete(index) || index.tier === "light" || index.tier === "upgrading") return 0;
+  // Kept local (15 Nov 2026): a gameplay playthrough is downloaded once and never released, and with
+  // SCENE_INDEX_KEEP_PROXY_FREE_GB set any proxy stays while the disk has that much room, so a later Short never pulls
+  // the game from YouTube again (ARCHIVE_PROXY=keep, the default, never calls this at all).
+  if (!(await mayReleaseProxy(index.game, s.dataDir, freeGb))) return 0;
   const file = path.join(sceneIndexDir(s.dataDir, index.game), index.proxy?.file || "proxy.mp4");
   const st = await fs.stat(file).catch(() => undefined);
   if (!st) return 0;
@@ -642,6 +666,19 @@ export async function releaseProxy(index: SceneIndex, s: Pick<BuildSettings, "da
   await saveSceneIndex(s.dataDir, fresh);
   log("info", "scene index: proxy removed after indexing", { game: index.game, mb: Math.round(st.size / 1e6) });
   return st.size;
+}
+
+/** Whether a built index may give up its proxy: never a gameplay index, never while the disk has the kept room. */
+export async function mayReleaseProxy(game: string, dataDir: string, freeGb?: () => Promise<number>): Promise<boolean> {
+  if (isGameplayIndex(game)) return false;
+  const floor = Number(process.env.SCENE_INDEX_KEEP_PROXY_FREE_GB ?? 0);
+  if (!(floor > 0)) return true;
+  const free = await (freeGb ??
+    (async () => {
+      const st = await fs.statfs(dataDir);
+      return (st.bavail * st.bsize) / 1e9;
+    }))().catch(() => 0);
+  return free < floor;
 }
 
 /** ffmpeg arguments for the cut scan of one stretch; run inside the work folder (pure). */
@@ -1145,7 +1182,7 @@ export async function buildStep(
           .catch(() => undefined);
       }
       index = emptySceneIndex(game, source, deps.now?.() ?? new Date());
-      const names = await (deps.names ?? gameNames)(game).catch(() => ({
+      const names = await (deps.names ?? gameNames)(baseGameOf(game)).catch(() => ({
         cast: [],
         places: [],
       }));

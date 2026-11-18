@@ -2,12 +2,14 @@
 // Nothing secret is ever logged; see redactedConfig().
 
 import fs from "node:fs";
+import { factVaultMode, type FactVaultMode } from "./factvault/mode.ts";
 import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
 import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
 import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
+import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
 import {
   defaultBackupDir,
   defaultCodexPython,
@@ -25,7 +27,10 @@ import {
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./subslearn/settings.ts";
+import { packagingSettings, packagingSummary, type PackagingSettings } from "./packaging/settings.ts";
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
+import { learnSettings, learnSummary, type LearnSettings } from "./learn/settings.ts";
+import { hudSettings, hudSummary, type HudSettings } from "./hudreader/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { streamWeeklySettings, streamWeeklySummary, type StreamWeeklySettings } from "./streamweekly/settings.ts";
@@ -279,6 +284,24 @@ export interface Config {
   gtaDailySlot: string;
   /** How many days the run is numbered for (GTA_DAILY_DAYS, 28). */
   gtaDailyDays: number;
+  /**
+   * "Can I beat GTA 6 without...?" (src/challenge.ts): numbered challenge series from the owner's streams, started by a
+   * "[CHALLENGE: rule]" tag in his Twitch title (CHALLENGE_SERIES, off by default). quietDays (CHALLENGE_END_DAYS, 7):
+   * days without the tag that end a challenge. ideasFile (CHALLENGE_IDEAS_FILE): the ranked ideas report.
+   */
+  challenge: { enabled: boolean; quietDays: number; ideasFile: string };
+  /**
+   * PREMIERE_DOCS (src/premiere.ts, off by default): a run documentary marked "premiere" uploads private with all its
+   * metadata and is flagged for the Studio premiere step (the YouTube Data API cannot schedule a Premiere).
+   */
+  premiereDocs: boolean;
+  /**
+   * STORY_RECAP (src/storyrecap.ts, off by default): the full-spoiler story recap from the owner's own play, a dated run
+   * entry that waits for the spoiler window to end and enough of the story to be streamed. minHours
+   * (STORY_RECAP_MIN_HOURS, 15), minLines (STORY_RECAP_MIN_LINES, 400) and needEnd (STORY_RECAP_NEED_END, true: the
+   * end credits must have been seen on stream).
+   */
+  storyRecap: { enabled: boolean; minHours: number; minLines: number; needEnd: boolean };
   /** A target length per Short format (src/shortlengths.ts), from SHORT_LENGTHS, e.g. "news=22-35,why=22-35,gta_file=45-55"; empty = the old 25-40 s for every Short. */
   shortLengths: ShortLengths;
   /** Instagram skips a Short longer than this many seconds (INSTAGRAM_MAX_SECONDS); 0 = no limit. */
@@ -361,6 +384,20 @@ export interface Config {
   /** The owner's own recordings, cut into an inbox by the Windows tasks in C:\Claude	inotv-vods. */
   elevenLabsLowCredits: number; // warn the owner under this many usable credits (ELEVENLABS_LOW_CREDITS, 0 off)
   elevenLabsLowDays: number; // and under this many days of the current pace (ELEVENLABS_LOW_DAYS, 0 off)
+  /** FORECAST_ENABLED: the dependency forecaster (src/forecast.ts): days-ahead warnings for quotas, logins, disks, backups. Off by default. */
+  forecastEnabled: boolean;
+  /** FORECAST_HORIZON_DAYS: warn when something runs out within this many days (default 3). */
+  forecastHorizonDays: number;
+  /** FORECAST_YOUTUBE_TOKEN_DAYS: the YouTube refresh token's lifetime (7 while the Google app is in Testing; 0 none known). */
+  forecastYoutubeTokenDays: number;
+  /** FORECAST_DISK_FLOOR_GB: the free space the disk forecast measures against (default 20). */
+  forecastDiskFloorGb: number;
+  /** FORECAST_PC_DISK_URL: where the PC says its free space as JSON {"freeGb": n} (empty: the PC disk is not forecast here). */
+  forecastPcDiskUrl: string;
+  /** CODEX_WEEKLY_CALLS: Codex's weekly allowance in answers (0: unknown, so only failures are watched). */
+  codexWeeklyCalls: number;
+  /** CODEX_WEEK_RESET_DAY: the weekday Codex's allowance resets, 0 Sunday to 6 Saturday (default 1, Monday). */
+  codexWeekResetDay: number;
   gameplayEnabled: boolean;
   gameplayRoot: string; // holds inbox/ (written by the finder) and published/ (read by Leonida Intel)
   gameplayExperiments: string; // the numbered test list the reviewer matches clips against
@@ -427,6 +464,9 @@ export interface Config {
   primarySources: boolean; // Wikipedia research keeps each sentence's references and reads the most-cited originals, so scripts credit and the fact check reads the original (PRIMARY_SOURCES, src/discovery/wikirefs.ts, on)
   primarySourcesMax: number; // at most this many originals read for one brief (PRIMARY_SOURCES_MAX, default 4)
   attributionGuard: boolean; // "Wikipedia" on air and an attribution frame repeated within a minute or over 3 times go back to the writer once, then the friend pass varies them (ATTRIBUTION_GUARD, src/editorial/attribution.ts, on)
+  factVault: FactVaultMode; // the Pulse Fact Vault (FACT_VAULT=off|read|write|enforce, src/factvault): verified game facts for the writers and the fact check; off by default
+  factVaultFetchMax: number; // primary sources the vault reads per research step (FACT_VAULT_FETCH_MAX, default 6)
+  factVaultNightly: number; // facts the nightly integrity job re-reads (FACT_VAULT_NIGHTLY, default 200)
   writerNotesGuard: boolean; // writer's notes (src/editorial/writernotes.ts) are sent back, and stop the video before the voice and at release; on by default
   docTestEvidence: boolean; // a run documentary may use approved gameplay tests as a source (src/editorial/testevidence.ts)
   shortSkeletons: boolean; // news Shorts rotate structures (opening, order, length, ending), none shared by two of the newest 30 (SHORT_SKELETONS, src/editorial/skeletons.ts, off)
@@ -437,6 +477,45 @@ export interface Config {
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   /** SHORT_OPEN_FOOTAGE: every Short opens on the game's own moving footage, its first 7 s screened ad-safe (src/openingstep.ts). */
   shortOpenFootage: boolean;
+  /** SHORT_OPEN_WORDS: 1 or 2 caption words over an opening on footage, in place of the headline (0: the headline, as before). */
+  shortOpenWords: number;
+  /** SHORT_AD_SAFE_GATE: a Short whose first 7 s or cover frame shows a graphic kill, gore or the like fails QA (src/openingstep.ts). */
+  shortAdSafeGate: boolean;
+  /**
+   * QA_AD_SWAP (default on, a bug fix): a frame the final visual check fails for ad safety (suggestive, nudity, gore) swaps
+   * its shot for the retry like a text fault does, and the moment is remembered in the footage screen cache so no later
+   * gather picks it (src/qa/retry.ts, src/assets/screencache.ts). Off: those faults drop nothing, as before 14 Nov 2026.
+   */
+  qaAdSwap: boolean;
+  /**
+   * CREDIT_SCRUB (default on): before a Short's fact check, a credit to an outlet or document the writer was not given
+   * ("GameSpot's 2021 coverage says", "Bethesda's update notes say") is taken off and the fact kept (src/editorial/credits.ts).
+   */
+  creditScrub: boolean;
+  /**
+   * The 11 Nov research upgrades (src/strandframe.ts, src/whydied.ts, src/reviewer.ts, src/stance.ts), each off by default:
+   * STRAND_FRAMES: one title shape and one thumbnail layout per long strand, 0 to 4 thumbnail words;
+   * SHORT_TITLE_GAME_FIRST: a Short's title names the game first, then the why or how (applied before upload);
+   * LONG_CHAPTER_CADENCE: chapter marks every 1 to 2 minutes with plain labels in long descriptions;
+   * FUNNEL_ALL_LONGS: the funnel test cuts its Shorts from every long strand, not only the weekly guide;
+   * WHY_DIED_ENABLED: the "why it died" documentary strand, its films proposed from the news desk (WHY_DIED_FILE,
+   *   at most one every WHY_DIED_EVERY_DAYS days);
+   * REVIEWER_PACK: the standard AI line, a sources link on the website and the private records for every upload;
+   * AI_IMAGE_GATE: no AI-made picture that could pass for official game material or a real photo;
+   * RANKING_STANCE: ranking titles argue a stance (no "top N" or year), and COMPLETE_CUT_MIN films of one series
+   *   make a "complete" compilation proposal.
+   */
+  strandFrames: boolean;
+  shortTitleGameFirst: boolean;
+  longChapterCadence: boolean;
+  funnelAllLongs: boolean;
+  whyDied: boolean;
+  whyDiedFile: string;
+  whyDiedEveryDays: number;
+  reviewerPack: boolean;
+  aiImageGate: boolean;
+  rankingStance: boolean;
+  completeCutMin: number;
   weeklyEnabled: boolean; // Release Radar, Free This Week and the Weekly Recap
   radarDays: string[];
   freeDays: string[];
@@ -547,6 +626,13 @@ export interface Config {
   clarityGate: FriendPassFormat[];
   /** CLARITY_MIN: the lowest clarity score that passes without going back to the writer (default 8). */
   clarityMin: number;
+  /** The humaniser (src/editorial/humanise, owner 14 Nov 2026: the Civilization Short said "Sid Meier's" every time):
+   * progressive naming, no repeated openings or connectives, contractions, no AI-tell words or em dashes, exact spoken
+   * numbers, relative dates, callbacks, capped filler and varied credits, on Shorts and documentary chapters before
+   * voicing. HUMANISE=off (default), "check" (measure and log only) or "fix" (apply the safe fixes, send what needs a
+   * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
+   * is "humanise.rewrite" (CODEX_CALLS can route it). */
+  humanise: "off" | "check" | "fix";
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -596,6 +682,8 @@ export interface Config {
   /** The Sunday growth report (src/growthreport.ts, plan item 12): subscribers per 1,000 views for each format, week on
    * week, and one line on what to back, to the alerts channel on Sundays at 10:00: GROWTH_REPORT, default off. */
   growthReport: boolean;
+  /** GROWTH_REPORT_SPLIT: the Sunday report goes out over as many Discord messages as it needs instead of being cut at 3,900 characters (off). */
+  growthReportSplit: boolean;
   /** Click-through per video from YouTube's Reporting API (src/reach.ts), in the Sunday report and the test queue: REACH_REPORT, default off. */
   reachReport: boolean;
   /** The weekly cross-platform analytics loop (src/analyticsloop.ts): Mondays from 09:00 it reads every platform, writes
@@ -615,6 +703,12 @@ export interface Config {
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
    * ANALYTICS_LOOP_LESSONS) and the Sunday growth report: RETENTION_LEARN, default off. */
   retentionLearn: boolean;
+  /** The pre-publish edit director (src/retentiondirector.ts): the retention model (src/retentionmodel.ts) predicts each
+   * Short's curve once its shot plan is built, flags the weakest moments and, under "fix", swaps stills for unused
+   * footage, puts the strongest picture in the first second and trims long card text where the model scores a gain;
+   * "advise" only records the prediction and advice. Also retrains the model weekly from the stored curves and adds its
+   * findings to the writers' lessons. RETENTION_DIRECTOR=off|advise|fix, default off. */
+  retentionDirector: "off" | "advise" | "fix";
   /** Video replies to comments (src/commentreply.ts): once a day the best viewer question the community engine filed
    * (substantive, answerable from the video's confirmed facts, not hostile) gets its own Short, opening on the comment as
    * a card with the commenter's public handle and "You asked...", then a reply on the original comment pointing to it:
@@ -713,6 +807,26 @@ export interface Config {
   firstCommentQuestion: boolean;
   /** Reads the public comment list to see whether first comments are really showing (FIRST_COMMENT_CHECK, src/social/commentcheck.ts). */
   firstCommentCheck: boolean;
+  /**
+   * FIRST_COMMENT_STRICT (upgrade queue item 19, off): every Short, of any format, gets the channel's comment only when
+   * it ends on a real question of its own, posted as that question alone: no stock tail ("Bottom line", "Sources are
+   * in the description"), no link, no hashtag, no mention. Long videos keep their pinned comment.
+   */
+  firstCommentStrict: boolean;
+  /**
+   * REPLY_OPENING_GUARD (item 19, off): a community-engine reply that opens with the same two words as one of the
+   * channel's recent replies, or another reply in the same pass, is held and judged again on the next pass.
+   */
+  replyOpeningGuard: boolean;
+  /**
+   * RULE_OF_TWO (Meta's "Agents Rule of Two", off): a step that reads untrusted text holds no secrets and no write tools,
+   * and the step that hearts, pins, replies or posts acts only on structured output from a fixed list. In the community
+   * engine, comments that read as instructions never reach the reply model, its verdicts flagged as instructions are
+   * dropped, and a public reply goes only for an allowed kind and never repeats six of the comment's words in a row;
+   * the Studio routine's plan (/routine/viewers) carries comment ids and fixed actions, no comment text; the reply
+   * Shorts' question picker passes over such comments.
+   */
+  ruleOfTwo: boolean;
   /** Replies lose their stock opener and do not all end on a question (REPLY_STYLE, src/youtube/replies.ts). */
   replyStyle: boolean;
   /** Answers a viewer who replies to our reply, up to REPLY_LIMITS.perThread in a thread (REPLY_FOLLOWUPS). */
@@ -893,10 +1007,17 @@ export interface Config {
   /** SUBS_LEARN and its settings: subscribers per 1,000 views by format, and one slot a week moved towards the formats
    * that win subscribers (src/subslearn). Off by default; SUBS_LEARN_APPLY=false reports without moving. */
   subsLearn: SubsLearnSettings;
+  /** PACKAGING_LAB=off|score|pick|retitle and its PACKAGING_* settings (src/packaging/settings.ts): off by default. */
+  packaging: PackagingSettings;
   /** LIVE_CLIPS: big moments found while the owner is live on Twitch, sent to the gameplay lane within minutes (src/liveclips). */
   liveClips: LiveClipsSettings;
   /** STREAM_WEEKLY: the owner's week of streams as one 15 to 25 minute long video, "GTA 6 Week N" (src/streamweekly). Off by default. */
   streamWeekly: StreamWeeklySettings;
+  /** The shared learning core (src/learn): version stamps, the change ledger, the holdout, the judge ledger, the bandit,
+   * the lesson playbook, hook breadth and the weekly summary, each behind its own LEARN_* setting, all off by default. */
+  learn: LearnSettings;
+  /** HUD_READER: the GTA HUD and minimap reader for the owner's streams (src/hudreader), every output off by default. */
+  hud: HudSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
@@ -928,6 +1049,10 @@ export interface Config {
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
   footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
+  /** GAME_LIBRARY (default on): Shorts pick each sentence's scene and still from the game media library and scene indexes (src/assets/shortlibrary.ts). */
+  gameLibrary: boolean;
+  /** SHORT_FOOTAGE_GATE (default on): a Short with no moving footage, or no footage to open on, is held when footage of its game exists. */
+  shortFootageGate: boolean;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   /**
    * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
@@ -961,8 +1086,19 @@ export interface Config {
   twinDelayMinutes: number; // the twin follows the original by this long
   oauthRedirectUri: string; // where Google returns after consent; this PC's own address works for the desktop OAuth client
   musicBed: boolean;
+  /** SIGNATURE_MUSIC (default off): each named series opens on its own sting over its own bed, documentaries on
+   * the docs set with rises cut to the chapters (src/render/signature.ts, library from src/tools/musiclab). */
+  signatureMusic: boolean;
+  /** HOOK_TAKES (default 0, off): a Short's hook line is voiced this many extra times on ElevenLabs, the takes
+   * scored with the in-context read (energy, clarity by Whisper, pace, breaths, match to the rest) and the best
+   * spliced in (src/voice/hooktakes.ts). Only the hook's characters are spent again, and every take is logged. */
+  hookTakes: number;
+  /** HOOK_TARGET_WPM (default 175): the pace a hook is scored against, as heard (after SHORT_SPEED). */
+  hookTargetWpm: number;
   /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
   parallax: boolean;
+  /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
+  shortParallaxShare: number;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
   /** A long video's real-world photos (Commons photos, portraits, sketches) only on the sentence they were picked for,
@@ -1157,6 +1293,8 @@ export interface Config {
   maxAttempts: number;
   remotionConcurrency: number;
   remotionGl: RemotionGl;
+  /** Render speed and resume (src/render/renderspeed.ts, 14 Nov 2026): every part off by default. */
+  renderSpeed: RenderSpeed;
   browserExecutable: string;
 }
 
@@ -1352,6 +1490,18 @@ export function loadConfig(): Config {
     gtaDailyStart: str("GTA_DAILY_START", "2026-11-19"),
     gtaDailySlot: str("GTA_DAILY_SLOT", "21:00"),
     gtaDailyDays: Math.max(1, int("GTA_DAILY_DAYS", 28)),
+    challenge: {
+      enabled: bool("CHALLENGE_SERIES", false),
+      quietDays: Math.max(1, int("CHALLENGE_END_DAYS", 7)),
+      ideasFile: str("CHALLENGE_IDEAS_FILE", ""),
+    },
+    premiereDocs: bool("PREMIERE_DOCS", false),
+    storyRecap: {
+      enabled: bool("STORY_RECAP", false),
+      minHours: Math.max(1, int("STORY_RECAP_MIN_HOURS", 15)),
+      minLines: Math.max(0, int("STORY_RECAP_MIN_LINES", 400)),
+      needEnd: bool("STORY_RECAP_NEED_END", true),
+    },
     shortLengths: parseShortLengths(str("SHORT_LENGTHS", "")),
     instagramMaxSeconds: Math.max(0, int("INSTAGRAM_MAX_SECONDS", 0)),
     breakingBigScore: Math.max(0, int("BREAKING_BIG_SCORE", 95)),
@@ -1417,6 +1567,13 @@ export function loadConfig(): Config {
     routinePcDir: str("ROUTINE_PC_DIR", "C:\\PulseFactory\\routine-files"),
     elevenLabsLowCredits: int("ELEVENLABS_LOW_CREDITS", 100_000),
     elevenLabsLowDays: int("ELEVENLABS_LOW_DAYS", 5),
+    forecastEnabled: bool("FORECAST_ENABLED", false),
+    forecastHorizonDays: int("FORECAST_HORIZON_DAYS", 3),
+    forecastYoutubeTokenDays: int("FORECAST_YOUTUBE_TOKEN_DAYS", 0),
+    forecastDiskFloorGb: int("FORECAST_DISK_FLOOR_GB", 20),
+    forecastPcDiskUrl: str("FORECAST_PC_DISK_URL", ""),
+    codexWeeklyCalls: int("CODEX_WEEKLY_CALLS", 0),
+    codexWeekResetDay: int("CODEX_WEEK_RESET_DAY", 1),
     // A dry run (every sandbox and rehearsal) leaves the owner's real inbox alone unless it asks otherwise: 4 Nov
     // 2026, a sandbox Short took clips out of the live inbox because nothing told it not to.
     gameplayEnabled: bool("GAMEPLAY_ENABLED", !bool("DRY_RUN", false)),
@@ -1499,6 +1656,9 @@ export function loadConfig(): Config {
     primarySources: bool("PRIMARY_SOURCES", true),
     primarySourcesMax: int("PRIMARY_SOURCES_MAX", 4),
     attributionGuard: bool("ATTRIBUTION_GUARD", true),
+    factVault: factVaultMode(process.env.FACT_VAULT),
+    factVaultFetchMax: int("FACT_VAULT_FETCH_MAX", 6),
+    factVaultNightly: int("FACT_VAULT_NIGHTLY", 200),
     writerNotesGuard: bool("WRITER_NOTES_GUARD", true),
     docTestEvidence: bool("DOC_TEST_EVIDENCE", false),
     shortSkeletons: bool("SHORT_SKELETONS", false),
@@ -1508,6 +1668,21 @@ export function loadConfig(): Config {
     commentReplies: bool("COMMENT_REPLIES", true),
     openOnMotion: bool("OPEN_ON_MOTION", true),
     shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
+    shortOpenWords: Math.min(2, Math.max(0, int("SHORT_OPEN_WORDS", 0))),
+    shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
+    qaAdSwap: bool("QA_AD_SWAP", true),
+    creditScrub: bool("CREDIT_SCRUB", true),
+    strandFrames: bool("STRAND_FRAMES", false),
+    shortTitleGameFirst: bool("SHORT_TITLE_GAME_FIRST", false),
+    longChapterCadence: bool("LONG_CHAPTER_CADENCE", false),
+    funnelAllLongs: bool("FUNNEL_ALL_LONGS", false),
+    whyDied: bool("WHY_DIED_ENABLED", false),
+    whyDiedFile: str("WHY_DIED_FILE", ""),
+    whyDiedEveryDays: Math.max(1, int("WHY_DIED_EVERY_DAYS", 14)),
+    reviewerPack: bool("REVIEWER_PACK", false),
+    aiImageGate: bool("AI_IMAGE_GATE", false),
+    rankingStance: bool("RANKING_STANCE", false),
+    completeCutMin: Math.min(6, Math.max(4, int("COMPLETE_CUT_MIN", 4))),
     weeklyEnabled: bool("WEEKLY_ENABLED", true),
     radarDays: str("RADAR_DAYS", "mon")
       .toLowerCase()
@@ -1629,14 +1804,17 @@ export function loadConfig(): Config {
     friendPassTier: str("FRIEND_PASS_TIER", "top") === "mid" ? "mid" : "top",
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
+    humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
+    growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),
     reachReport: bool("REACH_REPORT", false),
     analyticsLoop: bool("ANALYTICS_LOOP", false),
     analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
     retentionLearn: bool("RETENTION_LEARN", false),
+    retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),
     commentReplySlot: str("COMMENT_REPLY_SLOT", "16:30").trim(),
     shortSearchThumbShare: Number(str("SHORT_SEARCH_THUMB_SHARE", "0")) || 0,
@@ -1700,6 +1878,9 @@ export function loadConfig(): Config {
     engageSlot: str("ENGAGE_SLOT", "15:00"),
     firstCommentQuestion: bool("FIRST_COMMENT_QUESTION", false),
     firstCommentCheck: bool("FIRST_COMMENT_CHECK", false),
+    firstCommentStrict: bool("FIRST_COMMENT_STRICT", false),
+    replyOpeningGuard: bool("REPLY_OPENING_GUARD", false),
+    ruleOfTwo: bool("RULE_OF_TWO", false),
     replyStyle: bool("REPLY_STYLE", false),
     replyFollowups: bool("REPLY_FOLLOWUPS", false),
     metaCommentReplies: bool("META_COMMENT_REPLIES", false),
@@ -1821,8 +2002,11 @@ export function loadConfig(): Config {
     // Facts files resolve against the factory folder the server runs in, like SHORT_RUN_FILE.
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
+    packaging: packagingSettings(process.env),
     liveClips: liveClipsSettings(process.env),
     streamWeekly: streamWeeklySettings(process.env),
+    learn: learnSettings(process.env),
+    hud: hudSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
@@ -1846,10 +2030,11 @@ export function loadConfig(): Config {
       .map((g) => g.trim())
       .filter(Boolean),
     captureChecklist: bool("CAPTURE_CHECKLIST", true),
-    footageLibrary: str(
-      "FOOTAGE_LIBRARY",
-      path.join(process.env.USERPROFILE ?? "", "Videos"),
-    ),
+    // The owner's recordings under ~/Videos/<Game>/: USERPROFILE on Windows, the home folder anywhere else (on the Mac
+    // this read "Videos", relative to the factory folder, so the owner's footage was never found there).
+    footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE || os.homedir(), "Videos")),
+    gameLibrary: bool("GAME_LIBRARY", true),
+    shortFootageGate: bool("SHORT_FOOTAGE_GATE", true),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
     libraryOpenverse: bool("LIBRARY_OPENVERSE", true),
@@ -1875,7 +2060,11 @@ export function loadConfig(): Config {
     twinChannelId: str("TWIN_YOUTUBE_CHANNEL_ID", ""),
     twinDelayMinutes: int("TWIN_DELAY_MINUTES", 30),
     musicBed: bool("MUSIC_BED", true),
+    signatureMusic: bool("SIGNATURE_MUSIC", false),
+    hookTakes: Math.min(5, Math.max(0, int("HOOK_TAKES", 0))),
+    hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
+    shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),
@@ -1966,6 +2155,7 @@ export function loadConfig(): Config {
     remotionConcurrency: int("REMOTION_CONCURRENCY", 2),
     remotionGl,
     browserExecutable: str("REMOTION_BROWSER_EXECUTABLE"),
+    renderSpeed: renderSpeedFrom(process.env),
   };
   if (cfg.legacyTokenDir) adoptLegacyYouTubeTokens(cfg);
   applyMetaLogin(cfg);
@@ -2075,13 +2265,21 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     streamAsks: streamAsksSummary(c.streamAsks),
     searchShorts: searchShortsSummary(c.searchShorts),
     subsLearn: subsLearnSummary(c.subsLearn),
+    packaging: packagingSummary(c.packaging),
     liveClips: liveClipsSummary(c.liveClips),
+    learn: learnSummary(c.learn),
+    hud: hudSummary(c.hud),
     whySerial: c.whySerialEnabled
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",
     gtaFile: gtaFileSummary(c),
     gtaDaily: gtaDailySummary(c),
     streamWeekly: streamWeeklySummary(c.streamWeekly),
+    challengeSeries: c.challenge.enabled ? `on, ends after ${c.challenge.quietDays} quiet days` : "off",
+    premiereDocs: c.premiereDocs ? "on: marked documentaries upload private for the Studio premiere step" : "off",
+    storyRecap: c.storyRecap.enabled
+      ? `on: ${c.storyRecap.minHours}h of story streamed, ${c.storyRecap.minLines} heard lines${c.storyRecap.needEnd ? ", the end credits seen" : ""}`
+      : "off",
     shortLengths: shortLengthsSummary(c.shortLengths, c.instagramMaxSeconds),
     runPremake: `${c.runPremakeHours}h ahead, upload ${c.runPremakeUploadHours}h before the slot`,
     runSpareSlots: (c.runSpareSlots.length ? c.runSpareSlots : c.whySlots).join(","),

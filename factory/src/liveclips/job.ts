@@ -40,6 +40,9 @@ import {
   type Recorder,
 } from "./recorder.ts";
 import { Helix, readChat, type ChatReader, type LiveStream } from "./twitch.ts";
+import { profileFor, readClip } from "../hudreader/job.ts";
+import { liveHudSignals } from "../hudreader/signal.ts";
+import { loadProfile, type HudProfile, type RawSample } from "../hudreader/telemetry.ts";
 
 const run = promisify(execFile);
 
@@ -165,6 +168,10 @@ interface Session {
   measured: Set<string>;
   waiting: Array<{ m: Moment; since: number }>;
   clipsCheckedAt: number;
+  /** HUD_LIVE_SIGNAL: pieces already read for the HUD, the last minute and a half of readings, and the profile. */
+  hudRead?: Set<string>;
+  hudKept?: RawSample[];
+  hudProfile?: HudProfile | null;
 }
 
 let session: Session | undefined;
@@ -312,6 +319,7 @@ async function during(cfg: Config, helix: Helix, state: LiveState, s: Session) {
       ).catch(() => []);
       for (const x of samples) s.detector.addSecond(x);
     }
+  if (cfg.hud.enabled && cfg.hud.liveSignal) await hudPieces(cfg, s, bufDir, segs);
   if (
     lc.viewerClips &&
     helix.ready &&
@@ -361,6 +369,38 @@ async function during(cfg: Config, helix: Helix, state: LiveState, s: Session) {
     s.measured.delete(n);
     await fsp.rm(path.join(bufDir, n), { force: true });
   }
+}
+
+/**
+ * HUD_LIVE_SIGNAL: each finished piece of a GTA stream is read for its HUD (src/hudreader) and the game's own moments
+ * (stars jumping, Wasted, a mission passed) go to the detector as its fourth signal. At most two pieces a pass, so a
+ * slow read never holds up the sound and chat signals; a stream whose game has no calibrated profile is skipped.
+ */
+async function hudPieces(cfg: Config, s: Session, bufDir: string, segs: Array<{ name: string; start?: number }>) {
+  if (s.hudProfile === undefined) {
+    const game = profileFor(s.stream.title);
+    s.hudProfile = game && cfg.hud.games.includes(game) ? await loadProfile(game).catch(() => null) : null;
+    if (s.hudProfile && !s.hudProfile.calibrated) s.hudProfile = null;
+  }
+  const profile = s.hudProfile;
+  if (!profile) return;
+  s.hudRead ??= new Set();
+  let n = 0;
+  for (const seg of segs) {
+    if (seg.start === undefined || s.hudRead.has(seg.name)) continue;
+    if (n++ >= 2) break;
+    s.hudRead.add(seg.name);
+    const out = path.join(liveDir(cfg.dataDir), "hud", `${seg.name}.json`);
+    await fsp.mkdir(path.dirname(out), { recursive: true });
+    const read = await readClip(cfg.hud, cfg.dataDir, { file: path.join(bufDir, seg.name), game: profile.game, out }).catch(() => undefined);
+    await fsp.rm(out, { force: true });
+    if (!read) continue;
+    const fresh = read.raw.samples.map((x) => ({ ...x, t: seg.start! / 1000 + x.t }));
+    const r = liveHudSignals(s.hudKept ?? [], fresh, profile);
+    s.hudKept = r.kept;
+    for (const sig of r.signals) s.detector.addHud({ at: Math.round(sig.t * 1000), score: sig.score, detail: sig.detail });
+  }
+  if (s.hudRead.size > 2000) s.hudRead = new Set([...s.hudRead].slice(-500));
 }
 
 async function cutToInbox(

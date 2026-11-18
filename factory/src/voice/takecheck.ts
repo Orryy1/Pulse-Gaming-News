@@ -194,6 +194,69 @@ export function analyseVoice(
   };
 }
 
+/**
+ * The voiced pitches (Hz) of a take's speech frames, in order: what the hook scorer reads its intonation
+ * range from (src/voice/hooktakes.ts). The same frames and pitch finder as analyseVoice.
+ */
+export function voicedPitches(
+  samples: Int16Array | Float32Array,
+  rate = RATE,
+): number[] {
+  const scale = samples instanceof Int16Array ? 1 / 32768 : 1;
+  const frames = Math.floor(samples.length / FRAME);
+  const db: number[] = [];
+  for (let f = 0; f < frames; f++) {
+    let sum = 0;
+    for (let i = f * FRAME; i < (f + 1) * FRAME; i++) {
+      const v = samples[i]! * scale;
+      sum += v * v;
+    }
+    db.push(10 * Math.log10(sum / FRAME + 1e-12));
+  }
+  if (!db.length) return [];
+  const loud = [...db].sort((a, b) => a - b)[Math.floor(db.length * 0.9)]!;
+  const out: number[] = [];
+  const x = new Float64Array(FRAME);
+  for (let f = 0; f < frames; f++) {
+    if (db[f]! <= loud - SPEECH_DB) continue;
+    let mean = 0;
+    for (let i = 0; i < FRAME; i++) mean += samples[f * FRAME + i]! * scale;
+    mean /= FRAME;
+    for (let i = 0; i < FRAME; i++)
+      x[i] = samples[f * FRAME + i]! * scale - mean;
+    const p = framePitch(x, rate);
+    if (p > 0) out.push(p);
+  }
+  return out;
+}
+
+/** Decodes a file to 16 kHz mono 16-bit samples. */
+export async function decodeMono(file: string): Promise<Int16Array> {
+  const { stdout } = await run(
+    FFMPEG,
+    [
+      "-v",
+      "error",
+      "-i",
+      file,
+      "-ac",
+      "1",
+      "-ar",
+      String(RATE),
+      "-f",
+      "s16le",
+      "-",
+    ],
+    { encoding: "buffer", maxBuffer: 512 * 1024 * 1024 },
+  );
+  const buf = stdout as unknown as Buffer;
+  return new Int16Array(
+    buf.buffer,
+    buf.byteOffset,
+    Math.floor(buf.byteLength / 2),
+  );
+}
+
 /** Decodes a take to 16 kHz mono and measures it. */
 export async function measureTake(file: string): Promise<TakeMeasure> {
   const { stdout } = await run(

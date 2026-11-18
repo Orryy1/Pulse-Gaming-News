@@ -561,8 +561,8 @@ export async function writeLongform(
       ? [
           ...inviteProblems(plan.intro.narration, plan.entries.map((x) => x.game_title)),
           ...thumbVerdictProblems(
-            plan.youtube.thumb_text,
-            plan.youtube.title,
+            plan.youtube?.thumb_text,
+            plan.youtube?.title ?? plan.title,
             plan.entries.map((x) => x.game_title),
           ),
         ]

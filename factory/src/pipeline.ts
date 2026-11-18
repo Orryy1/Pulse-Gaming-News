@@ -171,7 +171,7 @@ import {
   scriptMeasures,
 } from "./editorial/longrules.ts";
 import { openingPace, structureLine, structureSummary } from "./render/structure.ts";
-import { contractRules, openingQuotes, recordLongChecks } from "./longcontractstep.ts";
+import { contractRules, openingQuotes, recordLongChecks, type LongRecord } from "./longcontractstep.ts";
 import { stockOpenerProblems, takeProblems } from "./editorial/longcontract.ts";
 import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
@@ -4806,15 +4806,17 @@ async function stepScriptDocumentary(
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources`,
     );
-  // The title the opening serves, as it will go out, and the source's dated quotes (LONG_OPENING_CONTRACT).
-  const finalTitle =
-    topic.format === "everygame" || topic.why_died
+  // LONG_OPENING_CONTRACT and LONG_ARGUES: with both off nothing below reads, measures or calls anything new, so an
+  // older or mocked outline (no youtube block, no sources) runs exactly as before.
+  const longOn = s.cfg.longOpeningContract !== "off" || s.cfg.longArgues !== "off";
+  const sourceTexts = () => [franchise?.text ?? "", ...chapters.map((c) => c.source?.text ?? "")];
+  // The title the opening serves, as it will go out, and the source's dated quotes (contract "fix" only).
+  const finalTitle = rules.contract
+    ? topic.format === "everygame" || topic.why_died
       ? topic.title_idea
-      : (retro?.title ?? topic.planned?.title ?? outline.youtube.title);
-  const quotes =
-    s.cfg.longOpeningContract === "off"
-      ? []
-      : openingQuotes([franchise?.text ?? "", ...chapters.map((c) => c.source.text)]);
+      : (retro?.title ?? topic.planned?.title ?? outline.youtube?.title ?? outline.title ?? topic.title_idea)
+    : "";
+  const quotes = s.cfg.longOpeningContract === "off" ? [] : openingQuotes(sourceTexts());
   const ends = {
     priorDoc,
     loops: openLoops.loops,
@@ -4829,7 +4831,7 @@ async function stepScriptDocumentary(
           contract: {
             title: finalTitle,
             quotes,
-            sources: [franchise?.text ?? "", ...chapters.map((c) => c.source.text)],
+            sources: sourceTexts(),
           },
         }
       : {}),
@@ -4956,25 +4958,33 @@ async function stepScriptDocumentary(
     if (!script.sources?.includes(u)) (script.sources ??= []).push(u);
   // LONG_OPENING_CONTRACT and LONG_ARGUES on the record (check and fix); off, nothing is measured or called.
   // A finish line the outline planned but placement dropped (findFinishPlant, findFinishPayoff): a finding.
-  const finishGone = warnings.find((w) => /^finish line ".*": never (raised|answered)$/.test(w));
-  const finishQuestion = openLoops.loops.find((l) => l.finish_line)?.question;
-  const longChecks = await recordLongChecks(s, ep.id, script, {
-    kind: rules.claims ? "claims" : rules.guide ? "guide" : "documentary",
-    quotes,
-    topic,
-    fixed: contractSentBack,
-    sources: [franchise?.text ?? "", ...chapters.map((c) => c.source.text)],
-    sourceUrls: [franchise?.url ?? "", ...chapters.map((c) => c.source.url), ...runSources.urls],
-    ...(finishQuestion && finishGone
-      ? {
-          finishMissing: {
-            question: finishQuestion,
-            why: finishGone.endsWith("never answered") ? ("not paid" as const) : ("not planted" as const),
-          },
-        }
-      : {}),
-  });
-  warnings.push(...longChecks.warnings);
+  const finishGone = longOn
+    ? warnings.find((w) => /^finish line ".*": never (raised|answered)$/.test(w))
+    : undefined;
+  const finishQuestion = longOn ? openLoops.loops.find((l) => l.finish_line)?.question : undefined;
+  const longChecks: LongRecord = longOn
+    ? await recordLongChecks(s, ep.id, script, {
+        kind: rules.claims ? "claims" : rules.guide ? "guide" : "documentary",
+        quotes,
+        topic,
+        fixed: contractSentBack,
+        sources: sourceTexts(),
+        sourceUrls: [
+          franchise?.url ?? "",
+          ...chapters.map((c) => c.source?.url ?? ""),
+          ...(runSources.urls ?? []),
+        ],
+        ...(finishQuestion && finishGone
+          ? {
+              finishMissing: {
+                question: finishQuestion,
+                why: finishGone.endsWith("never answered") ? ("not paid" as const) : ("not planted" as const),
+              },
+            }
+          : {}),
+      })
+    : { warnings: [] };
+  if (longChecks.warnings.length) warnings.push(...longChecks.warnings);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

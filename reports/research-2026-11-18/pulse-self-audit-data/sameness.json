@@ -1,0 +1,552 @@
+{
+ "shorts": 86,
+ "music_beds": [
+  [
+   "music/bed_1.wav",
+   26
+  ],
+  [
+   "music/bed_3.wav",
+   25
+  ],
+  [
+   "music/bed_4.wav",
+   19
+  ],
+  [
+   "music/bed_2.wav",
+   16
+  ]
+ ],
+ "caption_look": [
+  [
+   "",
+   26
+  ],
+  [
+   "Sticker",
+   8
+  ],
+  [
+   "Stencil",
+   7
+  ],
+  [
+   "Marker",
+   6
+  ],
+  [
+   "Ticket",
+   5
+  ],
+  [
+   "Stamp",
+   4
+  ],
+  [
+   "Chalk",
+   4
+  ],
+  [
+   "Dymo",
+   4
+  ],
+  [
+   "SplitFlap",
+   4
+  ],
+  [
+   "FileStamp",
+   3
+  ],
+  [
+   "LedTicker",
+   3
+  ],
+  [
+   "Metal",
+   3
+  ],
+  [
+   "Highlighter",
+   3
+  ],
+  [
+   "TornBanner",
+   2
+  ],
+  [
+   "WaxSeal",
+   2
+  ],
+  [
+   "Neon",
+   1
+  ],
+  [
+   "Typewriter",
+   1
+  ]
+ ],
+ "card_sequences_top": [
+  [
+   "rank>rank>rank>rank>rank>rank",
+   4,
+   0.05
+  ],
+  [
+   "title>stat",
+   2,
+   0.02
+  ],
+  [
+   "versus>stat",
+   2,
+   0.02
+  ],
+  [
+   "report>stat>title",
+   2,
+   0.02
+  ],
+  [
+   "rank>rank>rank>rank>rank>rank>rank>rank",
+   2,
+   0.02
+  ],
+  [
+   "stat>stat>quote",
+   2,
+   0.02
+  ],
+  [
+   "stat>title",
+   2,
+   0.02
+  ],
+  [
+   "rank>rank>rank>rank>rank>rank>rank",
+   2,
+   0.02
+  ],
+  [
+   "title>quote>title",
+   2,
+   0.02
+  ],
+  [
+   "versus>title",
+   2,
+   0.02
+  ]
+ ],
+ "shorts_sharing_card_sequence_with_another": 0.28,
+ "beats_count": [
+  [
+   3,
+   55
+  ],
+  [
+   2,
+   16
+  ],
+  [
+   4,
+   6
+  ],
+  [
+   6,
+   4
+  ],
+  [
+   8,
+   2
+  ],
+  [
+   7,
+   2
+  ],
+  [
+   5,
+   1
+  ]
+ ],
+ "sfx_open_sting": 1.0,
+ "sfx_close_sting": 1.0,
+ "sfx_vocab": [
+  [
+   "sting",
+   172
+  ],
+  [
+   "air-1",
+   96
+  ],
+  [
+   "swell",
+   85
+  ],
+  [
+   "air-2",
+   83
+  ],
+  [
+   "tick",
+   19
+  ],
+  [
+   "land",
+   5
+  ]
+ ],
+ "sfx_sequences_top": [
+  [
+   "sting>air-1>air-2>swell>sting",
+   50
+  ],
+  [
+   "sting>air-1>air-2>tick>swell>sting",
+   12
+  ],
+  [
+   "sting>air-1>air-1>air-2>swell>sting",
+   5
+  ],
+  [
+   "sting>air-1>air-2>air-1>swell>sting",
+   4
+  ],
+  [
+   "sting>tick>air-1>air-2>swell>sting",
+   4
+  ]
+ ],
+ "opening_media": [
+  [
+   "clip",
+   51
+  ],
+  [
+   "image",
+   35
+  ]
+ ],
+ "first_shot_s": [
+  [
+   0.4,
+   26
+  ],
+  [
+   2.97,
+   4
+  ],
+  [
+   3.07,
+   3
+  ],
+  [
+   3.5,
+   3
+  ],
+  [
+   3.0,
+   2
+  ]
+ ],
+ "hook_type": [
+  [
+   "question",
+   39
+  ],
+  [
+   "number claim",
+   30
+  ],
+  [
+   "plain statement",
+   15
+  ],
+  [
+   "contrast",
+   2
+  ]
+ ],
+ "hook_first_word": [
+  [
+   "is",
+   10
+  ],
+  [
+   "gta",
+   6
+  ],
+  [
+   "why",
+   5
+  ],
+  [
+   "grand",
+   5
+  ],
+  [
+   "should",
+   4
+  ],
+  [
+   "will",
+   4
+  ],
+  [
+   "can",
+   3
+  ],
+  [
+   "did",
+   2
+  ],
+  [
+   "street",
+   2
+  ],
+  [
+   "could",
+   2
+  ]
+ ],
+ "hook_first_two": [
+  [
+   "gta 6",
+   5
+  ],
+  [
+   "grand theft",
+   5
+  ],
+  [
+   "why did",
+   3
+  ],
+  [
+   "street fighter",
+   2
+  ],
+  [
+   "is your",
+   2
+  ],
+  [
+   "why does",
+   2
+  ],
+  [
+   "will gta",
+   2
+  ],
+  [
+   "should grand",
+   2
+  ],
+  [
+   "star wars",
+   2
+  ],
+  [
+   "can you",
+   2
+  ]
+ ],
+ "title_pattern": [
+  [
+   "statement",
+   57
+  ],
+  [
+   "question:why",
+   13
+  ],
+  [
+   "ranking",
+   6
+  ],
+  [
+   "question:can",
+   3
+  ],
+  [
+   "deals/chart",
+   2
+  ],
+  [
+   "question:how",
+   2
+  ],
+  [
+   "question:did",
+   1
+  ],
+  [
+   "question:what",
+   1
+  ],
+  [
+   "question:is",
+   1
+  ]
+ ],
+ "title_gta6": 31,
+ "loop_first_two": [
+  [
+   "will you",
+   6
+  ],
+  [
+   "until then,",
+   3
+  ],
+  [
+   "our gta",
+   3
+  ],
+  [
+   "the next",
+   2
+  ],
+  [
+   "you can",
+   2
+  ],
+  [
+   "when you",
+   2
+  ],
+  [
+   "you don't",
+   2
+  ],
+  [
+   "that's how",
+   2
+  ],
+  [
+   "your first",
+   2
+  ],
+  [
+   "gta 6",
+   2
+  ]
+ ],
+ "loop_has_you": 0.69,
+ "loop_is_question": 0.22,
+ "take_phrases": {
+  "my verdict": 11,
+  "my pulse check": 6,
+  "where we land": 0,
+  "bottom line": 0,
+  "our take": 0,
+  "for us": 1,
+  "i'd": 27,
+  "my take": 0,
+  "our verdict": 0,
+  "honestly": 1,
+  "the verdict": 0
+ },
+ "take_first_two": [
+  [
+   "we think",
+   3
+  ],
+  [
+   "fair enough,",
+   2
+  ],
+  [
+   "granted, the",
+   2
+  ],
+  [
+   "granted, a",
+   2
+  ],
+  [
+   "buying a",
+   2
+  ],
+  [
+   "so when",
+   1
+  ],
+  [
+   "for ranked",
+   1
+  ],
+  [
+   "wasn't it",
+   1
+  ],
+  [
+   "for a",
+   1
+  ],
+  [
+   "konami's reasons",
+   1
+  ]
+ ],
+ "stamp_present": 0.71,
+ "repeated_4grams_in_5plus_shorts": [
+  [
+   "grand theft auto 6",
+   5
+  ]
+ ],
+ "identical_full_skeleton_share": 0.19,
+ "durations": {
+  "min": 25,
+  "median": 35.0,
+  "max": 61
+ },
+ "wpm_range": [
+  130.9,
+  165.7,
+  211.7
+ ],
+ "pinned_comment_openers": [
+  [
+   "What do you make of it",
+   32
+  ],
+  [
+   "Do you buy that answer, or is there a better one",
+   17
+  ],
+  [
+   "Which one would you move up or down the list",
+   2
+  ],
+  [
+   "Do you buy this one, or wait for the official word",
+   2
+  ],
+  [
+   "Are you picking up Grand Theft Auto VI at launch",
+   2
+  ],
+  [
+   "Is that price fair for Warhammer Survivors",
+   1
+  ],
+  [
+   "Which Grand Theft Auto VI game was the one for you",
+   1
+  ],
+  [
+   "Which Grand Theft Auto: San Andreas game was the one for you",
+   1
+  ]
+ ],
+ "pinned_comments_seen": 70,
+ "pinned_with_sources_line": 57,
+ "viewer_threads": 30,
+ "viewer_threads_answered": 25
+}

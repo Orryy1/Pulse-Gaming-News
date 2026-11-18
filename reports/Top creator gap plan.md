@@ -1,0 +1,237 @@
+# Top creator gap plan
+
+Written 18 November 2026 for Pulse Gaming. Research and planning on Fable 5.2; builds go to Opus helpers on separate branches. Nothing live was changed to write this.
+
+## What this is
+
+Three studies were run today and compared like for like:
+
+- **Top Shorts creators:** 27 breakout gaming Shorts and 7 flops from the same 24 channels, plus 563 titles (`research-2026-11-18/shorts-creators.md`).
+- **Top long-form creators:** 25 long videos, with Dark Space's "The Long Road" studied deepest (`research-2026-11-18/long-creators.md`).
+- **Pulse's own videos:** all 86 Shorts and 3 long videos from 1 to 17 November, with retention curves for 54 Shorts (`research-2026-11-18/pulse-self-audit.md`).
+
+It builds on the 11 November strategy research and the 4 November forensics. Those covered what to make and how often. This one covers the craft inside each video.
+
+**How far to trust it.** Other channels' retention is private, so "hit" means views against that channel's own usual level. Seven flops is a small group. Cut counts, music changes and picture shares on other channels are the vidIQ watcher's estimates because YouTube blocked downloads. Pulse's own numbers are measured. Expected effects below are my judgement, and each build has a pass mark so it can be kept or reverted on evidence.
+
+## The short version
+
+1. **Polish is not the gap.** Top creators' hits and flops are edited the same: same pace, same cuts, same captions. On Pulse too, faster cuts, more footage and shorter hooks do not separate hits from flops.
+2. **The gap is what happens between the hook and the end.** Every one of the 27 hits opens a question and holds the answer until late (typically 87% of the way through). Pulse states the answer on the first frame and in the title, then loses 4 points of audience a second through the facts.
+3. **Top creators have a view, and say it early.** Comments follow stated opinions almost one for one (0.81). Pulse's opinion arrives at 65% of the Short, when 38% of viewers are left, and long videos never say "I" at all.
+4. **Pulse looks and sounds like one template.** Same sting on 86 of 86 Shorts, same five-sound sequence on 58%, four music beds, same opening layout and closing card every time. Top creators use a quarter of the sound effects and let the game's own sound through. This is also the main risk when YouTube reviews the channel to earn.
+5. **The best long videos are carried by many voices, one finish line and music that follows the story.** "The Long Road" changes speaker every 13 seconds. Pulse has one voice, one bed and openings that lose a third of viewers in 36 seconds.
+
+## The gaps, ranked
+
+Ranked by likely effect on views, retention and subscribers, weighed against how sure the evidence is and how cheap the fix is.
+
+| #   | Gap                                              | Format            | Likely effect                         | Status                                           |
+| --- | ------------------------------------------------ | ----------------- | ------------------------------------- | ------------------------------------------------ |
+| 1   | Hold the answer back, and take a side early      | Shorts            | Retention and comments, high          | New build (helper A)                             |
+| 2   | Break the template in sound and layout           | Shorts            | Earning review and swipes, high       | New build (helper B)                             |
+| 3   | Long-video openings that earn the first minute   | Long              | Watch time, high                      | New build (helper C)                             |
+| 4   | Rankings and commentary as arguments             | Long and Shorts   | Views and comments, high for rankings | New build (helper C)                             |
+| 5   | A chorus of voices, and let the game speak       | Long, then Shorts | Watch time and feel, high but costly  | Design now, build after launch                   |
+| 6   | A premise test before any "why" Short is written | Shorts            | Views, medium to high                 | Switch on what exists, then build                |
+| 7   | Music cast per chapter, silence at the seams     | Long              | Retention, medium                     | After helper B; shares files with the other chat |
+| 8   | Pinned comments and replies with a stance        | All               | Subscribers and comments, medium      | Bug report sent today; small build               |
+| 9   | Speak faster, and pick one of two lengths        | Shorts            | Retention, medium                     | Settings test                                    |
+| 10  | Moving pictures first, and no shot twice         | All               | Retention, medium, unproven on Pulse  | Switch on what exists                            |
+| 11  | One promise in the packaging                     | Long              | Clicks, medium                        | Switch on what exists                            |
+| 12  | A "Long Road" style series on GTA VI             | Long              | Reach, uncertain; craft benchmark     | Plan after the 21 Nov documentary                |
+
+### 1. Hold the answer back, and take a side early (Shorts)
+
+**Evidence.**
+
+- 27 of 27 hits plant an open question; 2 of 7 flops do. The payoff lands after 60% of the runtime in 22 of 27 hits. Two flops give the answer in the first 3 seconds.
+- 17 of 27 hits have a "but" turn in the middle; 2 of 7 flops do.
+- 8 of 9 news hits state an opinion, and open on a consequence, a quote or a reaction, not the announcement. Same creators, same week: a "why" Short at 31.8 times the channel's usual views against a news list at 0.11.
+- Comments per 1,000 views track the number of stated takes (0.81) and "I" (0.63). AI-voiced hits get 0.16 comments per 1,000 against 1.13 for human-voiced, and none of them says "I".
+- Pulse: 4.0 points lost per second in the hook and 3.9 in the facts, falling to 1.7 once the take starts. The take is not driving people off; the middle never gives them a reason to wait. The first frame carries a headline that states the answer ("Ocarina Remake Added Fast Travel, Then Cut It").
+
+**What to change.**
+
+- Every Short names its question and its answer when it is planned. The answer sentence may not start before 60% of the words. The title and the first-frame text may state the premise but not the answer.
+- One "but" turn in the middle third.
+- News is re-angled before writing: why it happened, what it changes for the player, what the player can do before a date, or the narrator's verdict. A side is stated in the first two sentences (the friend voice already asks for this; it is not being enforced) and the verdict lands last.
+- This does not undo "clarity first". The hook still says plainly what the Short is about. Clear about the question is not the same as giving the answer away.
+- Stock take openers ("I'd", "My verdict", "My Pulse check") are rotated out the same way repeated hooks already are.
+- End on the punchline or verdict and stop. 22 of 27 hits end with no ask.
+
+**How it is automated.** A planning step and a check in the Shorts writer (factory, `src/editorial`), behind a new setting `SHORT_PAYOFF_GATE=off|check|fix` with a share so half of Shorts get it. The existing clarity judge reads the script cold after the hook and must not be able to state the answer. It reuses the two-hook-takes step and the structure rotation, which are live.
+
+**Proof before live.** Ten real published scripts rewritten under the gate, before and after side by side, each passing the clarity judge and fact check. No new voice or render spend for the proof.
+
+**Pass mark.** On 20 Shorts per arm: loss per second through the facts down from 3.9 to 3.0 or better, average viewed up 3 points, comments per 1,000 views up. Otherwise off.
+
+### 2. Break the template in sound and layout (Shorts)
+
+**Evidence.**
+
+- Pulse: sting at the first and last frame of 86 of 86 Shorts; identical five-sound sequence on 58%; six effect files; four beds for 89 videos; loudness range about 1 LU; no silence in any Short; 9 of 9 inspected Shorts open on one layout and close on the same headline card. About 4 words on screen per second from three competing text layers.
+- Hits: 0.36 effects per 10 seconds against Pulse's 1.5, and none at all in 10 of 27. Effects density runs against comments (minus 0.44). One quiet bed. No extra text on the first frame in 17 of 27. Captions of 1 to 3 words. Overlays are evidence only: the headline, the post, the source's name, a score, a date.
+- YouTube's stated test before a channel can earn is whether videos look made with a template, and reviewers sample the newest uploads.
+
+**What to change.**
+
+- No fixed sting. Effects only where something arrives on screen, 0 to 4 a Short, and none is allowed.
+- More beds (the `claude/morebeds` branch is built and unmerged) and no bed used twice in a row.
+- Three or four opening layouts, including full-frame footage with captions only. The closing frame holds on the payoff, not the headline card.
+- One text layer besides captions at any moment.
+- A sameness score for the newest 30 Shorts, reported weekly, so this cannot drift back.
+
+**How it is automated.** Sound plan and Short layout in the factory render code, behind `SHORT_SOUND_PLAN=v3|sparse` and `SHORT_LAYOUTS=on|off`, split by episode.
+
+**Proof before live.** Three real Shorts re-rendered both ways through the PC orchestrator at test priority, checked for loudness, black frames and reading time. Sameness score before and after on a simulated run of 30.
+
+**Pass mark.** Identical sound sequence on under 15% of the newest 30 (now 58%), no opening layout on more than 40%, and average viewed not worse than the old arm.
+
+**Caution for the other chat.** The signature music stings being finished in the Pulse Gaming News chat would put a branded sound on every video again. The evidence says to keep a signature for long videos and series openers, and leave Shorts without one. That chat owns the decision; I have told it.
+
+### 3. Long-video openings that earn the first minute
+
+**Evidence.**
+
+- "Why San Andreas Never Got a Sequel" kept 63% at 36 seconds and 32% at 3 minutes. YouTube rates both public long videos below about three quarters of similar videos.
+- Pulse openings run 122 to 129 words, begin on a buyer's line that does not match the title ("can mislead your next purchase" on a history documentary) and reach the real question at 11 to 18 seconds.
+- Hits state the question inside 90 seconds and often half-answer it at once. The one Dark Space video that opened on three abstract questions and definitions got 34,000 views against 204,000 and 666,000.
+- "The Long Road" opens on a 1990s news report with no music for 28 seconds, drops to silence, then hits the title. Intros cut 1.5 to 2.5 times faster than bodies (about 20 cuts a minute against 10).
+- Every hit sets one finish line early and reaches it late. The underperformers set none.
+
+**What to change.**
+
+- The first sentence serves the title's promise. No buyer framing unless the video is a buyer's guide.
+- One finish line per video: a single question or goal, planted before 1:30 and paid in the last 15%, written into the outline with both timestamps.
+- Open on a real dated voice or source where one exists, with no music under it.
+- The first two minutes are cut at about twice the body's pace.
+- Chapters hand over by contrast (praise then cost, joy then threat), and a series part ends on the next threat.
+
+**How it is automated.** Outline and opening checks in the documentary and long-form writers, and a two-speed rule in the long edit plan, behind `LONG_OPENING_CONTRACT=off|check|fix`. It extends the open-loops and cold-open steps that already exist.
+
+**Proof before live.** The three November long videos' outlines and openings re-run under the contract, before and after, plus the plan's cut rate for the first two minutes.
+
+**Pass mark.** On the next two long videos: 70% or more left at 36 seconds and 45% or more at 3 minutes (now 63% and 32%).
+
+### 4. Rankings and commentary as arguments
+
+**Evidence.**
+
+- Ranking hits say "I" 19 to 40 times per 1,000 words, against 1.8 in an encyclopaedic history. One channel ends all 23 entries with a spoken verdict. A fan-vote version of the same ranking with no host verdict got 10,000 views against 1.9 million.
+- They invite the fight inside 30 seconds; 27% of comment likes go to placement arguments. The thumbnail is the hot take: best and worst.
+- Time follows interest: filler entries get 10 to 46 seconds, the top ones 154 to 189.
+- Commentary that holds states its verdict by 2:15, then tests three to six numbered claims and closes each one as true, half true or wrong. The same creator's video with no stance got 0.45 times his usual views.
+- Pulse: "Every Mainline GTA Game, Ranked" got 2 views. Long videos say "I" 0.0 times per 100 words. Ranking Shorts show 6 to 8 identical rank cards in a row and sit at a median of 104 views.
+
+**What to change.**
+
+- Rankings: a one-line "I" verdict per entry, the most contested placement named in the first 30 seconds, unequal time, and a thumbnail that shows the verdict.
+- Commentary gets a fixed shape: verdict early, numbered claims, a ruling on each. The natural first use is "GTA VI claims, tested" on Martin's own launch footage, which no other channel can copy.
+- Documentaries: at least two honest takes a chapter, as the friend voice already says.
+- No franchise histories unless the brief names a thesis, something exclusive and a finish line.
+
+**How it is automated.** Writer rules and counts in the long-form and ranking writers, behind `LONG_ARGUES=off|check|fix`. Built with gap 3 by the same helper because they touch the same files.
+
+**Pass mark.** First ranking under the rules: comments per 1,000 views above 1.0 (long videos now 0) and average viewed above 25%.
+
+### 5. A chorus of voices, and let the game speak
+
+**Evidence.**
+
+- "The Long Road": 15 named voices, 230 speaker changes in 50 minutes, the narrator silent for the first 3 minutes 22 seconds. 46% of likes on its top comments celebrate the cast. A second Dark Space hit has 33 speaker changes in 27 minutes.
+- Shorts: game audio is audible in 19 of 27 hits. Three stop narrating for 10 to 25 seconds and let the game talk; one ends on a character's line.
+- Pulse: one voice throughout. Game audio was heard in 2 of the 28 Shorts that log it, although the setting is on for half.
+
+**What transfers to a faceless channel.** Not 15 recorded interviews. The honest substitute is short credited archive clips with their own sound, named primary-source quotes shown on screen, game characters' own lines, and Martin's own recorded reactions from his daily streams.
+
+**What to do.**
+
+- First, find out why the game-audio bed reaches about 7% of Shorts when it is set to 50%. That is a diagnosis for the Pulse Gaming News chat, which is already checking the trailer voice lines branch.
+- Then a "voices plan" for documentaries: a target of one voice other than the narrator every 90 seconds, each credited on screen, drawn from the scene index, the stream archive and source quotes.
+
+**Status.** Design only for now. It depends on footage fetching, which YouTube's bot check has limited since 14 November, and on Martin's GTA VI streams from 19 November.
+
+### 6. A premise test before any "why" Short is written
+
+**Evidence.**
+
+- Pulse's "why" Shorts sit at a median of 71 views against 233 for the rest. The flops answer questions nobody was asking that day: narrow roads, radio on foot, a failed score.
+- Title wording is not the cause. Across 563 titles, question marks, capitals and numbers move results by a few per cent. Titles of 1 to 5 words break out 28% of the time against 14% for 9 to 11 words.
+- 17 of 27 hits ride the release of the month through an evergreen shape. The contradiction ("they said X, the truth is Y") is the strongest hook shape per use.
+
+**What to change.** A "why" Short is only written if the question shows up in the wild (search suggestions, Reddit threads, viewer comments, the stream asks list) or carries a real contradiction. Otherwise the slot goes to news with a take.
+
+**How it is automated.** The search-demand engine already exists and is off (`SEARCH_SHORTS`). Switch it to feed the "why" picker, then add the contradiction test. Second wave.
+
+### 7. Music cast per chapter, silence at the seams (long videos)
+
+**Evidence.** "The Long Road" changes bed about 12 times in 50 minutes, matched to each era, with a full drop-out at every chapter card. Documentaries change bed 2.4 to 4.3 times per 10 minutes. Pulse's measured long render has a loudness range of 1.8 LU and 3.4 seconds of silence in 26 minutes.
+
+**What to change.** A bed per chapter chosen for its mood or era, a 0.5 to 1.5 second drop-out before the title card, each chapter card and the single most important line, and no music under an opening archive clip.
+
+**Status.** Second wave. It shares files with the signature music work in the Pulse Gaming News chat, so it waits for that to land.
+
+### 8. Pinned comments and replies with a stance
+
+**Evidence.**
+
+- Pulse: 70% of pinned comments use one of two stock openers. Two live long videos have a broken one ("Which Grand Theft Auto VI game was the one for you?"). None of the Shorts checked since 14 November has a pinned comment.
+- Top creators: the top comment is the creator's take as a claim to argue with, or a link to the long video. One creator replied in 9 of the top 25 threads. Viewers' top comments are their own answers and corrections.
+- Pulse already answers well: 14 of 19 threads.
+
+**What to change.** Fix the two faults, then pin the narrator's take as a claim, or ask for the viewer's own ranking, in varied wording.
+
+**Status.** The two faults were reported to the Pulse Gaming News chat today because they are live. The rest is a small build after the first three.
+
+### 9. Speak faster, and pick one of two lengths (Shorts)
+
+**Evidence.** Hits run at 212 words a minute (168 to 301); Pulse at 166. On Pulse's own Shorts, speed tracks views (+0.37) and length runs against them (minus 0.34). Hits are either short or full: only 5 of 27 sit between 46 and 60 seconds, 15 are over a minute.
+
+**What to change.** Test 185 to 195 words a minute on half of Shorts by tightening gaps before any speed-up, so the voice Martin likes is not distorted. Two lengths only: news takes at 35 seconds or under, story Shorts with a held answer at 60 to 75 seconds. Nothing in between.
+
+**Status.** A settings test for the Pulse Gaming News chat to run after launch week; the voice experiment judged on 3 December must not be muddied.
+
+### 10. Moving pictures first, and no shot twice
+
+**Evidence.** 26 of 27 hits open on moving footage; 19 never reuse a shot; one new picture every 2.8 seconds. Pulse Shorts are 74% stills, 30% open on a 0.4 second first shot, and long videos are 76 to 78% stills. But on Pulse's own data the share of stills does not separate hits from flops, so this is ranked below the script gaps.
+
+**What to change.** Fix the 0.4 second first shot. Move the retention director from "advise" to "fix" on half of Shorts once its predictions have been checked against real curves. Long videos need at least half their runtime moving before release, which Martin's own GTA VI capture makes possible from 19 November.
+
+**Status.** Switch on what exists, in the Pulse Gaming News chat's hands.
+
+### 11. One promise in the packaging (long videos)
+
+**Evidence.** Hit thumbnails carry 0 to 4 words that add to the title and sell one thing to find out. A copied thumbnail template on a list topic got 0.53 times usual views against 3.5 for the original idea. Pulse's "GTA 6 Before You Buy" has a thumbnail that says "PAY" over a nine-tile collage and got 612 impressions.
+
+**What to change.** Move the packaging lab from "score" to "pick" for long videos, with the rule that thumbnail words are not in the title and name one thing.
+
+### 12. A "Long Road" style series on GTA VI
+
+"The Long Road" is the craft benchmark, not the reach benchmark: the same channel's 26-minute explainer did three times better, and Episode 2 kept 36% of Episode 1. So the lesson to take is its method (voices, finish line, era music, contrast cuts, ending on a threat), applied first to single stories. A multi-part series on GTA VI's first month, built from Martin's streams and credited voices, is worth planning once the 21 November documentary has been judged on 5 December.
+
+## What is being built now
+
+Three Opus helpers on the PC, each on its own branch cut from `claude/stage`, each behind a setting that is off by default. Nothing reaches the Mac mini until the Pulse Gaming News chat deploys it in a safe window.
+
+| Helper | Branch                  | Gaps    | Setting                                |
+| ------ | ----------------------- | ------- | -------------------------------------- |
+| A      | `claude/gap-payoff`     | 1       | `SHORT_PAYOFF_GATE`                    |
+| B      | `claude/gap-untemplate` | 2       | `SHORT_SOUND_PLAN`, `SHORT_LAYOUTS`    |
+| C      | `claude/gap-longform`   | 3 and 4 | `LONG_OPENING_CONTRACT`, `LONG_ARGUES` |
+
+Each helper must prove its change on real past videos before it is offered for deploy, and report what is on and what is off.
+
+## What I am not recommending
+
+- **Chasing title formulas.** The evidence says wording barely matters.
+- **More sound effects, more cards or faster cuts.** None separates hits from flops, here or on Pulse.
+- **Copying the fabricated "just confirmed" Short.** One 765,000-view hit states a rumour as fact. It is in the data as a hit and is exactly what Pulse's rules forbid.
+- **Franchise histories.** The most crowded form in gaming, and the one that got 2 views.
+
+## Where the evidence is thin
+
+- Other channels' retention, loudness and exact cut counts could not be measured.
+- Whether a voice is human or AI was partly judgement; only one channel discloses it.
+- Pulse's renders survive for only 9 of the 18 chosen Shorts and 1 of 3 long videos, so sound and picture measures rest on those.
+- Pulse has 10 new subscribers in the window. Any per-format subscriber rate is noise; comments per 1,000 views and retention are the measures to judge by.

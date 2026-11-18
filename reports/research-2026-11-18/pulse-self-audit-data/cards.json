@@ -1,0 +1,3510 @@
+[
+ {
+  "id": "ep_20261104_706d5c1d",
+  "dur": 34.8,
+  "cards": 3,
+  "cards_per_min": 5.18,
+  "card_words": 16,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.74,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 5,
+    "shown_s": 4.62,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 5.25,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 16.51,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261101_fccb2c0a",
+  "dur": 37.5,
+  "cards": 3,
+  "cards_per_min": 4.79,
+  "card_words": 22,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.7,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 12,
+    "shown_s": 5.96,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 7.13,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 13.65,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_b7acbc6f",
+  "dur": 41.2,
+  "cards": 4,
+  "cards_per_min": 5.83,
+  "card_words": 38,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.76,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 15,
+    "shown_s": 5,
+    "need_s": 4.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.71,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 9,
+    "shown_s": 4.99,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 13.48,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_8e28b468",
+  "dur": 34.8,
+  "cards": 4,
+  "cards_per_min": 6.89,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.93,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 5.06,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 5.87,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 6,
+    "shown_s": 6.53,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 8.12,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261102_066b727e",
+  "dur": 34.9,
+  "cards": 4,
+  "cards_per_min": 6.87,
+  "card_words": 35,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.12,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 2.79,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 17,
+    "shown_s": 5.96,
+    "need_s": 4.75,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 6,
+    "shown_s": 4.56,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 8.16,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261101_ecf21d7c",
+  "dur": 38.7,
+  "cards": 4,
+  "cards_per_min": 6.2,
+  "card_words": 32,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.7,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 10,
+    "shown_s": 4.48,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 6.43,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 6.46,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 12.9,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261101_fb2daac1",
+  "dur": 53.9,
+  "cards": 7,
+  "cards_per_min": 7.79,
+  "card_words": 80,
+  "cards_under_reading_time": 2,
+  "onscreen_words_per_s": 4.1,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 3.03,
+    "need_s": 3.25,
+    "short": true
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 5.88,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 2.49,
+    "need_s": 3.25,
+    "short": true
+   },
+   {
+    "kind": "rank",
+    "words": 14,
+    "shown_s": 5.57,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 14,
+    "shown_s": 5.65,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 5.63,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 13.85,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261101_d451543a",
+  "dur": 32.8,
+  "cards": 4,
+  "cards_per_min": 7.32,
+  "card_words": 28,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.12,
+  "detail": [
+   {
+    "kind": "date",
+    "words": 6,
+    "shown_s": 5.26,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "countdown",
+    "words": 7,
+    "shown_s": 8.24,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 3.56,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 7.2,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261102_d1020fd7",
+  "dur": 30.9,
+  "cards": 4,
+  "cards_per_min": 7.77,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.6,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 9,
+    "shown_s": 4.92,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 5,
+    "shown_s": 4.59,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 7,
+    "shown_s": 4.7,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.23,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261108_5d2fee95",
+  "dur": 30.4,
+  "cards": 4,
+  "cards_per_min": 7.9,
+  "card_words": 26,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.31,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 3.55,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 4.53,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 3.83,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 10.83,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261102_555f22e1",
+  "dur": 59.4,
+  "cards": 9,
+  "cards_per_min": 9.09,
+  "card_words": 65,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.79,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 7,
+    "shown_s": 4.21,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 4.19,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 5.37,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 6,
+    "shown_s": 6.25,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 7,
+    "shown_s": 5.48,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 5.49,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 7,
+    "shown_s": 5.31,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 5.41,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 10.19,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261104_4aa2f60b",
+  "dur": 36.3,
+  "cards": 4,
+  "cards_per_min": 6.62,
+  "card_words": 41,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.72,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 4.53,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 21,
+    "shown_s": 7.89,
+    "need_s": 5.75,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 8,
+    "shown_s": 5.22,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 7.37,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261104_bcc4e29b",
+  "dur": 35.6,
+  "cards": 4,
+  "cards_per_min": 6.74,
+  "card_words": 20,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.93,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 4,
+    "shown_s": 3.63,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 5,
+    "shown_s": 6.85,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 6,
+    "shown_s": 4.19,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 7.75,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261103_ff145481",
+  "dur": 48.5,
+  "cards": 7,
+  "cards_per_min": 8.65,
+  "card_words": 75,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.53,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 4.41,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 4.34,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 15,
+    "shown_s": 5.78,
+    "need_s": 4.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 4.19,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 5.55,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 5.08,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 8.43,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261104_57aae3ad",
+  "dur": 49.8,
+  "cards": 7,
+  "cards_per_min": 8.44,
+  "card_words": 85,
+  "cards_under_reading_time": 2,
+  "onscreen_words_per_s": 4.7,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 5.89,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 4.53,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 3.05,
+    "need_s": 3.75,
+    "short": true
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 4.98,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 16,
+    "shown_s": 5.06,
+    "need_s": 4.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 2.86,
+    "need_s": 3.5,
+    "short": true
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 10.44,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_dca2618c",
+  "dur": 44.2,
+  "cards": 5,
+  "cards_per_min": 6.79,
+  "card_words": 31,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.91,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 6.55,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 7.42,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 7.16,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 5.02,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 9.31,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_87bee491",
+  "dur": 36.7,
+  "cards": 4,
+  "cards_per_min": 6.55,
+  "card_words": 24,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.6,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 4,
+    "shown_s": 5.54,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 6.03,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 4.62,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 7.5,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_efbe393a",
+  "dur": 34.0,
+  "cards": 4,
+  "cards_per_min": 7.06,
+  "card_words": 31,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.12,
+  "detail": [
+   {
+    "kind": "list",
+    "words": 12,
+    "shown_s": 4.28,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "score",
+    "words": 4,
+    "shown_s": 8.34,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 4.16,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 9.21,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_b88d4645",
+  "dur": 34.5,
+  "cards": 4,
+  "cards_per_min": 6.95,
+  "card_words": 23,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.79,
+  "detail": [
+   {
+    "kind": "timeline",
+    "words": 6,
+    "shown_s": 4.77,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 5,
+    "shown_s": 4.21,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 7.93,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 9.31,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261102_1096e1d4",
+  "dur": 40.9,
+  "cards": 4,
+  "cards_per_min": 5.87,
+  "card_words": 30,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.81,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 4,
+    "shown_s": 4.45,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 13,
+    "shown_s": 4.35,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 9,
+    "shown_s": 7.73,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 8.72,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261102_0eb62cd3",
+  "dur": 36.0,
+  "cards": 4,
+  "cards_per_min": 6.67,
+  "card_words": 24,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.7,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 8.11,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 5.22,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 4.2,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 7.61,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261103_523c8b88",
+  "dur": 39.0,
+  "cards": 4,
+  "cards_per_min": 6.15,
+  "card_words": 37,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.95,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 6.83,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 8,
+    "shown_s": 8.69,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 14,
+    "shown_s": 4.14,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 8.76,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261103_aa2f7c44",
+  "dur": 38.6,
+  "cards": 4,
+  "cards_per_min": 6.21,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.83,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 6.09,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.76,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 5.43,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 13.27,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_3658bb74",
+  "dur": 41.6,
+  "cards": 4,
+  "cards_per_min": 5.77,
+  "card_words": 33,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.9,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 5.01,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 7.57,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "compare",
+    "words": 12,
+    "shown_s": 5.56,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 12.89,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261103_63f8bb73",
+  "dur": 36.2,
+  "cards": 4,
+  "cards_per_min": 6.62,
+  "card_words": 34,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.81,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 16,
+    "shown_s": 7.24,
+    "need_s": 4.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 3.68,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 5,
+    "shown_s": 6.09,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 10.56,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261103_6fc7f724",
+  "dur": 44.2,
+  "cards": 4,
+  "cards_per_min": 5.44,
+  "card_words": 18,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.15,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 8.16,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 3,
+    "shown_s": 7.39,
+    "need_s": 1.25,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 5,
+    "shown_s": 8.59,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 6.51,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261105_7f9a172a",
+  "dur": 38.0,
+  "cards": 4,
+  "cards_per_min": 6.31,
+  "card_words": 23,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.6,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 4.96,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 9,
+    "shown_s": 5.36,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "countdown",
+    "words": 4,
+    "shown_s": 6.4,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 8.1,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261106_37bce92f",
+  "dur": 26.8,
+  "cards": 4,
+  "cards_per_min": 8.94,
+  "card_words": 21,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.69,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 4.21,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 5,
+    "shown_s": 4.22,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 3,
+    "shown_s": 5.41,
+    "need_s": 1.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 6.49,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261106_3afaccd0",
+  "dur": 31.2,
+  "cards": 4,
+  "cards_per_min": 7.69,
+  "card_words": 33,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.64,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 4.52,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 9,
+    "shown_s": 4.22,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 10,
+    "shown_s": 5.46,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 10.03,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_8cb6798c",
+  "dur": 31.0,
+  "cards": 4,
+  "cards_per_min": 7.74,
+  "card_words": 29,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.84,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.37,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 6.24,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 7.13,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 6.35,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_36486bac",
+  "dur": 24.6,
+  "cards": 4,
+  "cards_per_min": 9.75,
+  "card_words": 33,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.84,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 7.26,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 4.36,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 9,
+    "shown_s": 4.49,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 2.91,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261106_713dc719",
+  "dur": 32.1,
+  "cards": 5,
+  "cards_per_min": 9.34,
+  "card_words": 31,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.45,
+  "detail": [
+   {
+    "kind": "specs",
+    "words": 9,
+    "shown_s": 6.42,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 6,
+    "shown_s": 2.46,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 4,
+    "shown_s": 6.05,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 8,
+    "shown_s": 3.57,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 6.01,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261108_9a363b40",
+  "dur": 24.8,
+  "cards": 3,
+  "cards_per_min": 7.27,
+  "card_words": 24,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.48,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 10,
+    "shown_s": 5.25,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 9,
+    "shown_s": 5.8,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 6.69,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261107_878e18db",
+  "dur": 47.6,
+  "cards": 6,
+  "cards_per_min": 7.57,
+  "card_words": 54,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.31,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 5.62,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 5.04,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 5.72,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 4.82,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 4.07,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 10.67,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261107_fa894885",
+  "dur": 31.2,
+  "cards": 4,
+  "cards_per_min": 7.7,
+  "card_words": 36,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.72,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 3.5,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 14,
+    "shown_s": 5.3,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 11,
+    "shown_s": 5.3,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 7.11,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261106_5b0b7532",
+  "dur": 32.1,
+  "cards": 4,
+  "cards_per_min": 7.47,
+  "card_words": 37,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.51,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 6.49,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 6,
+    "shown_s": 4.56,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 16,
+    "shown_s": 5.02,
+    "need_s": 4.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.41,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261108_011958bf",
+  "dur": 27.5,
+  "cards": 3,
+  "cards_per_min": 6.55,
+  "card_words": 19,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.04,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 5.15,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 9,
+    "shown_s": 6.59,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 6.31,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_5a83c0fe",
+  "dur": 37.5,
+  "cards": 4,
+  "cards_per_min": 6.4,
+  "card_words": 42,
+  "cards_under_reading_time": 1,
+  "onscreen_words_per_s": 4.16,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 4.2,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "milestones",
+    "words": 22,
+    "shown_s": 3.89,
+    "need_s": 6.0,
+    "short": true
+   },
+   {
+    "kind": "quote",
+    "words": 9,
+    "shown_s": 5.27,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 14.23,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_bf304ea5",
+  "dur": 33.2,
+  "cards": 4,
+  "cards_per_min": 7.24,
+  "card_words": 32,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.4,
+  "detail": [
+   {
+    "kind": "compare",
+    "words": 11,
+    "shown_s": 4.49,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 5.49,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 11,
+    "shown_s": 5.4,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 8.41,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261108_4dfacbf5",
+  "dur": 23.2,
+  "cards": 3,
+  "cards_per_min": 7.75,
+  "card_words": 20,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.35,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 9,
+    "shown_s": 5.95,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 5,
+    "shown_s": 5.89,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 5.95,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_67d9fca9",
+  "dur": 28.4,
+  "cards": 4,
+  "cards_per_min": 8.44,
+  "card_words": 24,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.08,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 5,
+    "shown_s": 5.16,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "countdown",
+    "words": 7,
+    "shown_s": 4.37,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 6.15,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 4.01,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261112_4923a248",
+  "dur": 29.7,
+  "cards": 4,
+  "cards_per_min": 8.07,
+  "card_words": 26,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.24,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 6.14,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 7,
+    "shown_s": 4.4,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 7,
+    "shown_s": 2.41,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.53,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261107_0ab37e6e",
+  "dur": 27.9,
+  "cards": 5,
+  "cards_per_min": 10.75,
+  "card_words": 38,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 5.19,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 10,
+    "shown_s": 5.03,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 4.01,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 2.77,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 7,
+    "shown_s": 3.1,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 5.57,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261107_da51c6da",
+  "dur": 27.1,
+  "cards": 4,
+  "cards_per_min": 8.87,
+  "card_words": 35,
+  "cards_under_reading_time": 1,
+  "onscreen_words_per_s": 5.32,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 12,
+    "shown_s": 3.04,
+    "need_s": 3.5,
+    "short": true
+   },
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 5.67,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 7,
+    "shown_s": 4.82,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 5.74,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261108_1504baf9",
+  "dur": 24.1,
+  "cards": 4,
+  "cards_per_min": 9.97,
+  "card_words": 28,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.9,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 3.91,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 5.92,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 3.03,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 4.48,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_2bba4750",
+  "dur": 27.3,
+  "cards": 4,
+  "cards_per_min": 8.78,
+  "card_words": 21,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.99,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 5,
+    "shown_s": 6.02,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 4,
+    "shown_s": 5.55,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 5.5,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 3.92,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261109_f346e606",
+  "dur": 49.4,
+  "cards": 8,
+  "cards_per_min": 9.72,
+  "card_words": 75,
+  "cards_under_reading_time": 1,
+  "onscreen_words_per_s": 4.52,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 2.62,
+    "need_s": 2.75,
+    "short": true
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 5.04,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 4.35,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 5.28,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 4.59,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 4.22,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 4.94,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.48,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_c7faac87",
+  "dur": 25.6,
+  "cards": 3,
+  "cards_per_min": 7.02,
+  "card_words": 18,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.09,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 6.39,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 6.65,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 7.02,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261109_2b69f68c",
+  "dur": 31.5,
+  "cards": 4,
+  "cards_per_min": 7.62,
+  "card_words": 19,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.0,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 5,
+    "shown_s": 5.81,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 4,
+    "shown_s": 5.5,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 6,
+    "shown_s": 5.45,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 7.27,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261109_53e317aa",
+  "dur": 25.7,
+  "cards": 4,
+  "cards_per_min": 9.33,
+  "card_words": 28,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.51,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 3.79,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 4.34,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 9,
+    "shown_s": 6.85,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 4.45,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261109_cd01ffe9",
+  "dur": 28.5,
+  "cards": 4,
+  "cards_per_min": 8.42,
+  "card_words": 33,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 5.19,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 15,
+    "shown_s": 4.63,
+    "need_s": 4.25,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 6,
+    "shown_s": 5.26,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 5.51,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 6.41,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_4ee05805",
+  "dur": 26.0,
+  "cards": 4,
+  "cards_per_min": 9.23,
+  "card_words": 26,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.42,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 6.86,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 6.02,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 4.0,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 3.37,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261112_0def8826",
+  "dur": 48.1,
+  "cards": 7,
+  "cards_per_min": 8.73,
+  "card_words": 73,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.53,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 3.05,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 14,
+    "shown_s": 4.97,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 13,
+    "shown_s": 4.31,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 3.28,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 5.33,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 5.42,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 9.77,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261109_46ec0c8c",
+  "dur": 23.4,
+  "cards": 4,
+  "cards_per_min": 10.27,
+  "card_words": 31,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.92,
+  "detail": [
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 6.4,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 2.76,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 14,
+    "shown_s": 4.01,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 3.78,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_b0585748",
+  "dur": 29.1,
+  "cards": 4,
+  "cards_per_min": 8.25,
+  "card_words": 34,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.64,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 8.73,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 11,
+    "shown_s": 5.04,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 8,
+    "shown_s": 3.28,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 3.98,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_9cd58d33",
+  "dur": 28.1,
+  "cards": 4,
+  "cards_per_min": 8.55,
+  "card_words": 23,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.42,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 5.86,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 6,
+    "shown_s": 5.94,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 5,
+    "shown_s": 4.55,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 4.08,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261110_1a72e447",
+  "dur": 28.0,
+  "cards": 4,
+  "cards_per_min": 8.56,
+  "card_words": 37,
+  "cards_under_reading_time": 1,
+  "onscreen_words_per_s": 5.07,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 4.4,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "compare",
+    "words": 16,
+    "shown_s": 3.76,
+    "need_s": 4.5,
+    "short": true
+   },
+   {
+    "kind": "date",
+    "words": 8,
+    "shown_s": 5.2,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 6.25,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_6f048e74",
+  "dur": 30.5,
+  "cards": 4,
+  "cards_per_min": 7.88,
+  "card_words": 30,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.59,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 5.11,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 5,
+    "shown_s": 2.96,
+    "need_s": 1.75,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 13,
+    "shown_s": 5.03,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 11.01,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261112_26d885a6",
+  "dur": 30.4,
+  "cards": 3,
+  "cards_per_min": 5.91,
+  "card_words": 21,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.84,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 7.18,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 9,
+    "shown_s": 9.85,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 5.78,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261111_a47d4bee",
+  "dur": 35.8,
+  "cards": 4,
+  "cards_per_min": 6.71,
+  "card_words": 31,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.11,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 5.48,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 8,
+    "shown_s": 3.91,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 8,
+    "shown_s": 5.4,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 10.58,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261113_918ecb79",
+  "dur": 28.6,
+  "cards": 3,
+  "cards_per_min": 6.28,
+  "card_words": 22,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.84,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 8.65,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 9,
+    "shown_s": 5.96,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 4.07,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261114_1b0f71b6",
+  "dur": 54.7,
+  "cards": 8,
+  "cards_per_min": 8.77,
+  "card_words": 62,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.78,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 5.12,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 2.72,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 5.12,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 6.96,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 2.95,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 5.58,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 9,
+    "shown_s": 6.24,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 11.16,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261112_aa914502",
+  "dur": 26.9,
+  "cards": 3,
+  "cards_per_min": 6.68,
+  "card_words": 22,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.27,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.98,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 4.09,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 10.5,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261114_18b8c092",
+  "dur": 31.0,
+  "cards": 3,
+  "cards_per_min": 5.8,
+  "card_words": 23,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.9,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 12,
+    "shown_s": 6.95,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 5.45,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 9.45,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261112_1bb9728f",
+  "dur": 27.3,
+  "cards": 3,
+  "cards_per_min": 6.58,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.57,
+  "detail": [
+   {
+    "kind": "compare",
+    "words": 17,
+    "shown_s": 7.16,
+    "need_s": 4.75,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 4,
+    "shown_s": 2.97,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 8.87,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261114_fb55491e",
+  "dur": 35.6,
+  "cards": 4,
+  "cards_per_min": 6.75,
+  "card_words": 25,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.71,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 8,
+    "shown_s": 7.49,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 5.82,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 6,
+    "shown_s": 4.36,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 7.45,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261113_990452f8",
+  "dur": 28.9,
+  "cards": 3,
+  "cards_per_min": 6.22,
+  "card_words": 23,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.97,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 9,
+    "shown_s": 7.56,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.53,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 8.15,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261114_f0622fa4",
+  "dur": 35.8,
+  "cards": 4,
+  "cards_per_min": 6.71,
+  "card_words": 36,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.86,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 12,
+    "shown_s": 4.07,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 7.64,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 10,
+    "shown_s": 6.4,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.85,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261113_00617839",
+  "dur": 29.3,
+  "cards": 4,
+  "cards_per_min": 8.19,
+  "card_words": 29,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.06,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 4.94,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "specs",
+    "words": 8,
+    "shown_s": 3.56,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "platforms",
+    "words": 10,
+    "shown_s": 5.82,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 8.07,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261113_16274c30",
+  "dur": 28.0,
+  "cards": 3,
+  "cards_per_min": 6.43,
+  "card_words": 26,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.86,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 12,
+    "shown_s": 5.24,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 5.53,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 7.78,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_21d15f3e",
+  "dur": 50.5,
+  "cards": 5,
+  "cards_per_min": 5.94,
+  "card_words": 35,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.69,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 5.31,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 7,
+    "shown_s": 13.16,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 6.11,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 5.35,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 9.45,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_f877a1b9",
+  "dur": 39.2,
+  "cards": 5,
+  "cards_per_min": 7.65,
+  "card_words": 30,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.64,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 8.58,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 7,
+    "shown_s": 4.8,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 6,
+    "shown_s": 6.55,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 7,
+    "shown_s": 5.05,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 5.89,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_c34eb208",
+  "dur": 33.1,
+  "cards": 4,
+  "cards_per_min": 7.25,
+  "card_words": 29,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.08,
+  "detail": [
+   {
+    "kind": "date",
+    "words": 10,
+    "shown_s": 6.47,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 4.15,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "price",
+    "words": 6,
+    "shown_s": 6.11,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 7.85,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_a11bf864",
+  "dur": 38.5,
+  "cards": 4,
+  "cards_per_min": 6.23,
+  "card_words": 39,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.74,
+  "detail": [
+   {
+    "kind": "report",
+    "words": 7,
+    "shown_s": 4.37,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "specs",
+    "words": 14,
+    "shown_s": 8.63,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "versus",
+    "words": 13,
+    "shown_s": 5.11,
+    "need_s": 3.75,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 10.15,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261114_4424dd72",
+  "dur": 26.3,
+  "cards": 3,
+  "cards_per_min": 6.84,
+  "card_words": 25,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.1,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 15,
+    "shown_s": 7.13,
+    "need_s": 4.25,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 6,
+    "shown_s": 4.51,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 6.47,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_000b0a99",
+  "dur": 30.5,
+  "cards": 4,
+  "cards_per_min": 7.87,
+  "card_words": 32,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.26,
+  "detail": [
+   {
+    "kind": "platforms",
+    "words": 9,
+    "shown_s": 5.96,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 9,
+    "shown_s": 6.63,
+    "need_s": 2.75,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 4.11,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 5.66,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261116_9cd3e09b",
+  "dur": 33.7,
+  "cards": 4,
+  "cards_per_min": 7.13,
+  "card_words": 28,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.83,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 8.0,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 6,
+    "shown_s": 3.64,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 5.16,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 8.04,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261116_dc32aeab",
+  "dur": 36.0,
+  "cards": 4,
+  "cards_per_min": 6.67,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.64,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 6,
+    "shown_s": 5.49,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 8,
+    "shown_s": 10.11,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 6.15,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 6.29,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261116_fe3d75f3",
+  "dur": 33.7,
+  "cards": 3,
+  "cards_per_min": 5.35,
+  "card_words": 22,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.59,
+  "detail": [
+   {
+    "kind": "countdown",
+    "words": 8,
+    "shown_s": 7.64,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 7,
+    "shown_s": 7.2,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 11.2,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_80f93adf",
+  "dur": 37.2,
+  "cards": 4,
+  "cards_per_min": 6.46,
+  "card_words": 27,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.66,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 6,
+    "shown_s": 2.69,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "quote",
+    "words": 4,
+    "shown_s": 7.93,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 10,
+    "shown_s": 6.8,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 7,
+    "shown_s": 12.58,
+    "need_s": 2.25,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261116_d8d42f56",
+  "dur": 58.0,
+  "cards": 9,
+  "cards_per_min": 9.31,
+  "card_words": 94,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.26,
+  "detail": [
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 5.18,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 14,
+    "shown_s": 5.61,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 6.03,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 4.4,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 4.76,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 11,
+    "shown_s": 3.34,
+    "need_s": 3.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 12,
+    "shown_s": 5.4,
+    "need_s": 3.5,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 10,
+    "shown_s": 3.23,
+    "need_s": 3.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 10.93,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261115_75345555",
+  "dur": 34.5,
+  "cards": 4,
+  "cards_per_min": 6.95,
+  "card_words": 26,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.94,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 5.78,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 8,
+    "shown_s": 6.51,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "stat",
+    "words": 4,
+    "shown_s": 9.09,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 6.04,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261117_24f45cbb",
+  "dur": 32.4,
+  "cards": 5,
+  "cards_per_min": 9.25,
+  "card_words": 29,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 4.01,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 4,
+    "shown_s": 3.35,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "date",
+    "words": 4,
+    "shown_s": 3.05,
+    "need_s": 1.5,
+    "short": false
+   },
+   {
+    "kind": "list",
+    "words": 7,
+    "shown_s": 4.44,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 4.29,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 6.62,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261117_1b09a6d4",
+  "dur": 37.1,
+  "cards": 4,
+  "cards_per_min": 6.47,
+  "card_words": 29,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.69,
+  "detail": [
+   {
+    "kind": "stat",
+    "words": 7,
+    "shown_s": 8.36,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "rank",
+    "words": 8,
+    "shown_s": 3.93,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 6.18,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 6,
+    "shown_s": 9.31,
+    "need_s": 2.0,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261117_87af513f",
+  "dur": 36.1,
+  "cards": 4,
+  "cards_per_min": 6.65,
+  "card_words": 34,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.96,
+  "detail": [
+   {
+    "kind": "versus",
+    "words": 14,
+    "shown_s": 8.44,
+    "need_s": 4.0,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 6.62,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "title",
+    "words": 8,
+    "shown_s": 6.47,
+    "need_s": 2.5,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 5,
+    "shown_s": 5.16,
+    "need_s": 1.75,
+    "short": false
+   }
+  ]
+ },
+ {
+  "id": "ep_20261117_5b333f30",
+  "dur": 30.5,
+  "cards": 3,
+  "cards_per_min": 5.9,
+  "card_words": 17,
+  "cards_under_reading_time": 0,
+  "onscreen_words_per_s": 3.7,
+  "detail": [
+   {
+    "kind": "title",
+    "words": 7,
+    "shown_s": 6.13,
+    "need_s": 2.25,
+    "short": false
+   },
+   {
+    "kind": "report",
+    "words": 6,
+    "shown_s": 6.4,
+    "need_s": 2.0,
+    "short": false
+   },
+   {
+    "kind": "take",
+    "words": 4,
+    "shown_s": 9.25,
+    "need_s": 1.5,
+    "short": false
+   }
+  ]
+ }
+]

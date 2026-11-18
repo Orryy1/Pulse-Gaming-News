@@ -1,0 +1,118 @@
+{
+  "note": "Top 25 threads by relevance pulled through vidIQ on 18 Nov 2026 for 7 hits. Themes are a reader's summary, not quotes. Reply counts are creator replies seen inside those 25 threads only.",
+  "videos": [
+    {
+      "id": "TN0PwnwqhKk",
+      "channel": "hChatNation",
+      "views": 4875251,
+      "comments": 1777,
+      "comments_per_1000": 0.36,
+      "top_comment_likes": 11941,
+      "themes": [
+        "viewers offer a different or better explanation than the video",
+        "running jokes about the game",
+        "accusations of clickbait in replies",
+        "technical corrections"
+      ],
+      "creator_replies_in_top25": 1,
+      "creator_top_comment": false
+    },
+    {
+      "id": "1p3sdgnIVuo",
+      "channel": "Joeshi 2",
+      "views": 477178,
+      "comments": 664,
+      "comments_per_1000": 1.39,
+      "top_comment_likes": 2065,
+      "themes": [
+        "pushback on the script speaking for all fans",
+        "viewers who never minded the problem",
+        "viewers proposing their own fix",
+        "a pun thread on the title"
+      ],
+      "creator_replies_in_top25": 0,
+      "creator_top_comment": false
+    },
+    {
+      "id": "dSP_qWdhNso",
+      "channel": "lukogta",
+      "views": 2387629,
+      "comments": 1686,
+      "comments_per_1000": 0.71,
+      "top_comment_likes": 13101,
+      "themes": [
+        "viewers' own plans and variations on the activity",
+        "nostalgia and personal memories",
+        "mockery of the ritual and replies defending it",
+        "countdown comments"
+      ],
+      "creator_replies_in_top25": 0,
+      "creator_top_comment": false
+    },
+    {
+      "id": "ohlsvOlO9VI",
+      "channel": "DanJamanta",
+      "views": 1713318,
+      "comments": 1070,
+      "comments_per_1000": 0.62,
+      "top_comment_likes": 6325,
+      "themes": [
+        "how viewers plan to play on day one",
+        "comparisons with the studio's previous game",
+        "relief about the delay",
+        "development-time arguments"
+      ],
+      "creator_replies_in_top25": 9,
+      "creator_top_comment": true,
+      "creator_top_comment_purpose": "links the full long video"
+    },
+    {
+      "id": "NBkoA3PzxME",
+      "channel": "Luke Stephens",
+      "views": 1455013,
+      "comments": 2914,
+      "comments_per_1000": 2.0,
+      "top_comment_likes": 10216,
+      "themes": [
+        "viewers proposing the fix",
+        "jokes built on the creator's own joke phrase",
+        "advertising-honesty argument",
+        "comparisons with other games that did it better",
+        "the creator's on-camera mishap"
+      ],
+      "creator_replies_in_top25": 0,
+      "creator_top_comment": false
+    },
+    {
+      "id": "hgUsYFE0UsI",
+      "channel": "KidShadoe",
+      "views": 319137,
+      "comments": 2281,
+      "comments_per_1000": 7.15,
+      "top_comment_likes": 3579,
+      "themes": [
+        "agreement with the creator's stance",
+        "first-time players reporting their experience",
+        "the game's historic importance",
+        "counter-argument about toxic positivity"
+      ],
+      "creator_replies_in_top25": 1,
+      "creator_top_comment": false
+    },
+    {
+      "id": "LdZPBdrOjrQ",
+      "channel": "TDAWG Plays",
+      "views": 221017,
+      "comments": 394,
+      "comments_per_1000": 1.78,
+      "top_comment_likes": 241,
+      "themes": [
+        "viewers voting for their own favourite",
+        "short one-line allegiances",
+        "memories of first playing"
+      ],
+      "creator_replies_in_top25": 0,
+      "creator_top_comment": false
+    }
+  ]
+}

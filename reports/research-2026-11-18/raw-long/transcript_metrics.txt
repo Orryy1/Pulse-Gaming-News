@@ -1,0 +1,112 @@
+file transcript_942eypyLLQc.txt
+words 4702 dur_min 26.8 wpm_overall 175.2
+wpm per 5min: [181, 180, 176, 182, 187, 35]
+first 2 min words per 30s: [73, 86, 96, 86]
+I/1k 1.7 you/1k 13.0 we/1k 1.9
+sentences 295 mean 15.9 median 15 share<=8w 0.15 share>=25w 0.11
+speaker turns (>>) 33 per min 1.23
+[music] tags 25 [applause] 0 [laughter] 0
+questions 7 per 1k 1.5
+numbers per 1k 13.8
+low-speech segments (<60wpm): 1 ['25:59(17)']
+first-person singular /1k 1.7
+[music] block timestamps 21 ['2:11', '2:27', '3:29', '3:44', '3:59', '5:34', '5:50', '6:22', '7:10', '8:37', '8:58', '9:14', '10:02', '10:18', '12:19', '15:01', '18:14', '19:50', '20:23', '21:28', '26:21']
+
+file transcript_cIbCxbrBCys.txt
+words 4230 dur_min 25.7 wpm_overall 164.5
+wpm per 5min: [153, 167, 164, 180, 151, 31]
+first 2 min words per 30s: [84, 69, 81, 89]
+I/1k 11.1 you/1k 13.0 we/1k 4.5
+sentences 253 mean 16.8 median 16 share<=8w 0.3 share>=25w 0.23
+speaker turns (>>) 0 per min 0.0
+[music] tags 0 [applause] 0 [laughter] 1
+questions 3 per 1k 0.7
+numbers per 1k 10.9
+low-speech segments (<60wpm): 0 []
+first-person singular /1k 11.1
+[music] block timestamps 0 []
+
+file transcript_8LMau1qXPYE.txt
+words 3361 dur_min 20.5 wpm_overall 164.1
+wpm per 5min: [176, 164, 171, 161]
+first 2 min words per 30s: [95, 82, 96, 55]
+I/1k 39.0 you/1k 12.5 we/1k 10.4
+sentences 223 mean 15.0 median 12 share<=8w 0.38 share>=25w 0.2
+speaker turns (>>) 0 per min 0.0
+[music] tags 0 [applause] 0 [laughter] 0
+questions 29 per 1k 8.6
+numbers per 1k 3.9
+low-speech segments (<60wpm): 0 []
+first-person singular /1k 39.0
+[music] block timestamps 0 []
+
+file transcript_BcQ-8R2fiZg.txt
+words 6551 dur_min 50.4 wpm_overall 129.9
+wpm per 5min: [144, 142, 134, 156, 139, 142, 139, 145, 148, 21]
+first 2 min words per 30s: [92, 70, 47, 88]
+I/1k 12.5 you/1k 6.6 we/1k 9.2
+sentences 396 mean 16.4 median 14.0 share<=8w 0.27 share>=25w 0.22
+speaker turns (>>) 0 per min 0.0
+[music] tags 0 [applause] 0 [laughter] 0
+questions 16 per 1k 2.4
+numbers per 1k 11.4
+low-speech segments (<60wpm): 0 []
+first-person singular /1k 12.5
+[music] block timestamps 0 []
+
+file transcript_Is8N7B9b0GQ.txt
+words 7017 dur_min 47.1 wpm_overall 149.0
+wpm per 5min: [146, 123, 149, 165, 159, 145, 161, 131, 192, 32]
+first 2 min words per 30s: [84, 90, 66, 89]
+I/1k 34.2 you/1k 19.1 we/1k 19.2
+sentences 767 mean 9.7 median 7 share<=8w 0.59 share>=25w 0.07
+speaker turns (>>) 0 per min 0.0
+[music] tags 0 [applause] 0 [laughter] 23
+questions 67 per 1k 9.5
+numbers per 1k 7.4
+low-speech segments (<60wpm): 4 ['8:59(15)', '37:37(4)', '45:38(22)', '46:04(0)']
+first-person singular /1k 34.2
+[music] block timestamps 0 []
+
+file transcript_9HK6tBt8SqQ.txt
+words 5257 dur_min 30.0 wpm_overall 175.4
+wpm per 5min: [159, 170, 184, 190, 166, 182]
+first 2 min words per 30s: [79, 76, 80, 97]
+I/1k 35.4 you/1k 32.5 we/1k 3.6
+sentences 1 mean 5244 median 5244 share<=8w 0.0 share>=25w 1.0
+speaker turns (>>) 0 per min 0.0
+[music] tags 1 [applause] 0 [laughter] 0
+questions 0 per 1k 0.0
+numbers per 1k 3.2
+low-speech segments (<60wpm): 1 ['5:04(9)']
+first-person singular /1k 35.4
+[music] block timestamps 1 ['5:52']
+
+file transcript_GKfom_Qa5Hs.txt
+words 8012 dur_min 37.4 wpm_overall 214.2
+wpm per 5min: [220, 213, 198, 197, 224, 223, 211, 116]
+first 2 min words per 30s: [97, 111, 118, 122]
+I/1k 20.7 you/1k 23.7 we/1k 5.5
+sentences 506 mean 15.8 median 12.0 share<=8w 0.33 share>=25w 0.2
+speaker turns (>>) 0 per min 0.0
+[music] tags 0 [applause] 0 [laughter] 9
+questions 30 per 1k 3.7
+numbers per 1k 19.1
+low-speech segments (<60wpm): 0 []
+first-person singular /1k 20.7
+[music] block timestamps 0 []
+
+file transcript_Ntje8Vn0Tac.json
+words 9975 dur_min 50.3 wpm_overall 198.2
+wpm per 5min: [177, 200, 229, 181, 190, 212, 195, 218, 205, 183, 3]
+first 2 min words per 30s: [81, 91, 100, 47]
+I/1k 27.2 you/1k 29.7 we/1k 7.9
+sentences 570 mean 17.5 median 15.0 share<=8w 0.24 share>=25w 0.23
+speaker turns (>>) 230 per min 4.57
+[music] tags 63 [applause] 1 [laughter] 8
+questions 28 per 1k 2.8
+numbers per 1k 3.7
+low-speech segments (<60wpm): 2 ['30:55(11)', '49:35(0)']
+first-person singular /1k 27.2
+[music] block timestamps 45 ['0:50', '1:07', '1:26', '1:43', '2:16', '2:34', '5:15', '5:31', '7:07', '7:41', '7:58', '10:22', '13:02', '14:40', '14:55', '17:36', '17:51', '21:19', '22:08', '22:24', '22:41', '22:57', '23:14', '24:01', '24:17', '24:50', '25:20', '25:52', '26:08', '26:25', '26:41', '27:14', '29:21', '30:55', '34:28', '35:15', '39:02', '40:57', '41:46', '42:01', '42:17', '42:49', '44:39', '49:35', '49:52']
+

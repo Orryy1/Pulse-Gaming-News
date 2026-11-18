@@ -43,6 +43,7 @@ import {
 import {
   playOrder,
   scriptLines,
+  planKey,
   scriptProblems,
   withSignOff,
   writeWeek,
@@ -430,6 +431,7 @@ export async function compileWeek(c: CompileInput): Promise<CompileResult> {
 async function keptScript(dir: string, plan: WeekPlan, now: Date): Promise<WeekScript | undefined> {
   try {
     const s = JSON.parse(await fs.readFile(path.join(dir, "script.json"), "utf8")) as WeekScript;
+    if (s.planKey !== planKey(plan)) return undefined;
     const fixed = withSignOff(s);
     return scriptProblems(fixed, plan, now).length ? undefined : fixed;
   } catch {

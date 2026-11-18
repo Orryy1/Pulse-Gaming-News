@@ -45,6 +45,8 @@ export interface WeekScript {
   outro: string;
   /** "writer" or "fixed lines". */
   by: "writer" | "fixed";
+  /** Which moments it was written for (planKey), so a kept script is never laid over a different cut. */
+  planKey?: string;
   clarity?: Record<string, unknown>;
 }
 
@@ -56,6 +58,13 @@ export function playOrder(
   return p.chapters.flatMap((c) =>
     c.moments.map((m) => ({ key: `m${++n}`, m, chapter: c.title })),
   );
+}
+
+/** The moments a script is written for, in play order (pure). */
+export function planKey(p: WeekPlan): string {
+  return playOrder(p)
+    .map(({ m }) => `${m.vodId}@${Math.round(m.start)}-${Math.round(m.end)}`)
+    .join(",");
 }
 
 /** "GTA 6 Week 2: <what the week was>" within the title limit (pure). */
@@ -345,7 +354,7 @@ export async function writeWeek(
   o: { now?: Date; clarity?: boolean; clarityMin?: number } = {},
 ): Promise<WeekScript> {
   const now = o.now ?? new Date();
-  const fixed = fixedScript(p);
+  const fixed = { ...fixedScript(p), planKey: planKey(p) };
   if (!llm) return fixed;
   let notes: string[] = [];
   let draft: WeekScript | undefined;
@@ -376,7 +385,7 @@ export async function writeWeek(
     );
     return fixed;
   }
-  if (o.clarity === false) return draft;
+  if (o.clarity === false) return { ...draft, planKey: planKey(p) };
   const accept = async (_b: WeekScript, a: WeekScript) =>
     scriptProblems(a, p, now);
   const gate = await clarityGate<WeekScript>({
@@ -399,5 +408,5 @@ export async function writeWeek(
     accept,
     min: o.clarityMin,
   });
-  return { ...withSignOff(gate.value), clarity: clarityLog(gate) };
+  return { ...withSignOff(gate.value), clarity: clarityLog(gate), planKey: planKey(p) };
 }

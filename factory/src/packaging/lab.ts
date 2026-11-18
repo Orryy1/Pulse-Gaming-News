@@ -6,6 +6,7 @@
 //  - after 48 to 72 hours: the second chance (./secondchance.ts).
 // Everything is logged as events (packaging_scored, packaging_pick) and kept on the episode's assets so the second
 // chance never has to write anything new. Any failure here leaves the writer's packaging exactly as it was.
+import { premiseOnly } from "../editorial/payoff.ts";
 import path from "node:path";
 import type { Db } from "../db.ts";
 import type { Episode, EpisodeAssets } from "../episodes.ts";
@@ -143,7 +144,12 @@ export async function packBeforeUpload(
   if (!model) return false;
   try {
     const script = ep.script_json;
-    const ranked = rankTitles(model, script, st.candidates);
+    // SHORT_PAYOFF_GATE: a gated Short's title states the premise only, so a candidate that gives the answer is out
+    // (the writer's own title stays in the list, so it can still be scored and kept).
+    const own = script.youtube.title.trim().toLowerCase();
+    const ranked = rankTitles(model, script, st.candidates).filter(
+      (r) => r.text.trim().toLowerCase() === own || premiseOnly(r.text, script),
+    );
     const pick = pickBest(ranked, script.youtube.title, st.minLift);
     if (!pick) return false;
     const apply = packagingAtLeast(st, "pick") && pick.changed;
@@ -262,7 +268,9 @@ export function pickHookWords(
       kind: "hook",
     },
   );
-  const p = writer ? pickBest(ranked, writer, st.minLift) : undefined;
+  // SHORT_PAYOFF_GATE: the tile words on a gated Short state the premise only.
+  const premise = ranked.filter((r) => premiseOnly(r.text, script));
+  const p = writer ? pickBest(premise, writer, st.minLift) : undefined;
   if (p) return p.chosen.text;
-  return ranked.find((r) => r.clarity.ok)?.text ?? writer;
+  return premise.find((r) => r.clarity.ok)?.text ?? writer;
 }

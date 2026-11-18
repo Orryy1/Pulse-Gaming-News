@@ -269,7 +269,7 @@ import { cutPortrait } from "./assets/localvision.ts";
 import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
-import type { VisionQa } from "./editorial/schema.ts";
+import type { FactCheck, VisionQa } from "./editorial/schema.ts";
 import { narrationSummary, type NarrationCheck } from "./qa/narration.ts";
 import type { YouTubeClient } from "./youtube/upload.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
@@ -689,6 +689,21 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
+import {
+  firstFrameText,
+  payoffApplies,
+  payoffArm,
+  payoffFeedback,
+  payoffFindings,
+  payoffKeepNote,
+  payoffRecord,
+  readFindings,
+  readPayoff,
+  SEGMENT_OPENERS,
+  type PayoffArm,
+  type PayoffFinding,
+  type PayoffRead,
+} from "./editorial/payoff.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
 import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
@@ -7501,6 +7516,25 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
   // DROP_ANGLE (src/editorial/dropangle.ts): an official drop is written as one reframing idea, never a detail list.
   const drop = s.cfg.dropAngle && !cluster.why && !cluster.reply && isOfficialDrop(cluster);
+  // SHORT_PAYOFF_GATE (src/editorial/payoff.ts): news, breaking and Why Shorts split by episode into the gate's arm
+  // (one question planned, the answer held past 60% and kept out of the hook, headline and title) and the control arm.
+  // The arm is kept on the script so the weekly report can compare them; a retry keeps its arm.
+  const payoffArmOf: PayoffArm | undefined =
+    s.cfg.shortPayoffGate !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? payoffArm(ep.id, s.cfg.shortPayoffShare)
+      : undefined;
+  const payoffGated = payoffArmOf === "gate";
+  // "fix": the deterministic rules join the house rules (the draft goes back once, then out with a note).
+  const payoffFix = payoffGated && s.cfg.shortPayoffGate === "fix";
+  const payoffSentBack: string[] = [];
+  let payoffFallback: { script: Script; check: FactCheck } | undefined;
   // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
   // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
   const skeleton =
@@ -7510,6 +7544,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           argument,
           openings: hookStyleOpenings(test, testDefaults),
           ...(drop ? { orders: ["call_then_proof", "one_detail"] } : {}),
+          ...(payoffGated ? { payoff: true } : {}),
         })
       : undefined;
   // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
@@ -7595,6 +7630,18 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
+    if (payoffFix)
+      problems.push(
+        ...payoffFeedback(
+          payoffFindings({
+            script: sc,
+            recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+            exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+            endingChecked: s.cfg.shortEndPayoff,
+            planned: true,
+          }).findings,
+        ),
+      );
     if (drop) problems.push(...detailListProblems(sc));
     // SHORT_ARGUES_CHECK (src/qa/argues.ts): a draft that only narrates its picture goes back to the writer once.
     if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
@@ -7704,6 +7751,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       skeleton,
       dropAngle: drop,
       length,
+      ...(payoffGated ? { payoff: true } : {}),
       // The search lane and a reply Short each write on their own step, so CODEX_CALLS can route them.
       ...(cluster.search
         ? { site: SEARCH_WRITE_SITE }
@@ -7799,18 +7847,48 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     }
     // A line that repeats a claim our fact check already rejected goes back to the writer (FACT_VAULT=read and above).
     if (newsVault) problems.push(...newsVault.warnings([narrationOf(script)]));
-    if (
-      check.verdict === "pass" &&
-      check.rumour_labelling_ok &&
-      blockers.length === 0 &&
-      problems.length === 0
-    )
-      break;
+    // SHORT_PAYOFF_GATE=fix: the first draft's title, first-frame text and hook read cold (the one model step); what
+    // gives the answer away, or leaves the subject unclear, goes back to the writer with the rest.
+    if (payoffFix && attempt === 0 && script.payoff) {
+      const draft = script;
+      const read = await readPayoff(s.llm, {
+        title: draft.youtube.title,
+        firstFrame: firstFrameText(draft),
+        hook: draft.hook,
+        question: draft.payoff!.question,
+        answer: draft.payoff!.answer,
+      }).catch((err) => {
+        log("warn", "payoff cold read failed; the draft goes on unread", { episode: ep.id, error: errorMessage(err) });
+        return undefined;
+      });
+      if (read) problems.push(...payoffFeedback(readFindings(read)));
+    }
+    const factsPassed = check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0;
+    if (factsPassed && problems.length === 0) break;
     feedback = [
       ...blockers,
       ...problems,
       ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."]),
     ];
+    // A first draft whose facts passed and that went back only for the held-answer rules is kept: if the rewrite then
+    // fails its fact check, this draft goes out instead, so the gate never costs a story its slot.
+    if (attempt === 0 && payoffFix) {
+      payoffSentBack.push(...problems.filter((p) => p.startsWith("Held answer: ")));
+      if (factsPassed && problems.every((p) => p.startsWith("Held answer: ")))
+        payoffFallback = { script, check };
+    }
+    if (
+      attempt === 1 &&
+      payoffFallback &&
+      (check.verdict === "fail" || blockers.length > 0 || !check.rumour_labelling_ok)
+    ) {
+      await logEvent(s.db, ep.id, "payoff_gate_fallback", {
+        why: feedback.slice(0, 6),
+      }).catch(() => undefined);
+      script = payoffFallback.script;
+      check = payoffFallback.check;
+      break;
+    }
     if (attempt === 1) {
       // House-style misses alone are accepted with a warning; facts are not.
       if (
@@ -7999,6 +8077,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           skeleton,
           dropAngle: drop,
           length,
+          ...(payoffGated ? { payoff: true } : {}),
           ...(cluster.search
             ? { site: SEARCH_WRITE_SITE }
             : cluster.reply
@@ -8010,6 +8089,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           plain,
           min: s.cfg.clarityMin,
           wordsMax: wordsLimits.wordsMax,
+          // SHORT_PAYOFF_GATE: a plainer hook still plants the question; the answer stays where the writer held it.
+          ...(payoffGated && v.payoff ? { extra: [payoffKeepNote(v.payoff)] } : {}),
         }),
       accept,
     });
@@ -8139,6 +8220,53 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       },
     };
   await guardScript(s, ep, script, "after writing");
+  // SHORT_PAYOFF_GATE: the finished script measured against the held-answer rules, recorded on it with its arm (the
+  // weekly report compares the arms). The gate's arm gets the cold read of title, first frame and hook too; the control
+  // arm only the rules that need no plan. Measuring never changes the script.
+  if (payoffArmOf) {
+    const gated = payoffArmOf === "gate";
+    const measured = payoffFindings({
+      script,
+      recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+            exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+      endingChecked: false,
+      planned: gated,
+    });
+    const settledScript = script;
+    const read: PayoffRead | undefined =
+      gated && settledScript.payoff
+        ? await readPayoff(s.llm, {
+            title: settledScript.youtube.title,
+            firstFrame: firstFrameText(settledScript),
+            hook: settledScript.hook,
+            question: settledScript.payoff.question,
+            answer: settledScript.payoff.answer,
+          }).catch((err) => {
+            log("warn", "payoff cold read failed; recorded without it", { episode: ep.id, error: errorMessage(err) });
+            return undefined;
+          })
+        : undefined;
+    const record = payoffRecord({
+      arm: payoffArmOf,
+      mode: s.cfg.shortPayoffGate === "fix" ? "fix" : "check",
+      findings: measured.findings,
+      answerAt: measured.answerAt,
+      pivot: measured.pivot,
+      read,
+      sentBack: payoffSentBack,
+    });
+    script = { ...script, payoff_gate: record };
+    await logEvent(s.db, ep.id, "payoff_gate", {
+      arm: record.arm,
+      mode: record.mode,
+      pass: record.pass,
+      rules: record.findings.map((f: PayoffFinding) => f.rule),
+      findings: record.findings.slice(0, 8).map((f: PayoffFinding) => f.problem),
+      answer_at: record.answer_at,
+      pivot_at: record.pivot_at,
+      sent_back: payoffSentBack.length,
+    }).catch(() => undefined);
+  }
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
   if (skeleton) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { PayoffReadSchema, type PayoffPlan, type PayoffRead } from "../src/editorial/payoff.ts";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -84,6 +85,10 @@ function rankingDraft(): EvergreenScript {
 
 interface Fakes {
   script: Script;
+  /** SHORT_PAYOFF_GATE's arm asks with its own schema: these drafts in order, then `script`. */
+  payoffScripts?: Script[];
+  /** The held-answer cold reads in order, then a clean one. */
+  payoffReads?: PayoffRead[];
   factChecks: FactCheck[];
   pick: number;
   passReason?: string;
@@ -167,6 +172,16 @@ function fakeLlm(f: Fakes): Llm {
         } as z.infer<S>;
       }
       if (schema === (ScriptSchema as unknown)) return f.script as z.infer<S>;
+      // The gate's arm: the Short's schema plus its payoff plan.
+      if ((schema as { shape?: Record<string, unknown> }).shape?.payoff)
+        return (f.payoffScripts?.shift() ?? f.script) as z.infer<S>;
+      if (schema === (PayoffReadSchema as unknown))
+        return (f.payoffReads?.shift() ?? {
+          about: "Whether Starfield's expansion delay is a bad sign.",
+          about_clear: true,
+          answer_guess: "",
+          gives_answer: false,
+        }) as z.infer<S>;
       if (schema === (FactCheckSchema as unknown))
         return (f.factChecks.shift() ?? {
           verdict: "pass",
@@ -1268,6 +1283,115 @@ test("SHORT_SKELETONS: a news Short is written to a structure, kept on the scrip
   assert.ok(briefs[0]!.includes(structure.opening.rule));
   // The next Short's writer sees it among the newest structures.
   assert.deepEqual((await recentShapes(db, "other")).skeletons, [structure.key]);
+});
+
+// A Starfield Short written to the held-answer rules (plan, lean early, turn mid-way, answer after 60%).
+const heldPlan: PayoffPlan = {
+  angle: "verdict",
+  question: "Is Starfield's expansion delay a bad sign?",
+  answer: "No, Bethesda's past delays came back better, so this looks like a good sign.",
+  answer_line: "That track record is why this delay looks like a good sign, not a red flag.",
+  side: "not worried",
+};
+function heldScript(): Script {
+  const base = goodScript();
+  return {
+    ...base,
+    hook: "Starfield's second expansion just slipped to 2027, and I'm not worried.",
+    beats: [
+      { ...base.beats[0]!, narration: "Bethesda confirmed the move on Xbox Wire this morning, citing polish and performance on every platform." },
+      { ...base.beats[1]!, narration: "The expansion was due this December, so that's a slip of at least three months." },
+    ],
+    pulse_take: {
+      ...base.pulse_take,
+      narration:
+        "But Bethesda's last big delay came back in better shape than planned. That track record is why this delay looks like a good sign, not a red flag.",
+    },
+    loop_line: "Mark early 2027 and let them cook.",
+    payoff: heldPlan,
+  };
+}
+
+test("SHORT_PAYOFF_GATE: off changes nothing; check records the arm and the result and leaves the script alone", async () => {
+  const off = await setup();
+  const offBriefs = recordBriefs(off.s);
+  await tick(off.s);
+  const plain = await only(off.db);
+  assert.equal(plain.status, "published", plain.last_error ?? "");
+  assert.equal(plain.script_json?.payoff_gate, undefined);
+  assert.ok(!offBriefs.some((b) => b.includes("Held answer")));
+
+  // check, every Short in the gate's arm: the writer gets the rule; the plan-less draft is recorded as failing, unchanged.
+  const chk = await setup({ shortPayoffGate: "check", shortPayoffShare: 1 });
+  await tick(chk.s);
+  const ep = await only(chk.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  const rec = ep.script_json!.payoff_gate!;
+  assert.equal(rec.arm, "gate");
+  assert.equal(rec.mode, "check");
+  assert.equal(rec.pass, false);
+  assert.ok(rec.findings.some((f) => f.rule === "plan"));
+  assert.equal(ep.script_json!.hook, goodScript().hook, "check never rewrites");
+  const ev = await chk.db.query<{ detail: { arm: string; pass: boolean } }>(
+    `SELECT detail FROM events WHERE kind = 'payoff_gate'`,
+  );
+  assert.equal(ev[0]?.detail.arm, "gate");
+
+  // A script written to the rules passes, the cold read included.
+  const good = await setup({ shortPayoffGate: "check", shortPayoffShare: 1 }, { payoffScripts: [heldScript()] });
+  await tick(good.s);
+  const passed = (await only(good.db)).script_json!.payoff_gate!;
+  assert.deepEqual(passed.findings, []);
+  assert.equal(passed.pass, true);
+  assert.ok(passed.read && passed.answer_at! >= 0.6);
+
+  // The control arm: measured on the plan-free rules, with no plan asked for.
+  const ctl = await setup({ shortPayoffGate: "check", shortPayoffShare: 0 });
+  const ctlBriefs = recordBriefs(ctl.s);
+  await tick(ctl.s);
+  const c = (await only(ctl.db)).script_json!.payoff_gate!;
+  assert.equal(c.arm, "control");
+  assert.ok(!c.findings.some((f) => f.rule === "plan"));
+  assert.ok(ctlBriefs.length && !ctlBriefs.some((b) => b.includes("Held answer")));
+});
+
+test("SHORT_PAYOFF_GATE=fix: the draft goes back once with the reasons; a rewrite that fails its facts never costs the slot", async () => {
+  const fix = await setup(
+    { shortPayoffGate: "fix", shortPayoffShare: 1 },
+    { payoffScripts: [goodScript(), heldScript()] },
+  );
+  await tick(fix.s);
+  const ep = await only(fix.db);
+  assert.equal(ep.status, "published", ep.last_error ?? "");
+  const rec = ep.script_json!.payoff_gate!;
+  assert.equal(rec.mode, "fix");
+  assert.equal(rec.pass, true, JSON.stringify(rec.findings));
+  assert.ok(rec.sent_back?.some((p) => /Fill in "payoff"/.test(p)));
+  assert.equal(ep.script_json!.hook, heldScript().hook);
+
+  // The rewrite fails the fact check: the first draft, whose facts passed, goes out with its note.
+  const fall = await setup(
+    { shortPayoffGate: "fix", shortPayoffShare: 1 },
+    {
+      payoffScripts: [goodScript(), heldScript()],
+      factChecks: [
+        { verdict: "pass", issues: [], rumour_labelling_ok: true, summary: "ok" },
+        {
+          verdict: "fail",
+          issues: [{ quote: "let them cook", problem: "unsupported", severity: "blocker" }],
+          rumour_labelling_ok: true,
+          summary: "no",
+        },
+      ],
+    },
+  );
+  await tick(fall.s);
+  const kept = await only(fall.db);
+  assert.equal(kept.status, "published", kept.last_error ?? "");
+  assert.equal(kept.script_json!.hook, goodScript().hook);
+  assert.equal(kept.script_json!.payoff_gate!.pass, false);
+  const ev = await fall.db.query(`SELECT 1 FROM events WHERE kind = 'payoff_gate_fallback'`);
+  assert.equal(ev.length, 1);
 });
 
 test("FIRST_COMMENT_STRICT: a Short gets its own closing question alone, or no comment at all", async () => {

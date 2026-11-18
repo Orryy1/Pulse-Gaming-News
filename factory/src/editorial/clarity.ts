@@ -296,7 +296,7 @@ export async function clarityRewriteShort(
   llm: Llm,
   script: Script,
   j: ClarityJudgement,
-  o: { plain?: boolean; min?: number; wordsMax?: number } = {},
+  o: { plain?: boolean; min?: number; wordsMax?: number; extra?: string[] } = {},
 ): Promise<Script> {
   const lines: Record<string, string> = { hook: script.hook };
   script.beats.forEach((b, i) => (lines[`beat_${i + 1}`] = b.narration));
@@ -313,6 +313,8 @@ export async function clarityRewriteShort(
     o.wordsMax
       ? `The whole Short must stay under ${o.wordsMax} spoken words (it has ${wordCount(narrationOf(script))}).`
       : "",
+    // The caller's own constraints (SHORT_PAYOFF_GATE: the answer stays where it is, out of the hook).
+    ...(o.extra ?? []),
   ].filter(Boolean);
   const r = await rewriteLines(llm, "short", lines, j, {
     plain: !!o.plain,

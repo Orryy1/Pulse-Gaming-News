@@ -28,6 +28,7 @@ import type { Llm } from "./llm.ts";
 import { reviseByEdits } from "./revise.ts";
 import { skeletonRule, type Skeleton } from "./skeletons.ts";
 import { DROP_ANGLE_RULE } from "./dropangle.ts";
+import { PayoffSchema, payoffRule } from "./payoff.ts";
 import { quoteBrief, quoteProblems, type CutsceneQuote } from "./quotes.ts";
 import {
   parsePairs,
@@ -227,8 +228,14 @@ export async function writeScript(
     site?: string;
     /** The Pulse Fact Vault's verified facts and quotes for this story's games (FACT_VAULT, src/factvault). */
     vault?: string;
+    /** SHORT_PAYOFF_GATE's gate arm: the held-answer rule, and a `payoff` plan in the answer (src/editorial/payoff.ts). */
+    payoff?: boolean;
   },
 ): Promise<Script> {
+  // The gate's arm asks for the plan in the same answer; off, the schema is the one every Short has always had.
+  const schema = (opts.payoff
+    ? ScriptSchema.extend({ payoff: PayoffSchema })
+    : ScriptSchema) as unknown as typeof ScriptSchema;
   const rules = opts.mustLabelRumour
     ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true and attribute every claim to whoever reported it."
     : "";
@@ -262,7 +269,7 @@ export async function writeScript(
     opts.recent ? recentConcessions(opts.recent) : [],
   );
   const shapeNote = `\n\nThis Short's take shape: ${shape.rule}.${shape.id === "concession" ? "" : " Concede nothing anywhere in this Short."}`;
-  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}`;
+  const structureNote = `${opts.skeleton ? `\n\n${skeletonRule(opts.skeleton)}` : ""}${opts.dropAngle ? `\n\n${DROP_ANGLE_RULE}` : ""}${opts.payoff ? `\n\n${payoffRule()}` : ""}`;
   // The test variant comes last, after the general shapes, so it is the rule the writer reads nearest the draft.
   const variantNote = opts.variantNote ? `\n\n${opts.variantNote}` : "";
   const segmentNote = opts.segment ? `\n\n${pulseCheckRule()}` : "";
@@ -279,7 +286,7 @@ export async function writeScript(
           ...(opts.site ? { site: opts.site } : {}),
           system: scriptPrompt(opts.desk ?? true, opts.length),
           content: brief,
-          schema: ScriptSchema,
+          schema,
           draft: opts.draft,
           problems: opts.feedback,
           job: "news Short",
@@ -291,15 +298,23 @@ export async function writeScript(
       ...(opts.site ? { site: opts.site } : {}),
       system: scriptPrompt(opts.desk ?? true, opts.length),
       content: `${brief}${feedback}`,
-      schema: ScriptSchema,
+      schema,
       effort: "medium",
     }));
-  const problems = quoteProblems([
-    { narration: script.hook }, ...script.beats,
-    ...(script.desk_question?.trim() ? [{ narration: script.desk_question }] : []),
-    { narration: script.pulse_take.narration }, { narration: script.loop_line },
-  ], opts.availableQuotes);
-  if (problems.length) throw new Error(`Invalid character quote: ${problems.join(" ")}`);
+  const problems = quoteProblems(
+    [
+      { narration: script.hook },
+      ...script.beats,
+      ...(script.desk_question?.trim()
+        ? [{ narration: script.desk_question }]
+        : []),
+      { narration: script.pulse_take.narration },
+      { narration: script.loop_line },
+    ],
+    opts.availableQuotes,
+  );
+  if (problems.length)
+    throw new Error(`Invalid character quote: ${problems.join(" ")}`);
   return varyOpinion(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,
@@ -354,7 +369,9 @@ export async function factCheckRanking(
 /** The launch week's notes for the writer and the fact check: when a pre-made Short airs, and GTA VI's release date. */
 export function launchNotes(cluster: StoryCluster): string {
   const notes = [
-    cluster.why?.airs_at ? airsAtNote(new Date(cluster.why.airs_at), "Europe/London") : "",
+    cluster.why?.airs_at
+      ? airsAtNote(new Date(cluster.why.airs_at), "Europe/London")
+      : "",
     releaseDateNote(cluster.gameHint ?? cluster.headline),
   ].filter(Boolean);
   return notes.length ? `\n\n${notes.join("\n")}` : "";

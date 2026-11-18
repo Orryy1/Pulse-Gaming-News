@@ -147,7 +147,8 @@ MOODS = {
     ],
 }
 SECONDS = 150
-WORK = os.path.join("data", "sfxlab", "library")
+# BEDS_WORK moves the takes and their working audio off the factory drive (15 Nov 2026: C: was short of space).
+WORK = os.environ.get("BEDS_WORK") or os.path.join("data", "sfxlab", "library")
 
 
 def key():

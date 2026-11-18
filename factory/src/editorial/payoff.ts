@@ -201,6 +201,24 @@ export function contentTokens(text: string): string[] {
 
 const isNumber = (t: string) => /\d/.test(t);
 
+const ROMAN: Record<string, string> = { ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" };
+
+/**
+ * The game's name as fans write it, as tokens (pure): its words, its roman numeral as a figure and its initials
+ * ("Grand Theft Auto VI" gives gta and 6 too), so the subject never counts as part of the answer.
+ */
+export function gameAliases(game: string): Set<string> {
+  const words = game.replace(/[^A-Za-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+  const out = new Set(contentTokens(game));
+  const plain = words.filter((w) => !/^[IVX]+$/.test(w) && !/^\d+$/.test(w));
+  if (plain.length >= 2) out.add(plain.map((w) => w[0]!.toLowerCase()).join(""));
+  for (const w of words) {
+    const r = ROMAN[w.toLowerCase()];
+    if (r && /^[IVX]+$/.test(w)) out.add(r);
+  }
+  return out;
+}
+
 /**
  * The words that carry the answer (pure): the answer's content words that the question, the game's name and the
  * generic words do not already have. With fewer than two left, the answer's words minus the game's name.
@@ -209,7 +227,7 @@ export function answerKeys(
   plan: Pick<PayoffPlan, "question" | "answer">,
   game = "",
 ): string[] {
-  const gameWords = new Set(contentTokens(game));
+  const gameWords = gameAliases(game);
   const asked = new Set(contentTokens(plan.question));
   const answer = [...new Set(contentTokens(plan.answer))].filter(
     (t) => !gameWords.has(t),
@@ -371,7 +389,7 @@ export function pivotAt(lines: string[]): number | undefined {
 // A stated lean: first-person takes, value words and calls on a decision. Leans towards finding one: this is a check
 // on a missing side, not a style judge.
 const OPINION =
-  /\b(I think|I'd|I'm|I'll|I don't|I can't|I want|I love|I hate|honestly|frankly|if you ask me|my (take|verdict|bet|call|money|guess|read)|the way I see it|should(n't)?|worth (it|the|waiting|buying)|not worth|mistake|smart|brilliant|clever|bold|greedy|cheeky|risky|weird|odd|strange|genius|bad (sign|news|deal|call|move|idea|look)|good (sign|news|deal|call|move|idea)|great (sign|news|deal|call|move|idea)|right call|wrong call|makes sense|doesn't make sense|no-brainer|red flag|win for|loss for|hard to (justify|argue|defend)|easy (win|call)|skip it|wait for|don't buy|don't pre-?order|buy it|for once|finally|frustrating|annoying|baffling|wild|ridiculous|absurd|fair|unfair|overpriced|a steal|a bargain|rip-?off|lazy|clearly|obviously|of course)\b/i;
+  /\b(I think|we think|I'd|I'm|I'll|I don't|I can't|I want|I love|I hate|honestly|frankly|if you ask me|my (take|verdict|bet|call|money|guess|read)|the way I see it|should(n't)?|worth (it|the|waiting|buying)|not worth|mistake|smart|brilliant|clever|bold|greedy|cheeky|risky|weird|odd|strange|genius|bad (sign|news|deal|call|move|idea|look)|good (sign|news|deal|call|move|idea)|great (sign|news|deal|call|move|idea)|right (call|trade|move)|wrong (call|move)|makes sense|doesn't make sense|no-brainer|red flag|win for|loss for|hard to (justify|argue|defend)|easy (win|call)|skip it|wait for|don't buy|don't pre-?order|buy it|for once|finally|frustrating|annoying|baffling|wild|ridiculous|absurd|fair|unfair|overpriced|a steal|a bargain|rip-?off|lazy|clearly|obviously|of course)\b/i;
 
 /** Whether a sentence states a lean (pure). */
 export function statesSide(text: string): boolean {

@@ -9,6 +9,7 @@ import {
   earlyAnswer,
   findAnswer,
   firstFrameText,
+  gameAliases,
   keyPairs,
   leaksAnswer,
   openerProblems,
@@ -174,6 +175,13 @@ test("an answer leaks by a key pair, a number or half its keys; the premise does
     ),
     false,
   );
+});
+
+test("the game's fan names are subject, never answer", () => {
+  const a = gameAliases("Grand Theft Auto VI");
+  assert.ok(a.has("gta") && a.has("6") && a.has("grand"));
+  const keys = answerKeys({ question: "Why patch again?", answer: "GTA 6 won't boot without the new firmware." }, "Grand Theft Auto VI");
+  assert.ok(!keys.includes("gta") && !keys.includes("6"));
 });
 
 test("spoken sentences carry their word positions across lines", () => {

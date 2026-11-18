@@ -9778,6 +9778,24 @@ export async function gatherMedia(
   // No hardware or merchandise in a game story (15 Nov 2026: a PlayStation controller opened a Short about roads and
   // sat in its thumbnail): press pictures of controllers, consoles, boxes, editions and merch go, unless the story is
   // about that hardware itself.
+  // A hardware story still never shows one maker's hardware on a line about the other's (18 Nov 2026: a PlayStation
+  // controller sat on "using Xbox Series S settings" in the Xbox cloud Short), nor on a line naming no platform.
+  if (hardwareStory(script)) {
+    const ps = /(playstation|ps[345]|dualsense|ps portal)/i;
+    const xb = /(xbox|series [xs]|game pass)/i;
+    const wrong = images.filter((a) => {
+      if (!isHardwareAsset(a)) return false;
+      const what = [a.provenance, a.sourceUrl, a.file, a.label].filter(Boolean).join(" ").replace(/[-_/]+/g, " ");
+      const line = a.forWords ?? "";
+      if (ps.test(what) && !ps.test(line)) return true;
+      if (xb.test(what) && !xb.test(line)) return true;
+      return false;
+    });
+    if (wrong.length) {
+      images.splice(0, images.length, ...images.filter((a) => !wrong.includes(a)));
+      await logEvent(s.db, ep.id, "hardware_dropped", { files: wrong.map((a) => a.file), why: "platform not on its line" });
+    }
+  }
   if (!hardwareStory(script)) {
     const dropped = images.filter((a) => isHardwareAsset(a));
     if (dropped.length) {

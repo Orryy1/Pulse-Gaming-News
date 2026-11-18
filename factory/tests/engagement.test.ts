@@ -268,10 +268,12 @@ test("the documentary's first comment asks one question and points at a chapter 
   assert.match(
     text,
     new RegExp(
-      `turns at ${moment.stamp} \\(${moment.title.replace(/[()]/g, "\\$&")}\\)`,
+      `is at ${moment.stamp} \\(${moment.title.replace(/[()]/g, "\\$&")}\\)`,
     ),
   );
-  assert.match(text, /^Which Grand Theft Auto game was the one for you\?/);
+  // A documentary is about one game: never the every-game ranking's "which X game was the one for you".
+  assert.doesNotMatch(text, /game was the one for you/);
+  assert.match(text, /Grand Theft Auto/);
   assert.deepEqual(pinnedCommentProblems(text), []);
   // Without usable chapters the question still stands, without a timestamp.
   assert.doesNotMatch(docPinnedComment(ep.script_json!, []), /\d:\d\d/);

@@ -316,6 +316,22 @@ export class YouTubeClient {
     return id;
   }
 
+  /** Rewrites one of the channel's own comments (comments.update, 50 quota units); a pinned comment stays pinned. */
+  async updateComment(commentId: string, text: string): Promise<void> {
+    const res = await this.fetchFn(`${API}/comments?part=snippet`, {
+      method: "PUT",
+      headers: {
+        ...(await this.auth()),
+        "content-type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({
+        id: commentId,
+        snippet: { textOriginal: text.slice(0, 1000) },
+      }),
+    });
+    if (!res.ok) throw await apiError(res, "comments.update");
+  }
+
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
   /** The newest comment threads across every video on a channel (one quota unit a page of 50). */
   async listChannelComments(
@@ -1044,6 +1060,70 @@ export class YouTubeClient {
       }),
     });
     if (!put.ok) throw await apiError(put, "videos.update (schedule)");
+  }
+
+  /** A live video's title, privacy and thumbnail address (videos.list, one unit); undefined when it is gone. */
+  async liveVideo(
+    videoId: string,
+  ): Promise<
+    { title: string; privacyStatus: string; thumbUrl?: string } | undefined
+  > {
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet,status&id=${encodeURIComponent(videoId)}`,
+      {
+        headers: await this.auth(),
+      },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const v = ((await res.json()) as any).items?.[0];
+    if (!v) return undefined;
+    const t = v.snippet?.thumbnails ?? {};
+    return {
+      title: String(v.snippet?.title ?? ""),
+      privacyStatus: String(v.status?.privacyStatus ?? ""),
+      thumbUrl: (t.medium ?? t.high ?? t.default)?.url,
+    };
+  }
+
+  /**
+   * The Packaging Lab's second chance (src/packaging/secondchance.ts): a new title on a live video and nothing else.
+   * Only the snippet is sent (never status, so privacy cannot change), with the description, tags, category and
+   * languages read back first. Refuses when the live title is not `expected`: someone changed it by hand.
+   */
+  async retitle(
+    videoId: string,
+    expected: string,
+    title: string,
+  ): Promise<void> {
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet&id=${encodeURIComponent(videoId)}`,
+      {
+        headers: await this.auth(),
+      },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list");
+    const sn = ((await res.json()) as any).items?.[0]?.snippet;
+    if (!sn) throw new Error(`video ${videoId} not found`);
+    if (String(sn.title) !== expected)
+      throw new Error(
+        `the live title is not the one the factory set ("${String(sn.title).slice(0, 80)}"); left alone`,
+      );
+    const put = await this.fetchFn(`${API}/videos?part=snippet`, {
+      method: "PUT",
+      headers: { ...(await this.auth()), "content-type": "application/json" },
+      body: JSON.stringify({
+        id: videoId,
+        snippet: {
+          title,
+          description: sn.description,
+          categoryId: sn.categoryId,
+          tags: sn.tags,
+          defaultLanguage: sn.defaultLanguage,
+          defaultAudioLanguage: sn.defaultAudioLanguage,
+        },
+      }),
+    });
+    if (!put.ok) throw await apiError(put, "videos.update (title)");
   }
 
   /** Makes a video public now, keeping its other status fields as they are. */

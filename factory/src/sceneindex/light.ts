@@ -12,6 +12,7 @@
 // text reading) stays an upgrade for the few games where precision matters (src/sceneindex/archive.ts).
 
 import { execFile, spawn } from "node:child_process";
+import { guardedYt } from "../lib/ytguard.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -453,15 +454,14 @@ async function ytJson(
   args: string[],
   timeout = 120_000,
 ): Promise<Record<string, unknown>> {
-  const { stdout } = await exec(
-    ytdlp,
-    [...YTDLP_TEXT.args, "--no-warnings", ...args],
-    {
+  const a = [...YTDLP_TEXT.args, "--no-warnings", ...args];
+  const { stdout } = await guardedYt(ytdlp, a, () =>
+    exec(ytdlp, a, {
       timeout,
       maxBuffer: 256 * 1024 * 1024,
       env: YTDLP_TEXT.env,
       windowsHide: true,
-    },
+    }),
   );
   return JSON.parse(stdout) as Record<string, unknown>;
 }
@@ -503,9 +503,7 @@ async function fetchCaptions(
         : "en"
       : undefined);
   if (!lang) return [];
-  await exec(
-    ytdlp,
-    [
+  const capArgs = [
       ...YTDLP_TEXT.args,
       "--no-warnings",
       "--no-playlist",
@@ -518,13 +516,14 @@ async function fetchCaptions(
       "-o",
       path.join(work, "cap"),
       `https://www.youtube.com/watch?v=${videoId}`,
-    ],
-    {
+    ];
+  await guardedYt(ytdlp, capArgs, () =>
+    exec(ytdlp, capArgs, {
       timeout: 180_000,
       env: YTDLP_TEXT.env,
       windowsHide: true,
       maxBuffer: 16 * 1024 * 1024,
-    },
+    }),
   );
   const file = (await fs.readdir(work)).find(
     (f) => f.startsWith("cap.") && f.endsWith(".json3"),

@@ -74,6 +74,8 @@ export interface GameplayMeta {
     signals: Array<{ kind: string; score: number; detail: string }>;
     ask?: string;
   };
+  /** HUD_FACTS: what the HUD reader measured in the clip (src/hudreader), for the reviewer to use if the frames agree. */
+  hud?: { facts: string[]; events: string[] };
   /** VOD_MINER: the stream ask this moment answers and what the miner's local check made of it (src/streamasks/miner.ts). */
   stream_ask?: {
     question: string;
@@ -347,6 +349,11 @@ export async function reviewClip(
       ...(meta.stream_ask
         ? [
             `Found for a stream ask: "${meta.stream_ask.question}"${meta.stream_ask.rumour ? " (a rumour: say so)" : ""}. The local check says ${meta.stream_ask.verdict} (${Math.round(meta.stream_ask.confidence * 100)}%): ${meta.stream_ask.reason}. Frame it as "Previews said X. I tested it." only if the frames agree; otherwise judge the clip on its own.`,
+          ]
+        : []),
+      ...(meta.hud && (meta.hud.facts.length || meta.hud.events.length)
+        ? [
+            `Measured from the game's own HUD in this clip (the HUD reader, not a guess): ${[...meta.hud.facts, ...meta.hud.events].join("; ")}. A figure from here may be the Short's "I measured it" result, said as measured, only if the frames agree.`,
           ]
         : []),
       "",

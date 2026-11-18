@@ -8,6 +8,8 @@
 //             stream's own recent best so a loud game and a quiet one are each held to their own bar.
 //   chat      a burst of messages over the last five minutes' usual rate, from more than one person, and "clip it".
 //   clip      a viewer made a Twitch clip: someone already thought this was worth keeping.
+//   hud       the game itself (HUD_LIVE_SIGNAL, src/hudreader/signal.ts): stars jumping, "Wasted", a mission passed,
+//             read off the stream's HUD. It knows the exact second, like loudness, so its cut keeps the build-up.
 // Signals that land within MERGE_SECONDS of each other are one moment and their scores add up. The open stream asks
 // (src/streamasks) that the chat or the stream title name are attached, and add a little.
 
@@ -42,7 +44,7 @@ export interface AskRef {
   question: string;
 }
 
-export type SignalKind = "loudness" | "chat" | "clip";
+export type SignalKind = "loudness" | "chat" | "clip" | "hud";
 
 export interface Signal {
   kind: SignalKind;
@@ -235,6 +237,18 @@ export class LiveDetector {
     if (this.chat.length > 5000) this.chat.splice(0, this.chat.length - 5000);
   }
 
+  /** A HUD event placed on the stream's clock (ms), scored by src/hudreader/signal.ts; one per event time. */
+  addHud(h: { at: number; score: number; detail: string }): void {
+    if (h.score <= 0) return;
+    if (this.signals.some((s) => s.kind === "hud" && Math.abs(s.at - h.at) < 1000)) return;
+    this.signals.push({
+      kind: "hud",
+      at: h.at,
+      score: round2(Math.min(2, h.score)),
+      detail: `on screen: ${h.detail}`,
+    });
+  }
+
   addClip(c: ViewerClip): void {
     if (this.signals.some((s) => s.kind === "clip" && s.detail.includes(c.id)))
       return;
@@ -296,8 +310,8 @@ export class LiveDetector {
       if (m) {
         m.signals.push(s);
         m.score = round2(m.score + s.score);
-        // Loudness knows when it happened; a reaction only roughly.
-        const loud = m.signals.filter((x) => x.kind === "loudness");
+        // Loudness and the HUD know when it happened; a reaction only roughly.
+        const loud = m.signals.filter((x) => x.kind === "loudness" || x.kind === "hud");
         const at = loud.length
           ? loud.sort((a, b) => b.score - a.score)[0]!.at
           : Math.min(...m.signals.map((x) => x.at));
@@ -307,7 +321,7 @@ export class LiveDetector {
           at: s.at,
           score: s.score,
           signals: [s],
-          ...momentWindow(s.at, s.kind === "loudness"),
+          ...momentWindow(s.at, s.kind === "loudness" || s.kind === "hud"),
           decidedAt: 0,
         });
     }

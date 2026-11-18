@@ -95,6 +95,8 @@ const SourceChip: React.FC<{
 );
 
 function countTo(value: string, p: number): string {
+  // A price or a decimal never counts: mid-count it read "$395.99" for $399.99 (the cents stayed) and failed QA.
+  if (/[.$£€¥]/.test(value)) return value;
   const m = value.match(/^([^\d]*)([\d,]+)(.*)$/);
   if (!m) return value;
   const target = Number(m[2]!.replace(/,/g, ""));

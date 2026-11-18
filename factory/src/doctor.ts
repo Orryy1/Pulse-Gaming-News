@@ -11,6 +11,21 @@ import { FFMPEG } from "./lib/bin.ts";
 import { errorMessage, fetchWithTimeout, log } from "./lib/util.ts";
 import { SCOPES } from "./youtube/oauth.ts";
 import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
+import path from "node:path";
+import type { Db } from "./db.ts";
+import { tokenKey } from "./youtube/oauth.ts";
+import { quotaCalls, quotaUsed } from "./lanes.ts";
+import {
+  forecastBackup,
+  forecastCodex,
+  forecastDisk,
+  forecastElevenLabs,
+  forecastOllama,
+  forecastYouTubeQuota,
+  forecastYouTubeToken,
+  weekStart,
+  type Forecast,
+} from "./forecast.ts";
 
 const run = promisify(execFile);
 
@@ -440,4 +455,181 @@ export function formatDoctor(checks: Check[]): string {
       (c) => `${c.ok ? "✅" : c.critical ? "⛔" : "⚠️"} ${c.name}: ${c.detail}`,
     )
     .join("\n");
+}
+
+// ---------------------------------------------------------------- the dependency forecaster (FORECAST_ENABLED)
+// The boot checks above say what is broken now; these say what will be, days ahead (src/forecast.ts).
+
+/** What the forecaster reads beside the database: each optional, so a missing one is skipped, never a failure. */
+export interface ForecastDeps {
+  creditPlan?: () => Promise<{ left: number; resetAt: Date; pacePerDay: number } | undefined>;
+  /** The stored refresh token, for the live refresh test (undefined: not tested). */
+  refreshToken?: string;
+  visionDown?: () => Promise<boolean>;
+  /** Free space where the data lives, in GB (defaults to statfs on DATA_DIR). */
+  freeGb?: () => Promise<number>;
+  fetchJson?: (url: string) => Promise<unknown>;
+  now: Date;
+}
+
+async function setting(db: Db, key: string): Promise<{ value: string; updated_at: string | Date } | undefined> {
+  const [row] = await db.query<{ value: string; updated_at: string | Date }>(
+    `SELECT value, updated_at FROM settings WHERE key = $1`,
+    [key],
+  );
+  return row;
+}
+
+async function putSetting(db: Db, key: string, value: string): Promise<void> {
+  await db.query(
+    `INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, value],
+  );
+}
+
+/** One free-space sample a day per machine, the last fourteen kept, for the trend; returns the earlier ones. */
+async function diskSamples(
+  db: Db,
+  machine: string,
+  freeGb: number,
+  now: Date,
+): Promise<Array<{ at: string; freeGb: number }>> {
+  const key = `forecast_disk_${machine.toLowerCase()}`;
+  const row = await setting(db, key);
+  let samples: Array<{ at: string; freeGb: number }> = [];
+  try {
+    samples = row ? (JSON.parse(row.value) as typeof samples) : [];
+  } catch {
+    samples = [];
+  }
+  const last = samples[samples.length - 1];
+  if (!last || now.getTime() - new Date(last.at).getTime() >= 20 * 3_600_000) {
+    await putSetting(db, key, JSON.stringify([...samples, { at: now.toISOString(), freeGb }].slice(-14)));
+  }
+  return samples;
+}
+
+/** Codex answers this week, from the usage meter (data/usage/<day>.jsonl, provider "codex"). */
+async function codexCallsSince(dataDir: string, since: Date, now: Date): Promise<number> {
+  let n = 0;
+  for (let t = since.getTime(); t <= now.getTime() + 86_400_000; t += 86_400_000) {
+    const file = path.join(dataDir, "usage", `${new Date(t).toISOString().slice(0, 10)}.jsonl`);
+    const text = await fs.readFile(file, "utf8").catch(() => "");
+    for (const line of text.split("\n")) if (line.includes(CODEX_LINE)) n++;
+  }
+  return n;
+}
+const CODEX_LINE = `"provider":"codex"`;
+
+/** Every forecast the factory can make here, with what it read; a reader that fails gives an "unknown" line. */
+export async function gatherForecasts(db: Db, cfg: Config, deps: ForecastDeps): Promise<Forecast[]> {
+  const { now } = deps;
+  const horizon = cfg.forecastHorizonDays;
+  const out: Forecast[] = [];
+  const safely = async (id: string, fn: () => Promise<Forecast | undefined>) => {
+    try {
+      const f = await fn();
+      if (f) out.push(f);
+    } catch (err) {
+      out.push({ id, level: "ok", line: `${id}: could not be read (${errorMessage(err).slice(0, 100)})` });
+    }
+  };
+  await safely("elevenlabs", async () =>
+    forecastElevenLabs(await deps.creditPlan?.(), now, horizon, cfg.elevenLabsReserve),
+  );
+  await safely("youtube_quota", async () =>
+    forecastYouTubeQuota({
+      units: await quotaUsed(db, now),
+      unitLimit: cfg.quotaUnitsPerDay,
+      uploads: await quotaCalls(db, now, "upload"),
+      uploadLimit: cfg.uploadCallsPerDay,
+      now,
+    }),
+  );
+  await safely("youtube_token", async () => {
+    const row = await setting(db, tokenKey(""));
+    // The live refresh: free (no quota), and it says "refused" the day the login dies, before an upload finds out.
+    const check =
+      deps.refreshToken !== undefined && !cfg.dryRun ? (await checkYouTube(cfg, deps.refreshToken, []))[0] : undefined;
+    return forecastYouTubeToken({
+      savedAt: row ? new Date(row.updated_at) : undefined,
+      lifetimeDays: cfg.forecastYoutubeTokenDays,
+      refreshOk: check ? check.ok : undefined,
+      refreshDetail: check?.detail,
+      now,
+      horizonDays: horizon,
+    });
+  });
+  await safely("codex", async () => {
+    if (!cfg.codexLlm) return undefined;
+    const since = weekStart(now, cfg.codexWeekResetDay);
+    return forecastCodex({
+      calls: await codexCallsSince(cfg.dataDir, since, now),
+      failures: 0,
+      budget: cfg.codexWeeklyCalls,
+      now,
+      resetDay: cfg.codexWeekResetDay,
+      horizonDays: horizon,
+    });
+  });
+  await safely("disk", async () => {
+    const freeGb = deps.freeGb
+      ? await deps.freeGb()
+      : await fs.statfs(cfg.dataDir).then((st) => (st.bavail * st.bsize) / 1e9);
+    const machine = process.platform === "darwin" ? "Mac" : "PC";
+    return forecastDisk({
+      machine,
+      freeGb,
+      samples: await diskSamples(db, machine, freeGb, now),
+      floorGb: cfg.forecastDiskFloorGb,
+      now,
+      horizonDays: horizon,
+    });
+  });
+  if (cfg.forecastPcDiskUrl)
+    await safely("disk_pc", async () => {
+      const body = (
+        deps.fetchJson
+          ? await deps.fetchJson(cfg.forecastPcDiskUrl)
+          : await (await fetchWithTimeout(cfg.forecastPcDiskUrl, {}, 10_000)).json()
+      ) as { freeGb?: number };
+      if (typeof body.freeGb !== "number") throw new Error("no freeGb in the answer");
+      return forecastDisk({
+        machine: "PC",
+        freeGb: body.freeGb,
+        samples: await diskSamples(db, "PC", body.freeGb, now),
+        floorGb: cfg.forecastDiskFloorGb,
+        now,
+        horizonDays: horizon,
+      });
+    });
+  await safely("ollama", async () => {
+    if (!deps.visionDown) return undefined;
+    const down = await deps.visionDown();
+    const row = await setting(db, "forecast_ollama_down");
+    if (down && !row) await putSetting(db, "forecast_ollama_down", now.toISOString());
+    if (!down && row) await db.query(`DELETE FROM settings WHERE key = 'forecast_ollama_down'`);
+    const [n] = await db.query<{ n: string | number }>(
+      `SELECT count(*) AS n FROM events WHERE kind = 'note' AND detail->>'text' ILIKE '%relay%down%' AND created_at > $1::timestamptz - interval '1 day'`,
+      [now],
+    );
+    return forecastOllama({
+      downNow: down,
+      downSince: down ? (row ? new Date(row.value) : now) : undefined,
+      outagesLastDay: Number(n?.n ?? 0),
+      now,
+    });
+  });
+  await safely("backup", async () => {
+    const [row] = await db.query<{ at: string | Date | null }>(
+      `SELECT max(created_at) AS at FROM events WHERE kind = 'backup'`,
+    );
+    return forecastBackup({ lastAt: row?.at ? new Date(row.at) : undefined, now });
+  });
+  return out;
+}
+
+/** The forecasts as doctor checks, for the /doctor page beside the boot checks. */
+export function forecastChecks(forecasts: readonly Forecast[]): Check[] {
+  return forecasts.map((f) => ({ name: `forecast_${f.id}`, ok: f.level === "ok", critical: false, detail: f.line }));
 }

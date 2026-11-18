@@ -229,12 +229,20 @@ export function factDrift(before: string, after: string): string[] {
   const initials = new Set(
     nameRunsOf(before)
       .filter((run) => run.length > 1)
-      .map((run) => run.map((x) => x[0]).join("").toUpperCase()),
+      .map((run) =>
+        run
+          .map((x) => x[0])
+          .join("")
+          .toUpperCase(),
+      ),
   );
   // A name whose other form is already there is the same name: "Korea" after "South Korean", "Japan" after "Japanese".
   const sameStem = (n: string) => {
     const l = n.toLowerCase();
-    return l.length >= 4 && [...wb].some((w) => w.length >= 4 && (w.startsWith(l) || l.startsWith(w)));
+    return (
+      l.length >= 4 &&
+      [...wb].some((w) => w.length >= 4 && (w.startsWith(l) || l.startsWith(w)))
+    );
   };
   const newNames = [...namesOf(after)].filter(
     (n) => !wb.has(n.toLowerCase()) && !initials.has(n) && !sameStem(n),
@@ -243,14 +251,27 @@ export function factDrift(before: string, after: string): string[] {
   const afterInitials = new Set(
     nameRunsOf(after)
       .filter((run) => run.length > 1)
-      .map((run) => run.map((x) => x[0]).join("").toUpperCase()),
+      .map((run) =>
+        run
+          .map((x) => x[0])
+          .join("")
+          .toUpperCase(),
+      ),
   );
   const lostNames = nameRunsOf(before)
     .filter(
       (run) =>
         run.some((x) => named.has(x)) &&
         !run.some((x) => wa.has(x.toLowerCase()) || afterInitials.has(x)) &&
-        !(run.length > 1 && wa.has(run.map((x) => x[0]).join("").toLowerCase())) &&
+        !(
+          run.length > 1 &&
+          wa.has(
+            run
+              .map((x) => x[0])
+              .join("")
+              .toLowerCase(),
+          )
+        ) &&
         // Our own segment's name is a label, not a fact: saying it plainly instead is the point.
         !run.some((x) => /^pulse$/i.test(x)),
     )
@@ -446,6 +467,17 @@ export interface FriendShortOpts {
   wordsMax?: number;
   /** The model for the pass: the mid model unless a caller asks otherwise. */
   tier?: Tier;
+  /** The humaniser's exact notes (src/editorial/humanise): what its safe fixes could not do, for this one rewrite. */
+  humanNotes?: string[];
+  /** The step name for routing (CODEX_CALLS); "friend.short" unless a caller asks otherwise. */
+  site?: string;
+}
+
+/** The humaniser's notes as one brief line for a delivery rewrite. */
+export function humanNotesLine(notes: string[] | undefined): string {
+  return notes?.length
+    ? `Make it sound like a person talking, not a script. Fix exactly these and leave everything else that already works as it is:\n${notes.map((n) => `- ${n}`).join("\n")}`
+    : "";
 }
 
 const shortFields = (
@@ -501,6 +533,7 @@ export async function friendShort(
           ...opts.recent.loops.map((l) => `- closed "${l}"`),
         ].join("\n")}`
       : "",
+    humanNotesLine(opts.humanNotes),
     `Delivery tags: one to three in the whole Short, on the joke, the groans and the good news. A laugh or chuckle goes right after the line that earns it, never in front of a plain fact.`,
     `Length is a hard limit, because a Short runs 25-40 seconds: the original has ${words} written words and yours must have ${lo}-${hi}, so your edits together add at most ${Math.max(0, hi - words)} words${words > lo ? ` or remove at most ${words - lo}` : ""} (tags don't count). Pay for a take or an aside by trimming a restatement or a weak clause, or by merging two short facts, or by cutting a line that doesn't follow. Never pad with an idiom or a stock line ("the writing was on the wall", "at the end of the day"): every word you add makes the point clearer, or it is the take.`,
   ].filter(Boolean);
@@ -527,7 +560,7 @@ export async function friendShort(
     view[k] = { narration: toBraces(t), words: wordsIn(t) };
   }
   const first = await editLines(llm, {
-    site: "friend.short",
+    site: opts.site ?? "friend.short",
     tier: opts.tier ?? "mid",
     effort: "medium",
     notes,
@@ -575,7 +608,7 @@ export async function friendShort(
       words: wordsIn(stripVoiceTags(fromBraces(t))),
     };
   const trimmed = await editLines(llm, {
-    site: "friend.short",
+    site: opts.site ?? "friend.short",
     tier: opts.tier ?? "mid",
     effort: "high",
     notes: [
@@ -652,6 +685,10 @@ export async function friendChapter(
     tier?: Tier;
     /** The credits that still repeat across the video (src/editorial/attribution.ts): the pass rewords these. */
     credits?: string[];
+    /** The humaniser's exact notes for this one rewrite. */
+    humanNotes?: string[];
+    /** The step name for routing; "friend.doc" unless a caller asks otherwise. */
+    site?: string;
   } = {},
 ): Promise<DocChapter & { voice_tags?: VoiceTagMark[] }> {
   const texts = voiceTexts(
@@ -670,6 +707,7 @@ export async function friendChapter(
           `Credits that repeat across the video, reword these here (Credits above):\n${opts.credits.map((c) => `- ${c}`).join("\n")}`,
         ]
       : []),
+    ...(opts.humanNotes?.length ? [humanNotesLine(opts.humanNotes)] : []),
   ];
   const lines: Record<string, string> = {};
   const view: Record<string, unknown> = {};
@@ -678,7 +716,7 @@ export async function friendChapter(
     view[`paragraph_${i + 1}`] = toBraces(t);
   });
   const r = await editLines(llm, {
-    site: "friend.doc",
+    site: opts.site ?? "friend.doc",
     tier: opts.tier ?? "mid",
     effort: "medium",
     notes,

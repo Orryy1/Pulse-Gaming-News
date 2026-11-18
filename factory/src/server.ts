@@ -20,7 +20,8 @@ import {
   redactedConfig,
   type Config,
 } from "./config.ts";
-import { runDoctor, formatDoctor } from "./doctor.ts";
+import { runDoctor, formatDoctor, gatherForecasts } from "./doctor.ts";
+import { forecastAlert } from "./forecast.ts";
 import { storedRefreshToken } from "./youtube/oauth.ts";
 import { openDb, migrate, withLease, type Db } from "./db.ts";
 import { backupDue, makeBackup, markBackup } from "./backup.ts";
@@ -101,6 +102,17 @@ import {
   accessToken,
 } from "./youtube/oauth.ts";
 import { errorMessage, log } from "./lib/util.ts";
+import { vaultHousekeeping } from "./factvault/nightly.ts";
+import { challengeHousekeeping } from "./challengestep.ts";
+import {
+  challengeSeriesTitle,
+  editRegistry,
+  endByHand,
+  readRegistry,
+  startByHand,
+  type ChallengeOutcome,
+} from "./challenge.ts";
+import { dayKey as localDay } from "./lanes.ts";
 import {
   lanRequestAllowed,
   macReservationsDoc,
@@ -118,6 +130,8 @@ import {
 import { filesForMacRoutine, macSettings } from "./macworker.ts";
 import { macGameplayTick } from "./macgameplay.ts";
 import { liveClipsTick } from "./liveclips/job.ts";
+import { streamWeeklyTick } from "./streamweekly/job.ts";
+import { hudVodTick } from "./hudreader/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
@@ -151,6 +165,7 @@ import {
 } from "./analyticsloop.ts";
 import {
   growthReport,
+  growthReportMessages,
   growthReportDue,
   markGrowthReportSent,
 } from "./growthreport.ts";
@@ -161,7 +176,11 @@ import {
   subsLearnDue,
 } from "./subslearn/learn.ts";
 import { graphicsDigest } from "./gfxauditstep.ts";
-import { readUnknown, unknownDigestLine, unknownFile } from "./voice/pronounce.ts";
+import {
+  readUnknown,
+  unknownDigestLine,
+  unknownFile,
+} from "./voice/pronounce.ts";
 import {
   alertDigestDue,
   markAlertDigestSent,
@@ -261,7 +280,10 @@ export function createApp(
         url.pathname === `/asks/${asksKey(cfg.appSecret)}.md`)
     ) {
       const md = url.pathname.endsWith(".md");
-      const file = path.join(asksDir(cfg.dataDir), md ? "asks.md" : "asks.html");
+      const file = path.join(
+        asksDir(cfg.dataDir),
+        md ? "asks.md" : "asks.html",
+      );
       const body = fs.existsSync(file)
         ? fs.readFileSync(file, "utf8")
         : md
@@ -269,7 +291,9 @@ export function createApp(
           : "<p>No list yet.</p>";
       res
         .writeHead(200, {
-          "content-type": md ? "text/markdown; charset=utf-8" : "text/html; charset=utf-8",
+          "content-type": md
+            ? "text/markdown; charset=utf-8"
+            : "text/html; charset=utf-8",
           "x-robots-tag": "noindex, nofollow",
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
@@ -292,7 +316,11 @@ export function createApp(
           "cache-control": "no-store",
           "referrer-policy": "no-referrer",
         })
-        .end(fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "<p>No harvest yet.</p>");
+        .end(
+          fs.existsSync(file)
+            ? fs.readFileSync(file, "utf8")
+            : "<p>No harvest yet.</p>",
+        );
       return;
     }
 
@@ -496,6 +524,50 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
 </script>`,
         ),
       );
+    }
+    // The challenge series by hand (admin key, src/challenge.ts): ?start=no cars[&game=...] opens one as the stream
+    // title's tag would, ?end=<slug>&outcome=made|failed closes it; no parameters lists them. The tag in the Twitch
+    // title is the usual way; this is for a stream whose title was set without it.
+    if (url.pathname === "/admin/challenge" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const now = new Date();
+      const start = url.searchParams.get("start")?.trim();
+      const end = url.searchParams.get("end")?.trim();
+      let note = "";
+      if (start) {
+        const r = editRegistry(cfg.dataDir, (reg) =>
+          startByHand(
+            reg,
+            start,
+            url.searchParams.get("game") || "Grand Theft Auto VI",
+            now,
+            localDay(now, cfg.timezone),
+          ),
+        );
+        note = r.challenge
+          ? `started: ${challengeSeriesTitle(r.challenge.rule, r.challenge.game)}`
+          : "not a rule";
+      } else if (end) {
+        const o = url.searchParams.get("outcome");
+        const outcome: ChallengeOutcome =
+          o === "made" ? "made it" : o === "failed" ? "failed" : "unknown";
+        const r = editRegistry(cfg.dataDir, (reg) =>
+          endByHand(reg, end, outcome, now),
+        );
+        note = r.challenge
+          ? `ended: ${r.challenge.rule} (${outcome})`
+          : "no such challenge";
+      }
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(
+          JSON.stringify(
+            { note, on: cfg.challenge.enabled, ...readRegistry(cfg.dataDir) },
+            null,
+            2,
+          ),
+        );
+      return;
     }
     // The publishing hold (admin key): ?set=on stops every upload, cross-post, reply and post until ?set=off.
     if (url.pathname === "/admin/hold" && req.method === "GET") {
@@ -891,7 +963,12 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
             platforms: Object.fromEntries(
               Object.entries(out.json.platforms).map(([k, v]) => [
                 k,
-                { read: v.read, posts: v.posts, views: v.views, source: v.source },
+                {
+                  read: v.read,
+                  posts: v.posts,
+                  views: v.views,
+                  source: v.source,
+                },
               ]),
             ),
             changes: out.json.changes,
@@ -982,6 +1059,91 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
           .end(JSON.stringify({ ok: false, error: errorMessage(err) }));
       }
       return;
+    }
+    // Retry: a voiced episode that failed on a fault since fixed (15 Nov 2026: four Shorts lost to a render
+    // bundle missing music beds) goes back to "voiced" with fresh attempts, keeping its script and voice.
+    if (url.pathname === "/admin/retry" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {
+        res.writeHead(400, { "content-type": "application/json" }).end(
+          JSON.stringify({
+            ok: false,
+            error:
+              "only a failed episode that was already voiced can be retried",
+          }),
+        );
+        return;
+      }
+      // The footage gate's one richer gathering starts afresh (new footage may have arrived since), and the plan is redone.
+      const assets = { ...ep.assets_json } as Record<string, unknown>;
+      delete assets.rich;
+      delete assets.plan;
+      // fresh=1: all gathered media goes too and is gathered again (15 Nov 2026: the Bully Short's media was another
+      // game's, so swapping single clips could never fix it).
+      if (url.searchParams.get("fresh") === "1") {
+        delete assets.images;
+        delete assets.clips;
+        // The stored Steam match names the game the gather searches for; a wrong one ("Bully Beatdown") would be
+        // found again, so it is looked up afresh from the script's game.
+        delete assets.steam;
+      }
+      await db.query(
+        `UPDATE episodes SET status = 'voiced', attempts = 0, next_attempt_at = NULL, last_error = NULL, assets_json = $2 WHERE id = $1`,
+        [ep.id, JSON.stringify(assets)],
+      );
+      await logEvent(db, ep.id, "retried", {
+        after: ep.last_error ?? "",
+      }).catch(() => undefined);
+      res
+        .writeHead(200, { "content-type": "application/json" })
+        .end(JSON.stringify({ ok: true, id: ep.id }));
+      return;
+    }
+    // A corrected title (15 Nov 2026: "Bully: Why It 2's canceled plans..." went out from a title-rewrite bug): the
+    // stored script's title changes, and a video already on YouTube is retitled there (snippet only, privacy untouched;
+    // refused when the live title is not the one we uploaded, so a hand edit is never overwritten).
+    if (url.pathname === "/admin/retitle" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      const title = (url.searchParams.get("title") ?? "").trim();
+      if (!ep?.script_json?.youtube || !title || title.length > 100) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: "needs an episode with a script and a title of 1-100 characters" }));
+        return;
+      }
+      const was = ep.script_json.youtube.title;
+      let youtube = "not uploaded";
+      if (ep.youtube_video_id) {
+        // The upload step may restyle the title (Title Case), so the live title can differ from the stored one;
+        // expected= names the live title outright.
+        const expected = (url.searchParams.get("expected") ?? "").trim() || was;
+        await services.youtube().retitle(ep.youtube_video_id, expected, title);
+        youtube = "retitled";
+      }
+      const script = { ...ep.script_json, youtube: { ...ep.script_json.youtube, title } };
+      await db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+      await logEvent(db, ep.id, "retitled", { from: was, to: title, youtube }).catch(() => undefined);
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, from: was, to: title, youtube }));
+      return;
+    }
+    // Rewrites a comment the channel already posted (a broken template pin, 18 Nov): find= must match the live
+    // comment's text, so only the comment meant is touched.
+    if (url.pathname === "/admin/edit-comment" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const video = (url.searchParams.get("video") ?? "").trim();
+      const find = (url.searchParams.get("find") ?? "").trim();
+      const text = (url.searchParams.get("text") ?? "").trim();
+      const json = (code: number, body: unknown) =>
+        res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(body));
+      if (!video || find.length < 8 || !text || text.length > 1000 || /—/.test(text))
+        return json(400, { ok: false, error: "needs video, find (8+ characters) and text (1-1000, no em dash)" });
+      const yt = services.youtube();
+      const hits = (await yt.listComments(video)).filter((c) => c.text.includes(find));
+      if (hits.length !== 1)
+        return json(409, { ok: false, error: `expected one comment containing that text, found ${hits.length}` });
+      await yt.updateComment(hits[0]!.id, text);
+      log("info", "comment edited", { video, from: hits[0]!.text.slice(0, 200), to: text.slice(0, 200) });
+      return json(200, { ok: true, from: hits[0]!.text, to: text });
     }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
@@ -1813,11 +1975,17 @@ async function main(): Promise<void> {
   const services = createServices(db, cfg);
   // SUBS_LEARN (src/subslearn): the slots it moved, back into the running config before the first tick.
   const slotsNow = await restoreSubsLearn(db, cfg).catch((err) => {
-    log("warn", "subscriber learning restore failed", { error: errorMessage(err) });
+    log("warn", "subscriber learning restore failed", {
+      error: errorMessage(err),
+    });
     return undefined;
   });
   if (cfg.subsLearn.enabled && slotsNow)
-    log("info", "subscriber learning slots", { news: slotsNow.news, why: slotsNow.why, apply: cfg.subsLearn.apply });
+    log("info", "subscriber learning slots", {
+      news: slotsNow.news,
+      why: slotsNow.why,
+      apply: cfg.subsLearn.apply,
+    });
   const state: {
     lastTick?: string;
     lastLongTick?: string;
@@ -1905,10 +2073,30 @@ async function main(): Promise<void> {
             await db.query<{ game: string | null; at: string | Date }>(
               `SELECT COALESCE(NULLIF(script_json->>'game_title', ''), story_json->>'gameHint') AS game, created_at AS at FROM episodes WHERE created_at > now() - interval '7 days'`,
             )
-          ).flatMap((r) => (r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [])),
+          ).flatMap((r) =>
+            r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [],
+          ),
       });
     footagePass();
     setInterval(footagePass, 30 * 60_000);
+  }
+  // The game library cache (16 Nov 2026): the Mac pulls each game's index and recent media from the PC's master copy
+  // (GAMELIB_REMOTE) and trims its cache to its cap, every six hours, as a low-priority child process.
+  if (process.env.GAMELIB_REMOTE?.trim() && process.platform === "darwin") {
+    const syncPass = () => {
+      const child = spawn("taskpolicy", ["-b", process.execPath, "--import", "tsx", "src/tools/gamelib.ts", "sync"], {
+        cwd: process.cwd(),
+        env: { ...process.env, DATA_DIR: cfg.dataDir },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      child.stdout?.on("data", (d) => (out += String(d)).length > 4000 && (out = out.slice(-4000)));
+      child.stderr?.on("data", (d) => (out += String(d)).length > 4000 && (out = out.slice(-4000)));
+      child.on("close", (code) => log(code === 0 ? "info" : "warn", "game library sync finished", { code, tail: out.slice(-600) }));
+      child.on("error", (err) => log("warn", "game library sync not started", { error: String(err) }));
+    };
+    setTimeout(syncPass, 15 * 60_000);
+    setInterval(syncPass, 6 * 60 * 60_000);
   }
   if (cfg.sceneIndex) {
     const pass = () =>
@@ -1930,12 +2118,20 @@ async function main(): Promise<void> {
       void archiveTick(cfg, {
         coverage: async () =>
           (
-            await db.query<{ game: string | null; n: number | string; views: number | string | null }>(
+            await db.query<{
+              game: string | null;
+              n: number | string;
+              views: number | string | null;
+            }>(
               `SELECT COALESCE(NULLIF(e.script_json->>'game_title', ''), e.story_json->>'gameHint') AS game, count(*) AS n, COALESCE(sum(m.v), 0) AS views
                  FROM episodes e LEFT JOIN (SELECT episode_id, max(views) AS v FROM video_metrics GROUP BY episode_id) m ON m.episode_id = e.id
                 WHERE e.lane <> 'twin' GROUP BY 1`,
             )
-          ).flatMap((r) => (r.game ? [{ game: r.game, n: Number(r.n), views: Number(r.views ?? 0) }] : [])),
+          ).flatMap((r) =>
+            r.game
+              ? [{ game: r.game, n: Number(r.n), views: Number(r.views ?? 0) }]
+              : [],
+          ),
       });
     setTimeout(archivePass, 7 * 60_000);
     setInterval(archivePass, 10 * 60_000);
@@ -1949,7 +2145,9 @@ async function main(): Promise<void> {
         // Comments under the big videos: the factory's own login when YOUTUBE_API_KEY is unset or expired.
         youtubeToken: () => accessToken(db, oauthConfig(cfg)),
         onQuota: (kind, n) =>
-          kind === "search" ? quotaCall(db, new Date(), "search") : quotaAdd(db, new Date(), n),
+          kind === "search"
+            ? quotaCall(db, new Date(), "search")
+            : quotaAdd(db, new Date(), n),
       });
     setTimeout(asksPass, 3 * 60_000);
     setInterval(asksPass, 15 * 60_000);
@@ -1965,10 +2163,41 @@ async function main(): Promise<void> {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);
     setInterval(() => void vodMinerTick(cfg), 10 * 60_000);
   }
+  // The week of streams as one long video (STREAM_WEEKLY): src/streamweekly/job.ts, checked every half hour.
+  if (cfg.streamWeekly.enabled) {
+    const weeklyPass = () =>
+      void streamWeeklyTick(cfg, {
+        db,
+        llm: services.llm,
+        youtubeToken: () => accessToken(db, oauthConfig(cfg)),
+      });
+    setTimeout(weeklyPass, 8 * 60_000);
+    setInterval(weeklyPass, 30 * 60_000);
+  }
   // The highlight finder and the TinoTV download on the Mac (MAC_GAMEPLAY).
   if (cfg.macGameplay) {
     void macGameplayTick(cfg);
     setInterval(() => void macGameplayTick(cfg), 5 * 60_000);
+  }
+  // The GTA HUD and minimap reader over the owner's recordings (HUD_READER): src/hudreader/job.ts.
+  if (cfg.hud.enabled) {
+    setTimeout(() => void hudVodTick(cfg), 8 * 60_000);
+    setInterval(() => void hudVodTick(cfg), 15 * 60_000);
+  }
+  // The challenge series (CHALLENGE_SERIES, src/challenge.ts): tagged recordings filed, quiet challenges closed and
+  // the ranked ideas report written, every three hours.
+  if (cfg.challenge.enabled) {
+    const challengePass = () =>
+      void challengeHousekeeping(
+        cfg,
+        db,
+        (m) => services.notify(m),
+        new Date(),
+      ).catch((err) =>
+        log("warn", "challenge pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(challengePass, 9 * 60_000);
+    setInterval(challengePass, 3 * 3_600_000);
   }
   // Near-live clips while the owner streams (LIVE_CLIPS): src/liveclips/job.ts.
   if (cfg.liveClips.enabled) {
@@ -2184,6 +2413,8 @@ async function main(): Promise<void> {
         now: () => new Date(),
         perDay: cfg.communityRepliesPerDay,
         perPass: cfg.communityRepliesPerPass,
+        openingGuard: cfg.replyOpeningGuard,
+        ruleOfTwo: cfg.ruleOfTwo,
       }).catch((err) =>
         log("warn", "community engine pass failed", {
           error: errorMessage(err),
@@ -2202,7 +2433,9 @@ async function main(): Promise<void> {
         headroom: () => quotaHeadroom(db, cfg, new Date()),
         now: new Date(),
       }).catch((err) =>
-        log("warn", "reply Short pointers failed", { error: errorMessage(err) }),
+        log("warn", "reply Short pointers failed", {
+          error: errorMessage(err),
+        }),
       );
     setInterval(() => void point(), 10 * 60_000);
   }
@@ -2361,6 +2594,9 @@ async function main(): Promise<void> {
     await db.close();
     process.exit(0);
   }, 5 * 60_000);
+  // The Pulse Fact Vault (FACT_VAULT): its seed loaded once, then from 04:00 local the nightly integrity run that reads
+  // stale and low-confidence facts again at their source (src/factvault/nightly.ts). Nothing at all when it is off.
+  setInterval(() => void vaultHousekeeping(db, cfg), 10 * 60_000);
   // 03:00 local: an encrypted restore point (database, settings, credentials) copied to BACKUP_DIR.
   setInterval(() => {
     void (async () => {
@@ -2399,6 +2635,47 @@ async function main(): Promise<void> {
       log("warn", "credit check failed", { error: errorMessage(err) }),
     );
   }, 30 * 60_000);
+  // FORECAST_ENABLED (src/forecast.ts; readers in src/doctor.ts): quotas, logins, disks, Codex, Ollama and backups
+  // projected days ahead, every three hours; each dependency is said once a day per level, through the usual alerts.
+  if (cfg.forecastEnabled) {
+    const forecast = () =>
+      void (async () => {
+        const now = new Date();
+        const forecasts = await gatherForecasts(db, cfg, {
+          creditPlan: services.creditPlan,
+          refreshToken: await storedRefreshToken(db, oauthConfig(cfg)),
+          visionDown: services.visionDown,
+          now,
+        });
+        const [row] = await db.query<{ value: string }>(
+          `SELECT value FROM settings WHERE key = 'forecast_sent'`,
+        );
+        let sent: Record<string, string> = {};
+        try {
+          sent = row ? (JSON.parse(row.value) as Record<string, string>) : {};
+        } catch {
+          sent = {};
+        }
+        const out = forecastAlert(
+          forecasts,
+          sent,
+          now.toISOString().slice(0, 10),
+        );
+        await db.query(
+          `INSERT INTO settings (key, value, updated_at) VALUES ('forecast_sent', $1, now())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+          [JSON.stringify(out.sent)],
+        );
+        if (out.text) await services.notify({ content: out.text });
+        log("info", "forecast", {
+          levels: forecasts.map((f) => `${f.id}:${f.level}`),
+        });
+      })().catch((err) =>
+        log("warn", "forecast failed", { error: errorMessage(err) }),
+      );
+    setTimeout(forecast, 10 * 60_000);
+    setInterval(forecast, 3 * 3600_000);
+  }
   // 21:30 local: the day in one message (what went live, TikTok drafts waiting, background news).
   setInterval(() => {
     void (async () => {
@@ -2413,13 +2690,17 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
-      await sendMissReport(db, cfg, new Date(), (m) => services.notify(m)).catch(
-        (err) =>
+      await sendMissReport(db, cfg, new Date(), (m) =>
+        services.notify(m),
+      ).catch((err) =>
           log("error", "big story report failed", { error: errorMessage(err) }),
       );
-      await creditForecastAlert(cfg, new Date(), db, (m) => services.notify(m)).catch(
-        (err) =>
-          log("error", "Claude credit forecast failed", { error: errorMessage(err) }),
+      await creditForecastAlert(cfg, new Date(), db, (m) =>
+        services.notify(m),
+      ).catch((err) =>
+        log("error", "Claude credit forecast failed", {
+          error: errorMessage(err),
+        }),
       );
     })().catch((err) =>
       log("error", "daily summary failed", { error: errorMessage(err) }),
@@ -2476,7 +2757,12 @@ async function main(): Promise<void> {
         report: yt ? (start, end) => yt.channelReport(start, end) : undefined,
         notify: (m) => services.notify(m),
       });
-      log("info", "subscriber learning ran", { week: key, source: out.windows.source, decision: out.decision.kind, applied: out.applied });
+      log("info", "subscriber learning ran", {
+        week: key,
+        source: out.windows.source,
+        decision: out.decision.kind,
+        applied: out.applied,
+      });
     })().catch((err) =>
       log("error", "subscriber learning failed", { error: errorMessage(err) }),
     );
@@ -2487,9 +2773,13 @@ async function main(): Promise<void> {
       const key = await growthReportDue(db, cfg, new Date());
       if (!key) return;
       await markGrowthReportSent(db, key);
-      await services.notify(
-        await growthReport(db, cfg, new Date(), await retentionStudy(db, cfg, new Date(), segmentInputs)),
-      );
+      const study = await retentionStudy(db, cfg, new Date(), segmentInputs);
+      // GROWTH_REPORT_SPLIT: the whole report over as many messages as it needs, in order; else one, cut at 3,900.
+      if (cfg.growthReportSplit)
+        for (const m of await growthReportMessages(db, cfg, new Date(), study))
+          await services.notify(m);
+      else
+        await services.notify(await growthReport(db, cfg, new Date(), study));
       log("info", "growth report sent", { week: key });
     })().catch((err) =>
       log("error", "growth report failed", { error: errorMessage(err) }),
@@ -2497,9 +2787,14 @@ async function main(): Promise<void> {
   }, 5 * 60_000);
   // The factory watching its own output: a working day with no new Short for hours is said once (src/outputwatch.ts).
   setInterval(() => {
-    void quietAlert(db, new Date(), cfg.timezone)
+    void quietAlert(db, new Date(), cfg.timezone, {
+      slots: [...cfg.newsSlots, ...(cfg.whyEnabled ? cfg.whySlots : [])],
+      dailyTarget: cfg.dailyTarget,
+    })
       .then((content) => (content ? services.notify({ content }) : undefined))
-      .catch((err) => log("warn", "output watch failed", { error: errorMessage(err) }));
+      .catch((err) =>
+        log("warn", "output watch failed", { error: errorMessage(err) }),
+      );
   }, 15 * 60_000);
   // Each morning from 09:00 local: what the alerts have been saying (ALERT_DIGEST). The page is written every day; the
   // channel hears about it only when a kind of alert is new or rising.
@@ -2509,9 +2804,13 @@ async function main(): Promise<void> {
       if (!key) return;
       await markAlertDigestSent(db, key);
       // The graphics audit's day (GRAPHICS_AUDIT, src/gfxauditstep.ts): one line, when it ran.
-      const gfxLine = await graphicsDigest(db, new Date()).catch(() => undefined);
+      const gfxLine = await graphicsDigest(db, new Date()).catch(
+        () => undefined,
+      );
       // Abbreviations the voice spelled out that the pronunciation tables do not know yet (src/voice/pronounce.ts).
-      const sayLine = unknownDigestLine(await readUnknown(unknownFile(cfg.dataDir)));
+      const sayLine = unknownDigestLine(
+        await readUnknown(unknownFile(cfg.dataDir)),
+      );
       const extra = [gfxLine, sayLine].filter((x): x is string => Boolean(x));
       const post = await writeAlertDigest(cfg, new Date(), extra);
       if (post) await services.notify(post);
@@ -2520,7 +2819,8 @@ async function main(): Promise<void> {
         const problems = await socialProblems(db, new Date());
         if (problems.length)
           await services.notify({
-            content: `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
+            content:
+              `📣 Socials gone quiet:\n${problems.map((x) => `- ${x}`).join("\n")}`.slice(
               0,
               1900,
             ),

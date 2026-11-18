@@ -25,8 +25,23 @@ export interface UsageLine {
   ms?: number;
 }
 
+/** Listeners told of every model call with its system prompt (src/learn/stamps.ts files each call under its episode). */
+const usageTaps = new Set<(line: UsageLine, system: string) => void>();
+
+/** Adds a listener for every model call; returns the function that removes it. A listener's fault never reaches a run. */
+export function tapUsage(fn: (line: UsageLine, system: string) => void): () => void {
+  usageTaps.add(fn);
+  return () => usageTaps.delete(fn);
+}
+
 /** Appends one line to data/usage/<day>.jsonl. Never throws: the meter must not break a run. */
-export function recordUsage(line: UsageLine): void {
+export function recordUsage(line: UsageLine, system = ""): void {
+  for (const tap of usageTaps)
+    try {
+      tap(line, system);
+    } catch {
+      // a listener must never break a run
+    }
   try {
     const dir = path.join(
       path.resolve(process.env.DATA_DIR || "./data"),
@@ -44,7 +59,7 @@ export function recordUsage(line: UsageLine): void {
 }
 
 /** One line per Claude call in data/usage/<day>.jsonl: what it was for and the tokens it used, so the bill can be explained. */
-function meter(model: string, system: string, usage: any): void {
+function meter(model: string, system: string, usage: any, site?: string): void {
   recordUsage({
     t: new Date().toISOString(),
     model,
@@ -55,7 +70,8 @@ function meter(model: string, system: string, usage: any): void {
     cacheWrite: usage?.cache_creation_input_tokens ?? 0,
     // The part of cacheWrite kept five minutes (priced lower than the hour); older lines have none.
     cacheWrite5m: usage?.cache_creation?.ephemeral_5m_input_tokens ?? 0,
-  });
+    ...(site ? { site } : {}),
+  }, system);
 }
 
 /**
@@ -191,6 +207,7 @@ export function createClaude(
       maxTokens = 16000,
       tier,
       cache = "5m",
+      site,
     }) {
       const model = pick(tier);
       const response = await client.beta.messages.parse(
@@ -220,7 +237,7 @@ export function createClaude(
         // A large output (a long video's full shot list) needs an explicit time limit, or the SDK insists on streaming.
         maxTokens > 16000 ? { timeout: 20 * 60 * 1000 } : undefined,
       );
-      meter(model, system, response.usage);
+      meter(model, system, response.usage, site);
       if (response.stop_reason === "refusal") {
         throw new FatalError(
           `model refused: ${response.stop_details?.category ?? "unspecified"}`,

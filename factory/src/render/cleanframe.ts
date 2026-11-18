@@ -267,7 +267,7 @@ export function overlaySpans(input: {
   plan: Pick<RenderPlan, "fps" | "totalFrames" | "shelf" | "craft">;
   layout: ShortLayout;
   stamps: Array<{ at: number }>;
-  sting: boolean;
+  sting: boolean | { from: number; frames: number };
 }): Span[] {
   const { segments, words, plan, layout, stamps } = input;
   const fps = plan.fps;
@@ -287,7 +287,8 @@ export function overlaySpans(input: {
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
     out.push({ key: `card${i}`, kind: isEntryCard(s) ? "entry" : "card", from: w.from, to: w.from + w.len });
   });
-  if (input.sting) out.push({ key: "sting", kind: "sting", from: layout.hookEnd, to: layout.hookEnd + STING_FRAMES });
+  if (typeof input.sting === "object") out.push({ key: "sting", kind: "sting", from: input.sting.from, to: input.sting.from + input.sting.frames });
+  else if (input.sting) out.push({ key: "sting", kind: "sting", from: layout.hookEnd, to: layout.hookEnd + STING_FRAMES });
   plan.shelf.forEach((it, i) => {
     if (it.device === "rail" || it.to <= it.from) return;
     out.push({ key: `shelf${i}`, kind: "shelf", from: it.from, to: it.to });
@@ -330,4 +331,43 @@ export function frameModel(input: {
     credit: plan.shots.map((s, i) => (input.credited(i) ? ([s.start, s.end] as [number, number]) : undefined)).filter((x): x is [number, number] => !!x),
     inset: clean ? [] : plan.shots.filter((s) => s.framed).map((s) => [s.start, s.end] as [number, number]),
   };
+}
+
+/** The game collage card holds at least this long when it shows (owner, 15 Nov 2026: it popped up for a second). */
+export const STING_MIN_FRAMES = 75;
+
+/**
+ * Where the game collage card may show (pure): only on a spoken line that names the game, outside the hook (the
+ * headline is up), starting on the name and held at least STING_MIN_FRAMES, inside that line, with at least three
+ * clean wide pictures for it (never hardware). Undefined: no collage card in this Short.
+ */
+export function stingPlacement(o: {
+  segments: Array<Pick<Segment, "kind" | "start" | "end">>;
+  words: Array<{ text: string; start: number; end: number }>;
+  fps: number;
+  totalFrames: number;
+  /** True when a run of spoken words names the game ("GTA 6", "Grand Theft Auto VI"). */
+  names: (text: string) => boolean;
+  pictures: number;
+}): { from: number; frames: number } | undefined {
+  if (o.pictures < 3) return undefined;
+  const hook = o.segments.findIndex((s) => s.kind === "hook");
+  const hookEnd = hook >= 0 ? o.segments[hook]!.end : 0;
+  for (const seg of o.segments) {
+    if (seg.kind !== "beat" && seg.kind !== "take") continue;
+    if (seg.start < hookEnd - 0.05) continue;
+    const ws = o.words.filter((w) => w.start >= seg.start - 0.05 && w.start < seg.end);
+    for (let i = 0; i < ws.length; i++) {
+      // The game's name is one to four words ("GTA 6", "Grand Theft Auto VI").
+      for (let n = 1; n <= 4 && i + n <= ws.length; n++) {
+        const clean = ws.slice(i, i + n).map((w) => w.text.replace(/[^\p{L}\p{N}' ]/gu, "").replace(/'s$/i, ""));
+        // The name must start on this word: "Rockstar built GTA 6" names the game, but the card waits for "GTA".
+        if (!o.names(clean.join(" ")) || (n > 1 && o.names(clean.slice(1).join(" ")))) continue;
+        const from = Math.round(ws[i]!.start * o.fps);
+        const end = Math.min(Math.round(seg.end * o.fps), o.totalFrames - 60);
+        if (end - from >= STING_MIN_FRAMES) return { from, frames: Math.min(end - from, STING_MIN_FRAMES + 15) };
+      }
+    }
+  }
+  return undefined;
 }

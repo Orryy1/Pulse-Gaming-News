@@ -3,6 +3,7 @@
 
 import os from "node:os";
 import path from "node:path";
+import { vodDirectory } from "../voddir.ts";
 
 export type AskSourceName =
   | "seed"
@@ -113,7 +114,7 @@ export function streamAsksSettings(env: NodeJS.ProcessEnv): StreamAsksSettings {
     youtubeApiKey: env.YOUTUBE_API_KEY ?? "",
     vodMiner: bool(env, "VOD_MINER", false),
     vodDir:
-      env.VOD_MINER_DIR || path.join(os.homedir(), "Videos", "TinoTV VODs"),
+      env.VOD_MINER_DIR || vodDirectory(env),
     vodDays: num(env, "VOD_MINER_DAYS", 7, 1, 60),
     ocrFps: num(env, "VOD_MINER_OCR_FPS", 0.5, 0, 4),
     chunkMinutes: num(env, "VOD_MINER_CHUNK_MINUTES", 20, 2, 120),

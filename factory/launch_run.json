@@ -894,7 +894,8 @@
     "wiki": "Grand Theft Auto VI",
     "angle": "Mechanics only, never story. For each pre-launch claim in the test records say whether it held: true, wrong or not known yet, from what that clip showed and nothing more. Say what was tested on Xbox Series X and when. A record shows one attempt, so never turn it into a rule about the whole game. Under six usable tests this video does not run.",
     "evidence": [],
-    "min_evidence": 6
+    "min_evidence": 6,
+    "premiere": true
   },
   {
     "kind": "spare",
@@ -954,5 +955,52 @@
     "make_at": "2026-11-16T03:00:00Z",
     "from": "2026-11-19",
     "until": "2026-11-23"
+  },
+  {
+    "kind": "doc",
+    "date": "2026-12-19",
+    "slot": "20:00",
+    "make_hours_before": 40,
+    "title": "GTA 6 Story Recap: Everything That Happens (Full Spoilers)",
+    "thumb": "FULL STORY",
+    "franchise": "Grand Theft Auto VI",
+    "wiki": "Grand Theft Auto VI",
+    "angle": "The whole story of GTA 6, from the first scene to the last, told in the order it happens as we played it on our own streams. Full spoilers, ending included: the very first line says so, so anyone who has not finished can stop. Each chapter is one part of the story, named after its turning point. Say what happens and who does it, plainly and in order, from what the game's own scenes show and say; never guess at a scene we did not see. Lucia and Jason are the leads. No reception, sales or making-of: only the story.",
+    "story_recap": {
+      "game": "Grand Theft Auto VI",
+      "short": "GTA 6",
+      "until": "2027-01-31",
+      "minutes": 60
+    }
+  },
+  {
+    "kind": "why",
+    "date": "2026-11-18",
+    "slot": "22:00",
+    "make_at": "2026-11-18T12:50:00Z",
+    "question": "How can you play GTA 6 without a PS5 or Xbox Series X|S?",
+    "title": "How to Play GTA 6 Without a PS5 or Series X",
+    "game": "Grand Theft Auto VI",
+    "arc": "The one way in without a current console is an Xbox One through Xbox Cloud Gaming from 1am ET on November 19: you buy GTA 6 separately, then need Game Pass with cloud gaming or bought cloud playtime (on sale since November 11 in supported markets); it streams at Xbox Series S settings and your internet speed matters. Xbox has kept GTA 6 cloud play to its consoles: PC and phones are excluded, and smart TVs, Fire TV and tablets are not on Xbox's list. GeForce Now cannot run it because there is no PC version. PlayStation has not announced cloud play, so a PS Portal or phone only works through Remote Play from your own PS5 or Xbox at home, which Rockstar says is fully supported.",
+    "angle": "Open close to: \"You can play GTA 6 on an old Xbox One. Just not on your phone.\" Say clearly what works (Xbox One via the cloud) and what does not at launch (PC and phones; TVs, Fire TV and tablets are not on Xbox's list). Never say TVs are banned, only that Xbox lists its consoles only. Remote Play still needs a console at home. Say this is what Xbox and Rockstar have said before launch and that it could change.",
+    "sources": [
+      {
+        "url": "https://news.xbox.com/en-us/2026/11/10/grand-theft-auto-6-comes-to-xbox-cloud-gaming-november-19/",
+        "source": "Xbox Wire",
+        "official": true
+      },
+      {
+        "url": "https://www.purexbox.com/news/2026/11/gta-6-will-be-playable-on-xbox-one-through-xbox-cloud-gaming",
+        "source": "Pure Xbox"
+      },
+      {
+        "url": "https://www.dexerto.com/gta/gta-6-confirms-xbox-cloud-gaming-support-but-pc-players-face-a-catch-3427015/",
+        "source": "Dexerto"
+      },
+      {
+        "url": "https://www.playstationlifestyle.net/2026/11/10/gta-6-cloud-streaming-ps-portal-update",
+        "source": "PlayStation LifeStyle"
+      }
+    ]
   }
 ]

@@ -471,7 +471,7 @@ ${articleParagraphs(s)
 ${s.is_rumour ? "<p><i>This report is unconfirmed. We will update it when it is confirmed or denied.</i></p>" : ""}
 ${deals || ranking}
 ${hubs.length ? `<h2>Games in this story</h2><div class="chips">${hubs.map((h) => `<a class="chip" href="/games/${h.slug}">${esc(h.name)}: price, release date and news</a>`).join("")}</div>` : ""}
-${sources.length ? `<h2>Sources</h2><ul>${sources.map((x) => `<li><a href="${esc(x.url)}" rel="nofollow noopener">${esc(x.name)}</a></li>`).join("")}</ul>` : ""}
+${sources.length ? `<h2 id="sources">Sources</h2><ul>${sources.map((x) => `<li><a href="${esc(x.url)}" rel="nofollow noopener">${esc(x.name)}</a></li>`).join("")}</ul>` : ""}
 ${shop ? `<h2>Get the games and gear</h2><section class="shop">${shop}</section><p class="meta">As an Amazon Associate we earn from qualifying purchases.</p>` : ""}
 </div>
 ${related.length ? `<h2>More stories</h2><div class="grid">${related.map((r) => card(r)).join("")}</div>` : ""}
@@ -809,6 +809,42 @@ const STATIC: Record<
 <p>As an Amazon Associate we earn from qualifying purchases. It costs you nothing extra. Links are search links for the games and hardware a story names, so you always see current listings and every edition; we do not get paid to cover any game, and earning from links never decides what we cover or what we say about it.</p>`,
   },
 };
+
+/** The sources a video was made from, as names and links (pure): the story's items, then the script's originals. */
+export function videoSources(
+  ep: Pick<SiteEpisode, "script_json" | "story_json">,
+): Array<{ name: string; url: string }> {
+  const seen = new Set<string>();
+  return [
+    ...(ep.story_json.items ?? []).slice(0, 8).map((i) => ({ name: i.source, url: i.url })),
+    ...(ep.script_json.sources ?? []).map((u) => ({
+      name: /wikipedia\.org/.test(u) ? "Wikipedia" : outletName(u),
+      url: u,
+    })),
+  ].filter((x) => x.url && !seen.has(x.url) && (seen.add(x.url), true));
+}
+
+/**
+ * A video's own sources page (REVIEWER_PACK, src/reviewer.ts): for a video with no article (a cut from a long video,
+ * or one the site does not list), its title, the video, its sources and how it was made. Not indexed.
+ */
+export function sourcesPage(ep: Pick<SiteEpisode, "id" | "youtube_video_id" | "script_json" | "story_json">, base: string, aiLine: string): string {
+  const s = ep.script_json;
+  const title = polishTitle(s);
+  const sources = videoSources(ep);
+  const parent = s.cutdown?.parent_video;
+  return shell({
+    title: `Sources: ${title}`,
+    description: `The sources and notes behind the ${BRAND} video "${title}".`,
+    canonical: `${base}/sources/${ep.id.split("_").pop()}`,
+    noindex: true,
+    body: `<article><h1>Sources: ${esc(title)}</h1>
+<p class="meta"><a href="https://youtu.be/${esc(ep.youtube_video_id)}" rel="noopener">Watch the video on YouTube</a>${parent ? ` · <a href="https://youtu.be/${esc(parent)}" rel="noopener">The full video it was cut from</a>` : ""}</p>
+<h2 id="sources">Sources</h2>${sources.length ? `<ul>${sources.map((x) => `<li><a href="${esc(x.url)}" rel="nofollow noopener">${esc(x.name)}</a></li>`).join("")}</ul>` : "<p>This video is our own work: gameplay we recorded and our commentary on it.</p>"}
+${s.is_rumour ? "<p>This story is unconfirmed and labelled as a rumour in the video.</p>" : ""}
+<h2>How it was made</h2><p>${esc(aiLine)}</p></article>`,
+  });
+}
 
 export function staticPage(name: string, base: string): string | undefined {
   const p = STATIC[name];

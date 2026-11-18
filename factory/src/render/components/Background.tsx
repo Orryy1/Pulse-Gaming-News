@@ -27,6 +27,7 @@ import { VPhotoShot } from "./vertical/craft.tsx";
 import type { CutMove, ShotMove } from "../camera.ts";
 import type { PhotoTreatment } from "../photoplan.ts";
 import { CLIP_ZOOM, cropAt, cropPosition } from "../smartcrop.ts";
+import { SHORT_DEPTH_LAYERS, shortDepthTransform } from "../shortdepth.ts";
 
 /** The new-look dressing of a Short's shots (src/render/Short.tsx): punch-ins and an old game's period looks. */
 export interface ShotDressing {
@@ -134,6 +135,34 @@ const Still: React.FC<{
   const p = Math.min(1, frame / Math.max(1, durationFrames));
   const m = moveTransform(move, p);
   const punch = cutPunch(frame);
+  // SHORT_PARALLAX: the still's depth layers drift at their own speeds, nearer faster, so it moves like footage.
+  if (image.layers) {
+    const layers = image.layers;
+    const dir = image.src.length % 2 ? 1 : -1;
+    return (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        {SHORT_DEPTH_LAYERS.map(({ key, k }) => {
+          const t = shortDepthTransform(k, p, dir, m, WIDTH);
+          return (
+            <Img
+              key={key}
+              src={layers[key]}
+              style={{
+                position: "absolute",
+                inset: 0,
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                objectPosition: focusPosition(image),
+                filter: footageFilter,
+                transform: `scale(${t.scale * punch}) translate(${t.x}px, ${t.y}px)`,
+              }}
+            />
+          );
+        })}
+      </AbsoluteFill>
+    );
+  }
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <Img

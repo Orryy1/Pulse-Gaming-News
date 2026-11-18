@@ -32,6 +32,26 @@ export const LAYERED_KINDS = new Set([
   "header",
 ]);
 
+/** Most stills one Short layers (SHORT_PARALLAX): one depth run per Short, a few seconds a picture on the Mac. */
+export const SHORT_DEPTH_MAX = 8;
+
+/** A Short's wide, full-bleed stills that have no layers yet, in order, at most SHORT_DEPTH_MAX (pure). */
+export function shortDepthWanted<
+  T extends { kind: string; aspect: number; layers?: unknown; noDepth?: boolean },
+>(images: T[], max = SHORT_DEPTH_MAX): T[] {
+  return images
+    .filter((i) => !i.layers && !i.noDepth && LAYERED_KINDS.has(i.kind) && i.aspect >= 1.2)
+    .slice(0, Math.max(0, max));
+}
+
+/** Which arm of the SHORT_PARALLAX_SHARE test an episode is in (pure): the same id always lands the same way. */
+export function shortDepthArm(episodeId: string, share: number): "depth" | "flat" {
+  if (share <= 0) return "flat";
+  if (share >= 1) return "depth";
+  const n = createHash("sha1").update(`short-depth:${episodeId}`).digest().readUInt16BE(0);
+  return n / 65536 < share ? "depth" : "flat";
+}
+
 /** A file's layer name: its base name plus a hash of its path in the episode folder, unique per picture. */
 export const layerName = (file: string): string =>
   `${path.basename(file).replace(/\.[^.]+$/, "")}_${createHash("sha1")

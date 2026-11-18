@@ -240,3 +240,29 @@ test("a wrong number in a possessive is still a fault", () => {
     false,
   );
 });
+
+test("US and UK spellings of one word are the same word to the narration check", async () => {
+  const { usUk } = await import("../src/qa/narration.ts");
+  const pairs: Array<[string, string]> = [
+    ["rumored", "rumoured"],
+    ["realize", "realise"],
+    ["center", "centre"],
+    ["traveled", "travelled"],
+    ["favorite", "favourite"],
+    ["analyze", "analyse"],
+  ];
+  for (const [a, b] of pairs) assert.equal(usUk(a), usUk(b), `${a}/${b}`);
+  assert.notEqual(usUk("rumored"), usUk("rumor"));
+});
+
+test("a figure and its word, split or hyphenated anywhere, are the same to the narration check", async () => {
+  const { spellDigits, checkNarration } = await import("../src/qa/narration.ts");
+  assert.equal(spellDigits("gtasix's"), spellDigits("gta6's"));
+  assert.equal(spellDigits("line-up"), spellDigits("lineup"));
+  assert.notEqual(spellDigits("gtasix"), spellDigits("gta7"));
+  const w = (text: string, start: number) => ({ text, start, end: start + 0.3 });
+  const meant = [w("GTA", 0), w("six's", 0.4), w("rumored", 0.8), w("lineup", 1.2)];
+  const heard = [w("GT", 0), w("A6's", 0.4), w("rumoured", 0.8), w("line", 1.2), w("-up", 1.4)];
+  const c = checkNarration(meant, heard);
+  assert.deepEqual(c.issues, []);
+});

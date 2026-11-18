@@ -1,5 +1,6 @@
 // Production wiring for the pipeline's service seam.
 
+import { libraryRoot, libraryTrailers } from "./assets/gamelib.ts";
 import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
@@ -79,6 +80,7 @@ import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
+import { onYtGuardAlert } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { findIgdbGame, fetchIgdbArt, findIgdbSeries } from "./assets/igdb.ts";
@@ -163,6 +165,12 @@ export function createServices(db: Db, cfg: Config): Services {
   // The PC vision relay's down and back alerts, once each per outage, to the owner's alerts channel.
   onVisionRelayAlert((text) => {
     tellMac(`⚠️ ${text}`);
+    logEvent(db, null, "note", { text }).catch(() => undefined);
+  });
+  // The YouTube guard's two lines: when a bot check pauses YouTube fetching and when it lifts (src/lib/ytguard.ts).
+  // A block met by a scene-index or archive child is queued in the shared state file and sent from here.
+  onYtGuardAlert((text) => {
+    tellMac(text);
     logEvent(db, null, "note", { text }).catch(() => undefined);
   });
   // No picture goes to the paid API while the relay is down (VISION_PAID_FALLBACK off, the default): the guard sits
@@ -289,6 +297,7 @@ export function createServices(db: Db, cfg: Config): Services {
         voice,
         // The long narrator's take check lands in the episode's log (data/episodes/<id>/voice.mp3).
         {
+          hookTakes: opts?.hookTakes,
           onEvent: (kind, detail) => {
             const id = episodeIdOf(cfg.dataDir, out);
             return id
@@ -408,10 +417,11 @@ export function createServices(db: Db, cfg: Config): Services {
       return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
     },
     ownClips: (game, franchise, dir, targets, maxClips) =>
-      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot)
+      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot || cfg.streamAsks.vodDir)
         ? libraryClips({
             root: cfg.footageLibrary,
             inbox: cfg.gameplayRoot,
+            vods: cfg.streamAsks.vodDir,
             game,
             franchise,
             episodeDir: dir,
@@ -523,6 +533,8 @@ export function createServices(db: Db, cfg: Config): Services {
         story,
         fill,
         stillFrames: cfg.officialStillFrames,
+        // The publisher's own trailer files from the game library (src/assets/gamelib.ts), before any YouTube call.
+        localTrailers: cfg.gameLibrary ? (g) => libraryTrailers(libraryRoot(cfg.dataDir), g) : undefined,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

@@ -84,6 +84,14 @@ export async function inboxFiles(root: string): Promise<LibraryFile[]> {
   return out.sort((a, b) => b.mtimeMs - a.mtimeMs);
 }
 
+/** The owner's stream recordings of exactly this game, by the game their title names, newest first. */
+export async function vodFiles(dir: string, game: string): Promise<LibraryFile[]> {
+  const { listRecordings } = await import("../vodindex/vods.ts");
+  return (await listRecordings(dir, [game]).catch(() => []))
+    .filter((r) => r.game === game)
+    .map((r) => ({ game, file: r.file, mtimeMs: r.mtimeMs, bytes: r.bytes }));
+}
+
 /** The recordings of exactly this game (a sequel's or the series' other games' never count). */
 export function recordingsOf(
   files: LibraryFile[],
@@ -101,6 +109,8 @@ export interface LibraryClipOpts {
   root: string;
   /** The gameplay lane's folder (holds inbox/); empty leaves those clips out. */
   inbox?: string;
+  /** The owner's whole stream recordings (VOD miner, "YYYY-MM-DD <title> [id].mp4"): the game is read from the title. */
+  vods?: string;
   game: string;
   franchise: string;
   episodeDir: string;
@@ -112,7 +122,7 @@ export interface LibraryClipOpts {
 
 /** Moments from the owner's recordings matched to the given lines, with game sound when nobody is talking. */
 export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
-  if ((!o.root && !o.inbox) || !o.targets.length || o.maxClips <= 0) return [];
+  if ((!o.root && !o.inbox && !o.vods) || !o.targets.length || o.maxClips <= 0) return [];
   // Long NVIDIA recordings: the newest three. The inbox's 40-second cuts are short, so up to eight of them.
   const mine = [
     ...recordingsOf(
@@ -125,6 +135,8 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
       o.game,
       o.franchise,
     ).slice(0, 8),
+    // The day's whole streams too (15 Nov 2026: a GTA V stream sat on the PC and no Short could reach it).
+    ...(o.vods ? await vodFiles(o.vods, o.game) : []).slice(0, 2),
   ];
   if (!mine.length) return [];
   const prefix = o.prefix ?? "own";

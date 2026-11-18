@@ -3,11 +3,16 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
+import { packBeforeUpload, pickHookWords } from "./packaging/lab.ts";
+import { runSecondChance } from "./packaging/secondchance.ts";
+import { packagingAtLeast } from "./packaging/settings.ts";
+import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
+import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
 import type { renderShortThumb } from "./render/render.ts";
-import { firstComment, shortComment } from "./social/firstcomment.ts";
+import { firstComment, shortComment, strictShortComment } from "./social/firstcomment.ts";
 import { pollBlock, readPoll } from "./social/poll.ts";
 import {
   selectWhyTopic,
@@ -39,14 +44,21 @@ import { thinSourceProblem, type ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
-import { capFootage, DEFAULT_FOOTAGE_SECONDS, footageBudgetSeconds } from "./assets/footage.ts";
+import { capFootage, defaultFootageSeconds, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { hasUsableIndex } from "./sceneindex/footage.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
 import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
-import { checkFirstSeconds, chooseOpening } from "./openingstep.ts";
+import {
+  adSafeGateProblems,
+  checkFirstSeconds,
+  chooseOpening,
+  coverProblem,
+  lookOpeningFrame,
+  openingCaption,
+} from "./openingstep.ts";
 import { streamClipSpoiler } from "./sceneindex/spoilerclips.ts";
 import type { RadarGame, FreeGame } from "./discovery/weekly.ts";
 import { rarest, type Achievement } from "./discovery/achievements.ts";
@@ -98,8 +110,9 @@ import {
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
-import { makeParallax, LAYERED_KINDS } from "./render/parallax.ts";
-import { appleCut, smartCrop } from "./assets/applevision.ts";
+import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
+import { frameTarget } from "./render/smartcrop.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -229,6 +242,8 @@ import {
   loopDangles,
   loopRepeatsHook,
 } from "./gameplaydirect.ts";
+import { dayNOverlay } from "./hudreader/dayn.ts";
+import { clipFacts, profileFor } from "./hudreader/job.ts";
 import {
   CUTDOWN_TAIL_SECONDS,
   cutdownRanks,
@@ -239,9 +254,11 @@ import {
 } from "./editorial/cutdown.ts";
 import { FFMPEG, FFPROBE } from "./lib/bin.ts";
 import {
-  FUNNEL_CTA,
-  FUNNEL_LINE,
   FUNNEL_TAIL_SECONDS,
+  funnelCta,
+  funnelKind,
+  funnelLine,
+  funnelParent,
   chapterBeats,
   funnelArm,
   funnelPicks,
@@ -263,6 +280,7 @@ import {
   selectStory,
   writeScript,
   factCheck,
+  cardText,
   factCheckRanking,
   validateScript,
   WORDS_MIN,
@@ -280,6 +298,13 @@ import {
   friendCheckVerdict,
   shortSettledText,
 } from "./editorial/friendpass.ts";
+import {
+  humaniseShort,
+  humaniseShortProblems,
+  humaniseChapter,
+  humaniseDrift,
+} from "./editorial/humanise/humanise.ts";
+import { humaniseStep } from "./humanisestep.ts";
 import {
   clarityGate,
   clarityLog,
@@ -337,7 +362,10 @@ import {
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
-import { bedFor } from "./render/soundscape.ts";
+import { BEDS } from "./render/soundscape.ts";
+import { bedSeed, chooseBed } from "./render/bedrotation.ts";
+import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
+import { SIGNATURE_LIBRARY } from "./render/signaturelib.ts";
 import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
@@ -383,6 +411,7 @@ import {
   storyWeight,
 } from "./loopfeedback.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
+import { directorStep, retrainTick } from "./retentionstep.ts";
 import {
   REPLY_LIMITS,
   factsText as replyFacts,
@@ -410,19 +439,26 @@ function learnOauth(cfg: Config) {
 import {
   deskShareNow,
   experimentVerdicts,
+  MASCOT_LANES,
   mascotFor,
   mascotShareNow,
   primeTimeVerdict,
   rumoursPerDayNow,
   nextLineArm,
 } from "./experiments.ts";
+import { SERIOUS as PIP_SERIOUS } from "./render/mascot.ts";
 import {
   growthAssign,
   growthDefaults,
   growthNotes,
   growthProblems,
   growthVerdict,
+  pinnedGrowthDefaults,
 } from "./growth.ts";
+import { withLearn } from "./learn/scope.ts";
+import { holdoutOf } from "./learn/holdout.ts";
+import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
+import { learnTick } from "./learn/tick.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
 import {
   refreshChatter,
@@ -486,6 +522,26 @@ import {
   type GtaDailyStory,
 } from "./gtadaily.ts";
 import {
+  applyChallenge,
+  challengeCounter,
+  challengeShelf,
+  linkChallenge,
+  nextEpisodeMade,
+  refreshChallengeLinks,
+} from "./challengestep.ts";
+import { challengeCommentLine, challengeDescriptionLines } from "./challenge.ts";
+import { addPremiere, isPremiereDoc, premiereNotice, premierePrivacy } from "./premiere.ts";
+import {
+  recapDue,
+  recapHeldUntil,
+  recapProblems,
+  recapTitleProblems,
+  recapTopic,
+  recapWindows,
+  streamedStory,
+} from "./storyrecap.ts";
+import { sceneSlug as recapSlug } from "./sceneindex/schema.ts";
+import {
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
@@ -499,6 +555,11 @@ import {
   repetitionProblems,
 } from "./authenticity.ts";
 import { followFor } from "./youtube/longlink.ts";
+import { disclosureLine, gateAiImages, sourcesLine, syntheticMediaFor, writeRecords } from "./reviewer.ts";
+import { MOMENT_MARK, cadenceChapters, framedVariants, pinStrandLayout } from "./strandframe.ts";
+import { lossThumb, pickWhyDied } from "./whydied.ts";
+import { proposeCompleteCuts, stanceProblems } from "./stance.ts";
+import { applyShortTitleGameFirst, applyStrandFrame } from "./strandstep.ts";
 import {
   dbDemandCache,
   demandFor,
@@ -533,7 +594,8 @@ import {
   underFigure,
 } from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
-import { offendingMedia, dropOffending } from "./qa/retry.ts";
+import { offendingMedia, dropOffending, rememberUnsafe } from "./qa/retry.ts";
+import { CREDIT_RULE, givenSources, scrubScriptCredits } from "./editorial/credits.ts";
 import { shortSampleTimes, framesNamed } from "./qa/vision.ts";
 import {
   checkFrame,
@@ -550,6 +612,7 @@ import {
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
 import { guardScript, stopForWriterNotes } from "./writerguard.ts";
+import { pausesEveryLane, platformAlert } from "./faultclass.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
@@ -779,6 +842,11 @@ import {
   countProducing,
   takenSlots,
 } from "./episodes.ts";
+import { footageGate, libraryHasFootage, markLibraryFaults, shortLibraryMedia, type ShortLibraryMedia } from "./assets/shortlibrary.ts";
+import { namesGame } from "./assets/linevisuals.ts";
+import { stingPlacement } from "./render/cleanframe.ts";
+import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
+import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
 import {
   fitClipsAroundQuotes,
@@ -807,7 +875,7 @@ export interface Services {
     text: string,
     outPath: string,
     voice?: { id: string; name: string },
-    opts?: { provider?: Config["voiceProvider"]; minWpm?: number; speed?: number },
+    opts?: { provider?: Config["voiceProvider"]; minWpm?: number; speed?: number; hookTakes?: boolean },
   ): Promise<
     Narration & {
       voice?: { provider: "local" | "elevenlabs"; id: string; name: string };
@@ -1373,6 +1441,8 @@ export function seriesFor(
   const tag = cfg.seriesPlaylists ? seriesTagOf(sc, ep.story_hash) : undefined;
   if (tag === "gta_file") out.push(SERIES.gtaFile);
   else if (tag === "verdict") out.push(SERIES.verdict);
+  // A challenge episode (src/challenge.ts): its own challenge's shelf, in order.
+  else if (ep.story_json?.challenge) out.push(challengeShelf(ep.story_json.challenge));
   // GTA 6 Day N (src/gtadaily.ts): every episode on the daily's own shelf, in order.
   else if (ep.story_json?.gtaDaily) out.push(dailySeries());
   // The explainer takes the weekly slot in turn with the recap (src/weeklytest.ts), so it shares the weekly shelf.
@@ -2324,6 +2394,9 @@ async function stepScriptEveryGame(
       [],
       attempt,
       facts,
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!factual.length) break;
     draft = await writeEveryGameShort(s.llm, roster, entries, {
@@ -2675,6 +2748,7 @@ export async function maybeSelectCommentReply(
     filed,
     (id) => (eps.get(id) ? replyFacts(eps.get(id)!) : undefined),
     await usedComments(db),
+    cfg.ruleOfTwo,
   );
   if (!pick) {
     // The pick reads only the database, so it is tried every tick of the window; said once a day.
@@ -3798,6 +3872,9 @@ export async function maybeSelectDocumentary(
   // A full game retrospective (src/retrospective.ts, RETRO_ENABLED): its slot's game, once its spoiler window has
   // ended and its full-story movie is filed in the scene index.
   if (!plannedDoc && cfg.retroEnabled) plannedDoc = await retrospectiveDue(s, now);
+  // The story recap from the owner's own play (src/storyrecap.ts, STORY_RECAP): after the spoiler window, once the
+  // story has been streamed.
+  if (!plannedDoc && cfg.storyRecap.enabled) plannedDoc = await storyRecapDue(s, now);
   // A planned documentary built on our own tests needs enough approved ones (DOC_TEST_EVIDENCE); without them it does
   // not run at all, once told, and the slot goes back to the usual lanes.
   if (plannedDoc?.entry.min_evidence || plannedDoc?.entry.evidence?.length) {
@@ -3886,7 +3963,26 @@ export async function maybeSelectDocumentary(
   ).map((r) => r.headline);
   // The breakout picker (src/docpick.ts, DOC_BREAKOUT_PICKER) scores every candidate and takes the best with no
   // model call; the writer's pick from the lists stays the fallback.
-  const breakout = plannedDoc || everyTopic
+  // RANKING_STANCE (src/stance.ts): once enough films of one series are public, the "complete" cut is put to the owner once.
+  await proposeCompleteCuts(s).catch((err) =>
+    log("warn", "complete cut check failed", { error: errorMessage(err) }),
+  );
+  // WHY_DIED_ENABLED (src/whydied.ts): a "why it died" film from the news desk, when one is due, ahead of the score pick.
+  const whyDied =
+    plannedDoc || everyTopic
+      ? undefined
+      : await pickWhyDied(s, now, covered).catch((err) => {
+          log("warn", "why-it-died pick failed", { error: errorMessage(err) });
+          return undefined;
+        });
+  if (whyDied)
+    await s
+      .notify({
+        level: "info",
+        content: `Next documentary, "why it died" strand: "${whyDied.topic.title_idea}" (${whyDied.proposals.length} proposal${whyDied.proposals.length === 1 ? "" : "s"} from the news desk).`,
+      })
+      .catch(() => undefined);
+  const breakout = plannedDoc || everyTopic || whyDied
     ? undefined
     : s.cfg.docBreakoutPicker
     ? await pickBreakoutDoc(s).catch((err) => {
@@ -3899,6 +3995,7 @@ export async function maybeSelectDocumentary(
   const topic =
     plannedDoc?.topic ??
     everyTopic ??
+    whyDied?.topic ??
     breakout?.topic ??
     (await selectDocTopic(
     s.llm,
@@ -4042,6 +4139,45 @@ async function retrospectiveDue(
   return { at: due.at, topic: due.topic, entry };
 }
 
+/** The story recap (src/storyrecap.ts) when its making window is open, the window closed and the story streamed. */
+async function storyRecapDue(
+  s: Services,
+  now: Date,
+): Promise<{ at: Date; topic: DocTopic; entry: RunDoc } | undefined> {
+  const { db, cfg } = s;
+  const entries = readRun(cfg.shortRunFile).filter((e): e is RunDoc => e.kind === "doc" && Boolean(e.story_recap));
+  const taken = await takenSlots(db);
+  for (const entry of entries) {
+    const r = entry.story_recap!;
+    const key = `recap-${recapSlug(r.game)}`;
+    const [made] = await db.query(
+      `SELECT 1 FROM episodes WHERE lane = 'longform' AND factcheck_json->'topic'->'retro'->>'key' = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+      [key],
+    );
+    let story: Awaited<ReturnType<typeof streamedStory>> | undefined;
+    const due = recapDue(entry, now, taken, cfg.timezone, Boolean(made), () => ({
+      windows: recapWindows(spoilerWindows(), cfg.gameFetchTitles, r.game, cfg.spoilerWindowDays),
+      problems: [],
+    }));
+    let waiting = due.waiting;
+    if (due.at) {
+      story = await streamedStory(cfg.dataDir, r.game);
+      const problems = [
+        ...recapProblems(story.index, cfg.storyRecap),
+        ...recapTitleProblems(entry.title, r.short),
+      ];
+      if (!problems.length) {
+        log("info", "story recap due", { title: entry.title, at: due.at.toISOString(), streams: story.vods.length });
+        return { at: due.at, topic: recapTopic(entry, story.vods, due.at.getUTCFullYear()), entry };
+      }
+      waiting = problems.join("; ");
+    }
+    if (waiting && !(await weeklyTried(db, `recap_wait:${key}:${dayKey(now, cfg.timezone)}`)))
+      await s.notify({ level: "info", content: `"${entry.title}" is waiting: ${waiting.slice(0, 900)}.` });
+  }
+  return undefined;
+}
+
 /**
  * More to write from: the chapter's own article at greater length, the story's main article and the other articles
  * the outline names. A chapter short of evidence gets this rather than a tighter restriction.
@@ -4089,7 +4225,7 @@ async function stepScriptDocumentary(
   // from the scene index's acts, and each chapter's own sources (its section's reading, its press, its act's lines).
   const retro = topic.format === "retro" ? topic.retro : undefined;
   if (retro) s = retroServices(s);
-  const retroIdx = retro ? await retroIndex(s.cfg, topic.franchise) : undefined;
+  const retroIdx = retro ? await retroIndex(s.cfg, topic.franchise, topic.recap) : undefined;
   // Our own tests as a source, for this documentary alone and under a stricter check (src/editorial/testevidence.ts).
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
@@ -4508,6 +4644,52 @@ async function stepScriptDocumentary(
         kept: clarity.value !== settled,
       }).catch(() => undefined);
     }
+    // The humaniser per chapter (HUMANISE): names already said in earlier chapters count, so "Grand Theft Auto VI"
+    // is said in full once in the whole video. The chapter's fact check reads the humanised words.
+    if (clean && s.cfg.humanise !== "off") {
+      const earlier = chapters
+        .map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" "))
+        .join(" ");
+      const games = outline.chapters.map((c) => c.game_title).filter(Boolean);
+      const publishAt = ep.slot_at ? new Date(ep.slot_at) : undefined;
+      const settled = chapter!;
+      const rulesFor = (c: typeof settled) =>
+        validateChapter(c, {
+          earlier: chapters,
+          priorDoc,
+          loops: openLoops.loops,
+          chapter: index + 1,
+        });
+      const human = await humaniseStep<typeof settled>({
+        mode: s.cfg.humanise,
+        value: settled,
+        run: (v, mode) => {
+          const r = humaniseChapter(v, { mode, earlier, games, ...(publishAt ? { publishAt } : {}) });
+          return { value: r.chapter, result: r.result };
+        },
+        problems: (before, after, removed) => [
+          ...humaniseDrift(
+            before.paragraphs.map((x) => x.narration).join(" "),
+            after.paragraphs.map((x) => x.narration).join(" "),
+            { removedFigures: removed },
+          ),
+          ...newProblems(rulesFor(before), rulesFor(after)),
+          ...chapterRefusal(after),
+        ],
+        rewrite: (v, notes) =>
+          friendChapter(s.llm, v, {
+            tier: s.cfg.friendPassTier,
+            humanNotes: notes,
+            site: "humanise.rewrite",
+          }),
+        check: (after) => checkChapter(s.llm, after, source),
+      });
+      chapter = human.value;
+      await logEvent(s.db, ep.id, "doc_humanise", {
+        chapter: index + 1,
+        ...human.log,
+      }).catch(() => undefined);
+    }
     const grounded = groundCallouts(chapter!, source);
     if (grounded.removed.length)
       warnings.push(
@@ -4672,6 +4854,13 @@ async function stepScriptDocumentary(
   if (topic.format === "everygame") {
     script.youtube.title = topic.title_idea;
     script.youtube.title_variants = [];
+  }
+  // A "why it died" film keeps its framed title, carrying the loss, and the loss figure is its thumbnail word.
+  if (topic.why_died) {
+    script.why_died = topic.why_died;
+    script.youtube.title = topic.title_idea;
+    script.youtube.title_variants = framedVariants("whydied", script.youtube.title_variants ?? [], topic.why_died.game);
+    script.youtube.thumb_text = lossThumb(topic.why_died.loss);
   }
   // A weekly guide keeps its fixed frame: one title shape and one set of thumbnail words for the strand.
   if (topic.guide && s.cfg.guideWeekly) applyGuideFrame(script, topic.guide);
@@ -5109,14 +5298,17 @@ export async function maybeSelectFunnelCut(s: Services): Promise<string | undefi
   const parents = await db.query<Episode>(
     `SELECT e.* FROM episodes e
       WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
-        AND e.factcheck_json->'topic'->'guide'->>'key' IS NOT NULL
+        AND ($4::boolean OR e.factcheck_json->'topic'->'guide'->>'key' IS NOT NULL)
+        AND COALESCE(e.script_json->>'runtime', '') = 'long'
         AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz
         AND COALESCE(e.publish_at, e.updated_at) > $2::timestamptz - make_interval(days => $3)
       ORDER BY COALESCE(e.publish_at, e.updated_at) DESC`,
-    [now, due, cfg.funnelDays],
+    [now, due, cfg.funnelDays, cfg.funnelAllLongs],
   );
   for (const parent of parents) {
     if (!parent.script_json?.beats?.length) continue;
+    // FUNNEL_ALL_LONGS: every long strand with chapters; a ranking keeps its own cutdowns.
+    if (!funnelParent(parent.script_json, isWeeklyGuide(parent.factcheck_json), cfg.funnelAllLongs)) continue;
     if (!(await fs.stat(path.join(episodeDir(cfg, parent.id), "short.mp4")).catch(() => undefined))) continue;
     const done = (
       await db.query<{ beat: string }>(
@@ -5260,11 +5452,13 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   );
   const narration = pScript.beats[beatIndex]?.narration ?? "";
   const arm = ref.funnel ?? "none";
+  // FUNNEL_ALL_LONGS: a documentary's cut says "the full documentary", a guide's "the full guide".
+  const kindOfParent = funnelKind(pScript, isWeeklyGuide(parent.factcheck_json));
   // The link arm says the link over the end card, in the long video's own voice (src/funnel.ts).
   if (funnelCut && arm === "link") {
     const lineFile = path.join(dir, "link_line.mp3");
     const voice = pAssets.voice ? { id: pAssets.voice.id, name: pAssets.voice.name } : undefined;
-    await s.synthesise(FUNNEL_LINE, lineFile, voice);
+    await s.synthesise(funnelLine(kindOfParent), lineFile, voice);
     await mixFunnelLine(FFMPEG, path.join(dir, "cut.mp4"), lineFile, len + 0.4);
   }
   const copy = funnelCut
@@ -5273,6 +5467,7 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
         guideTitle: pScript.youtube.title,
         chapterTitle: String(pScript.beats[beatIndex]?.visual?.primary ?? ""),
         narration,
+        kind: kindOfParent,
       })
     : await writeCutdownCopy(
     s.llm,
@@ -5282,7 +5477,7 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
     pScript.entries.length,
   );
   const script = funnelCut
-    ? funnelScript(pScript, beatIndex, copy, parent.youtube_video_id, arm)
+    ? funnelScript(pScript, beatIndex, copy, parent.youtube_video_id, arm, kindOfParent)
     : cutdownScript(pScript, beatIndex, copy, parent.youtube_video_id);
   script.cutdown!.theme = pScript.game_title;
   // The footage credits travel with the clips seen in this section.
@@ -5326,6 +5521,58 @@ async function stepScriptCutdown(s: Services, ep: Episode): Promise<void> {
   });
 }
 
+/**
+ * GTA 6 Day N's HUD graphics (HUD_PIN, HUD_TICKER, HUD_END_MAP; src/hudreader/dayn.ts): the pin, the wanted ticker and
+ * the every-spot map, from the source clip's own HUD. Off, unsure or failed: undefined, and the Short renders as before.
+ */
+async function gameplayHud(
+  s: Services,
+  ep: Episode,
+  dir: string,
+  duration: number,
+  timing: { hookEnd: number; payoffAt: number },
+) {
+  const h = s.cfg.hud;
+  const story = ep.story_json.gtaDaily;
+  const ref = ep.story_json.gameplay;
+  const segments = ep.script_json?.gameplay?.direct?.segments;
+  if (!h.enabled || !(h.pin || h.ticker || h.endMap) || !story || !ref || !segments?.length) return undefined;
+  const game = profileFor(ref.review.game_title) ?? "gta6";
+  const meta = await readMeta(gameplayDir(s.cfg, ref.id));
+  if (!meta) return undefined;
+  const r = await dayNOverlay({
+    hud: h,
+    dataDir: s.cfg.dataDir,
+    episodeDir: dir,
+    episode: ep.id,
+    day: story.day,
+    game,
+    clipFile: path.join(gameplayDir(s.cfg, ref.id), meta.clip.file || "clip.mp4"),
+    segments,
+    durationSeconds: duration,
+    hookEnd: timing.hookEnd,
+    payoffAt: timing.payoffAt,
+    accent: "#FF6B1A",
+    liveEpisodes: async (ids) =>
+      new Set(
+        (
+          await s.db.query<{ id: string }>(
+            `SELECT id FROM episodes WHERE id = ANY($1) AND status NOT IN ('rejected','failed')`,
+            [ids],
+          )
+        ).map((x) => x.id),
+      ),
+    now: s.now(),
+  });
+  await logEvent(s.db, ep.id, "hud_overlay", {
+    drawn: r.props ? Object.keys(r.props).filter((k) => k !== "accent") : [],
+    why: r.why,
+    pin: r.pin,
+    findings: r.findings.slice(0, 20),
+  });
+  return r.props;
+}
+
 /** The rebuilt gameplay Short's render: its faults stop it here, before the owner is asked. */
 async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void> {
   if (!s.renderGameplayShort) throw new Error("this build cannot render gameplay Shorts");
@@ -5337,6 +5584,7 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   const duration = assets.durationSeconds ?? 20;
+  const hud = await gameplayHud(s, ep, dir, duration, timing);
   await s.renderGameplayShort({
     episodeDir: dir,
     props: {
@@ -5351,6 +5599,11 @@ async function stepRenderGameplayDirect(s: Services, ep: Episode): Promise<void>
       voiced: timing.voiced,
       ...(timing.replay ? { replay: timing.replay } : {}),
       accent: "#FF6B1A",
+      ...(hud ? { hud } : {}),
+      // CHALLENGE_SERIES: the episode, the rule and the measured running count (src/challenge.ts).
+      ...(s.cfg.challenge.enabled && ep.story_json.challenge
+        ? { challenge: challengeCounter(ep.story_json.challenge, timing.hookEnd, duration) }
+        : {}),
     },
     outFile: raw,
     posterFile: path.join(dir, "poster.jpg"),
@@ -5418,13 +5671,13 @@ async function stepRenderCutdown(s: Services, ep: Episode): Promise<void> {
           ? `TEST #${g.experiment_number}`
           : "WE TESTED IT"
         : script.cutdown?.funnel
-          ? `GUIDE ${script.cutdown.rank} OF ${script.cutdown.total}`
+          ? `${script.cutdown.kind && script.cutdown.kind !== "guide" ? "CHAPTER" : "GUIDE"} ${script.cutdown.rank} OF ${script.cutdown.total}`
         : `#${script.cutdown?.rank ?? ""} OF ${script.cutdown?.total ?? ""}`,
       // A funnel cut (src/funnel.ts): the link card for its last 5 seconds in the link arm, the chapter's name in the control.
       cta: g
         ? g.result_line.toUpperCase()
         : script.cutdown?.funnel === "link"
-          ? FUNNEL_CTA
+          ? funnelCta(script.cutdown.kind)
           : script.cutdown?.funnel
             ? (script.pulse_take.on_screen || script.headline).toUpperCase()
             : "FULL RANKING ON THE CHANNEL",
@@ -5531,6 +5784,12 @@ export async function ingestGameplay(
       if (prior) review = prior;
       else {
         const clip = path.join(dir, meta.clip.file || "clip.mp4");
+        // HUD_FACTS: the clip's HUD measured first, so the reviewer can use a measured figure.
+        const hud = await clipFacts(cfg.hud, cfg.dataDir, { file: clip, title: `${meta.source.title} ${meta.review?.game ?? ""}`, work: dir }).catch(() => undefined);
+        if (hud) {
+          meta.hud = hud;
+          await writeMeta(dir, { hud });
+        }
         const words = (await s.hearClip?.(clip).catch(() => [])) ?? [];
         await writeWhole(path.join(dir, "words.json"), JSON.stringify(words));
         review = await reviewClip(
@@ -5740,7 +5999,8 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_start: direction.focus_start,
       focus_payoff: direction.focus_payoff,
     };
-    await applyGtaDaily(s, ep, script, meta);
+    // CHALLENGE_SERIES (src/challenge.ts): a tagged stream's clip is a challenge episode, and then never a Day N.
+    if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -5836,7 +6096,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     ref.live,
   );
   if (radioStripped(meta)) script.gameplay!.radio_stripped = true;
-  await applyGtaDaily(s, ep, script, meta);
+  if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -5980,6 +6240,19 @@ export async function applyGtaDaily(
   ep.story_json.gtaDaily = story;
   ep.slot_at = target.at.toISOString();
   await logEvent(s.db, ep.id, "gta_daily_numbered", { day: target.day, slot_at: target.at.toISOString(), title });
+}
+
+/** A public challenge episode's links (src/challengestep.ts), never during the owner's publishing hold. */
+async function linkChallengePublic(s: Services, ep: Episode): Promise<void> {
+  if (await publishHeld(s.db)) return;
+  await linkChallenge(
+    s,
+    ep,
+    s.youtube(accountOf(ep)) as Partial<{
+      rewriteDescriptions: (id: string, fn: (d: string, lang: string) => string) => Promise<number>;
+    }>,
+    (n) => quotaAdd(s.db, s.now(), n),
+  );
 }
 
 /** With GTA_DAILY on, the daily slot on the run's days is kept for the day's episode: other gameplay Shorts go elsewhere. */
@@ -6570,7 +6843,12 @@ async function withBackground(
   const wiki = await s
     .research(title, `${title} video game`, maxChars)
     .catch(() => undefined);
-  if (!facts && !wiki) return undefined;
+  // FACT_VAULT=write: what this step fetched grows the vault (the research is followed to its cited sources in the
+  // background, so the writer never waits on it); FACT_VAULT=read and above: the vault's verified facts join the sheet.
+  await growFromSteam(s.db, s.cfg.factVault, title, facts);
+  void growFromResearch(s.db, s.cfg.factVault, title, wiki, s.cfg.factVaultFetchMax);
+  const vault = await openSession(s.db, s.cfg.factVault, [title], [], s.now());
+  if (!facts && !wiki && !vault?.brief) return undefined;
   return {
     ...(facts ?? {
       name: title,
@@ -6578,6 +6856,7 @@ async function withBackground(
       fetchedAt: s.now().toISOString(),
     }),
     ...(wiki ? { background: wiki.text, backgroundUrl: wiki.url } : {}),
+    ...(vault?.brief ? { vault: vault.brief } : {}),
   };
 }
 
@@ -6593,12 +6872,23 @@ async function adjudicateRanking(
   facts: Array<{ title: string; facts: SteamFacts }>,
   attempt: number,
   extra: Array<{ title: string; facts: string }> = [],
+  /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
+  fix?: (fixes: VaultFix[]) => void,
 ): Promise<string[]> {
+  // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
+  const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
+  const vault = await openSession(s.db, s.cfg.factVault, [...facts.map((f) => f.title), ...extra.map((e) => e.title)], spoken, s.now());
+  const verified = vault?.verified(spoken).trim() ?? "";
+  const vaultFacts = [
+    ...(vault?.brief && !facts.some((f) => f.facts.vault) ? [{ title: "Pulse Fact Vault", facts: vault.brief }] : []),
+    ...(verified ? [{ title: "Pulse Fact Vault pre-check", facts: verified }] : []),
+  ];
   const check = await factCheckRanking(s.llm, script, [
     ...facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
     ...extra,
+    ...vaultFacts,
   ]);
-  const blockers = check.issues
+  let blockers = check.issues
     .filter((i) => i.severity === "blocker")
     .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
   await logEvent(s.db, ep.id, "factcheck", {
@@ -6607,6 +6897,16 @@ async function adjudicateRanking(
     blockers,
     summary: check.summary,
   });
+  // FACT_VAULT=enforce: a blocker the vault supports passes, one it contradicts takes the vault's value.
+  if (vault && blockers.length) {
+    const settled = await vault.settle(script, blockers, ep.id, `ranking attempt ${attempt}`);
+    const fixedOnes = settled.resolutions.filter((r) => r.status === "fixed");
+    if (fixedOnes.length && fix) fix(settled.fixes);
+    const unfixable = fix ? [] : fixedOnes.map((r) => `Fact-check: "${r.blocker.quote}" - ${r.blocker.problem}`);
+    const before = blockers.length;
+    blockers = [...settled.remaining, ...unfixable];
+    if (!blockers.length && before > 0) return [];
+  }
   if (check.verdict !== "fail" && !blockers.length) return [];
   if (attempt === 0)
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
@@ -6676,6 +6976,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     const problems = [
       ...validateLongform(draft, rules),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
+      // RANKING_STANCE (src/stance.ts): the ranking's title takes a side, and nothing past Part 2.
+      ...(s.cfg.rankingStance
+        ? stanceProblems(draft.youtube.title).filter((p) => !writerTitleProblems(s.cfg, draft!.youtube.title).includes(p))
+        : []),
     ];
     const factual = await adjudicateRanking(
       s,
@@ -6683,6 +6987,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       longformToScript(draft),
       facts,
       attempt,
+      [],
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!problems.length && !factual.length) break;
     // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
@@ -7100,6 +7408,9 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       facts,
       attempt,
       dataFacts,
+      (fx) => {
+        draft = applyVaultFixes(draft!, fx).value;
+      },
     );
     if (!factual.length) break;
     draft = await writeEvergreen(s.llm, topic, facts, factual, brief);
@@ -7202,14 +7513,28 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The weekly retention test (src/growth.ts): this Short's variant of the thing under test, and the rules the
   // finished tests settled. Recorded on the episode so the judge can find it; a failure here never stops a Short.
   // A planned run topic's angle sets its opener, so it stays out of the opening-line test.
-  const test = await (cluster.run || cluster.reply
+  // A holdout Short (LEARN_HOLDOUT_SHARE, src/learn/holdout.ts) is the factory as pinned: no test arm, and the winners
+  // the tests had settled when the baseline was pinned.
+  const holdout = holdoutOf(s.cfg);
+  const testAssigned = await (cluster.run || cluster.reply || holdout
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
     log("warn", "growth test assignment failed", { error: errorMessage(err) });
     return undefined;
   });
-  const testDefaults = await growthDefaults(s.db).catch(() => []);
+  const testDefaultsBase = holdout
+    ? pinnedGrowthDefaults(holdout.growthDefaults)
+    : await growthDefaults(s.db).catch(() => []);
+  // LEARN_BANDIT (src/learn/bandit.ts): every open growth factor tested at once by Thompson sampling. On, the running
+  // test's variant and the other factors' arms come from the bandit; shadow records its draws only. growth.ts's
+  // bootstrap stays the verdict, reading assets_json.test as before.
+  const { test, defaults: testDefaults } =
+    holdout || cluster.run || cluster.reply
+      ? { test: testAssigned, defaults: testDefaultsBase }
+      : await banditForShort(s, ep, testAssigned, testDefaultsBase);
+  // LEARN_PLAYBOOK=on (src/learn/playbook.ts): the tracked lessons, recorded against this Short; never for a holdout.
+  const playbook = holdout ? "" : await playbookForShort(s, ep.id);
   // The audit's writer rules (src/editorial/shortrules.ts) come after the test's variant, nearest the draft.
   const argument = argumentArm(s.cfg, ep);
   if (argument)
@@ -7362,8 +7687,39 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         );
     return { problems, thin };
   };
+  // FACT_VAULT (src/factvault): the vault's facts for this story's game go to the writer and the fact check, its
+  // articles grow the vault (write), and a blocker the vault settles is passed or fixed instead of dropping the story.
+  const newsVault = await openSession(
+    s.db,
+    s.cfg.factVault,
+    [cluster.gameHint ?? ""],
+    [cluster.headline, ...cluster.items.map((i) => i.title)],
+    s.now(),
+  );
+  void growFromArticles(
+    s.db,
+    s.cfg.factVault,
+    cluster.gameHint,
+    articles.map((a) => {
+      const item = cluster.items.find((i) => i.url === a.url);
+      return {
+        url: a.url,
+        title: a.title,
+        text: a.text,
+        ...(item ? { outlet: item.source, published: item.publishedAt.slice(0, 10), official: item.sourceKind === "official" } : {}),
+      };
+    }),
+  );
+  const vaultNote = (sc: Script) => {
+    if (!newsVault) return undefined;
+    const said = [narrationOf(sc), sc.headline, sc.youtube.title, ...sc.beats.map((b) => cardText(b.visual))];
+    return `${newsVault.brief}${newsVault.verified(said)}`.trim() || undefined;
+  };
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
+      // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
+      // vault's brief until 14 Nov 2026, so most invented-credit drops were stories the vault knew nothing about).
+      vault: newsVault?.brief || CREDIT_RULE,
       desk: s.cfg.deskShare > 0,
       variantNote,
       // YouTube's lessons, then how the same Shorts did on Instagram, Facebook, Threads and TikTok.
@@ -7374,6 +7730,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           s.now(),
           loopLessonLines(s.cfg, s.now()),
         ).catch(() => ""),
+        playbook,
       ]
         .filter(Boolean)
         .join("\n\n"),
@@ -7394,6 +7751,24 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           ? { site: "reply.write" }
           : {}),
     });
+    // LEARN_HOOKS (src/learn/breadth.ts): 4 to 6 hooks from distinct angle briefs in one call, refused when they break a
+    // house rule the draft kept or read like the last 30 hooks, scored and clarity-judged; the winner is fact-checked
+    // below like every other word. A plain news Short's first draft only; never a holdout Short.
+    if (
+      attempt === 0 &&
+      !holdout &&
+      s.cfg.learn.hooks !== "off" &&
+      !cluster.why &&
+      !cluster.run &&
+      !cluster.reply &&
+      !cluster.search &&
+      !cluster.gtaFile
+    )
+      script = await pickHook(s, ep, script, {
+        rules: variantNote,
+        recentHooks: recentTexts.map((t) => t.hook).filter(Boolean),
+        problemsWith: (sc) => houseProblems(sc).problems.length,
+      });
     // A search Short keeps the searcher's words in its title: a title that drops them gives way to the planned one.
     if (cluster.search)
       script = {
@@ -7412,6 +7787,25 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           title: gtaFileTitle(cluster.gtaFile.part, script.youtube.title),
         },
       };
+    // CREDIT_SCRUB (src/editorial/credits.ts): a credit to an outlet or document the writer was not given comes off
+    // before the fact check, which drops a Short for it; the fact stays.
+    if (s.cfg.creditScrub) {
+      const scrubbed = scrubScriptCredits(
+        script,
+        givenSources({
+          outlets: [
+            ...cluster.items.map((i) => i.source),
+            ...articles.map((a) => a.via),
+            storeData ? "Steam" : undefined,
+          ],
+          vault: newsVault?.brief,
+        }),
+      );
+      if (scrubbed.removed.length) {
+        script = scrubbed.script;
+        await logEvent(s.db, ep.id, "credits_scrubbed", { attempt, removed: scrubbed.removed });
+      }
+    }
     const { problems, thin } = houseProblems(script);
     check = await factCheck(
       s.llm,
@@ -7420,6 +7814,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       articles,
       storeData,
       cluster.search ? SEARCH_CHECK_SITE : undefined,
+      vaultNote(script),
     );
     const blockers = check.issues
       .filter((i) => i.severity === "blocker")
@@ -7427,6 +7822,23 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     // A time word must be true when the Short goes public (a pre-made Short airs days after it is written).
     const airsAt = cluster.why?.airs_at ?? ep.slot_at;
     if (airsAt) blockers.push(...airTimeProblems(publicText(script), new Date(airsAt)));
+    // FACT_VAULT=enforce: blockers the vault supports pass and ones it contradicts take its value; the rest stand.
+    if (newsVault && blockers.length) {
+      const settled = await newsVault.settle(script, blockers, ep.id, `news attempt ${attempt}`);
+      if (settled.remaining.length < blockers.length) {
+        script = settled.script;
+        blockers.splice(0, blockers.length, ...settled.remaining);
+        if (!blockers.length && check.verdict === "fail")
+          check = {
+            ...check,
+            verdict: "pass",
+            issues: check.issues.filter((i) => i.severity !== "blocker"),
+            summary: `${check.summary} (The Pulse Fact Vault settled every blocker.)`,
+          };
+      }
+    }
+    // A line that repeats a claim our fact check already rejected goes back to the writer (FACT_VAULT=read and above).
+    if (newsVault) problems.push(...newsVault.warnings([narrationOf(script)]));
     if (
       check.verdict === "pass" &&
       check.rumour_labelling_ok &&
@@ -7546,7 +7958,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       // Judged on what the pass changed: a blocker on a line the settled check already passed doesn't count.
       check: async (after) => {
         const v = friendCheckVerdict(
-          await factCheck(s.llm, after, cluster, articles, storeData),
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
           shortSettledText(before),
         );
         afterCheck = v.check;
@@ -7595,7 +8007,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       ];
       if (guard.length) return guard;
       const v = friendCheckVerdict(
-        await factCheck(s.llm, after, cluster, articles, storeData),
+        await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
         shortSettledText(before),
       );
       const airsAt = cluster.why?.airs_at ?? ep.slot_at;
@@ -7658,6 +8070,71 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       kept: script !== settled,
       before_text: shortText(settled),
     }).catch(() => undefined);
+  }
+  // The humaniser (HUMANISE, src/editorial/humanise): the full name once and the short form after, no repeated openings,
+  // contractions, no AI-tell words or em dashes, relative dates against the publish time. Runs last before voicing;
+  // the fact check then reads the humanised words, and anything that fails leaves the settled script as it was.
+  if (
+    s.cfg.humanise !== "off" &&
+    check.verdict === "pass" &&
+    check.rumour_labelling_ok &&
+    !check.issues.some((i) => i.severity === "blocker")
+  ) {
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const publishAt = airsAt ? new Date(airsAt) : undefined;
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    let humanCheck: typeof check | undefined;
+    const human = await humaniseStep<Script>({
+      mode: s.cfg.humanise,
+      value: script,
+      run: (v, mode) => {
+        const r = humaniseShort(v, { mode, ...(publishAt ? { publishAt } : {}) });
+        return { value: r.script, result: r.result };
+      },
+      problems: (before, after, removed) => [
+        ...humaniseShortProblems(before, after, removed),
+        ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+        ...(publishAt ? airTimeProblems(publicText(after), publishAt) : []),
+      ],
+      rewrite: (v, notes) =>
+        friendShort(s.llm, v, {
+          tier: s.cfg.friendPassTier,
+          segment: pulseCheck,
+          endStatement: s.cfg.shortEndPayoff,
+          recent,
+          ...wordsLimits,
+          humanNotes: notes,
+          site: "humanise.rewrite",
+        }),
+      ...(friendPassOn({ friendPass: s.cfg.clarityGate }, "shorts")
+        ? {
+            clear: async (v: Script) =>
+              (
+                await judgeClarity(s.llm, {
+                  lines: shortLines(v),
+                  intended: v.point,
+                  title: v.youtube.title,
+                })
+              ).score >= s.cfg.clarityMin,
+          }
+        : {}),
+      check: async (after) => {
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
+          shortSettledText(script!),
+        );
+        humanCheck = v.check;
+        return v.blockers;
+      },
+    });
+    if (human.stage !== "settled" && humanCheck) {
+      script = human.value;
+      check = humanCheck;
+    }
+    await logEvent(s.db, ep.id, "humanise", human.log).catch(() => undefined);
   }
   // RUMOUR_SHARE=0 (format redesign plan item 2) stops rumour Shorts the same way.
   if (
@@ -8073,11 +8550,13 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
         : // A test dial, off by default: documentaries keep their natural pace whatever it says.
           s.cfg.longMinWpm && ep.script_json?.evergreen_format === "ranking"
           ? { minWpm: s.cfg.longMinWpm }
-          : ep.lane !== "longform" && (s.cfg.shortMinWpm || s.cfg.shortSpeed > 1)
+          : ep.lane !== "longform" && (s.cfg.shortMinWpm || s.cfg.shortSpeed > 1 || s.cfg.hookTakes > 0)
             ? {
                 // SHORT_MIN_WPM lifts a slow take; SHORT_SPEED plays every Short faster (owner's pick, 5 Nov 2026).
                 ...(s.cfg.shortMinWpm ? { minWpm: s.cfg.shortMinWpm } : {}),
                 ...(s.cfg.shortSpeed > 1 ? { speed: s.cfg.shortSpeed } : {}),
+                // HOOK_TAKES: the Short's hook line may be retaken and the best read kept (src/voice/hooktakes.ts).
+                ...(s.cfg.hookTakes > 0 ? { hookTakes: true } : {}),
               }
             : undefined,
     );
@@ -9024,7 +9503,7 @@ export async function gatherMedia(
       // Footage first on a Short: the entries share the publisher's budget, a few clean moments each.
       const entryFill =
         shortFill && ep.lane !== "longform" && gatherBudget.elapsedMinutes() < s.cfg.shortGatherMaxMinutes / 2
-          ? { ...shortFill, seconds: DEFAULT_FOOTAGE_SECONDS / Math.max(1, sorted.length) }
+          ? { ...shortFill, seconds: defaultFootageSeconds() / Math.max(1, sorted.length) }
           : undefined;
       // An achievement's own icon is its card's box art (Steam community assets, official).
       if (entry.icon) {
@@ -9332,6 +9811,63 @@ export async function gatherMedia(
   // credited on screen, on the first line that names them (else wherever a still is needed).
   if (script.person?.trim())
     await personPhoto(s, ep, dir, script.person.trim(), images);
+  // GAME_LIBRARY (src/assets/shortlibrary.ts): every sentence gets the best-fitting scene and still from the game it is
+  // about (a comparison's sentence from the other game), picked by what the library's vision tags say each shows and
+  // pushed away from what the game's last ten Shorts showed; the title's subject leads as the hero and the thumbnail.
+  let library: ShortLibraryMedia | undefined;
+  if (s.cfg.gameLibrary && !ranking && !script.every_game && ep.lane !== "longform" && script.game_title) {
+    library = await shortLibraryMedia({
+      dataDir: s.cfg.dataDir,
+      episodeId: ep.id,
+      episodeDir: dir,
+      script,
+      maxClipSeconds: Math.max(10, narrationSeconds * 0.85),
+    });
+    // The library's per-sentence scenes replace the trailer matcher's picks from the same site trailers, so one trailer
+    // moment never shows twice; footage from anywhere else stays.
+    if (library.clips.length >= 2) {
+      const siteCut = clips.filter((c) => c.provenance.includes("own site ("));
+      if (siteCut.length) clips.splice(0, clips.length, ...clips.filter((c) => !siteCut.includes(c)));
+    }
+    clips.push(...library.clips);
+    images.push(...library.images);
+    if (library.picks)
+      await logEvent(s.db, ep.id, "game_library", {
+        games: library.games,
+        clips: library.clips.length,
+        images: library.images.length,
+        compared: comparedGames(script),
+        footageExists: library.footageExists,
+      });
+  }
+  // No hardware or merchandise in a game story (15 Nov 2026: a PlayStation controller opened a Short about roads and
+  // sat in its thumbnail): press pictures of controllers, consoles, boxes, editions and merch go, unless the story is
+  // about that hardware itself.
+  // A hardware story still never shows one maker's hardware on a line about the other's (18 Nov 2026: a PlayStation
+  // controller sat on "using Xbox Series S settings" in the Xbox cloud Short), nor on a line naming no platform.
+  if (hardwareStory(script)) {
+    const ps = /\b(playstation|ps[345]|dualsense|ps portal)\b/i;
+    const xb = /\b(xbox|series [xs]|game pass)\b/i;
+    const wrong = images.filter((a) => {
+      if (!isHardwareAsset(a)) return false;
+      const what = [a.provenance, a.sourceUrl, a.file, a.label].filter(Boolean).join(" ").replace(/[-_/]+/g, " ");
+      const line = a.forWords ?? "";
+      if (ps.test(what) && !ps.test(line)) return true;
+      if (xb.test(what) && !xb.test(line)) return true;
+      return false;
+    });
+    if (wrong.length) {
+      images.splice(0, images.length, ...images.filter((a) => !wrong.includes(a)));
+      await logEvent(s.db, ep.id, "hardware_dropped", { files: wrong.map((a) => a.file), why: "platform not on its line" });
+    }
+  }
+  if (!hardwareStory(script)) {
+    const dropped = images.filter((a) => isHardwareAsset(a));
+    if (dropped.length) {
+      images.splice(0, images.length, ...images.filter((a) => !isHardwareAsset(a)));
+      await logEvent(s.db, ep.id, "hardware_dropped", { files: dropped.map((a) => a.file) });
+    }
+  }
   // Screenshots get the same local screen as clip frames: a webcam or gore is never used, and
   // one with menu or HUD text across it ("SET V'S APPEARANCE") is used only after the clean ones.
   // Key art and article images are screened for text only: one with the game's logo printed
@@ -9355,6 +9891,8 @@ export async function gatherMedia(
       (shots[k]!.kind === "screenshot" || isPressProvenance(shots[k]!.provenance))
     )
       unusable.add(shots[k]!.file);
+    // FOOTAGE_AD_SCREEN: anything suggestive fails the final check whatever the picture's kind.
+    else if (f.suggestive) unusable.add(shots[k]!.file);
     else if (f.text) wordy.add(shots[k]!.file);
   }
   if (unusable.size || wordy.size)
@@ -9381,6 +9919,7 @@ export async function gatherMedia(
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
       ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
+      ...((a as { libKey?: string }).libKey ? { libKey: (a as { libKey?: string }).libKey } : {}),
     });
   }
   // What the newer picture libraries gave this Short, in its log and the owner's note (long videos: after the top-up).
@@ -10805,6 +11344,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       { stockThemeMax: s.cfg.stockThemeMax },
     );
     assets.filled = { before: r.before, after: r.after };
+    // AI_IMAGE_GATE (src/reviewer.ts): no AI-made picture that could pass for official game material or a photo.
+    if (s.cfg.aiImageGate && assets.images?.length) {
+      const dropped = await gateAiImages(assets.images, dir);
+      if (dropped.length) await logEvent(s.db, ep.id, "ai_image_gate", { dropped });
+    }
     // What the newer picture libraries gave the whole video, in its log and the owner's note.
     await reportLibraries(
       s,
@@ -10909,7 +11453,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.breaks,
   );
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
+  // The bed none of the last few long videos played (src/render/bedrotation.ts); the house beds rotate from it.
+  const musicFile = s.cfg.musicBed
+    ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "long", seed: bedSeed(ep.id) })
+    : null;
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
   if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
@@ -11459,6 +12006,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       JSON.stringify(script),
     ]);
   }
+  // STRAND_FRAMES (src/strandframe.ts): the strand's one title shape and its thumbnail word count, before the designs.
+  const strand = await applyStrandFrame(
+    s,
+    ep,
+    script,
+    (ep.factcheck_json as { topic?: { format?: string; guide?: unknown } } | null)?.topic,
+  );
+  if (strand)
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";
@@ -11689,7 +12245,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         look: heroLook,
       }).catch(() => [])
     : [];
-  const designs: Candidate[] = ruled.length
+  const designsAll: Candidate[] = ruled.length
     ? ruled
     : s.cfg.thumbHeroRule
       ? heroRuleFallback(
@@ -11698,6 +12254,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           sourceOf.get(thumbArt?.file ?? "")?.provenance,
         )
       : candidates;
+  // STRAND_FRAMES: the strand's layout first, and its Test & compare variants the same layout on other art.
+  const designs: Candidate[] = strand ? pinStrandLayout(designsAll, strand) : designsAll;
   const [mainThumb, ...restThumbs] = designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
@@ -11820,6 +12378,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         variant,
         audioFile: assets.audio ?? null,
         musicFile,
+        // SIGNATURE_MUSIC: documentaries open on the docs sting, lead with its bed and rise into chapters.
+        signature: s.cfg.signatureMusic && doc ? signatureFor(SIGNATURE_LIBRARY, "docs") : undefined,
         imageFiles: images,
         clipFiles: clips,
         plan,
@@ -12025,6 +12585,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       thumb: mainThumb!.thumb as never,
       thumbVariants: thumbRepair ? [...thumbVariants, thumbRepair] : thumbVariants,
       concurrency: s.cfg.remotionConcurrency,
+      speed: s.cfg.renderSpeed,
       gl: s.cfg.remotionGl,
       browserExecutable: s.cfg.browserExecutable,
       props: longPropsNow(),
@@ -12100,10 +12661,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const problems = [...tech.problems, ...visionProblems];
   if (problems.length > 0) {
     const { longPlan: _dropped, ...withoutPlan } = assets;
-    const dropped = dropOffending(
-      withoutPlan,
-      offendingMedia(visionProblems, times, plan),
+    const off = offendingMedia(
+      // The technical check's black stretches name where they are: the clip on screen there is swapped too.
+      [...visionProblems, ...tech.problems.filter((p) => /black frames \(at /.test(p))],
+      times,
+      plan,
+      { adSwap: s.cfg.qaAdSwap },
     );
+    // QA_AD_SWAP: a moment faulted for ad safety is remembered, so no later gather picks it again.
+    const banned = rememberUnsafe(
+      withoutPlan.clips ?? [],
+      off,
+      visionProblems.join(" | "),
+    );
+    if (banned)
+      await logEvent(s.db, ep.id, "unsafe_moments_remembered", { keys: banned });
+    const dropped = dropOffending(withoutPlan, off);
     if (dropped.clips || dropped.images) {
       log("warn", "faulted media dropped for the retry", {
         episode: ep.id,
@@ -12401,7 +12974,10 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const g of segments)
       if (g.kind === "take") g.visual = undefined;
   const variant = variantOf(ep.id);
-  const musicFile = s.cfg.musicBed ? bedFor(variant) : null;
+  // The bed none of the last eight Shorts played (src/render/bedrotation.ts), so no two Shorts in a row share music.
+  let musicFile: string | null = s.cfg.musicBed
+    ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) })
+    : null;
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)
@@ -12480,6 +13056,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   // SHORT_OPEN_FOOTAGE (src/openingstep.ts): frame one is the game's own moving footage, cut out and tagged for the hook.
+  let openingStale = false;
   const opening =
     s.cfg.shortOpenFootage && !assets.plan
       ? await chooseOpening(
@@ -12516,6 +13093,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       beatIndex: c.beatIndex,
       role: c.role,
       cutsceneMatch: c.cutsceneMatch,
+      ...(c.forWords ? { forWords: c.forWords } : {}),
       // GAME_AUDIO_BED: a mild preference for footage whose own sound the bed can carry (trailers stay silent).
       ...(gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) && heardInBed(c, s.cfg.gameAudioTrailers) ? { heard: true } : {}),
     })),
@@ -12587,6 +13165,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), {
         rich: true,
       });
+      // The opening was chosen from the media before this gather: a "nothing to open on" from then says nothing about
+      // the footage just added (15 Nov 2026: the police Short was held with 66% footage for it).
+      if (opening && !opening.ok) openingStale = true;
       for (const img of assets.images ?? [])
         if (!img.blurFile)
           img.blurFile = await blurPlate(dir, img.file).catch(() => undefined);
@@ -12619,6 +13200,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           beatIndex: c.beatIndex,
           role: c.role,
           cutsceneMatch: c.cutsceneMatch,
+          ...(c.forWords ? { forWords: c.forWords } : {}),
         })),
       };
       const tries = [0, 1, 2, 3].map((k) =>
@@ -12704,9 +13286,32 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     )
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: cue.volume });
   }
+  // SIGNATURE_MUSIC: a named series opens and closes on its own sting over its own bed (src/render/signature.ts).
+  if (s.cfg.signatureMusic && musicFile) {
+    const id = signatureSeriesOf({ series: seriesTagFor(ep, script) ?? script.series ?? ep.story_json?.series });
+    const sig = signatureFor(SIGNATURE_LIBRARY, id);
+    if (sig?.sting) {
+      plan.sfx = withSignatureSting(plan.sfx, sig.sting);
+      musicFile = shortMusic(sig, musicFile, (k) => BEDS.find((b) => b.key === k)?.file ?? null, (f) => BEDS.find((b) => b.file === f)?.key);
+      await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
+    }
+  }
+  // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's predicted curve for this plan, its weakest moments
+  // and, under "fix", the safe fixes (fresh footage for stills, the strongest picture first, shorter card text), before
+  // the first-seconds check and the render, so no re-render is ever needed. Off by default; never throws.
+  await directorStep(s, ep, {
+    assets,
+    script,
+    words,
+    segments,
+    plan,
+    gameAudio: { on: gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) },
+    segmentsOf: segmentInputs,
+  });
   // ...and nothing in the first 7 s is what YouTube limits ads on; a failing later shot gives way to a picture that passes.
   if (opening) {
     const seconds = await checkFirstSeconds(dir, plan, assets, { openingChecked: opening.clip });
+    opening.seconds = seconds;
     await logEvent(s.db, ep.id, "opening_footage", { ...opening, seconds });
     const bad = seconds.replaced.filter((r) => !r.with);
     if (!opening.ok || seconds.openingStill || bad.length)
@@ -12716,6 +13321,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         openingStill: seconds.openingStill,
         unsafe: bad.map((r) => `shot ${r.shot}: ${r.problem}`),
       });
+  }
+  // SHORT_FOOTAGE_GATE (15 Nov 2026): "Why did Rockstar narrow GTA 6's roads?" went out with no moving footage at all
+  // (footage share 0, opening check failed, rubric amber). When footage of the game exists, such a Short gathers once
+  // more, richer; still without footage it is held, the slot goes to the next ready Short and the alerts say why.
+  if (s.cfg.shortFootageGate && !script.entries?.length && !script.every_game && ["news", "news_breaking", "free", "evergreen"].includes(ep.lane)) {
+    const clipFrames = plan.shots.filter((x) => x.media.type === "clip").reduce((n, x) => n + x.end - x.start, 0);
+    const footageShare = clipFrames / Math.max(1, plan.totalFrames);
+    const footageExists =
+      (await libraryHasFootage(s.cfg.dataDir, script.game_title)) || (assets.officialTrailer?.clipSeconds ?? 0) > 0;
+    // An opening the vision model never looked at (the PC relay busy) is not a failed opening: the picture check holds
+    // the Short until it can look (VISION_HOLD); 15 Nov 2026 the PS4 Short was held at 63% footage for this alone.
+    const verdict = footageGate({ footageShare, openingOk: opening?.unchecked || openingStale ? undefined : opening?.ok, footageExists, alreadyRich: Boolean(assets.rich) });
+    await logEvent(s.db, ep.id, "footage_gate", { verdict, footageShare: Math.round(footageShare * 100) / 100, opening: opening?.ok, footageExists });
+    if (verdict === "regather") {
+      Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
+      delete assets.plan;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+      throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
+    }
+    if (verdict === "hold") {
+      const why = `"${script.headline}" is held: no moving footage of ${script.game_title} on screen (footage share ${Math.round(footageShare * 100)}%${opening?.ok === false ? `, no footage to open on: ${opening.why ?? "none"}` : ""}) although footage of the game exists. The slot goes to the next ready Short.`;
+      await s.notify({ level: "info", content: `🎞️ ${why}` });
+      throw new FatalError(`QA held: ${why}`);
+    }
   }
   assets.plan = plan;
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
@@ -12772,9 +13401,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ),
     });
   assets.suite = suiteFor(s.cfg, ep);
-  // Pip the mascot (src/experiments.ts): recorded either way only while the test runs, and kept on a re-render.
+  // Pip the mascot (src/experiments.ts, src/render/mascot.ts): recorded either way only while the test runs on a
+  // news or why Short, and kept on a re-render. Serious stories (layoffs, deaths, court cases) sit out on both
+  // sides, so the two groups stay alike.
   const mascotShare = await mascotShareNow(s.db, s.cfg);
-  if (assets.mascot === undefined && mascotShare > 0)
+  if (
+    assets.mascot === undefined &&
+    mascotShare > 0 &&
+    MASCOT_LANES.includes(ep.lane) &&
+    !PIP_SERIOUS.test(segments.map((g) => g.text).join(" "))
+  )
     assets.mascot = mascotFor(mascotShare, ep);
   // The new-look opening poster (src/render/components/HookPoster.tsx): the hero art's subject cut out once.
   const heroImage = assets.images?.[plan.heroIndex];
@@ -12794,6 +13430,40 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         const crop = await smartCrop(path.join(dir, c.file));
         if (crop) c.crop = crop;
       }
+  // The same for wide stills with no subject found yet (library, press and store pictures): the upright crop sits
+  // on Apple Vision's subject rather than the picture's middle (owner, 15 Nov 2026: Shorts not on the focal content).
+  if (s.cfg.appleSmartCrop) {
+    const wide = (assets.images ?? []).filter((i) => i.focusX === undefined && (i.aspect ?? 0) > 0.6);
+    const boxes = await readBoxes(wide.map((i) => path.join(dir, i.file))).catch(() => new Map());
+    for (const i of wide) {
+      const b = boxes.get(path.join(dir, i.file));
+      if (!b?.width || !b.height) continue;
+      const x = frameTarget(b, 0.5625 / (b.width / b.height));
+      if (x !== undefined) i.focusX = x;
+    }
+  }
+  // SHORT_PARALLAX: the wide stills get depth layers too, once per Short (kept in assets), so they drift like
+  // footage; viewers left 1.3 times as fast while a flat still was up (Sunday retention curves, 15 Nov).
+  // A share of Shorts while it is tested (SHORT_PARALLAX_SHARE); the arm is kept so retention can be split by it.
+  const depthArm = shortDepthArm(ep.id, s.cfg.shortParallaxShare);
+  if (s.cfg.shortParallaxShare > 0) assets.shortDepthArm = depthArm;
+  if (depthArm === "depth" && s.cfg.parallaxPython && assets.images?.length) {
+    const want = shortDepthWanted(
+      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) })),
+    );
+    if (want.length) {
+      const made = await makeParallax(
+        s.cfg.parallaxPython,
+        dir,
+        want.map((i) => i.file),
+      );
+      for (const i of assets.images) {
+        const l = made.get(i.file.split(path.sep).join("/"));
+        if (l) i.layers = l;
+      }
+      log("info", "short depth layers", { ep: ep.id, wanted: want.length, made: made.size });
+    }
+  }
   if (
     assets.suite &&
     !assets.heroCut &&
@@ -12915,10 +13585,34 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ? path.join(dir, assets.shortThumb)
       : undefined,
     concurrency: s.cfg.remotionConcurrency,
+    speed: s.cfg.renderSpeed,
     gl: s.cfg.remotionGl,
     browserExecutable: s.cfg.browserExecutable,
     props: {
       headline: script.headline,
+      // The game collage card only on a line that names the game, held 2.5 s, never with hardware (cleanframe.ts).
+      ...(assets.suite
+        ? {
+            motifSting:
+              stingPlacement({
+                segments,
+                words,
+                fps: plan.fps,
+                totalFrames: plan.totalFrames,
+                names: (t) => namesGame(t, script.game_title),
+                pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
+              }) ?? null,
+          }
+        : {}),
+      // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
+      ...(s.cfg.shortOpenWords > 0 && opening?.ok && plan.shots[0]?.media.type === "clip"
+        ? {
+            openingWords: openingCaption(
+              { thumbText: script.youtube?.thumb_text, headline: script.headline, game: script.game_title },
+              s.cfg.shortOpenWords,
+            ),
+          }
+        : {}),
       storyType: script.is_rumour ? "rumour" : script.story_type,
       gameTitle: mediaTitle(script.game_title),
       isRumour: script.is_rumour,
@@ -12944,6 +13638,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
         focusX: i.focusX,
+        ...(isHardwareAsset(i) ? { noCollage: true } : {}),
+        // SHORT_PARALLAX: the depth layers made above; the long render's layers ride along only when it is on.
+        ...(depthArm === "depth" && i.layers
+          ? { layers: { bg: i.layers.bg, mid: i.layers.mid, fg: i.layers.fg } }
+          : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
         file: c.file,
@@ -12989,6 +13688,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   await s.normalise(raw, final);
   await fs.rm(raw, { force: true });
   await designShortThumb(s, ep.id, dir, script, assets, plan.heroIndex, seriesCover);
+  // GAME_LIBRARY: what this Short showed from the libraries, so the game's next Shorts show something else.
+  {
+    const keys = [
+      ...new Set(
+        plan.shots
+          .map((x) => (x.media.type === "clip" ? assets.clips?.[x.media.index]?.libKey : x.media.type === "image" ? assets.images?.[x.media.index]?.libKey : undefined))
+          .filter((k): k is string => Boolean(k)),
+      ),
+    ];
+    const hero = assets.images?.[plan.heroIndex]?.libKey;
+    if (hero && !keys.includes(hero)) keys.push(hero);
+    if (keys.length)
+      for (const game of [script.game_title, ...comparedGames(script)])
+        await recordUsage(libraryRoot(s.cfg.dataDir), { episode: ep.id, game, at: s.now().toISOString(), keys }).catch((err) =>
+          log("warn", "library usage not recorded", { error: errorMessage(err) }),
+        );
+  }
 
   const tech = await s.technicalQa(
     final,
@@ -13074,7 +13790,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? vision.problems
         : [`vision QA failed: ${vision.notes || "no reason given"}`]
       : [];
-  const problems = [...tech.problems, ...visionProblems, ...entryProblems, ...frameProblems];
+  // SHORT_AD_SAFE_GATE (src/openingstep.ts): nothing YouTube limits ads on in the first 7 s or as the cover. A designed
+  // search tile that fails gives way to the first frame; a failing first frame or an unreplaced shot fails QA.
+  const adSafe: string[] = [];
+  if (tech.ok && s.cfg.shortAdSafeGate && opening) {
+    if (assets.shortThumb === "thumb_search.jpg") {
+      const tile = coverProblem(await lookOpeningFrame(path.join(dir, assets.shortThumb)));
+      if (tile) {
+        assets.shortThumb = undefined;
+        assets.shortThumbArm = "frame";
+        await logEvent(s.db, ep.id, "ad_safe_tile_dropped", { problem: tile });
+      }
+    }
+    const [cover] = await s
+      .extractFrames(final, path.join(dir, "qa", "cover"), [0])
+      .catch(() => [] as string[]);
+    const coverLook = cover ? await lookOpeningFrame(cover) : undefined;
+    adSafe.push(...adSafeGateProblems(opening.seconds, coverLook));
+    await logEvent(s.db, ep.id, "ad_safe_gate", {
+      pass: !adSafe.length,
+      problems: adSafe,
+      coverScreened: Boolean(coverLook),
+    });
+  }
+  const problems = [...tech.problems, ...visionProblems, ...entryProblems, ...frameProblems, ...adSafe];
   // The check was skipped (the relay went down mid-render): held, the render kept on disk, checked again when back.
   if (
     s.cfg.visionHold &&
@@ -13088,11 +13827,43 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (problems.length > 0) {
     // The retry re-plans from scratch (the planner or the components may have changed since) and judges fresh frames.
     const { plan: _dropped, ...withoutPlan } = assets;
-    // A moment the checker faulted for text, a logo or the wrong game is not tried again.
-    const dropped = dropOffending(
-      withoutPlan,
-      offendingMedia(visionProblems, times, plan),
+    // A moment the checker faulted for text, a logo, the wrong game or (QA_AD_SWAP) ad safety is not tried again; an
+    // ad-safety moment is also remembered in the footage screen cache (src/assets/screencache.ts), so no later
+    // gather picks it. 13-14 Nov 2026: one bent-over GTA VI shot failed five Shorts, three renders each.
+    const off = offendingMedia(
+      // The technical check's black stretches name where they are: the clip on screen there is swapped too.
+      [...visionProblems, ...tech.problems.filter((p) => /black frames \(at /.test(p))],
+      times,
+      plan,
+      { adSwap: s.cfg.qaAdSwap },
     );
+    // The ad-safe gate names shots, not frames: an unreplaced clip there is swapped the same way.
+    if (s.cfg.qaAdSwap)
+      for (const p of adSafe) {
+        const m = p.match(/\bshot (\d+)\b/);
+        const shot = m ? plan.shots[Number(m[1])] : undefined;
+        if (shot?.media.type === "clip") {
+          off.clips.add(shot.media.index);
+          off.unsafeClips?.add(shot.media.index);
+        }
+      }
+    const banned = rememberUnsafe(
+      withoutPlan.clips ?? [],
+      off,
+      [...visionProblems, ...adSafe].join(" | "),
+    );
+    if (banned)
+      await logEvent(s.db, ep.id, "unsafe_moments_remembered", { keys: banned });
+    // The game library remembers faulted moments too, so a fresh gather cannot pick them again.
+    const libKeys = [
+      ...[...off.clips].map((i) => (withoutPlan.clips ?? [])[i]?.libKey),
+      ...[...off.images].map((i) => (withoutPlan.images ?? [])[i]?.libKey),
+    ].filter((k): k is string => !!k);
+    if (libKeys.length && script.game_title)
+      await markLibraryFaults(s.cfg.dataDir, script.game_title, libKeys, [...visionProblems, ...adSafe].join(" | "))
+        .then((n) => (n ? logEvent(s.db, ep.id, "library_faults_marked", { keys: libKeys, marked: n }) : undefined))
+        .catch(() => undefined);
+    const dropped = dropOffending(withoutPlan, off);
     if (dropped.clips || dropped.images) {
       log("warn", "faulted media dropped for the retry", {
         episode: ep.id,
@@ -13169,6 +13940,9 @@ async function stepRequestApproval(s: Services, ep: Episode): Promise<void> {
     );
     if (held) return;
   }
+  // SHORT_TITLE_GAME_FIRST (src/strandstep.ts): the Short's title opens on the game's name, then the why or how.
+  if (await applyShortTitleGameFirst(s, ep, script))
+    await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
   // SHORT_ARGUES_CHECK (src/qa/argues.ts): a Short with no point beyond its picture, or none of Pulse's own
   // material, was already sent back to the writer once; here it is released under the lane's usual mode with a
   // note on the notice, never held for the owner. A twin repeats a Short already through it.
@@ -13514,6 +14288,8 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   }
   // GTA 6 Day N: the day before and the playlist, for the description's links.
   if (ep.story_json.gtaDaily) ep = await refreshGtaDailyLinks(s, ep);
+  // A challenge episode: the one before and the playlist (src/challenge.ts).
+  if (ep.story_json.challenge) ep = await refreshChallengeLinks(s, ep);
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
@@ -13522,7 +14298,9 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   );
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
-  const holdUpload = publishAt && s.cfg.youtubePrivacy !== "public";
+  // A Premiere documentary (PREMIERE_DOCS) uploads private as soon as it is made, for the Studio premiere step.
+  const holdUpload =
+    publishAt && s.cfg.youtubePrivacy !== "public" && !isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json);
   await transition(s.db, ep.id, "approved", "uploading", {
     publish_at: publishAt ?? null,
     ...(holdUpload ? { next_attempt_at: publishAt } : {}),
@@ -13553,19 +14331,29 @@ export function longChapters(ep: Episode): string[] {
     ),
     ep.assets_json?.breaks,
   );
-  return chapterLines(segments, (seg) =>
-    seg.kind === "hook"
+  // LONG_CHAPTER_CADENCE (src/strandframe.ts): the writer's moment marks fill the gaps between chapters, thinned so
+  // every mark stands at least a minute from the next; none on the script: the list is the chapters, as before.
+  const marks = new Map((script.moment_marks ?? []).map((m) => [m.beat, m.label]));
+  let beat = -1;
+  const lines = chapterLines(segments, (seg) => {
+    if (seg.kind === "beat") beat++;
+    const mark = seg.kind === "beat" && seg.visual?.kind !== "chapter" && seg.visual?.kind !== "rank" ? marks.get(beat) : undefined;
+    return mark ? `${MOMENT_MARK}${mark}` : chapterLabel(seg);
+  });
+  return marks.size ? cadenceChapters(lines) : lines;
+  function chapterLabel(seg: (typeof segments)[number]): string | undefined {
+    return seg.kind === "hook"
       ? "Intro"
       : seg.kind === "beat" && seg.visual?.kind === "rank"
         ? `#${seg.visual.value_a} ${seg.visual.primary}`
         : seg.kind === "beat" && seg.visual?.kind === "chapter"
           ? seg.visual.primary
           : seg.kind === "take"
-            ? script.evergreen_format === "documentary"
-              ? titleCaseLabel(script.pulse_take.label)
+            ? script!.evergreen_format === "documentary"
+              ? titleCaseLabel(script!.pulse_take.label)
               : "Our pick"
-            : undefined,
-  );
+            : undefined;
+  }
 }
 
 export function footageCredits(
@@ -13639,6 +14427,12 @@ export function footageCredits(
   return lines.length ? `\n${lines.join("\n")}` : "";
 }
 
+/** REVIEWER_PACK: the website the sources pages live on, or nothing when the pack is off. */
+export function reviewerPackFor(cfg: Pick<Config, "reviewerPack" | "siteUrl" | "publicUrl">): { siteBase: string } | undefined {
+  const siteBase = (cfg.siteUrl || cfg.publicUrl || "").replace(/\/$/, "");
+  return cfg.reviewerPack && siteBase ? { siteBase } : undefined;
+}
+
 export function videoMetadata(
   ep: Episode,
   privacy: Config["youtubePrivacy"],
@@ -13647,6 +14441,8 @@ export function videoMetadata(
   /** LEONIDA_LINK, and the time to judge the day by when the video has no publish time. */
   leonidaLink = false,
   now = new Date(),
+  /** REVIEWER_PACK (src/reviewer.ts): the standard AI line and the video's sources page on the website. */
+  pack?: { siteBase: string },
 ) {
   const script = ep.script_json!;
   const credits = ep.story_json.items
@@ -13729,6 +14525,8 @@ export function videoMetadata(
       leonida ? `\n${leonida}` : "",
       // GTA 6 Day N (src/gtadaily.ts): the day before and the whole run, in order.
       ep.story_json.gtaDaily ? `\n${dailyDescriptionLines(ep.story_json.gtaDaily).join("\n")}` : "",
+      // A challenge episode (src/challenge.ts): the one before, the series in order and the count so far.
+      ep.story_json.challenge ? `\n${challengeDescriptionLines(ep.story_json.challenge).join("\n")}` : "",
       follow?.videoId && follow.title
         ? `\nThe whole story, in our ${follow.kind}: ${follow.title} https://youtu.be/${follow.videoId}`
         : "",
@@ -13751,7 +14549,9 @@ export function videoMetadata(
       footage,
     ],
     [
-      script.gameplay?.direct
+      pack
+        ? `\n${disclosureLine(script)}\n${sourcesLine(pack.siteBase, ep.id)}`
+        : script.gameplay?.direct
         ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. Narration: AI-generated synthetic voice.`
         : script.gameplay
         ? `\nGameplay recorded by Pulse Gaming on Xbox Series X from our own copy of ${script.game_title}. No AI voice: the sound is the game's own.`
@@ -13833,6 +14633,21 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       content: `🧪 DRY_RUN: "${ep.script_json!.youtube.title}" would have been uploaded now.`,
     });
     return;
+  }
+  // STORY_RECAP (src/storyrecap.ts): a full-spoiler recap never goes out while its game's spoiler window is open,
+  // whatever happened before; it waits for the window's end.
+  const recapGame = (ep.factcheck_json as { topic?: DocTopic } | null)?.topic?.recap?.game;
+  if (recapGame) {
+    const at = ep.publish_at ? new Date(ep.publish_at) : s.now();
+    const until = recapHeldUntil(
+      recapWindows(spoilerWindows(), s.cfg.gameFetchTitles, recapGame, s.cfg.spoilerWindowDays),
+      [s.now(), at],
+    );
+    if (until) {
+      await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [ep.id, new Date(until)]);
+      await logEvent(s.db, ep.id, "recap_spoiler_hold", { until });
+      return;
+    }
   }
   // The owner's publishing hold: wait, and look again in a quarter of an hour.
   if (await publishHeld(s.db)) {
@@ -13954,19 +14769,32 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
   // publish time, and goes public only after a clean copyright check. The planned slot stays on the episode.
   const copyrightHold = s.cfg.avTools.radioStrip.copyrightGate && copyrightCheckNeeded(ep);
   let session = ep.upload_session_uri;
+  // PACKAGING_LAB (src/packaging/lab.ts): the title (and a long video's main thumbnail) scored and, under "pick",
+  // chosen before the first byte goes up. Once per episode; any trouble leaves the writer's packaging as it was.
+  if (!session) await packBeforeUpload(s, ep, episodeDir(s.cfg, ep.id));
   if (!session) {
     const size = (await fs.stat(file)).size;
     session = await yt.createSession(
       buildResource(
         videoMetadata(
           copyrightHold ? ({ ...ep, publish_at: null } as Episode) : ep,
-          copyrightHold ? "private" : s.cfg.youtubePrivacy,
+          // COPYRIGHT_CHECK_GATE: stripped radio uploads private. PREMIERE_DOCS (src/premiere.ts): a Premiere
+          // documentary goes up private and unscheduled; Studio sets it.
+          copyrightHold
+            ? "private"
+            : premierePrivacy(isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json), s.cfg.youtubePrivacy),
+          // The altered-content flag: the AI voice, or a kept AI picture under AI_IMAGE_GATE (src/reviewer.ts).
+          syntheticMediaFor(
           ep.lane === "gameplay" && !ep.script_json?.gameplay?.direct
             ? false
             : s.cfg.syntheticMedia,
+            ep.assets_json,
+            s.cfg.aiImageGate,
+          ),
           affiliateTags(s.cfg, ep.id),
           s.cfg.leonidaLink,
           s.now(),
+          reviewerPackFor(s.cfg),
         ),
         marker,
       ),
@@ -13991,6 +14819,17 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         planned: ep.publish_at,
       });
     await localizeMetadata(s, ep, videoId, yt);
+    // REVIEWER_PACK: the private production log, footage ledger and claims log (src/reviewer.ts); never blocks.
+    if (s.cfg.reviewerPack)
+      await s.db
+        .query<{ kind: string; at: string; detail: unknown }>(
+          `SELECT kind, created_at::text AS at, detail FROM events WHERE episode_id = $1 ORDER BY id`,
+          [ep.id],
+        )
+        .then((events) =>
+          writeRecords(s.cfg.dataDir, { ...ep, youtube_video_id: videoId } as never, events, s.now()),
+        )
+        .catch((err) => log("warn", "records not written", { episode: ep.id, error: errorMessage(err) }));
   } catch (err) {
     if (err instanceof SessionGone) {
       await s.db.query(
@@ -14024,6 +14863,7 @@ async function localizeMetadata(
       affiliateTags(s.cfg, ep.id),
       s.cfg.leonidaLink,
       s.now(),
+      reviewerPackFor(s.cfg),
     );
     const loc = await translateMetadata(
       s.llm,
@@ -14127,6 +14967,7 @@ export async function confirmPublished(s: Services): Promise<void> {
       const live = await getEpisode(s.db, ep.id);
       if (live) await gameplayLive(s, live);
       if (live?.story_json.gtaDaily) await linkGtaDaily(s, live);
+      if (live?.story_json.challenge) await linkChallengePublic(s, live);
       // Now it is public it can join its series playlist (SERIES_PLAYLISTS; off, it joined at upload).
       if (live && s.cfg.seriesPlaylists) await addToSeries(s, live, "public");
     } else if (st?.privacyStatus === "private") {
@@ -14180,7 +15021,24 @@ async function addPinnedComment(s: Services, ep: Episode): Promise<void> {
     const script = ep.script_json!;
     // A Short gets the channel's comment only when it ends on its own real question (src/social/firstcomment.ts).
     // GTA 6 Day N: the next day (when already made) and the playlist (src/gtadaily.ts).
-    const daily = ep.story_json.gtaDaily ? await gtaDailyComment(s, ep) : "";
+    // FIRST_COMMENT_STRICT (item 19): any Short gets its own closing question alone, or nothing; the GTA Daily links
+    // stay in its description.
+    if (s.cfg.firstCommentStrict && script.runtime !== "long" && !script.twin) {
+      const q = strictShortComment(script);
+      if (!q) {
+        await logEvent(s.db, ep.id, "comment_skipped", { why: "no question of its own" });
+        return;
+      }
+      const id = await s.youtube(accountOf(ep)).insertComment(ep.youtube_video_id!, q);
+      await quotaAdd(s.db, s.now(), QUOTA.comment);
+      await logEvent(s.db, ep.id, "comment_posted", { id, text: q });
+      return;
+    }
+    const daily = ep.story_json.gtaDaily
+      ? await gtaDailyComment(s, ep)
+      : ep.story_json.challenge
+        ? challengeCommentLine(ep.story_json.challenge, await nextEpisodeMade(s.db, ep.story_json.challenge))
+        : "";
     if (s.cfg.firstCommentQuestion && script.runtime !== "long" && !script.twin && !script.evergreen_format) {
       const q = [shortComment(script), daily].filter(Boolean).join("\n\n");
       if (!q) {
@@ -14274,7 +15132,8 @@ async function queueAbTest(s: Services, ep: Episode): Promise<void> {
       await fs.readFile(file, "utf8").catch(() => "[]"),
     ) as Array<{ videoId: string }>;
     if (list.some((x) => x.videoId === ep.youtube_video_id)) return;
-    const thumbs = ["thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map(
+    // The main thumbnail first (PACKAGING_LAB=pick may have promoted a variant), then the other designs.
+    const thumbs = [ep.assets_json?.thumb ?? "thumb.jpg", ...(ep.assets_json?.thumbVariants ?? [])].map(
       (f) => path.join(dir, f),
     );
     list.push({
@@ -14315,7 +15174,8 @@ export async function designShortThumb(
   if (share <= 0 || !s.renderShortThumb) return;
   assets.shortThumbArm = shortThumbArm(id, share);
   if (assets.shortThumbArm !== "designed") return;
-  const words = thumbWords(script.youtube?.thumb_text);
+  // PACKAGING_LAB=pick: the best-scoring hook words that pass the clarity check (src/packaging/lab.ts), else the writer's.
+  const words = thumbWords(pickHookWords(s.cfg.packaging, s.cfg.dataDir, script));
   const image = pickThumbImage(assets.images, heroIndex);
   if (!words || !image) {
     assets.shortThumbArm = "frame";
@@ -14410,6 +15270,22 @@ async function stepConfirm(s: Services, ep: Episode): Promise<void> {
   });
   if (st.privacyStatus === "public") await gameplayLive(s, ep);
   if (st.privacyStatus === "public" && ep.story_json.gtaDaily) await linkGtaDaily(s, ep);
+  if (st.privacyStatus === "public" && ep.story_json.challenge) await linkChallengePublic(s, ep);
+  // PREMIERE_DOCS: on the premiere list for the browser task, and Discord told (src/premiere.ts).
+  if (isPremiereDoc(s.cfg.premiereDocs, ep.factcheck_json) && st.privacyStatus === "private" && ep.youtube_video_id) {
+    const entry = addPremiere(
+      s.cfg.dataDir,
+      {
+        episode: ep.id,
+        videoId: ep.youtube_video_id,
+        title: ep.script_json!.youtube.title,
+        at: new Date(ep.publish_at ?? ep.slot_at ?? s.now()),
+      },
+      s.now(),
+    );
+    await logEvent(s.db, ep.id, "premiere_pending", { video: entry.videoId, at: entry.at });
+    await s.notify({ content: premiereNotice(entry), ping: true });
+  }
   const url = `https://youtube.com/shorts/${ep.youtube_video_id}`;
   const longVideo = ep.script_json?.runtime === "long";
   // A documentary's community post and poll (COMMUNITY_DRAFTS, src/social/community.ts): drafted now from
@@ -14467,14 +15343,14 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
       episode: ep.id,
       title: ep.script_json?.headline ?? ep.story_json?.headline,
     },
-    () => advanceStep(s, ep),
+    // The learning core (src/learn/scope.ts): the holdout's baseline settings, and the step's prompts, models, settings
+    // and commit stamped on the episode. Off (no LEARN_STAMPS, no LEARN_HOLDOUT_SHARE), the step runs straight through.
+    () => withLearn(s, ep, (run) => advanceStep(run, ep)),
   );
 }
 
 /** True when a failure is about one video's own content (fact check, QA, clarity, spoilers), never the platform. */
-export function isContentFault(msg: string): boolean {
-  return /fact-?check|QA failed|clarity|spoiler|graphics audit|suggestive|word count/i.test(msg);
-}
+export { isContentFault } from "./faultclass.ts";
 
 /** On failure records it and backs off, alerting once it gives up. */
 async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
@@ -14515,16 +15391,10 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
     // a fatal error inside one episode's own content must not take the whole day with it.
     // 14 Nov 2026: a ranking whose fact check failed twice at "uploading" paused every lane for 12 hours
     // and told the owner YouTube had refused the upload; a fault in the video's own content drops that video only.
-    const platformFault =
-      fatal &&
-      !isContentFault(msg) &&
-      ep.lane !== "twin" && // the twin channel's login or quota must never pause the main channel
-      (["uploading", "uploaded"].includes(ep.status) ||
         // "refused" alone caught an explainer part the writer refused for missing evidence and paused every lane
-        // for 12 hours (6 Nov 2026); only a platform's refusal of our login counts.
-        /invalid_grant|quota|credential|api key|x-api-key|forbidden|unauthori[sz]ed|(token|login|access|request) (was )?refused/i.test(
-          msg,
-        ));
+    // for 12 hours (6 Nov 2026); only a platform's refusal of our login counts (src/faultclass.ts), read outside
+    // the quoted words of the video itself (14 Nov 2026: "quotation" in a fact check matched "quota").
+    const platformFault = fatal && pausesEveryLane(msg, ep.status, ep.lane);
     if (platformFault) {
       await pauseSelection(s.db, s.now(), FATAL_PAUSE_HOURS, msg);
       // A pause stops every lane, so it is never silent (6 Nov 2026: a wrong one cost a day's Shorts unseen).
@@ -14550,12 +15420,12 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
           ? "\nThe upload may be incomplete; the next run will search the channel before re-uploading."
           : "") +
         (platformFault
-          ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until YouTube is reconnected) so this can be fixed.`
+          ? `\nNew stories are paused for ${FATAL_PAUSE_HOURS}h (or until it is fixed and the factory unpaused).`
           : "");
       if (platformFault)
         await s.notify({
           ping: true,
-          content: `⚠️ Needs you: YouTube refused an upload (${msg.slice(0, 300)}). New stories are paused for ${FATAL_PAUSE_HOURS}h. Reconnect YouTube from the dashboard if it says the login expired.${where}`,
+          content: `${platformAlert(msg, ep.status, FATAL_PAUSE_HOURS)}${where}`,
         });
       else
         await s.notify({
@@ -14881,6 +15751,9 @@ export async function tick(
           error: errorMessage(err),
         }),
       );
+    // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model retrained weekly from the stored curves.
+    if (!s.cfg.dryRun && s.cfg.retentionDirector !== "off")
+      await retrainTick({ db: s.db, cfg: s.cfg, now: s.now, segmentsOf: segmentInputs, notify: (m) => s.notify(m) });
     // The experiments' verdicts: once on EXPERIMENT_VERDICT_DATE, then weekly while the desk test is undecided.
     if (!s.cfg.dryRun)
       await experimentVerdicts(s.db, s.cfg, s.now(), (m) => s.notify(m)).catch(
@@ -14921,6 +15794,15 @@ export async function tick(
       await reachAlert(s.db, s.now(), (m) => s.notify(m)).catch((err) =>
         log("warn", "reach alert failed", { error: errorMessage(err) }),
       );
+      // PACKAGING_LAB=retitle: one second chance for an under-performing public video, and the verdicts on earlier ones.
+      if (packagingAtLeast(s.cfg.packaging, "retitle"))
+        await runSecondChance({
+          cfg: s.cfg,
+          db: s.db,
+          now: () => s.now(),
+          youtube: (ep) => s.youtube(accountOf(ep)),
+          notify: (m) => s.notify(m),
+        }).catch((err) => log("warn", "packaging second chance failed", { error: errorMessage(err) }));
       // Click-through per video, once a day (src/reach.ts).
       if (s.cfg.reachReport && s.reachClient && (await ctrCaptureDue(s.db, s.now()))) {
         await logEvent(s.db, null, "reach_report_tick", {});
@@ -14931,6 +15813,10 @@ export async function tick(
         );
       }
     }
+    // The learning core (src/learn/tick.ts): the change ledger, the holdout's pin and the weekly learning jobs.
+    await learnTick(s).catch((err) =>
+      log("warn", "learning core tick failed", { error: errorMessage(err) }),
+    );
     return { selected };
   });
   return result ? { ran: true, ...result } : { ran: false };

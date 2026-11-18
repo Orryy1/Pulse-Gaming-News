@@ -111,6 +111,7 @@ import {
   type MusicChapter,
   type Mood,
 } from "./musicplan.ts";
+import { riseBedLevel, riseCues, type RiseCue, type SignatureEntry } from "./signature.ts";
 import {
   backgroundFor,
   TextureBackground,
@@ -317,6 +318,9 @@ export type LongProps = {
   logoSrc: string | null;
   audioSrc: string | null;
   musicSrc: string | null;
+  /** SIGNATURE_MUSIC: the documentaries' signature (src/render/signature.ts): its sting opens and closes, its bed
+   * leads the house beds and its rise builds into chapters. Absent: the house music. */
+  signature?: SignatureEntry;
   /** Epidemic Sound beds in this bundle (house or a mood), alongside the generated ones. */
   extraBeds?: Array<{ file: string; key: "D" | "E"; mood: string }>;
   /** A documentary: each chapter opens on the quiet bed of its era (src/render/soundscape.ts eraBed). */
@@ -2094,7 +2098,7 @@ const CalloutCard: React.FC<{
  * arrives full screen (its number, its title, the game and year, and a line from the chapter if it has
  * a quote) over its first picture, then clears for the narration.
  */
-const ChapterInterlude: React.FC<{
+export const ChapterInterlude: React.FC<{
   number: number;
   title: string;
   game: string;
@@ -2665,12 +2669,13 @@ export const Long: React.FC<LongProps> = (props) => {
     );
     // The house list: the generated beds, then the Epidemic ones, starting from the video's own bed.
     const house = [
+      ...(props.signature?.bed ? [props.signature.bed] : []),
       ...BEDS.map((b) => b.file),
       ...(props.extraBeds ?? [])
         .filter((b) => b.mood === "house")
         .map((b) => b.file),
     ];
-    let k = first;
+    let k = props.signature?.bed ? 0 : first;
     const turn: Record<string, number> = {};
     return sections.map((sec) => {
       if (sec.mood) {
@@ -2689,12 +2694,24 @@ export const Long: React.FC<LongProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     props.musicSrc,
+    props.signature,
     props.segments,
     props.extraBeds,
     durationInFrames,
     fps,
     beatCues,
   ]);
+  // SIGNATURE_MUSIC: the documentary's rise builds into a chapter and lands its downbeat on the chapter's first
+  // frame (src/render/signature.ts riseCues), never into a key line or a reveal; the bed steps back under it.
+  const rises = useMemo(() => {
+    const rise = props.signature?.rise;
+    if (!rise || !documentary) return [] as RiseCue[];
+    const opens = props.segments
+      .map((s, i) => (i > 0 && s.kind === "beat" && s.visual?.kind === "chapter" ? starts[i]! : -1))
+      .filter((f) => f > 0);
+    return riseCues(opens, durationInFrames, fps, rise, (f) => nearBeat(f, beatCues, 3 * fps));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.signature, props.segments, documentary, durationInFrames, fps, beatCues]);
   // A documentary's breathers: the chapter segment that opens on one, and the frames it lasts.
   const breakFrames = (props.breaks ?? []).map((b) => ({
     from: Math.round(b.start * fps),
@@ -4920,6 +4937,7 @@ export const Long: React.FC<LongProps> = (props) => {
                     props.endLine ??
                     "A new documentary every month · Shorts every day"
                   }
+                  totalFrames={durationInFrames}
                 />
               </Sequence>
             );
@@ -4929,7 +4947,7 @@ export const Long: React.FC<LongProps> = (props) => {
           plays after the narrator has finished, with nothing to mask it, so it sits 3 dB lower. */}
       <Sequence from={0} durationInFrames={75} layout="none">
         <Sfx
-          name={inKey(SFX.sting, props.musicSrc)}
+          name={props.signature?.sting ?? inKey(SFX.sting, props.musicSrc)}
           volume={LEVEL.sting * 0.8}
         />
       </Sequence>
@@ -4939,7 +4957,7 @@ export const Long: React.FC<LongProps> = (props) => {
         layout="none"
       >
         <Sfx
-          name={inKey(SFX.sting, bedAt(durationInFrames - 1))}
+          name={props.signature?.sting ?? inKey(SFX.sting, bedAt(durationInFrames - 1))}
           volume={LEVEL.sting * 0.5}
         />
       </Sequence>
@@ -4989,7 +5007,8 @@ export const Long: React.FC<LongProps> = (props) => {
           musicVolume(b.from + f) *
           dropLevel(b.from + f, drops) *
           beatLevel(b.from + f, beatCues, fps) *
-          bedEdge(f, b);
+          bedEdge(f, b) *
+          riseBedLevel(b.from + f, rises, fps);
         const pocket = pockets.has(b.src);
         const weight = (f: number) =>
           pocketWeight(
@@ -5026,6 +5045,14 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
                 );
       })}
+      {rises.map((r, k) => (
+        <Sequence key={`rise${k}`} from={r.from} durationInFrames={r.frames} layout="none">
+          <Audio
+            src={resolveSrc(props.signature!.rise!.file)!}
+            volume={(f) => musicVolume(r.from + f) * beatLevel(r.from + f, beatCues, fps)}
+          />
+        </Sequence>
+      ))}
       {/* J and L cuts: a gameplay clip's own sound from `lead` frames before its picture to `tail` after,
           at the game sound's level (up in the narrator's long pauses with SOUND_GAME_POCKETS). */}
       {[...jl].map(([i, c]) => {

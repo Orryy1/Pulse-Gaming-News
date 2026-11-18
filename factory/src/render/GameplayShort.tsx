@@ -19,6 +19,9 @@ import { Captions } from "./components/Overlays.tsx";
 import { displayWords, pageCaptions } from "./timeline.ts";
 import { CONTENT_WIDTH, SAFE } from "./layout.ts";
 import type { Word } from "../voice/elevenlabs.ts";
+import type { HudOverlayProps } from "../hudreader/overlay.ts";
+import { HudOverlay } from "./components/hud/HudOverlay.tsx";
+import { ChallengeCounter, type ChallengeCounterProps } from "./components/ChallengeCounter.tsx";
 
 export type GameplayShortProps = {
   videoSrc: string; // full-screen 1080x1920, with the game's own sound
@@ -35,6 +38,10 @@ export type GameplayShortProps = {
   /** INSTANT_REPLAY: where the slowed replay of the outcome plays (seconds); a REPLAY tag shows over it. */
   replay?: { from: number; to: number };
   accent: string;
+  /** GTA 6 Day N (HUD_PIN, HUD_TICKER, HUD_END_MAP): the location pin, wanted ticker and end map, when measured. */
+  hud?: HudOverlayProps;
+  /** A challenge episode (CHALLENGE_SERIES, src/challenge.ts): the episode, the rule and the measured running count. */
+  challenge?: ChallengeCounterProps;
 };
 
 /** Whether the REPLAY tag shows at a time (pure): over the replay, never in its last few frames' fade. */
@@ -173,6 +180,8 @@ export const GameplayShort: React.FC<GameplayShortProps> = (props) => {
           </div>
         </div>
       ) : null}
+      {props.hud ? <HudOverlay hud={props.hud} /> : null}
+      {props.challenge ? <ChallengeCounter counter={props.challenge} accent={props.accent} /> : null}
       <Captions
         pages={pages}
         accent={props.accent}

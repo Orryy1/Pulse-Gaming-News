@@ -36,6 +36,7 @@ import { writerNoteProblems } from "./editorial/writernotes.ts";
 import { quoteIndexFor } from "./charquotestep.ts";
 import { cutscenePublisher } from "./assets/cutscenes.ts";
 import type { SceneIndex } from "./sceneindex/schema.ts";
+import { loadRecapIndex } from "./storyrecap.ts";
 
 type Retro = NonNullable<DocTopic["retro"]>;
 
@@ -48,7 +49,10 @@ export function retroServices<S extends { llm: Services["llm"] }>(s: S): S {
 export async function retroIndex(
   cfg: Pick<Config, "dataDir">,
   game: string,
+  /** STORY_RECAP: the owner's own recordings, joined in the order he played them (src/storyrecap.ts). */
+  recap?: { game: string; vods: string[] },
 ): Promise<SceneIndex | undefined> {
+  if (recap) return loadRecapIndex(cfg.dataDir, recap);
   return quoteIndexFor(cfg.dataDir, game);
 }
 
@@ -64,8 +68,8 @@ export async function retroOutlineFor(
   overview: string,
 ): Promise<DocOutline> {
   const retro = topic.retro!;
-  const budget = retroChapterBudget(retro.minutes);
-  const index = await retroIndex(s.cfg, topic.franchise);
+  const budget = retroChapterBudget(retro.minutes, retro.storyOnly);
+  const index = await retroIndex(s.cfg, topic.franchise, topic.recap);
   const acts = index ? storyActs(index, budget.story) : [];
   const input = {
     game: topic.franchise,
@@ -76,6 +80,7 @@ export async function retroOutlineFor(
     overview,
     acts,
     also: retro.also_wiki,
+    ...(retro.storyOnly ? { storyOnly: true } : {}),
   };
   let outline = await outlineRetro(s.llm, input);
   let problems = validateRetroOutline(outline, budget, acts.length);

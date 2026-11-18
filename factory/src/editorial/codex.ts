@@ -410,7 +410,7 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
               provider: "codex",
               site,
               ms,
-            });
+            }, o.system);
             log("info", "codex answered", {
               site,
               kind,

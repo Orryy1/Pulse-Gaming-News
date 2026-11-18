@@ -15,6 +15,8 @@ export interface ShortImage {
   beatIndex?: number; // tagged for one entry of a ranking Short
   credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows
   focusX?: number; // 0-1, the subject's place across a wide still, for the vertical crop
+  noCollage?: boolean; // hardware or merchandise (allowed only in a story about it): never in the game collage card
+  layers?: { bg: string; mid: string; fg: string }; // SHORT_PARALLAX: depth layers, drifted at their own speeds
 }
 
 export interface ShortClip {
@@ -34,6 +36,13 @@ export interface ShortClip {
 // A type alias (not an interface) so it satisfies Remotion's Record<string, unknown> props constraint.
 export type ShortProps = {
   headline: string;
+  /**
+   * The game collage card (the motif sting), placed on the words that name the game for at least 2.5 s
+   * (src/render/cleanframe.ts stingPlacement); null: no collage card at all; absent: as before, a second after the hook.
+   */
+  motifSting?: { from: number; frames: number } | null;
+  /** SHORT_OPEN_WORDS: the one or two caption words over an opening on footage, in place of the headline ("" = none). */
+  openingWords?: string;
   storyType: string;
   gameTitle: string;
   gameSubtitle: string; // "RELEASED 2023 · BETHESDA" style line for the game card

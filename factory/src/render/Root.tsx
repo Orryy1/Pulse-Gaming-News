@@ -16,6 +16,13 @@ import {
 } from "./GameplayShort.tsx";
 import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
+import { MascotSheet, SHEET_H, SHEET_W } from "./MascotSheet.tsx";
+import {
+  StreamWeekly,
+  SAMPLE_STREAM_WEEKLY,
+  STREAM_WEEKLY_FPS,
+  type StreamWeeklyProps,
+} from "./StreamWeekly.tsx";
 import {
   ConceptAvatar,
   ConceptBanner,
@@ -62,6 +69,8 @@ import {
 
 export const RemotionRoot: React.FC = () => (
   <>
+    {/* Pip the mascot: every reaction on one sheet (src/render/MascotSheet.tsx). */}
+    <Still id="PulseMascotSheet" component={MascotSheet} width={SHEET_W} height={SHEET_H} defaultProps={{ frame: 30 }} />
     <Composition
       id="PulseLab"
       component={Lab}
@@ -313,6 +322,22 @@ export const RemotionRoot: React.FC = () => (
       width={1080}
       height={1350}
       defaultProps={SAMPLE_ENGAGE}
+    />
+    {/* The weekly compilation of the owner's streams (src/streamweekly). */}
+    <Composition
+      id="PulseStreamWeekly"
+      component={StreamWeekly}
+      fps={STREAM_WEEKLY_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={Math.ceil(SAMPLE_STREAM_WEEKLY.durationSeconds * STREAM_WEEKLY_FPS)}
+      defaultProps={SAMPLE_STREAM_WEEKLY}
+      calculateMetadata={({ props }: { props: StreamWeeklyProps }) => ({
+        durationInFrames: Math.max(
+          STREAM_WEEKLY_FPS * 5,
+          Math.ceil(props.durationSeconds * STREAM_WEEKLY_FPS),
+        ),
+      })}
     />
     {/* One AI motion clip shot on its own, for previews (src/render/components/localvideo/Preview.tsx). */}
     <Composition

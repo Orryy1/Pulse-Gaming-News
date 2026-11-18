@@ -24,14 +24,32 @@ export function pinnedMoment(
   return pick ? { stamp: pick[1]!, title: pick[2]! } : undefined;
 }
 
+/**
+ * The documentary's question. A documentary is about one game, so it never asks "which X game was the one
+ * for you" (that is the every-game ranking's question and read as a broken template on the San Andreas and
+ * GTA VI documentaries). The wording rotates by title so the pins do not all open the same way.
+ */
+export function docQuestion(game: string, seed: string): string {
+  const qs = [
+    `When did you first play ${game}, and what stuck with you?`,
+    `What is the one moment from ${game} you still think about?`,
+    `Did you know how ${game} came together before this?`,
+    `Where were you when ${game} came out?`,
+    `What would you have changed about ${game}?`,
+  ];
+  let h = 0;
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return qs[h % qs.length]!;
+}
+
 /** The documentary's pinned comment; without a usable chapter it asks the question without the timestamp. */
 export function docPinnedComment(script: Script, chapters: string[]): string {
-  const game = script.game_title || "this";
+  const game = script.game_title || "this game";
   const moment = pinnedMoment(chapters);
   const at = moment
-    ? ` For us the whole story turns at ${moment.stamp} (${moment.title}): that is the part that surprised us most.`
+    ? ` The bit that surprised me most is at ${moment.stamp} (${moment.title}).`
     : "";
-  return `Which ${game} game was the one for you?${at} Sources for every chapter are in the description.`;
+  return `${docQuestion(game, script.headline || game)}${at} Sources for every chapter are in the description.`;
 }
 
 /** Spellings the comment must not use (American on, British off). */

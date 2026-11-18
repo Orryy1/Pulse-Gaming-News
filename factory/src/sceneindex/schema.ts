@@ -127,6 +127,20 @@ export interface SceneIndex {
   lines: DialogueLine[];
 }
 
+/**
+ * A game's second index, from a full no-commentary gameplay playthrough (15 Nov 2026, owner: ordinary driving and
+ * gameplay must be findable, and a cutscene movie has almost none). It lives beside the cutscene index under its own
+ * name ("Grand Theft Auto V (gameplay)" -> grand-theft-auto-v-gameplay), takes only a playthrough as its source, and
+ * its proxy is never released: downloaded once, kept, so no later Short asks YouTube for it again.
+ */
+export const GAMEPLAY_SUFFIX = " (gameplay)";
+export const gameplayIndexName = (game: string): string =>
+  isGameplayIndex(game) ? game : `${game.trim()}${GAMEPLAY_SUFFIX}`;
+export const isGameplayIndex = (name: string): boolean => name.endsWith(GAMEPLAY_SUFFIX);
+/** The game a gameplay index is of ("Grand Theft Auto V (gameplay)" -> "Grand Theft Auto V"); other names unchanged. */
+export const baseGameOf = (name: string): string =>
+  isGameplayIndex(name) ? name.slice(0, -GAMEPLAY_SUFFIX.length) : name;
+
 /** A game's folder name: lower case words joined by dashes, numerals kept ("Grand Theft Auto VI" -> "grand-theft-auto-vi"). */
 export function sceneSlug(game: string): string {
   return game

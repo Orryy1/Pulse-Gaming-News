@@ -10,6 +10,11 @@ import { publisherFootageOverride } from "./officialTrailer.ts";
 export const DEFAULT_FOOTAGE_SECONDS = 34; // seven 4.8 s clips: the hook, each beat, the take and the loop
 export const ROCKSTAR_FOOTAGE_SECONDS = 10;
 
+/** The cap for a publisher with no rule of its own: PUBLISHER_FOOTAGE_SECONDS "*=" when set, else 34 s. */
+export function defaultFootageSeconds(): number {
+  return publisherFootageOverride("*") ?? DEFAULT_FOOTAGE_SECONDS;
+}
+
 function names(app: SteamApp): string[] {
   const d = app.details ?? {};
   return [...((d.publishers ?? []) as string[]), ...((d.developers ?? []) as string[])].map((n) => String(n).toLowerCase());
@@ -19,7 +24,7 @@ function names(app: SteamApp): string[] {
 export function footageBudgetSeconds(app: SteamApp): number {
   return names(app).some((n) => n.includes("rockstar"))
     ? (publisherFootageOverride("Rockstar Games") ?? ROCKSTAR_FOOTAGE_SECONDS)
-    : DEFAULT_FOOTAGE_SECONDS;
+    : defaultFootageSeconds();
 }
 
 /** Keeps clips in order while their total stays within the budget. */

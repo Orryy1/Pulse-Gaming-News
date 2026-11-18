@@ -5,13 +5,16 @@
 # With the factory on the Mac the files stay here and src/macgameplay.ts clears them by age and free space.
 set -u
 export PATH="/opt/homebrew/bin:$PATH"
-OUT="$HOME/Videos/TinoTV VODs"
+# VOD_DIR (set by src/macgameplay.ts from src/voddir.ts): the USB drive at /Volumes/Storage when mounted, else home.
+OUT="${VOD_DIR:-$HOME/Videos/TinoTV VODs}"
 HERE="$HOME/PulseFactory/gameplay"
 NTFY="https://ntfy.sh/leonida-alerts-547db63b3fb46528bf"
-mkdir -p "$OUT" "$HERE"
+mkdir -p "$OUT" "$HERE" || OUT="$HOME/Videos/TinoTV VODs"
+mkdir -p "$OUT"
 touch "$HERE/downloaded.txt"
 notify() { curl -s -m 15 -H "Title: $1" -H "Tags: video_game" -d "$2" "$NTFY" >/dev/null 2>&1 || true; }
-free=$(df -g "$HOME" | awk 'NR==2 {print $4}')
+# The free space of the disk the VODs go to, not always the Mac's own.
+free=$(df -g "$OUT" | awk 'NR==2 {print $4}')
 if [ "$free" -lt "${VOD_FLOOR_GB:-55}" ]; then
   echo "skipped: only $free GB free"
   notify "TinoTV VODs not downloaded" "Only $free GB free on the Mac mini. Free up space so tonight's VODs can be saved before Twitch deletes them."
@@ -22,7 +25,7 @@ before=$(wc -l < "$HERE/downloaded.txt")
 yt-dlp "https://www.twitch.tv/tinotv/videos?filter=archives&sort=time" \
   --download-archive "$HERE/downloaded.txt" \
   -f "best[height<=1080]/best" \
-  -P "home:$OUT" -P "temp:/tmp/tinotv-vods" \
+  -P "home:$OUT" -P "temp:$(dirname "$OUT")/.tinotv-partial" \
   -o "%(upload_date>%Y-%m-%d)s %(title).80B [%(id)s].%(ext)s" \
   --no-part --retries 10 --fragment-retries 20 --concurrent-fragments 4 \
   --match-filters "!is_live" 2>&1 | grep -E "Destination|ERROR|already been" || true

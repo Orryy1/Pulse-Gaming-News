@@ -93,6 +93,20 @@ const RunDocSchema = z.object({
     .optional(),
   /** Confirmed facts with their primary sources (markdown, beside the run file), added to every chapter's source. */
   facts_file: z.string().optional(),
+  /** PREMIERE_DOCS (src/premiere.ts): upload private and set it as a YouTube Premiere at the slot in Studio. */
+  premiere: z.boolean().optional(),
+  /**
+   * STORY_RECAP (src/storyrecap.ts): a full-spoiler story recap from the owner's own play of this game. The entry's
+   * date is the first day it may go out; until `until` it moves to the next day while the story is not streamed yet.
+   */
+  story_recap: z
+    .object({
+      game: z.string().min(2),
+      short: z.string().min(2),
+      until: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      minutes: z.number().int().min(20).max(120).optional(),
+    })
+    .optional(),
 });
 export type RunDoc = z.infer<typeof RunDocSchema>;
 
@@ -164,7 +178,8 @@ export function docRunDue(
   timeZone: string,
 ): { at: Date; topic: DocTopic; entry: RunDoc } | undefined {
   for (const e of run) {
-    if (e.kind !== "doc") continue;
+    // A story recap waits for the story to be streamed (src/storyrecap.ts recapDue), so it is never due here.
+    if (e.kind !== "doc" || e.story_recap) continue;
     const at = localTime(e.date, e.slot, timeZone);
     const open = at.getTime() - e.make_hours_before * 3600_000;
     if (now.getTime() < open || now.getTime() >= at.getTime()) continue;
@@ -182,6 +197,7 @@ export function docRunDue(
         franchise: e.franchise,
         wiki: e.wiki,
         ...(e.format ? { format: e.format } : {}),
+        ...(e.premiere ? { premiere: true } : {}),
         ...(e.sources?.length ? { sources: e.sources } : {}),
         ...(e.search_query || e.thumb || e.chapters || e.facts_file
           ? {

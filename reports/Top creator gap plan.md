@@ -312,3 +312,25 @@ Martin asked whether the blind scores could be brought closer to 10. Tested at n
 - Research per story must carry the reason behind the news and one quote from a person involved (links to gap 5, voices, and the `no_primary_sources` note in the long-form build).
 - The newsroom should refuse search-help, obvious-answer and promotion stories before they reach a writer (links to gap 6, the premise test).
 - A spoken pass for endings and rhythm, since "human" is where real creators still lead.
+
+## Status at 22:45 on 18 Nov
+
+This replaces the "Build status" table further up.
+
+| Build | Branch and head | Checks (typecheck, full suite) | State |
+| --- | --- | --- | --- |
+| Hold the answer back, stance early | `claude/gap-payoff` 01a8e8b40 | pass, 2,512 of 2,513 | **Live on the Mac mini since 22:06**, `SHORT_PAYOFF_GATE=check` (records only) |
+| Script editor's desk | `claude/gap-desk` f7ace78e9 | pass, 2,540 of 2,541 | **Live on the Mac mini since 22:06**, `SCRIPT_DESK=check` (records only) |
+| Long openings, rankings as arguments | `claude/gap-longform` 3a9e69320 | pass, 2,514 of 2,515 | Ready. Held by the Pulse Gaming News chat until the 21 Nov documentary is rendered and scheduled, then both settings on `check` |
+| Sound and layout | `claude/gap-untemplate` e256f768b | pass, 2,575 of 2,576 | Code ready and merged up to the live code. Held until a like-for-like render (same stored Short on the live code and on this branch with every setting off) matches; that render and four proof renders are queued on the PC |
+
+The one failing test in every suite is the same known failure in existing code (`engage.test.ts`, community posts).
+
+**Off, and why:** `SHORT_PAYOFF_GATE=fix` and `SCRIPT_DESK=fix` (wait for the record-only numbers); `LONG_OPENING_CONTRACT`, `LONG_ARGUES` (wait for the 21 Nov documentary); `SHORT_SOUND_PLAN=sparse`, `SHORT_LAYOUTS`, `SHORT_FIRST_SHOT_MIN_S` (wait for the renders).
+
+**Open decisions.**
+
+- Martin: whether to raise the Claude spending cap so Claude writes Shorts scripts and the 21 Nov documentary again (about 40 US dollars to 1 December). Until then every script, and every pass of the new rules, runs on Codex.
+- Pulse Gaming News chat: whether the "Pulse check" and "My verdict:" segment stays on for Shorts that go through the editor's desk.
+
+**How each will be judged.** Payoff gate and desk: once 20 Shorts per arm have retention data, compare loss per second through the facts, average viewed and comments per 1,000 views, and read the desk score against average viewed. If the desk score does not track retention, its rubric gets re-weighted before `fix` is ever switched on.

@@ -31,6 +31,7 @@ import { packagingSettings, packagingSummary, type PackagingSettings } from "./p
 import { liveClipsSettings, liveClipsSummary, type LiveClipsSettings } from "./liveclips/settings.ts";
 import { learnSettings, learnSummary, type LearnSettings } from "./learn/settings.ts";
 import { hudSettings, hudSummary, type HudSettings } from "./hudreader/settings.ts";
+import { leverSettings, leverSummary, type LeverSettings } from "./levers/settings.ts";
 import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { streamWeeklySettings, streamWeeklySummary, type StreamWeeklySettings } from "./streamweekly/settings.ts";
@@ -1024,12 +1025,20 @@ export interface Config {
   learn: LearnSettings;
   /** HUD_READER: the GTA HUD and minimap reader for the owner's streams (src/hudreader), every output off by default. */
   hud: HudSettings;
+  /** The platform levers (src/levers): answer packaging, live autofill, stream-archive links, podcast, Instagram trials, YPP tracker. */
+  levers: LeverSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
   characterQuotes: boolean;
   characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video
   characterQuotesShort: number; // CHARACTER_QUOTES_SHORT: the most quotes in one Short (default 1; a second only when the story fits)
+  /**
+   * TRAILER_QUOTES (off by default until a preview is checked; built 15 Nov 2026): with CHARACTER_QUOTES on, an official trailer's spoken lines
+   * (src/assets/trailerlines.ts) may be quoted like cutscene lines, inside the spoiler window too (a trailer is public),
+   * and with GAME_AUDIO_BED a trailer clip whose stretch is mostly speech is heard through its isolated voice.
+   */
+  trailerQuotes: boolean;
   /** GAME_AUDIO_BED (off by default; owner, 12 Nov 2026): the footage's own game sound under the narration, ducked
    * well under the voice, up in the gaps between sentences, silent under a character quote (src/assets/gameaudio.ts). */
   gameAudioBed: boolean;
@@ -1040,6 +1049,7 @@ export interface Config {
   gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
+  peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
    * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
@@ -2037,11 +2047,13 @@ export function loadConfig(): Config {
     streamWeekly: streamWeeklySettings(process.env),
     learn: learnSettings(process.env),
     hud: hudSettings(process.env),
+    levers: leverSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
     characterQuotes: bool("CHARACTER_QUOTES", false),
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
+    trailerQuotes: bool("TRAILER_QUOTES", false),
     gameAudioBed: bool("GAME_AUDIO_BED", false),
     gameAudioShare: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_SHARE", "0.5")) || 0)),
     gameAudioUnderLufs: Math.min(-18, Math.max(-50, Number(str("GAME_AUDIO_UNDER_LUFS", "-30")) || -30)),
@@ -2049,6 +2061,7 @@ export function loadConfig(): Config {
     gameAudioTrailers: bool("GAME_AUDIO_TRAILERS", false),
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
+  peopleInsets: bool("PEOPLE_INSETS", true),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
@@ -2301,6 +2314,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     liveClips: liveClipsSummary(c.liveClips),
     learn: learnSummary(c.learn),
     hud: hudSummary(c.hud),
+    levers: leverSummary(c.levers),
     whySerial: c.whySerialEnabled
       ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",

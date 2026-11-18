@@ -18,6 +18,8 @@ import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 import { movingShareLines } from "./qa/movingshare.ts";
 import { subsReportLines } from "./subslearn/learn.ts";
 import type { SubsLearnSettings } from "./subslearn/settings.ts";
+import { readYpp, yppReportLines } from "./levers/ypp.ts";
+import type { LeverSettings } from "./levers/settings.ts";
 
 export type GrowthFormat =
   | "news"
@@ -279,7 +281,7 @@ export async function movingShareRows(
   });
 }
 
-type GrowthCfg = Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog">> & { subsLearn?: SubsLearnSettings };
+type GrowthCfg = Pick<Config, "timezone"> & Partial<Pick<Config, "socialScoreboard" | "reachReport" | "gameFetch" | "dataDir" | "gameAudioBed" | "searchShorts" | "archiveBacklog" | "levers">> & { subsLearn?: SubsLearnSettings };
 
 /** Discord's embed description holds 4,096 characters; the report keeps under this, with room to spare. */
 export const DISCORD_DESCRIPTION_MAX = 3900;
@@ -293,6 +295,8 @@ export async function growthSections(
 ): Promise<string[][]> {
   return [
     growthLines(await growthRows(db), now),
+    // YPP_TRACKER: public watch hours against the Partner Programme bars (src/levers/ypp.ts).
+    cfg.levers?.yppTracker && cfg.dataDir ? yppReportLines(readYpp(cfg.dataDir)) : [],
     // SUBS_LEARN: subscribers per 1,000 views for every format over 7 and 28 days (src/subslearn).
     cfg.subsLearn?.enabled ? ["", ...(await subsReportLines(db, now, cfg.subsLearn).catch(() => []))] : [],
     cfg.reachReport ? packagingLines(await ctrRows(db)) : [],

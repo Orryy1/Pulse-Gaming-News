@@ -316,6 +316,22 @@ export class YouTubeClient {
     return id;
   }
 
+  /** Rewrites one of the channel's own comments (comments.update, 50 quota units); a pinned comment stays pinned. */
+  async updateComment(commentId: string, text: string): Promise<void> {
+    const res = await this.fetchFn(`${API}/comments?part=snippet`, {
+      method: "PUT",
+      headers: {
+        ...(await this.auth()),
+        "content-type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify({
+        id: commentId,
+        snippet: { textOriginal: text.slice(0, 1000) },
+      }),
+    });
+    if (!res.ok) throw await apiError(res, "comments.update");
+  }
+
   /** The newest published top-level comments on a video (commentThreads.list, one quota unit). */
   /** The newest comment threads across every video on a channel (one quota unit a page of 50). */
   async listChannelComments(channelId: string, pages = 1): Promise<

@@ -268,11 +268,19 @@ export function overlaySpans(input: {
   layout: ShortLayout;
   stamps: Array<{ at: number }>;
   sting: boolean | { from: number; frames: number };
+  /**
+   * SHORT_LAYOUTS (src/render/untemplate.ts): an opening on the full-frame picture has no headline over the hook (a
+   * lower third does, for the hook only); a close that holds on the payoff has no return to the headline card.
+   * Absent, today's card at both ends.
+   */
+  shape?: { open: "card" | "footage" | "lower"; close: "card" | "hold" };
 }): Span[] {
   const { segments, words, plan, layout, stamps } = input;
   const fps = plan.fps;
-  const out: Span[] = [{ key: "hook", kind: "hook", from: 0, to: layout.hookEnd }];
-  if (layout.loopFrom < layout.totalFrames) out.push({ key: "loop", kind: "hook", from: layout.loopFrom, to: layout.totalFrames });
+  const out: Span[] = [];
+  if (input.shape?.open !== "footage") out.push({ key: "hook", kind: "hook", from: 0, to: layout.hookEnd });
+  if (layout.loopFrom < layout.totalFrames && input.shape?.close !== "hold")
+    out.push({ key: "loop", kind: "hook", from: layout.loopFrom, to: layout.totalFrames });
   stamps.forEach((st, i) => {
     const a = Math.round(st.at * fps);
     out.push({ key: `stamp${i}`, kind: "stamp", from: a, to: a + STAMP_HOLD });

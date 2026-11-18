@@ -106,6 +106,10 @@ export interface EpisodeAssets {
   /** Which side of the Shorts thumbnail test this Short is on (src/shortthumb.ts); unset when no test ran. */
   shortThumbArm?: string;
   shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
+  /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" or "v3" while the sound test runs. */
+  shortSoundArm?: "sparse" | "v3";
+  /** SHORT_LAYOUTS (src/render/untemplate.ts): the arm and the opening and closing drawn, while the layout test runs. */
+  shortShape?: { arm: "on" | "off"; open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string; skipped?: string };
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */

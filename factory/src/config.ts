@@ -1099,6 +1099,34 @@ export interface Config {
   parallax: boolean;
   /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
   shortParallaxShare: number;
+  /**
+   * The Shorts' sound plan (src/render/untemplate.ts). "v3": today's soundscape, the brand sting at the first and last
+   * frame and whooshes, tick and swell between. "sparse": no fixed sting; 0 to 4 effects, each where a card, stamp or
+   * scene arrives (about one Short in five plays none); never the same sequence as any of the newest 30 Shorts where a
+   * choice exists; the music dips for the voice's own pause before the verdict when it is 0.7 s or more. Applies to
+   * the share of Shorts in SHORT_SOUND_SPARSE_SHARE, split by episode and recorded as assets.shortSoundArm:
+   * SHORT_SOUND_PLAN, default v3.
+   */
+  shortSoundPlan: "v3" | "sparse";
+  /** Share of Shorts on the sparse sound plan while SHORT_SOUND_PLAN=sparse; 1 all: SHORT_SOUND_SPARSE_SHARE, default 0.5. */
+  shortSoundSparseShare: number;
+  /**
+   * More than one Short layout (src/render/untemplate.ts): three openings (today's headline card, the picture full
+   * frame with captions only, the headline as one lower-third line that leaves after the hook) and two closings
+   * (today's return to the headline card, holding on the payoff), chosen so no opening takes more than 40% of the
+   * newest 30; the first shot lasts at least 1.5 s. Clean-frame Shorts only (one overlay at a time). Applies to the
+   * share in SHORT_LAYOUTS_SHARE, recorded as assets.shortShape: SHORT_LAYOUTS (on|off), default off.
+   */
+  shortLayouts: boolean;
+  /** Share of Shorts given a chosen layout while SHORT_LAYOUTS=on; 1 all: SHORT_LAYOUTS_SHARE, default 0.5. */
+  shortLayoutsShare: number;
+  /**
+   * Every Short's first shot lasts at least this many seconds, its frames taken from the second shot so the length
+   * and the voice do not move. Today a Short opening on a still cuts after 0.4 s (the 12-frame brand sting over the
+   * hero still, src/render/plan.ts STING_FRAMES), a flicker on 30% of Shorts. 1.5 is the recommended value:
+   * SHORT_FIRST_SHOT_MIN_S, default 0 (off).
+   */
+  shortFirstShotMinSeconds: number;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
   /** A long video's real-world photos (Commons photos, portraits, sketches) only on the sentence they were picked for,
@@ -1296,6 +1324,12 @@ export interface Config {
   /** Render speed and resume (src/render/renderspeed.ts, 14 Nov 2026): every part off by default. */
   renderSpeed: RenderSpeed;
   browserExecutable: string;
+}
+
+/** A share setting: a number clamped to 0-1; empty or not a number, the default. */
+function shareOf(raw: string, fallback: number): number {
+  const n = Number(raw.trim());
+  return raw.trim() === "" || !Number.isFinite(n) ? fallback : Math.min(1, Math.max(0, n));
 }
 
 export function loadConfig(): Config {
@@ -2065,6 +2099,11 @@ export function loadConfig(): Config {
     hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
+    shortSoundPlan: str("SHORT_SOUND_PLAN", "v3").trim().toLowerCase() === "sparse" ? "sparse" : "v3",
+    shortSoundSparseShare: shareOf(str("SHORT_SOUND_SPARSE_SHARE", "0.5"), 0.5),
+    shortLayouts: ["on", "true", "1", "yes"].includes(str("SHORT_LAYOUTS", "off").trim().toLowerCase()),
+    shortLayoutsShare: shareOf(str("SHORT_LAYOUTS_SHARE", "0.5"), 0.5),
+    shortFirstShotMinSeconds: Math.min(4, Math.max(0, Number(str("SHORT_FIRST_SHOT_MIN_S", "0")) || 0)),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),

@@ -77,6 +77,7 @@ export type ShortProps = {
   quotes?: ShortQuote[]; // CHARACTER_QUOTES: the game's own lines, played in the silences the narration left for them
   gameBed?: import("./gamebed.ts").GameBed; // GAME_AUDIO_BED: the footage's own sound under the voice (src/assets/gameaudio.ts)
   reply?: { handle: string; text: string }; // COMMENT_REPLY_SHORTS: the viewer's comment shown as a card over the opening
+  shape?: import("./untemplate.ts").ShortShape; // SHORT_LAYOUTS: how the Short opens and closes; absent, today's card at both ends
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

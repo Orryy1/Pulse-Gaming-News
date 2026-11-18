@@ -141,6 +141,8 @@ export interface ShortGfxInput {
   sources: string;
   /** Character quotes on the timeline (seconds): they take the frame and hide the captions. */
   quotes?: Array<{ start: number; seconds: number }>;
+  /** SHORT_LAYOUTS (src/render/untemplate.ts): the opening and closing drawn; absent, today's card at both ends. */
+  shape?: { open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string };
 }
 
 // ---- Text helpers ---------------------------------------------------------------------------------
@@ -458,6 +460,7 @@ export function shortElements(input: ShortGfxInput): {
     layout,
     stamps: input.stamps,
     sting: false,
+    shape: input.shape,
   });
   const kept = input.clean ? arbitrate(spans) : spans;
   const els: GfxElement[] = [];
@@ -465,7 +468,9 @@ export function shortElements(input: ShortGfxInput): {
     let text = "";
     let kind: GfxKind = sp.kind === "card" ? "card" : (sp.kind as GfxKind);
     let segment: number | undefined;
-    if (sp.kind === "hook") text = input.headline;
+    // A lower-third opening shows its one line, not the headline card (src/render/untemplate.ts lowerLine).
+    if (sp.kind === "hook")
+      text = sp.key === "hook" && input.shape?.open === "lower" && input.shape.line ? input.shape.line : input.headline;
     else if (sp.kind === "stamp") {
       const st = input.stamps[Number(sp.key.slice(5))];
       text = [st?.text, st?.sub].filter(Boolean).join(" ");

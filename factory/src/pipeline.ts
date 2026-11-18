@@ -358,7 +358,8 @@ import {
   srtFromWords,
   type SegmentInput,
 } from "./render/timeline.ts";
-import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { buildPlan, planSfx, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { readShortMemory, shapeShort, soundShort } from "./untemplatestep.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
 import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
@@ -13464,8 +13465,25 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // GRAPHICS_AUDIT (src/qa/gfxaudit.ts, src/gfxauditstep.ts): every overlay measured as it will be drawn; in fix mode
   // cards are moved onto their words, held, trimmed or dropped, repeats and unreadable strips go, and a wrong graphic
   // that cannot be dropped fails the render. What it returns is what renders.
+  // SHORT_LAYOUTS / SHORT_SOUND_PLAN (src/untemplatestep.ts): the newest Shorts' shapes and effect sequences, read once.
+  const untemplateMemory =
+    s.cfg.shortLayouts || s.cfg.shortSoundPlan === "sparse" ? await readShortMemory(s.db, ep.id).catch(() => undefined) : undefined;
+  // SHORT_LAYOUTS: the opening and closing (before the graphics gate, which measures them); SHORT_FIRST_SHOT_MIN_S and
+  // the chosen layouts hold the first shot (today 0.4 s on a still opening: plan.ts STING_FRAMES).
+  const shape = shapeShort({
+    cfg: s.cfg,
+    id: ep.id,
+    plan,
+    clean: shortClean,
+    rumour: Boolean(script.is_rumour),
+    headline: script.headline,
+    thumbText: script.youtube?.thumb_text,
+    memory: untemplateMemory,
+    assets,
+  });
+  if (assets.shortShape) await logEvent(s.db, ep.id, "short_shape", assets.shortShape);
   const gfxIn = () =>
-    gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean });
+    gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean, shape });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
     segments.splice(0, segments.length, ...gated.segments);
@@ -13480,7 +13498,37 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
     stamps: shownStamps,
     sting: false,
+    shape,
   });
+  // SHORT_SOUND_PLAN (src/untemplatestep.ts): on the sparse side, effects only where the gated cards and stamps land.
+  if (s.cfg.shortSoundPlan === "sparse" || plan.soundPlan === "sparse") {
+    const stampSound = wordSoundCue(plan.wordLook);
+    const sound = soundShort({
+      cfg: s.cfg,
+      id: ep.id,
+      plan,
+      segments,
+      words,
+      stamps: shownStamps,
+      clean: shortClean,
+      stampSound,
+      shape,
+      memory: untemplateMemory,
+      assets,
+      v3: () => {
+        const cues = planSfx(segments, plan.totalFrames);
+        for (const st of shownStamps) {
+          const f = Math.max(0, Math.round(st.at * plan.fps) - leadFrames(stampSound.name, plan.fps));
+          if (cues.length < MAX_SFX && cues.every((c) => Math.abs(c.frame - f) >= 60))
+            cues.push({ file: sfxFile(stampSound.name), frame: f, volume: stampSound.volume });
+        }
+        return cues.sort((a, b) => a.frame - b.frame);
+      },
+    });
+    await logEvent(s.db, ep.id, "short_sound", sound);
+  }
+  if (assets.shortShape || assets.shortSoundArm || plan.soundPlan)
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -13609,6 +13657,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
         : {}),
       quoteFiles: quoteRenderFiles(assets),
+      // SHORT_LAYOUTS: the chosen opening and closing (src/render/untemplate.ts); absent, today's card at both ends.
+      ...(shape ? { shape } : {}),
       ...(gameBed
         ? {
             gameBedFile: {

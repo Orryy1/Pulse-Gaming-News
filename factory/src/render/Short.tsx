@@ -57,6 +57,7 @@ import { storyYearOf } from "./components/vertical/pulse/map.ts";
 import { VFiller, VFreezeLabel } from "./components/vertical/craft.tsx";
 import { HOUSE, SHORT_TRACK_FRAMES, spanWindow } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout } from "./cleanframe.ts";
+import { lowerLineSize, silenceDipAt } from "./untemplate.ts";
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
@@ -125,6 +126,52 @@ const ThenYear: React.FC<{ year: string; accent: string }> = ({ year, accent }) 
         {year}
       </div>
     </AbsoluteFill>
+  );
+};
+
+/**
+ * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts): the headline as one line above the captions, in from
+ * the left over 8 frames and gone by the hook's end, the picture full frame behind it.
+ */
+const LowerLine: React.FC<{ text: string; accent: string; frames: number }> = ({ text, accent, frames }) => {
+  const frame = useCurrentFrame();
+  const size = lowerLineSize(text) ?? 52;
+  const o = interpolate(frame, [0, 6, Math.max(7, frames - 8), Math.max(8, frames)], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const x = interpolate(frame, [0, 8], [-40, 0], { extrapolateRight: "clamp" });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 64,
+        top: 1000 - size - 36,
+        maxWidth: 952,
+        opacity: o,
+        transform: `translateX(${x}px)`,
+        display: "flex",
+        alignItems: "stretch",
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ width: 10, background: accent }} />
+      <div
+        style={{
+          background: "rgba(5,5,7,0.78)",
+          padding: "14px 22px 12px",
+          fontFamily: DISPLAY,
+          fontSize: size,
+          lineHeight: 1.05,
+          color: "#fff",
+          whiteSpace: "nowrap",
+          textTransform: "uppercase",
+          letterSpacing: 0.5,
+        }}
+      >
+        {text}
+      </div>
+    </div>
   );
 };
 
@@ -514,10 +561,10 @@ export const Short: React.FC<ShortProps> = (props) => {
     () =>
       clean
         ? arbitrate(
-            overlaySpans({ segments: props.segments, words, plan, layout, stamps: props.stamps ?? [], sting: stingOn && stingAt ? stingAt : false }),
+            overlaySpans({ segments: props.segments, words, plan, layout, stamps: props.stamps ?? [], sting: stingOn && stingAt ? stingAt : false, shape: props.shape }),
           )
         : undefined,
-    [clean, props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames],
+    [clean, props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.shape],
   );
   /** Where an overlay is drawn: as planned, or on a clean Short its kept stretch (undefined: not drawn). */
   const placed = (key: string, from: number, len: number): { from: number; len: number } | undefined => {
@@ -531,10 +578,16 @@ export const Short: React.FC<ShortProps> = (props) => {
   const cardAt = (i: number) =>
     sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
+  // SHORT_LAYOUTS: the lower third is the opening's one line of text, so the label sits out; a held close never
+  // returns to frame 0, so the label does not come back for it.
+  const openShape = props.shape?.open ?? "card";
+  const closeShape = props.shape?.close ?? "card";
   const labelOpacity = !clean
     ? 1
     : frame >= layout.loopFrom
-      ? 1
+      ? closeShape === "hold" ? 0 : 1
+      : openShape === "lower"
+        ? 0
       : interpolate(frame, [OPENING_LABEL_FRAMES - 10, OPENING_LABEL_FRAMES], [1, 0], {
           extrapolateLeft: "clamp",
           extrapolateRight: "clamp",
@@ -597,6 +650,8 @@ export const Short: React.FC<ShortProps> = (props) => {
       fadeIn *
       (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) *
       (inQuote(quoteSpans, f) ? 0.45 : 1) *
+      // SHORT_SOUND_PLAN=sparse: the bed dips through the silence beat before the verdict.
+      silenceDipAt(plan.silences, f) *
       // GAME_AUDIO_BED: the music steps back where the game itself is heard.
       (props.gameBed ? musicDipAt(props.gameBed.spans, f, fps, props.gameBed.dip) : 1)
     );
@@ -656,6 +711,14 @@ export const Short: React.FC<ShortProps> = (props) => {
 
       {/* The headline is fully rendered at frame 0 (the thumbnail) and returns, pixel-identical, for the loop.
           On the new-look Shorts it is a thumbnail-grade poster over the hero art (components/HookPoster.tsx). */}
+      {openShape === "lower" && props.shape?.line ? (
+        <Sequence durationInFrames={hookEnd} layout="none">
+          <AbsoluteFill style={{ opacity: headlineAside ? 0 : 1 }}>
+            <LowerLine text={props.shape.line} accent={accent} frames={hookEnd} />
+          </AbsoluteFill>
+        </Sequence>
+      ) : null}
+      {openShape !== "card" ? null : (
       <Sequence durationInFrames={posterEnd} layout="none">
         {/* On a clean Short the headline steps aside while a word moment holds, then comes back. */}
         <AbsoluteFill style={{ opacity: headlineAside ? 0 : 1 }}>
@@ -682,7 +745,8 @@ export const Short: React.FC<ShortProps> = (props) => {
         )}
         </AbsoluteFill>
       </Sequence>
-      {loopStart < durationInFrames ? (
+      )}
+      {loopStart < durationInFrames && closeShape === "card" ? (
         <Sequence
           from={Math.max(loopStart, durationInFrames - 2 * fps)}
           durationInFrames={Math.min(durationInFrames - loopStart, 2 * fps)}

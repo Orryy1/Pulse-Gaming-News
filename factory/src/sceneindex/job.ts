@@ -435,7 +435,10 @@ export async function sceneIndexTick(
     )().catch(() => Infinity);
     // 19 Nov 2026: a launch fetch (GTA VI) waited all afternoon at 43 GB free. Its 480p proxy of a movie part is a
     // few GB, so a launch turn keeps 3 GB above the floor; other turns keep 6.
-    if (free < cfg.macMinFreeGb + (job.fetch ? 3 : 6)) {
+    // A game whose proxy is already on disk only describes and transcribes it (no big download), so its turn needs
+    // no margin above the floor (19 Nov 2026: the GTA VI movie, downloaded at 17:12, then waited at 42 GB free).
+    const haveProxy = fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, job.game), "proxy.mp4"));
+    if (free < cfg.macMinFreeGb + (haveProxy ? 0 : job.fetch ? 3 : 6)) {
       log("warn", "scene index: not enough free disk for a turn", {
         freeGb: Math.round(free),
       });

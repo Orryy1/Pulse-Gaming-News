@@ -433,7 +433,9 @@ export async function sceneIndexTick(
         return (s.bavail * s.bsize) / 1e9;
       })
     )().catch(() => Infinity);
-    if (free < cfg.macMinFreeGb + 6) {
+    // 19 Nov 2026: a launch fetch (GTA VI) waited all afternoon at 43 GB free. Its 480p proxy of a movie part is a
+    // few GB, so a launch turn keeps 3 GB above the floor; other turns keep 6.
+    if (free < cfg.macMinFreeGb + (job.fetch ? 3 : 6)) {
       log("warn", "scene index: not enough free disk for a turn", {
         freeGb: Math.round(free),
       });

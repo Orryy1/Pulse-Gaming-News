@@ -3,7 +3,7 @@
 //
 // Paid (spends model credit; the owner approves first):
 //   npx tsx src/tools/room-proof.ts <stories.json> <out-dir> --yes-spend --max-usd <dollars> [--model <id>]
-//     [--mid <id>] [--ids a,b] [--rounds 2] [--min 8] [--no-viewer] [--links] [--no-fetch] [--layout]
+//     [--mid <id>] [--ids a,b] [--rounds 2] [--min 8] [--no-viewer] [--no-voice] [--links] [--no-fetch] [--layout]
 // <stories.json>: rows of episodes ({ id, story_json }, the episodes table or /admin/export) or story clusters
 // ({ hash, headline, items, ... }). For each: the sources fetched as the factory fetches them (or the feed summaries
 // with --no-fetch), the fact pack, the angles, the three drafts, both critics' marks, each edit round and the final
@@ -76,7 +76,16 @@ export function describeRun(id: string, run: RoomRun, script?: Script): string {
   if (run.pick) out.push(`PICK: ${run.pick}`);
   for (const r of run.rounds)
     out.push(
-      `ROUND ${r.round}: mean ${r.mean ?? "n/a"}${r.editor ? ` editor ${r.editor.overall}` : ""}${r.viewer ? ` viewer ${r.viewer.overall}` : ""}${r.refused ? ` refused: ${r.refused.join(" ")}` : ""}`,
+      `ROUND ${r.round}${r.version ? ` ${r.version}` : ""}: mean ${r.mean ?? "n/a"}${r.editor ? ` editor ${r.editor.overall}` : ""}${r.viewer ? ` viewer ${r.viewer.overall}` : ""}${r.refused ? ` refused: ${r.refused.join(" ")}` : ""}`,
+    );
+  if (run.won) out.push(`KEPT: ${run.won}`);
+  if (run.edit?.refused)
+    out.push(`EDIT REFUSED: ${run.edit.refused.join(" ")}`);
+  if (run.voice?.refused)
+    out.push(`VOICE REFUSED: ${run.voice.refused.join(" ")}`);
+  if (run.drop)
+    out.push(
+      `DROP (editor ${run.drop.editor}, viewer ${run.drop.viewer}): ${run.drop.why}`,
     );
   if (run.final)
     out.push(`FINAL: ${run.final.title}\n  ${run.final.narration}`);
@@ -188,6 +197,7 @@ async function main(
           scriptRoomRounds: Number(flag("--rounds") ?? 2),
           scriptRoomMin: Number(flag("--min") ?? 8),
           scriptRoomLinks: args.includes("--links"),
+          scriptRoomVoice: !args.includes("--no-voice"),
         },
         cluster,
         articles,
@@ -241,7 +251,7 @@ if (isMain) {
   const max = Number(flag("--max-usd"));
   if (!args[0] || !args[1] || args[0].startsWith("--")) {
     console.error(
-      "usage: room-proof.ts <stories.json> <out-dir> --yes-spend --max-usd <dollars> [--model <id>] [--mid <id>] [--ids a,b] [--rounds 2] [--min 8] [--no-viewer] [--links] [--no-fetch] [--layout]",
+      "usage: room-proof.ts <stories.json> <out-dir> --yes-spend --max-usd <dollars> [--model <id>] [--mid <id>] [--ids a,b] [--rounds 2] [--min 8] [--no-viewer] [--no-voice] [--links] [--no-fetch] [--layout]",
     );
     process.exit(2);
   }

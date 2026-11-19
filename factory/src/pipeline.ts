@@ -725,6 +725,7 @@ import {
   roomControlRecord,
   roomEvent,
   roomWriteStep,
+  recentShapesFrom,
   type RoomStepInput,
 } from "./roomstep.ts";
 import { FEEDS } from "./discovery/feeds.ts";
@@ -7818,8 +7819,24 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const said = [narrationOf(sc), sc.headline, sc.youtube.title, ...sc.beats.map((b) => cardText(b.visual))];
     return `${newsVault.brief}${newsVault.verified(said)}`.trim() || undefined;
   };
+  // SCRIPT_ROOM's variety memory: the kept shapes of the last room Shorts, from their records ("on" only).
+  const roomRecent = roomOn
+    ? recentShapesFrom(
+        (
+          await s.db
+            .query<{ room: RoomRecord | null }>(
+              `SELECT script_json->'room' AS room FROM episodes
+                WHERE id <> $1 AND script_json->'room'->>'wrote' = 'true'
+                ORDER BY created_at DESC LIMIT 8`,
+              [ep.id],
+            )
+            .catch(() => [])
+        ).map((r) => r.room),
+      )
+    : [];
   // SCRIPT_ROOM's inputs: the story's sources, the vault and the length lane, as the normal writer has them.
   const roomInput = (): RoomStepInput => ({
+    recent: roomRecent,
     llm: s.llm,
     cfg: s.cfg,
     cluster,

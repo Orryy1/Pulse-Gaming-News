@@ -360,6 +360,7 @@ import {
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { planPanelStep } from "./planpanelstep.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
 import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
@@ -13726,6 +13727,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);
+  // SHOT_PLAN_PANEL (src/planpanelstep.ts, off by default): a blind picture editor critic reads the plan as text before
+  // any render; under "on" up to three plans from the same media are marked and the best kept. A red plan is never
+  // kept, so the rebuild below and every later gate see the panel's plan exactly as they would any other.
+  if (!assets.plan && s.cfg.shotPlanPanel !== "off") {
+    plan = await planPanelStep(s, ep, {
+      assets,
+      script,
+      words,
+      segments,
+      input: planInput,
+      plan,
+      rubric: rubricFor,
+      segmentsOf: segmentInputs,
+      gameAudio: { on: gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) },
+    });
+    rubric = rubricFor(plan);
+  }
   if (rubric.grade === "red" && !assets.plan) {
     log("warn", "plan rejected by rubric, rebuilding", {
       episode: ep.id,

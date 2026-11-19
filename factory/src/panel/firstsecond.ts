@@ -353,12 +353,13 @@ export function alternativeProblems(
   const newFigures = figures(t).filter((f) => !have.has(f));
   if (newFigures.length)
     out.push(`a figure the Short does not say: ${newFigures.join(", ")}`);
-  const lower = scriptText.toLowerCase();
-  const newNames = capitalised(t).filter(
-    (n) => !lower.includes(n.toLowerCase()),
-  );
-  if (newNames.length)
-    out.push(`a name the Short does not say: ${newNames.join(", ")}`);
+  // A sentence's capitalised words past the first stand in for names (a first-frame text is in title case, so its
+  // figures and the critics are its guard).
+  if (kind === "sentence") {
+    const have = new Set(contentTokens(scriptText));
+    const newNames = capitalised(t).filter((n) => !contentTokens(n).every((w) => have.has(w)));
+    if (newNames.length) out.push(`a name the Short does not say: ${newNames.join(", ")}`);
+  }
   if (!premiseOnly(t, script)) out.push("gives the held answer away");
   return out;
 }

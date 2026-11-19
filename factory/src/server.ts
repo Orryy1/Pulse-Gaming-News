@@ -950,6 +950,30 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     // Every note the factory's own checks wrote about its videos (the feedback the Discord posts carry):
     // the visual check's verdict, problems and notes, the quality rubric, narration faults, dropped media
     // and failed steps. Read-only, for reviewing what keeps coming up.
+    // Read-only: the factory's own event records of chosen kinds (19 Nov 2026: the script desk and payoff gate write
+    // only events, and the embedded database cannot be read while the factory runs). kinds=desk,payoff_gate&hours=24
+    if (url.pathname === "/admin/events" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const kinds = (url.searchParams.get("kinds") ?? "")
+        .split(",")
+        .map((k) => k.trim())
+        .filter((k) => /^[a-z_]{1,40}$/.test(k))
+        .slice(0, 12);
+      const hours = Math.min(24 * 30, Math.max(1, Number(url.searchParams.get("hours") ?? 24) || 24));
+      if (!kinds.length) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: "kinds is required" }));
+        return;
+      }
+      const rows = await db.query(
+        `SELECT v.episode_id, v.kind, v.created_at, v.detail, e.status, e.youtube_video_id, e.story_json->>'headline' AS headline
+           FROM events v LEFT JOIN episodes e ON e.id = v.episode_id
+          WHERE v.kind = ANY($1) AND v.created_at > now() - make_interval(hours => $2)
+          ORDER BY v.id`,
+        [kinds, hours],
+      );
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(rows));
+      return;
+    }
     if (url.pathname === "/admin/qa-notes" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(

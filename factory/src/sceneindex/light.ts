@@ -13,6 +13,7 @@
 
 import { execFile, spawn } from "node:child_process";
 import { guardedYt } from "../lib/ytguard.ts";
+import { envSwitch, signedPull, type SignedPullOptions } from "../lib/ytsignin.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -449,20 +450,33 @@ export interface LightSettings {
   ocr: boolean;
 }
 
+/**
+ * SIGNED_LIGHT_INDEX (default off; 19 Nov 2026): an age-gated upload's details and captions are read again through
+ * the signed-in download account (skip-download only), within the clips' share of its budget (YT_SIGNED_CLIP_SHARE).
+ * Comments and everything else stay anonymous; Pulse's own videos are never signed in (src/lib/ytsignin.ts).
+ */
+export function lightSignedOptions(env: NodeJS.ProcessEnv = process.env): SignedPullOptions {
+  return { enabled: envSwitch("SIGNED_LIGHT_INDEX", env), what: "light index", purpose: "clip" };
+}
+
 async function ytJson(
   ytdlp: string,
   args: string[],
   timeout = 120_000,
+  /** The upload's details: may be read signed in when age-gated (SIGNED_LIGHT_INDEX). */
+  signed = false,
 ): Promise<Record<string, unknown>> {
   const a = [...YTDLP_TEXT.args, "--no-warnings", ...args];
-  const { stdout } = await guardedYt(ytdlp, a, () =>
-    exec(ytdlp, a, {
-      timeout,
-      maxBuffer: 256 * 1024 * 1024,
-      env: YTDLP_TEXT.env,
-      windowsHide: true,
-    }),
-  );
+  const once = (x: string[]) =>
+    guardedYt(ytdlp, x, () =>
+      exec(ytdlp, x, {
+        timeout,
+        maxBuffer: 256 * 1024 * 1024,
+        env: YTDLP_TEXT.env,
+        windowsHide: true,
+      }),
+    );
+  const { stdout } = signed ? await signedPull(a, once, lightSignedOptions()) : await once(a);
   return JSON.parse(stdout) as Record<string, unknown>;
 }
 
@@ -471,12 +485,17 @@ export function uploadInfo(
   videoId: string,
   ytdlp: string,
 ): Promise<Record<string, unknown>> {
-  return ytJson(ytdlp, [
-    "--no-playlist",
-    "--skip-download",
-    "--dump-single-json",
-    `https://www.youtube.com/watch?v=${videoId}`,
-  ]);
+  return ytJson(
+    ytdlp,
+    [
+      "--no-playlist",
+      "--skip-download",
+      "--dump-single-json",
+      `https://www.youtube.com/watch?v=${videoId}`,
+    ],
+    120_000,
+    true,
+  );
 }
 
 /** True when the upload has English captions, its own or automatic (pure). */
@@ -517,13 +536,19 @@ async function fetchCaptions(
       path.join(work, "cap"),
       `https://www.youtube.com/watch?v=${videoId}`,
     ];
-  await guardedYt(ytdlp, capArgs, () =>
-    exec(ytdlp, capArgs, {
-      timeout: 180_000,
-      env: YTDLP_TEXT.env,
-      windowsHide: true,
-      maxBuffer: 16 * 1024 * 1024,
-    }),
+  // An age-gated upload's captions may be read signed in, like its details (SIGNED_LIGHT_INDEX; skip-download).
+  await signedPull(
+    capArgs,
+    (x) =>
+      guardedYt(ytdlp, x, () =>
+        exec(ytdlp, x, {
+          timeout: 180_000,
+          env: YTDLP_TEXT.env,
+          windowsHide: true,
+          maxBuffer: 16 * 1024 * 1024,
+        }),
+      ),
+    lightSignedOptions(),
   );
   const file = (await fs.readdir(work)).find(
     (f) => f.startsWith("cap.") && f.endsWith(".json3"),

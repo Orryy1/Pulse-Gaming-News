@@ -1227,6 +1227,11 @@ export interface Config {
    */
   ytSignedClipShare: number;
   /**
+   * SIGNED_LIGHT_INDEX (default off): the light index reads an age-gated upload's details and captions again signed in
+   * (skip-download only), within YT_SIGNED_CLIP_SHARE (src/sceneindex/light.ts). Read from the environment there.
+   */
+  signedLightIndex: boolean;
+  /**
    * TREND_FEED (default off): every 3 hours the download account's subscriptions feed (YTDLP_COOKIES_FILE, at most 2
    * signed-in calls, metadata only) is read for new gaming uploads, kept as labelled story leads for discovery
    * (src/discovery/trendfeed.ts). TREND_CHANNELS: the channel handles the account should subscribe to
@@ -2255,6 +2260,7 @@ export function loadConfig(): Config {
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
     signedClips: bool("SIGNED_CLIPS", false),
+    signedLightIndex: bool("SIGNED_LIGHT_INDEX", false),
     ageAlarm: bool("AGE_ALARM", false),
     trendFeed: bool("TREND_FEED", false),
     trendChannels: trendChannelList(process.env.TREND_CHANNELS),

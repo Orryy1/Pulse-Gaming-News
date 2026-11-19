@@ -359,6 +359,38 @@ export function guessKind(
 export const weightKey = (storyType: string, format: string) =>
   `${storyType}|${format}`;
 
+/**
+ * The weekly report's multiplier for a strong-identity fandom (LOOP_FANDOM_WEIGHT, 19 Nov audit): set from YouTube's
+ * "strong-identity fandom" pattern while its evidence is strong, in the same bounds as the story-type keys. It is a
+ * key of its own, never a "type|format" pair, so storyWeight never reads it.
+ */
+export const FANDOM_WEIGHT_KEY = "strong_fandom";
+
+/** The weights without the fandom key: what the news slot uses while LOOP_FANDOM_WEIGHT is off. */
+export function withoutFandomWeight(
+  weights: Record<string, number>,
+): Record<string, number> {
+  const { [FANDOM_WEIGHT_KEY]: _fandom, ...rest } = weights;
+  return rest;
+}
+
+/**
+ * A news story's whole pick multiplier: its story type and format, times the fandom key when the story is in a
+ * strong-identity fandom; the product stays inside WEIGHT_MIN to WEIGHT_MAX.
+ */
+export function pickWeight(
+  weights: Record<string, number>,
+  storyType: string,
+  format: string,
+  fandom: boolean,
+): number {
+  const f = fandom ? (weights[FANDOM_WEIGHT_KEY] ?? 1) : 1;
+  return Math.min(
+    WEIGHT_MAX,
+    Math.max(WEIGHT_MIN, storyWeight(weights, storyType, format) * f),
+  );
+}
+
 /** The pick multiplier for a story type and format; 1.0 when the report has none. */
 export function storyWeight(
   weights: Record<string, number>,

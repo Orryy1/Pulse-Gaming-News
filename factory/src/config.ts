@@ -303,6 +303,9 @@ export interface Config {
   whySerialEnabled: boolean;
   /** The serial Why's seconds (WHY_TARGET_SECONDS, "45-60"); applies only with WHY_SERIAL_ENABLED; undefined = unusable. */
   whyTargetSeconds: LengthBand | undefined;
+  /** The Why length test (src/shortlengths.ts lengthArm, 19 Nov audit): on even UTC days The Why and The GTA File run
+   * 30-35 s instead of WHY_TARGET_SECONDS, the arm recorded on each script for the weekly loop: WHY_LENGTH_AB, default off. */
+  whyLengthAb: boolean;
   /** Share of Why slots, 0-1, that pick only from the home shelf (WHY_HOME_SHARE; serial only); 0 = off. */
   whyHomeShare: number;
   /** The home shelf's franchises (WHY_HOME_FRANCHISES, "|" between them; names from HOME_SHELF). */
@@ -841,6 +844,18 @@ export interface Config {
   /** The report's story-pick multiplier (0.85 to 1.15, moved 0.05 a week at most) on the news slot's candidates; breaking
    * news never: ANALYTICS_LOOP_SCORING, default off. */
   analyticsLoopScoring: boolean;
+  /** The weekly loop's "strong_fandom" pick multiplier (src/loopfeedback.ts FANDOM_WEIGHT_KEY), set from YouTube's
+   * strong-identity fandom pattern while its evidence is strong, inside the same 0.85 to 1.15; applied to the news slot's
+   * candidates only with ANALYTICS_LOOP_SCORING too: LOOP_FANDOM_WEIGHT, default off. */
+  loopFandomWeight: boolean;
+  /** The loop judges by median views (19 Nov audit, upgrade 2): the fit test, the TikTok fit boost and the capped platforms'
+   * favours on middle views with 15 or more a side, series Shorts counted in the fit test, a test ended "inconclusive" after
+   * 2 extensions, and a retention lesson only from 15 or more Shorts: LOOP_MEDIAN_JUDGE, default off. */
+  loopMedianJudge: boolean;
+  /** The main news Short writer split by value (19 Nov audit, upgrade 4): Claude for fit-length (35 s or under), strong-fandom
+   * and series Shorts, Codex for the rest, whatever CODEX_CALLS says (needs CODEX_LLM and the runner); the writer is
+   * recorded on every script either way: WRITER_SPLIT, default off. */
+  writerSplit: boolean;
   /** Retention curve learning (src/retentionlearn.ts): every Short and long video's audience retention curve read once it
    * is 48 hours old, each drop lined up with what was on screen and in the narration, and the patterns across videos
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
@@ -1680,6 +1695,7 @@ export function loadConfig(): Config {
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
     whySerialEnabled: bool("WHY_SERIAL_ENABLED", false),
     whyTargetSeconds: parseBand(str("WHY_TARGET_SECONDS", "45-60")),
+    whyLengthAb: bool("WHY_LENGTH_AB", false),
     whyHomeShare: Math.min(1, Math.max(0, Number(str("WHY_HOME_SHARE", "0")) || 0)),
     whyHomeFranchises: parseHomeFranchises(
       str("WHY_HOME_FRANCHISES", "Grand Theft Auto|Resident Evil"),
@@ -2036,6 +2052,9 @@ export function loadConfig(): Config {
     analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
+    loopFandomWeight: bool("LOOP_FANDOM_WEIGHT", false),
+    loopMedianJudge: bool("LOOP_MEDIAN_JUDGE", false),
+    writerSplit: bool("WRITER_SPLIT", false),
     retentionLearn: bool("RETENTION_LEARN", false),
     retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),
@@ -2512,7 +2531,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     hud: hudSummary(c.hud),
     levers: leverSummary(c.levers),
     whySerial: c.whySerialEnabled
-      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
+      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}${c.whyLengthAb ? " (30-35s on even UTC days, WHY_LENGTH_AB)" : ""}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",
     gtaFile: gtaFileSummary(c),
     gtaDaily: gtaDailySummary(c),

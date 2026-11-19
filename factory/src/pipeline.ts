@@ -412,8 +412,18 @@ import {
   guessKind,
   loopLessonLines,
   loopWeights,
-  storyWeight,
+  pickWeight,
+  strongFandom,
+  withoutFandomWeight,
 } from "./loopfeedback.ts";
+import {
+  captureCalls,
+  writerRecord,
+  writerSplit,
+  type WriterProvider,
+} from "./editorial/authorship.ts";
+import { siteListed, withRoute } from "./editorial/codex.ts";
+import type { UsageLine } from "./editorial/llm.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { directorStep, retrainTick } from "./retentionstep.ts";
 import {
@@ -546,10 +556,13 @@ import {
 } from "./storyrecap.ts";
 import { sceneSlug as recapSlug } from "./sceneindex/schema.ts";
 import {
+  lengthArm,
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
+  withLengthArm,
   withWhyTarget,
+  type LengthArm,
   type ShortLengths,
 } from "./shortlengths.ts";
 import { inboxFiles } from "./assets/library.ts";
@@ -649,6 +662,7 @@ import {
   seriesPulseCheckNote,
 } from "./editorial/newssegment.ts";
 import {
+  isSerial,
   FLOOR_LANES,
   breakingAllowed,
   floorBackFactor,
@@ -2161,12 +2175,19 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
   // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
   // Breaking news above never passes through it: speed matters more than format.
-  const weights = loopWeights(cfg, now);
+  // LOOP_FANDOM_WEIGHT: the report's strong-fandom key lifts (or lowers) a story in a strong-identity fandom too.
+  const loopW = loopWeights(cfg, now);
+  const weights = cfg.loopFandomWeight ? loopW : withoutFandomWeight(loopW);
   const weighted = (x: (typeof eligible)[number]) => {
     const k = guessKind(x.cluster.headline, x.cluster.rumourSignals);
     return (
       breakingScore(x.cluster, x.sighting) *
-      storyWeight(weights, k.storyType, k.format)
+      pickWeight(
+        weights,
+        k.storyType,
+        k.format,
+        strongFandom({ title: x.cluster.headline, game: x.cluster.gameHint }),
+      )
     );
   };
   const candidates = (
@@ -2200,15 +2221,35 @@ export async function franchiseOwnFootage(
   return Boolean(franchiseClip(file, await inboxFiles(cfg.gameplayRoot)));
 }
 
-/** The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS). */
+/**
+ * The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS), and on
+ * a short-arm day of the Why length test (WHY_LENGTH_AB) The Why and The GTA File at 30-35 s.
+ */
 export function lengthsFor(
   cfg: Pick<Config, "shortLengths" | "whySerialEnabled" | "whyTargetSeconds">,
+  arm?: LengthArm,
 ): ShortLengths {
-  return withWhyTarget(
-    cfg.shortLengths,
-    cfg.whySerialEnabled,
-    cfg.whyTargetSeconds,
+  return withLengthArm(
+    withWhyTarget(cfg.shortLengths, cfg.whySerialEnabled, cfg.whyTargetSeconds),
+    arm,
   );
+}
+
+/**
+ * A Short's arm in the Why length test (WHY_LENGTH_AB): the one on its script once written, so the voice step and a
+ * rewrite keep it; else, for a serial Why or GTA File part, the UTC day of its slot (or of its making). Undefined for
+ * every other Short, and while the test or the serial is off.
+ */
+export function lengthArmFor(
+  cfg: Pick<Config, "whyLengthAb" | "whySerialEnabled" | "whyTargetSeconds">,
+  ep: Pick<Episode, "lane" | "story_json" | "script_json" | "slot_at" | "created_at">,
+): LengthArm | undefined {
+  if (ep.script_json?.length_arm) return ep.script_json.length_arm.arm;
+  if (!cfg.whyLengthAb || !cfg.whySerialEnabled || !cfg.whyTargetSeconds) return undefined;
+  const format = lengthFormatOf(ep);
+  if (format !== "why" && format !== "gta_file") return undefined;
+  const day = ep.slot_at ?? ep.created_at;
+  return day ? lengthArm(new Date(day).toISOString()) : undefined;
 }
 
 /** A Why's place in the numbered series (WHY_SERIAL_ENABLED); undefined when the serial is off. */
@@ -7709,7 +7750,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       )
     : [];
   // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
-  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
+  // WHY_LENGTH_AB: on a short-arm day a serial Why or GTA File part is written to 30-35 s; the arm goes on the script.
+  const lengthAb = lengthArmFor(s.cfg, ep);
+  const length = shortTarget(lengthsFor(s.cfg, lengthAb), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
     // SHORT_PAYOFF_GATE's arm may keep a source's own quoted question ("Wait, what's this?"); elsewhere as before.
@@ -7946,9 +7989,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         await logEvent(s.db, ep.id, "style_warnings", { problems: room.warnings, room: true }).catch(() => undefined);
     }
   }
+  // WRITER_SPLIT (src/editorial/authorship.ts): Claude for the Shorts most likely to travel, Codex for the rest. The
+  // writer is recorded on the script either way, from the model calls the main draft made.
+  const split = s.cfg.writerSplit
+    ? writerSplit({
+        maxSeconds: length?.seconds.max,
+        strongFandom: strongFandom({ title: cluster.headline, game: cluster.gameHint }),
+        serial: isSerial(series),
+      })
+    : undefined;
+  const writerCalls: UsageLine[] = [];
   if (!roomWrote)
   for (let attempt = 0; attempt < 2; attempt++) {
-    script = await writeScript(s.llm, cluster, articles, {
+    script = await captureCalls(writerCalls, () => withRoute(split?.route, async () => writeScript(s.llm, cluster, articles, {
       // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
       // vault's brief until 14 Nov 2026, so most invented-credit drops were stories the vault knew nothing about).
       vault: newsVault?.brief || CREDIT_RULE,
@@ -7984,7 +8037,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         : cluster.reply
           ? { site: "reply.write" }
           : {}),
-    });
+    })));
     // LEARN_HOOKS (src/learn/breadth.ts): 4 to 6 hooks from distinct angle briefs in one call, refused when they break a
     // house rule the draft kept or read like the last 30 hooks, scored and clarity-judged; the winner is fact-checked
     // below like every other word. A plain news Short's first draft only; never a holdout Short.
@@ -8573,6 +8626,16 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
   const tag = seriesTagFor(ep, script);
   if (tag) script = { ...script, series: tag };
+  // Who wrote it (always recorded): the main draft's calls; a room-written script is the room's.
+  if (!roomWrote) {
+    const site = cluster.search ? SEARCH_WRITE_SITE : cluster.reply ? "reply.write" : "editorial";
+    const intended: WriterProvider | undefined =
+      split?.route ??
+      (s.cfg.codexLlm ? (siteListed(site, s.cfg.codexCalls) ? "codex" : "claude") : "claude");
+    script = { ...script, writer: writerRecord(writerCalls, intended, split?.why) };
+  }
+  if (lengthAb && length)
+    script = { ...script, length_arm: { arm: lengthAb, band: `${length.seconds.min}-${length.seconds.max}` } };
   if (lineArm)
     script = {
       ...script,
@@ -9273,7 +9336,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
           ? s.cfg.docMaxSeconds
           : s.cfg.longformMaxSeconds
         : // SHORT_LENGTHS and WHY_TARGET_SECONDS: a lane past the minute needs room; every other Short keeps 58 s.
-          (shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep))?.capSeconds ??
+          (shortTarget(lengthsFor(s.cfg, lengthArmFor(s.cfg, ep)), lengthFormatOf(ep))?.capSeconds ??
           SHORT_NARRATION_CAP_SECONDS);
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(

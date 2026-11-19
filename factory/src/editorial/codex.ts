@@ -7,6 +7,7 @@
 // CODEX_CALLS; the news lane's Short writing stays on Claude because it sits on a slot's critical path and
 // Codex takes seconds to minutes.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -23,6 +24,19 @@ import {
 } from "./llm.ts";
 
 export type CodexKind = "quick" | "bulk" | "code" | "review" | "frontier";
+
+const routeHint = new AsyncLocalStorage<"claude" | "codex">();
+
+/**
+ * WRITER_SPLIT: every call fn makes goes to this provider whatever CODEX_CALLS says (Claude's limit still sends a call
+ * to Codex, and a Codex failure still falls back to Claude). Undefined: the usual routing. Ignored with Codex off.
+ */
+export function withRoute<T>(
+  route: "claude" | "codex" | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return route ? routeHint.run(route, fn) : fn();
+}
 
 /** What one Codex run is asked to do; the runner (real or a test double) answers with the raw text. */
 export interface CodexRequest {
@@ -479,6 +493,11 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     ): Promise<z.infer<S>> {
       const images = imagesOf(o.content);
       const site = siteOf(o.site);
+      const hint = opts.enabled ? routeHint.getStore() : undefined;
+      if (hint === "claude" && !claudeOut())
+        return claude(o, site, images.length > 0);
+      if (hint === "codex" && (images.length === 0 || opts.vision))
+        return viaCodex(o, site, images);
       const routed = routeToCodex(opts, site, images.length > 0, claudeOut());
       const outageRoute =
         !routed &&

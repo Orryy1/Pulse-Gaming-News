@@ -2,6 +2,25 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 19 Nov 2026, 23:10 UK: a ranking that fails its fact-check on one or two small lines gets them mended instead of being thrown away
+
+**Change:** when a ranking, "every game" or long ranking script still fails the fact-check after the writer's one rewrite, and only one or two lines are at fault, the factory now mends those lines itself, without a model. A rounded figure the source doesn't round gets "about" in front ("now costs about $30"). An unsupported side line ("Most lists rank GTA 5 higher") is cut: the whole sentence, or the clause before "but". It never cuts the hook, a rank line ("In third place..."), a whole beat or more than 15% of the words. The mended script is then fact-checked again, and only a clean pass saves the Short; otherwise it fails as before. Branch `claude/engine-factrepair` (5fdcaff4c, 328cfaaec), merged into `claude/stage` (328cfaaec) and `C:\PulseFactory`. **Not deployed yet:** at 23:10 the 23:30 slot, then the 01:00 and 03:00 GTA launch slots, left no safe 30-minute gap. The next run deploys it.
+
+**Evidence:**
+
+- Tonight three ranking Shorts in a row were thrown away over one line each, leaving the 20:00 ranking slot empty. "Ranking every 3D GTA map" at 18:13 failed on "now costs thirty dollars" (Steam says $29.99). Both GTA protagonist rankings, at 20:14 and 20:27, failed on "Most lists rank Grand Theft Auto 5 higher" and "one pick goes against the usual order" (unsupported consensus). On 14 Nov a Buy, Wait or Skip failed the same way on "two dollars" for $1.99.
+- Over 7 days, 9 episodes failed the fact-check after a rewrite. 4 failed on a single line of this kind. The other 5 (the Fallout rankings) had 4 to 12 problems each and stay failed, because the repair only handles one or two.
+- Last run's fix is working: no "compiled grammar is too large" failures since 15:30. The factory log shows 3 calls handed to Codex (editorial twice, room.layout once).
+- A fresh-eyes code review found 11 issues in the first version (wrong figure hedged, ordinal rank lines cut, "Most critics and fans" leaving "Fans agree", comma fragments, ambiguous quotes, a vault-fix gap, and an evergreen rewrite that could skip the check). All were fixed, each with a test.
+- 22 new tests, built on the real blocker texts. Typecheck clean. 2,785 of 2,786 tests pass; the one failure ("community posts") also fails on untouched stage and is unrelated.
+- Not yet proven live: the second fact-check on a mended script. The next ranking that hits this will show it.
+
+**Setting:** `FACT_REPAIR` (on by default; `false` restores the old behaviour). Each attempt is recorded as a `fact_repair` event (outcomes: repaired, recheck_failed, not_repairable, not_applied, draft_mismatch) and a log line "fact-check blockers repaired".
+
+**Judged:** by 26 Nov. Pass mark: at least one ranking Short saved (`fact_repair` outcome "repaired", then published). Watch the comments on saved Shorts: any comment saying a saved Short got a fact wrong switches it off. Also count Shorts lost to "fact-check still failing after a rewrite"; it should drop from about 4 a week.
+
+**Judged this run:** CODEX_GRAMMAR_FALLBACK (15:30): early pass. There have been no grammar failures since, and the router is handing those calls to Codex. Room Shorts publishing with the room's script (`script.room.wrote` count 0 in today's log) is still unproven. Full verdict on 21 Nov as planned.
+
 ## 19 Nov 2026, 15:30 UK: a script format too big for Claude goes to Codex instead of failing the Short
 
 **Change:** when Claude rejects a call because its answer format is too big ("The compiled grammar is too large"), the factory now hands that call to Codex, the same way it already did when Claude hit its usage limit. It never loops back to Claude if Codex also fails, and it posts one note per step saying that step's format wants slimming. Branch `claude/engine-roomschema`, commit 9993b13bd, merged into `claude/stage` (ce1870f85).

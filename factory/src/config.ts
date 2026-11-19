@@ -450,6 +450,7 @@ export interface Config {
   sourceMinChars: number; // a news Short whose richest source says fewer characters than this is dropped before writing; 0 = off (SOURCE_MIN_CHARS)
   shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
   shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
+  shortCraftRules: boolean; // the writers' room test's five craft rules (SHORT_CRAFT_RULES, on)
   shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
   shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
   shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
@@ -1701,6 +1702,7 @@ export function loadConfig(): Config {
     sourceMinChars: Math.max(0, int("SOURCE_MIN_CHARS", 600)),
     shortEndPayoff: bool("SHORT_END_PAYOFF", true),
     shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
+    shortCraftRules: bool("SHORT_CRAFT_RULES", true),
     shortArgumentShare: Math.max(
       0,
       Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),

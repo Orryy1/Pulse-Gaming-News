@@ -393,7 +393,9 @@ test("findings: a card up too briefly is held on a Short and muted on a long vid
     settings: DEFAULT_CRITIC,
     words: [],
   });
-  assert.equal(unread[0]!.action, "mute");
+  // Card designs draw part of their text: a frame without all the words is reported, never acted on.
+  assert.equal(unread[0]!.level, "warn");
+  assert.equal(unread[0]!.action, undefined);
   // OCR missed it but the model can read it: fine.
   const seen = findingsOf({
     tl,
@@ -816,7 +818,7 @@ test("runCritic: an ad-safety fault in the first 7 seconds and an unreadable car
   assert.equal(ad.t, 2);
   assert.match(ad.frame!, /^frames\/o_/);
   const g = report.findings.find((f) => f.check === "graphics")!;
-  assert.equal(g.action, "mute");
+  assert.equal(g.level, "warn");
   assert.match(report.reasons[0]!, /first 7 seconds show gore/);
 });
 
@@ -1029,4 +1031,38 @@ test("any tag of 20B or more is big, listed or not; small ones are not", () => {
   assert.equal(isBigModel("qwen3-vl:8b", []), false);
   assert.equal(isBigModel("gemma3:4b", []), false);
   assert.equal(DEFAULT_CRITIC.leaseRam, 22);
+});
+
+test("proof-run precision: hedges and Pulse's cards are not wrong games; the source or a series neighbour only warns", () => {
+  const m = "Grand Theft Auto VI";
+  assert.equal(wrongGame({ game: "other", otherGame: "unsure", fanMod: false }, m), false);
+  assert.equal(wrongGame({ game: "none", otherGame: "", fanMod: true }, m), false);
+  assert.equal(wrongGame({ game: "named", otherGame: "", fanMod: true }, m), true);
+  const tl = timeline({ shots: [{ index: 0, start: 0, end: 4, media: { type: "clip", index: 0 }, label: 'Official trailer "Grand Theft Auto VI Trailer 2" from the Rockstar Games channel' }] });
+  const ride = [sample(0.25, 0, { game: "other", otherGame: "Ride 4", match: 2 }), sample(2, 0, { game: "other", otherGame: "Ride 4", match: 2 })];
+  const f = findingsOf({ tl, samples: ride, graphics: [], opening: [], measured: noMeasure(), settings: DEFAULT_CRITIC, words: [] });
+  assert.equal(f[0]!.check, "wrong_game");
+  assert.equal(f[0]!.level, "warn");
+  const plain = timeline({ shots: [{ index: 0, start: 0, end: 4, media: { type: "clip", index: 0 }, label: "a stock clip" }] });
+  const gta5 = [sample(0.25, 0, { game: "other", otherGame: "Grand Theft Auto V", match: 2 }), sample(2, 0, { game: "other", otherGame: "Grand Theft Auto V", match: 2 })];
+  const g = findingsOf({ tl: { ...plain, mentions: "GTA 6" }, samples: gta5, graphics: [], opening: [], measured: noMeasure(), settings: DEFAULT_CRITIC, words: [] });
+  assert.equal(g[0]!.level, "warn");
+  const star = [sample(0.25, 0, { game: "other", otherGame: "Starfield", match: 1 }), sample(2, 0, { game: "other", otherGame: "Starfield", match: 1 })];
+  const h = findingsOf({ tl: plain, samples: star, graphics: [], opening: [], measured: noMeasure(), settings: DEFAULT_CRITIC, words: [] });
+  assert.equal(h[0]!.level, "fix");
+  assert.equal(h[0]!.action, "swap");
+  // One flagged opening frame alone is a warning.
+  const one = findingsOf({ tl: plain, samples: [], graphics: [], opening: [{ t: 3, screened: true, problem: "gore or blood" }, { t: 3.25, screened: true }], measured: noMeasure(), settings: DEFAULT_CRITIC, words: [] });
+  assert.equal(one[0]!.level, "warn");
+});
+
+test("a ranking's shot whose source names one of its games is never swapped on the model's word", () => {
+  const tl = timeline({
+    game: "open-world games of the 2010s",
+    mentions: "No Man's Sky Skyrim Red Dead Redemption 2",
+    shots: [{ index: 0, start: 0, end: 4, media: { type: "image", index: 0 }, label: "Steam store asset for “No Man's Sky” (app 275850)" }],
+  });
+  const star = [sample(0.25, 0, { game: "other", otherGame: "Starfield", match: 1 }), sample(2, 0, { game: "other", otherGame: "Starfield", match: 1 })];
+  const f = findingsOf({ tl, samples: star, graphics: [], opening: [], measured: noMeasure(), settings: DEFAULT_CRITIC, words: [] });
+  assert.equal(f.find((x) => x.check === "wrong_game")!.level, "warn");
 });

@@ -338,8 +338,41 @@ export function wrongGame(
   j: Pick<FrameJudgement, "game" | "otherGame" | "fanMod">,
   mentions: string,
 ): boolean {
-  if (j.fanMod) return true;
-  return j.game === "other" && !gameMentioned(j.otherGame, mentions);
+  // Proof run, 19 Nov 2026: the judge called Pulse's own cards (store pages, case files, title cards) "fan mods" and
+  // answered "other" with "unsure" or an on-screen phrase for a game name. Neither is a claim of a wrong game.
+  if (j.fanMod) return j.game === "named" || j.game === "other";
+  return j.game === "other" && realGameName(j.otherGame) && !gameMentioned(j.otherGame, mentions);
+}
+
+/** A name that could be a game's (pure): letters in it, not a hedge. */
+const HEDGE = /^(unsure|unknown|not sure|none|n\/?a|another game|other|a game|video game|game)$/i;
+export function realGameName(name: string): boolean {
+  const n = name.trim();
+  return /[a-z]/i.test(n) && !HEDGE.test(n);
+}
+
+/**
+ * Whether two names are the same series (pure): the other name's words, numbers aside, are all in the expected one
+ * ("Grand Theft Auto V" against "Grand Theft Auto VI"). A vision model cannot tell neighbouring entries apart
+ * reliably, so a same-series call is reported, never acted on.
+ */
+export function sameSeries(other: string, expected: string): boolean {
+  const words = nameTokens(other).filter((t) => !/^\d+$/.test(t));
+  const exp = new Set(nameTokens(expected));
+  return words.length > 0 && words.every((w) => exp.has(w));
+}
+
+/** The quoted titles in a shot's provenance (pure): Steam store asset for "No Man's Sky" gives No Man's Sky. */
+export function sourceTitles(label: string): string[] {
+  return [...label.matchAll(/["“]([^"”]{2,80})["”]/g)].map((m) => m[1]!);
+}
+
+/** Whether a shot's own source names the expected game (its provenance: an official trailer, IGDB, Steam, press). */
+export function sourceNamesGame(label: string, game: string): boolean {
+  const want = nameTokens(game).filter((t) => t.length > 1);
+  if (!want.length) return false;
+  const have = new Set(nameTokens(label));
+  return want.every((t) => have.has(t));
 }
 
 // ---------------------------------------------------------------- measurements (filled by src/qa/criticmeasure.ts)
@@ -584,13 +617,20 @@ export function findingsOf(input: FindingsInput): CriticFinding[] {
     const wrong = judged.filter((s) => wrongGame(s.judgement!, tl.mentions));
     if (wrong.length && wrong.length * 2 >= judged.length) {
       const j = wrong[0]!.judgement!;
+      const expected = chapterGameAt(tl, shot.start);
+      // The shot's own source is the expected game's official material, or the model only named a neighbouring entry
+      // of the same series: reported for a look, never swapped on the model's word alone.
+      const doubtful =
+        sourceNamesGame(shot.label, expected) ||
+        sourceTitles(shot.label).some((t) => gameMentioned(t, tl.mentions)) ||
+        (!j.fanMod && sameSeries(j.otherGame, expected));
       out.push({
         check: "wrong_game",
-        level,
+        level: doubtful ? "warn" : level,
         t: shot.start,
         end: shot.end,
         shot: index,
-        action,
+        action: doubtful ? undefined : action,
         frame: wrong[0]!.frame,
         detail: `${where} ${j.fanMod ? "looks like a fan mod or fake" : `shows ${j.otherGame || "another game"}`}, not ${chapterGameAt(tl, shot.start)} (${j.seen || shot.label})`,
       });
@@ -674,13 +714,14 @@ export function findingsOf(input: FindingsInput): CriticFinding[] {
         detail: `"${clip(g.text, 60)}" is up ${g.shown.toFixed(1)} s, ${g.need.toFixed(1)} s needed to read it`,
       });
     else if (g.read !== undefined && g.read < 0.5 && g.visible === false && !measuredOnly)
+      // Proof run, 19 Nov 2026: card designs draw part of their text (a ticket shows "FIVE DAYS" of "5 days off ..."),
+      // so a frame that does not show all the words is reported for a look, never dropped on that alone.
       out.push({
         check: "graphics",
-        level: "fix",
+        level: "warn",
         t: g.from,
         end: g.to,
         graphic: g.key,
-        action: "mute",
         frame: g.frame,
         detail: `"${clip(g.text, 60)}" is not readable on the finished frame (${Math.round(g.read * 100)}% of its words found)`,
       });
@@ -779,11 +820,13 @@ export function findingsOf(input: FindingsInput): CriticFinding[] {
       });
 
   // ---- the first seven seconds, for advertisers
-  for (const o of input.opening)
+  const flagged = input.opening.map((o) => !!o.problem);
+  for (const [i, o] of input.opening.entries())
     if (o.problem)
       out.push({
         check: "ad_safety",
-        level: "block",
+        // One frame alone is often the screen's noise; two in a row (half a second at four a second) is a real stretch.
+        level: flagged[i - 1] || flagged[i + 1] ? "block" : "warn",
         t: o.t,
         frame: o.frame,
         detail: `the first 7 seconds show ${o.problem} at ${fmt(o.t)}`,

@@ -70,9 +70,9 @@ function mediaLabel(
   const label = String(m.label || m.kind || "").trim();
   const prov = String(m.provenance || "")
     .replace(/\s+/g, " ")
-    .slice(0, 120);
+    .slice(0, 400);
   return {
-    label: [label, prov].filter(Boolean).join(" · ").slice(0, 160),
+    label: [label, prov].filter(Boolean).join(" · ").slice(0, 480),
     file: m.file,
   };
 }

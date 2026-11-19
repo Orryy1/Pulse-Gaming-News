@@ -49,7 +49,7 @@ seen: what the frame shows, in under 15 words.
 match: 0 to 3. 3: the frame shows exactly what the line says (the named game, character, place, person, object, event or figure). 2: the right game or subject but not the exact thing said. 1: only loosely related. 0: unrelated to the line, the wrong thing, broken, black or blank. A graphic or card whose words say what the line says counts as 3.
 game: "named" when the picture is from ${game}${o.chapterGame && o.chapterGame !== o.game ? ` or ${o.chapterGame}` : ""}; "other" when it is clearly from a different video game; "none" when it is not a game picture (a graphic, a text card, a photo of a real person or place, hardware, a store page); "unsure" when you cannot tell.
 other_game: the other game's name when game is "other", else "".
-fan_mod: true only when the picture is plainly a fan mod, a fake or a mash-up (characters from other franchises, joke mods).
+fan_mod: true only when the game picture itself is plainly a fan mod, a fake or a mash-up (characters from other franchises, joke mods). Pulse's own designed cards (store pages, case files, notes, title cards, quote cards) are not fan mods.
 watermark: true when another channel's or a stock library's watermark, logo, handle or web address sits over the picture (a YouTube channel logo, an @handle, Shutterstock, Getty Images, Adobe Stock, Pond5, Storyblocks, TikTok). Pulse's own captions, its PULSE logo, its small credit lines (such as "FOOTAGE: OFFICIAL TRAILERS") and the game's own HUD or the publisher's logo on official art do not count.
 watermark_text: the watermark's words, else "".`;
 }

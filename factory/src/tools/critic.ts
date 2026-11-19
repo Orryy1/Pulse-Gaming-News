@@ -2,9 +2,11 @@
 // re-check of a published video. Reads episode rows from a JSON dump (id, lane, script_json, assets_json, story_json)
 // and each video from <src>/<episode>/short.mp4. Nothing is written to the database and nothing is uploaded.
 //   node --import tsx src/tools/critic.ts --rows=<rows.json> --src=<dir> --out=<dir> [--episodes=a,b] [--model=<ollama model>]
-//        [--every=2] [--no-lease] [--measure-only] [--gfx-fix]
+//        [--every=2] [--no-lease] [--measure-only] [--gfx-fix] [--rescore]
 // --no-lease: the caller already holds the GPU turn (orch.cmd run --class gpu ... -- node ... --no-lease).
 // --measure-only: the ffmpeg measurements and the timeline, no model (for calibrating the thresholds).
+// --rescore: the findings, scores and verdict again from a run's saved report.json (its judged frames, its
+//   measurements), with today's rules: no model and no video decode.
 import fs from "node:fs/promises";
 import path from "node:path";
 import { segmentInputs, stampsFor } from "../pipeline.ts";
@@ -18,6 +20,7 @@ import { measureVideo } from "../qa/criticmeasure.ts";
 import { defaultCriticDeps, runCritic } from "../criticstep.ts";
 import { chooseCriticModel, unloadModel } from "../qa/criticvision.ts";
 import { LOCAL_VISION_MODEL } from "../assets/localvision.ts";
+import { findingsOf, reportMarkdown, scoresOf, verdictOf, type CriticReport } from "../qa/criticcore.ts";
 
 const arg = (name: string) =>
   process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -81,6 +84,18 @@ for (const row of only.length
       frozen: m.frozen,
       silence: m.silence,
     });
+    continue;
+  }
+  if (flag("rescore")) {
+    const saved = JSON.parse(await fs.readFile(path.join(dir, "report.json"), "utf8")) as CriticReport;
+    const findings = findingsOf({ tl, samples: saved.samples, graphics: saved.graphics, opening: saved.opening, measured: saved.measured, settings, words: (row.assets_json.words ?? []) as CriticWord[] });
+    const scores = scoresOf({ tl, samples: saved.samples, graphics: saved.graphics }, findings);
+    const v = verdictOf(tl, findings, { pass: 0, mediaLeft: { clips: row.assets_json.clips?.length ?? 0, images: row.assets_json.images?.length ?? 0 } });
+    const report: CriticReport = { ...saved, findings, scores, verdict: v.verdict, reasons: v.reasons };
+    await fs.writeFile(path.join(dir, "report.json"), JSON.stringify({ ...report, plan: v.plan }, null, 1));
+    await fs.writeFile(path.join(dir, "report.md"), reportMarkdown(report, title));
+    console.log(`${row.id} ${report.verdict} ${scores.overall}/100, match ${scores.match}, ${findings.length} findings (rescored)`);
+    summary.push({ id: row.id, title, kind: report.kind, verdict: report.verdict, scores, findings, reasons: report.reasons, plan: v.plan, notes: report.notes, seconds: report.seconds });
     continue;
   }
   const deps = defaultCriticDeps(settings, Math.ceil(tl.duration / 30), 20);

@@ -1514,6 +1514,26 @@ test("SCRIPT_DESK: off changes nothing; check reads, records and leaves the scri
   assert.equal(ctlSeen.reads.length, 1);
 });
 
+test("SCRIPT_ROOM: off changes nothing; under on the control arm is recorded with no call and its script untouched", async () => {
+  // The fake model throws on any room step's schema, so a room call here would fail the Short.
+  const off = await setup({}, {});
+  await tick(off.s);
+  const plain = await only(off.db);
+  assert.equal(plain.status, "published", plain.last_error ?? "");
+  assert.equal(plain.script_json?.room, undefined);
+  assert.equal(plain.script_json?.hook, goodScript().hook);
+  const none = await off.db.query(`SELECT 1 FROM events WHERE kind = 'script_room'`);
+  assert.equal(none.length, 0);
+
+  const ctl = await setup({ scriptRoom: "on", scriptRoomShare: 0 }, {});
+  await tick(ctl.s);
+  const c = await only(ctl.db);
+  assert.equal(c.status, "published", c.last_error ?? "");
+  assert.equal(c.script_json?.room?.arm, "control");
+  assert.ok(Object.values(c.script_json!.room!.calls).every((n) => n === 0));
+  assert.equal(c.script_json?.hook, goodScript().hook);
+});
+
 test("SCRIPT_DESK=fix: a script under the bar is rewritten through the fact check and read again; a worse rewrite is never kept", async () => {
   const fix = await setup(
     { scriptDesk: "fix", scriptDeskShare: 1 },

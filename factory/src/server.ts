@@ -1135,6 +1135,39 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       log("info", "comment edited", { video, from: hits[0]!.text.slice(0, 200), to: text.slice(0, 200) });
       return json(200, { ok: true, from: hits[0]!.text, to: text });
     }
+    // A correction (19 Nov 2026: three Shorts had a wrong fact): post=1 adds a new comment from the channel;
+    // find=&replace= changes those words in the video's description (every language), exactly one match required.
+    if (url.pathname === "/admin/correct" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const video = (url.searchParams.get("video") ?? "").trim();
+      const text = (url.searchParams.get("text") ?? "").trim();
+      const find = url.searchParams.get("find") ?? "";
+      const replace = url.searchParams.get("replace") ?? "";
+      const json = (code: number, body: unknown) =>
+        res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(body));
+      if (!/^[\w-]{11}$/.test(video) || /—/.test(text + replace))
+        return json(400, { ok: false, error: "needs an 11-character video id, and no em dash" });
+      const yt = services.youtube();
+      const out: Record<string, unknown> = { ok: true };
+      if (find) {
+        if (find.length < 6 || replace.length > 500) return json(400, { ok: false, error: "find needs 6+ characters" });
+        let bad = "";
+        const changed = await yt.rewriteDescriptions(video, (d, lang) => {
+          const n = d.split(find).length - 1;
+          if (n === 0) return d;
+          if (n > 1) bad = `${lang}: ${n} matches`;
+          return n === 1 ? d.replace(find, replace) : d;
+        });
+        if (bad) return json(409, { ok: false, error: bad, changed });
+        out.descriptions = changed;
+      }
+      if (url.searchParams.get("post") === "1") {
+        if (!text || text.length > 1000) return json(400, { ok: false, error: "text 1-1000 characters" });
+        out.comment = await yt.insertComment(video, text);
+      }
+      log("info", "correction", { video, ...out });
+      return json(200, out);
+    }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");

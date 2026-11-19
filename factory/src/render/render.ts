@@ -198,6 +198,7 @@ const MIME: Record<string, string> = {
   ".mp3": "audio/mpeg",
   ".mp4": "video/mp4",
   ".wav": "audio/wav",
+  ".flac": "audio/flac",
 };
 
 /**

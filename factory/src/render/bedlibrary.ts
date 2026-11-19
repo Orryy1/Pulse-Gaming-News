@@ -3,8 +3,62 @@
 // them to BEDS, MOOD_BEDS and BED_GRID.
 import type { Mood } from "./musicplan.ts";
 
-export const LIBRARY_BEDS: ReadonlyArray<{ file: string; key: "D" | "E" }> = [];
+export const LIBRARY_BEDS: ReadonlyArray<{ file: string; key: "D" | "E" }> = [
+  { file: "music/bed_5.flac", key: "E" },
+  { file: "music/bed_7.flac", key: "D" },
+  { file: "music/bed_8.flac", key: "D" },
+  { file: "music/bed_9.flac", key: "D" },
+  { file: "music/bed_10.flac", key: "D" },
+  { file: "music/bed_12.flac", key: "D" },
+  { file: "music/bed_14.flac", key: "E" },
+  { file: "music/bed_15.flac", key: "D" },
+  { file: "music/bed_16.flac", key: "E" },
+  { file: "music/bed_17.flac", key: "E" },
+  { file: "music/bed_18.flac", key: "D" },
+];
 
-export const LIBRARY_MOODS: ReadonlyArray<{ mood: Mood; file: string; key: "D" | "E" }> = [];
+export const LIBRARY_MOODS: ReadonlyArray<{ mood: Mood; file: string; key: "D" | "E" }> = [
+  { mood: "chill", file: "music/mood_chill_1.flac", key: "E" },
+  { mood: "chill", file: "music/mood_chill_2.flac", key: "E" },
+  { mood: "chill", file: "music/mood_chill_3.flac", key: "D" },
+  { mood: "hype", file: "music/mood_hype_1.flac", key: "D" },
+  { mood: "hype", file: "music/mood_hype_2.flac", key: "D" },
+  { mood: "hype", file: "music/mood_hype_3.flac", key: "E" },
+  { mood: "mystery", file: "music/mood_mystery_1.flac", key: "D" },
+  { mood: "mystery", file: "music/mood_mystery_2.flac", key: "D" },
+  { mood: "mystery", file: "music/mood_mystery_3.flac", key: "D" },
+  { mood: "playful", file: "music/mood_playful_1.flac", key: "E" },
+  { mood: "reflective", file: "music/mood_reflective_2.flac", key: "D" },
+  { mood: "reflective", file: "music/mood_reflective_3.flac", key: "D" },
+  { mood: "retro", file: "music/mood_retro_2.flac", key: "D" },
+  { mood: "synthwave", file: "music/mood_synthwave_1.flac", key: "E" },
+  { mood: "synthwave", file: "music/mood_synthwave_2.flac", key: "D" },
+  { mood: "synthwave", file: "music/mood_synthwave_3.flac", key: "D" },
+  { mood: "synthwave", file: "music/mood_synthwave_4.flac", key: "D" },
+  { mood: "triumph", file: "music/mood_triumph_2.flac", key: "E" },
+  { mood: "triumph", file: "music/mood_triumph_3.flac", key: "E" },
+];
 
-export const LIBRARY_GRID: Record<string, { bar: number; first: number; loop: number }> = {};
+// The bar grid (seconds), as src/tools/sfxlab/bedgrid.py measures it; a loop that is not a whole number of
+// bars is left out (its grid would drift), as the retro bed was.
+export const LIBRARY_GRID: Record<string, { bar: number; first: number; loop: number }> = {
+  "bed_7.flac": { bar: 2.449, first: 0.0322, loop: 137.152 },
+  "bed_10.flac": { bar: 2.3077, first: 0.022, loop: 129.2267 },
+  "bed_12.flac": { bar: 2.3077, first: 0.0223, loop: 129.2267 },
+  "bed_14.flac": { bar: 2.0, first: 0.0266, loop: 127.9295 },
+  "bed_15.flac": { bar: 2.1817, first: 0.0237, loop: 130.9014 },
+  "bed_17.flac": { bar: 2.0, first: 0.0263, loop: 120.0 },
+  "bed_18.flac": { bar: 2.4999, first: 0.018, loop: 129.9947 },
+  "mood_chill_1.flac": { bar: 2.5532, first: 0.0318, loop: 132.768 },
+  "mood_chill_2.flac": { bar: 2.6666, first: 0.0362, loop: 128.0107 },
+  "mood_chill_3.flac": { bar: 2.6667, first: 0.0347, loop: 128.0107 },
+  "mood_hype_1.flac": { bar: 2.0689, first: 0.0237, loop: 115.8614 },
+  "mood_hype_2.flac": { bar: 2.1054, first: 0.2747, loop: 134.7414 },
+  "mood_hype_3.flac": { bar: 2.0869, first: 0.0221, loop: 125.216 },
+  "mood_playful_1.flac": { bar: 2.3077, first: 0.0219, loop: 129.2374 },
+  "mood_reflective_2.flac": { bar: 2.7274, first: 0.0359, loop: 120.032 },
+  "mood_retro_2.flac": { bar: 2.449, first: 0.0248, loop: 137.1414 },
+  "mood_synthwave_1.flac": { bar: 2.526, first: 0.046, loop: 131.2533 },
+  "mood_synthwave_2.flac": { bar: 2.4491, first: 0.0063, loop: 127.3387 },
+  "mood_triumph_2.flac": { bar: 2.4, first: 0.0299, loop: 115.2 },
+};

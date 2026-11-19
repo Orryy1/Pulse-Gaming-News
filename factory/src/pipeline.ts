@@ -15116,6 +15116,11 @@ export function reviewerPackFor(cfg: Pick<Config, "reviewerPack" | "siteUrl" | "
   return cfg.reviewerPack && siteBase ? { siteBase } : undefined;
 }
 
+/** Owner rule: never an em dash in anything public (19 Nov 2026: a writer's "Steam News — https://..." reached a
+ * description). Before a link it becomes a colon, elsewhere a comma; a spaced en dash is treated the same. */
+export const noDash = (s: string): string =>
+  s.replace(/[ 	]*(?:—|[ 	]–)[ 	]*(?=https?:)/g, ": ").replace(/[ 	]*(?:—|[ 	]–[ 	])[ 	]*/g, ", ");
+
 export function videoMetadata(
   ep: Episode,
   privacy: Config["youtubePrivacy"],
@@ -15276,8 +15281,8 @@ export function videoMetadata(
   );
   return {
     // A launch-run Why keeps the title the run planned (story_json.why.title), word for word.
-    title: ep.story_json.why?.title?.trim() || polishTitle(script),
-    description,
+    title: noDash(ep.story_json.why?.title?.trim() || polishTitle(script)),
+    description: noDash(description),
     tags: [
       ...new Set([
         ...buildTags(script).slice(0, 2),

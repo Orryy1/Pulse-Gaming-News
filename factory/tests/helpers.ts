@@ -110,6 +110,7 @@ export function testConfig(
     sourceMinChars: 0,
     shortEndPayoff: false,
     shortTightScript: false,
+    shortCraftRules: false,
     shortArgumentShare: 0,
     shortMinWpm: 0,
     shortCappedStills: 0,

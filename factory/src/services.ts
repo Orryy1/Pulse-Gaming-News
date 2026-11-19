@@ -277,8 +277,12 @@ export function createServices(db: Db, cfg: Config): Services {
           process.env.ROCKSTAR_NEWSWIRE_LIST_HASH || undefined,
         ),
       ]);
+      // TREND_FEED: the download account's subscriptions, read every 3 hours and kept as labelled leads (no call here).
+      const leads = cfg.trendFeed
+        ? (await import("./discovery/trendfeed.ts")).readTrendItems(cfg.dataDir, new Date())
+        : [];
       return clusterItems(
-        [...rss, ...rockstar],
+        [...rss, ...rockstar, ...leads],
         new Date(),
         // After a day or two down, a big story is still in the feeds: keep it long enough to be made late.
         cfg.bigStoryMode === "off"

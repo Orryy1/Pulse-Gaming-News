@@ -2574,6 +2574,24 @@ async function main(): Promise<void> {
     setTimeout(() => void ages(), 6 * 60_000);
     setInterval(() => void ages(), 60 * 60_000);
   }
+  // The trend feed (TREND_FEED): the download account's subscriptions read every 3 hours as story leads, signed in,
+  // metadata only, within the clips' share of the signed-in budget (src/discovery/trendfeed.ts).
+  if (cfg.trendFeed && cfg.ytdlpCookiesFile) {
+    const trends = () =>
+      withLease(db, "trend-feed", 20 * 60, () =>
+        import("./discovery/trendfeed.ts").then((m) =>
+          m.trendFeedRun({
+            dataDir: cfg.dataDir,
+            ytdlp: cfg.ytdlpPath,
+            cookiesFile: cfg.ytdlpCookiesFile,
+          }),
+        ),
+      ).catch((err) =>
+        log("warn", "trend feed pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void trends(), 8 * 60_000);
+    setInterval(() => void trends(), 3 * 3600_000);
+  }
   // Pulse's own uploads, kept for every process so the signed-in download account never touches them
   // (src/lib/ytown.ts). Read from the episodes table only: no YouTube call, no quota.
   if (cfg.ytdlpCookiesFile) {

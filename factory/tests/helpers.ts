@@ -587,6 +587,8 @@ export function testConfig(
     signedClips: false,
     ytSignedClipShare: 0.5,
     ageAlarm: false,
+    trendFeed: false,
+    trendChannels: [],
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.
     libraryPress: false,

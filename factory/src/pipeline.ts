@@ -719,7 +719,7 @@ import {
   type DeskArm,
   type DeskRecord,
 } from "./editorial/desk.ts";
-import { roomArm, type RoomArm, type RoomRecord } from "./editorial/room.ts";
+import { roomArm, roomRecord, type RoomArm, type RoomRecord } from "./editorial/room.ts";
 import {
   roomCheckStep,
   roomControlRecord,
@@ -7891,7 +7891,12 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       roomSkipped(s.cfg, { pulseCheck, skeleton: !!skeleton }),
     ).catch((err) => {
       log("warn", "writers' room failed; the normal writer writes the Short", { episode: ep.id, error: errorMessage(err) });
-      return { record: undefined, script: undefined, check: undefined, warnings: undefined };
+      return {
+        record: roomRecord({ arm: "room", mode: "on", fallback: `the room failed: ${errorMessage(err)}`.slice(0, 300), wrote: false }),
+        script: undefined,
+        check: undefined,
+        warnings: undefined,
+      };
     });
     roomRec = room.record;
     if (room.script && room.check) {

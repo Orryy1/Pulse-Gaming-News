@@ -1950,7 +1950,7 @@ export async function runAnalyticsLoop(
   // SHORT_PAYOFF_GATE: the two arms of the held-answer test side by side (YouTube views, viewed share and comments).
   const payoffLine = payoffArmLine(
     [...eps.values()]
-      .filter((e) => !e.long && e.live_at >= periodStart && e.payoff)
+      .filter((e) => !e.long && e.live_at >= periodStart && e.payoff && !e.room?.wrote)
       .map((e) => {
         const y = yt.get(e.id);
         return {

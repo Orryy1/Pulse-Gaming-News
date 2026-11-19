@@ -382,24 +382,24 @@ Martin, 19 Nov, after the writers' room result: make this permanent across writi
 | Weekly frontier check                 | Scheduled task `pulse-frontier-check` on the PC, Wednesdays about 11:50, first run 25 Nov | Created. Marks Pulse's week blind beside that week's breakout videos from top creators, checks the marks against retention, and puts the three biggest gaps into `reports/Pulse upgrade queue.md` |
 | Fixed marking kit                     | `C:\Claude\analytics\pulse\frontier\kit\` on the PC                                       | Made: the three marker briefs, 30 anchor scripts with known marks, the first retention check                                                                                                      |
 | Five no-cost writing rules            | `SHORT_CRAFT_RULES`, live on the Mac mini since 10:32                                     | On (deployed by the Pulse Gaming News chat, bc7075293)                                                                                                                                            |
-| Script: writers' room                 | `SCRIPT_ROOM`, branch `claude/gap-room`, merged into stage db40a82d0                      | Built, off. Full test run on the PC in progress                                                                                                                                                   |
+| Script: writers' room | `SCRIPT_ROOM`, branch `claude/gap-room`, live in stage e7fb02ae8 | On for half of news, breaking and Why Shorts since 10:40 on 19 Nov (Martin: "go for it"). Checks: typecheck clean, 2,605 of 2,606 tests |
 | First second and long-video packaging | `FIRST_SECOND_PANEL`, `PACKAGING_PANEL`, branch `claude/gap-panel`                        | Being built, off                                                                                                                                                                                  |
 | Pictures for each line                | `SHOT_PLAN_PANEL`, branch `claude/gap-shotpanel`                                          | Being built, off                                                                                                                                                                                  |
 
 **What the factory already has for each craft, and what is missing.** From a read of the code on 19 Nov, with the live settings on the Mac mini as the Pulse Gaming News chat reported them that day (the code's own defaults are mostly off; the Mac has most of these on).
 
-| Craft                 | Already there                                                                   | Off today                                                          | Missing for the loop                                        |
+| Craft | Already there | Live setting on the Mac mini, 19 Nov | Missing for the loop |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
-| Script                | Editor's desk, payoff gate, clarity check                                       | Desk and payoff are record-only                                    | Several drafts and an audience critic: the writers' room    |
-| Story choice          | Thin-source gate, story size score                                              |                                                                    | A "can this carry a Short" drop before writing: in the room |
-| First second          | Up to 6 opening clips tried in order, up to 5 hook voice takes, 5 hook texts    | `SHORT_OPEN_FOOTAGE`, `HOOK_TAKES`, `LEARN_HOOKS`                  | Candidates compared with each other by an audience critic   |
-| Pictures per line     | One vision call picks a moment per line; plan rubric; vision check after render | `SCENE_MATCH`                                                      | Two or three plans compared before the render               |
-| Edit and pace         | Retention director with a model that predicts the curve                         | `RETENTION_DIRECTOR`                                               | Comparing alternative edits                                 |
-| Sound                 | Bed rotation, loudness check                                                    | Sparse sound plan held on `claude/gap-untemplate`                  | Any judge of sound sameness: on that held branch            |
-| Titles and thumbnails | Packaging Lab: 24 titles scored by a model                                      | `PACKAGING_LAB`                                                    | An audience pick among the top five                         |
-| Branding and repeats  | Recent shapes memory, bed and look memory                                       | `SHORT_SKELETONS`                                                  | A sameness score fed to the critics                         |
-| Long videos           | Release gate after render, clarity and friend passes                            | Opening contract and argued rankings held on `claude/gap-longform` | Two drafts per chapter and a critic before the render       |
-| Checking the judges   | `learn/judges.ts` links each judge to real outcomes                             | `LEARN_JUDGES`                                                     | Nothing: it needs switching on                              |
+| Script | Editor's desk, payoff gate, clarity check | Desk and payoff record-only; writers' room on for half since 10:40 | Several drafts and an audience critic: the writers' room |
+| Story choice | Thin-source gate, story size score | Thin-source gate on | A "can this carry a Short" drop before writing: in the room |
+| First second | Up to 6 opening clips tried in order, up to 5 hook voice takes, 5 hook texts | `SHORT_OPEN_FOOTAGE` on, `HOOK_TAKES=2`, `LEARN_HOOKS=shadow` (records, does not choose) | Candidates compared with each other by an audience critic |
+| Pictures per line | One vision call picks a moment per line; plan rubric; vision check after render | `SCENE_MATCH` on | Two or three plans compared before the render |
+| Edit and pace | Retention director with a model that predicts the curve | `RETENTION_DIRECTOR=advise` (advises, does not change the cut) | Comparing alternative edits |
+| Sound | Bed rotation, loudness check | Sparse sound plan held on `claude/gap-untemplate` | Any judge of sound sameness: on that held branch |
+| Titles and thumbnails | Packaging Lab: 24 titles scored by a model | `PACKAGING_LAB=score` (scores, does not pick) | An audience pick among the top five |
+| Branding and repeats | Recent shapes memory, bed and look memory | `SHORT_SKELETONS` on (the writers' room arm skips it and uses its own variety memory) | A sameness score fed to the critics |
+| Long videos | Release gate after render, clarity and friend passes | Opening contract and argued rankings held on `claude/gap-longform` | Two drafts per chapter and a critic before the render |
+| Checking the judges | `learn/judges.ts` links each judge to real outcomes | `LEARN_JUDGES` on | The new critics' marks added to it |
 
 **Order of work.**
 

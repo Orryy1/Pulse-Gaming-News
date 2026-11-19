@@ -66,6 +66,7 @@ import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionLessonLines, retentionSection, type RetentionStudy } from "./retentionlearn.ts";
 import type { LengthArm } from "./shortlengths.ts";
+import { narratorOf } from "./editorial/authorship.ts";
 import {
   lengthAbReading,
   splitLines,
@@ -260,6 +261,12 @@ export interface EpisodeInfo {
   next_line?: { arm: "line" | "none"; said: boolean };
   /** The Why length test's arm (WHY_LENGTH_AB, src/shortlengths.ts). */
   length_arm?: LengthArm;
+  /** Who wrote the script: "claude" or "codex" (src/editorial/authorship.ts); absent before 19 Nov 2026. */
+  writer?: string;
+  /** The writer fell back from the provider it was meant for. */
+  writer_fallback?: boolean;
+  /** Who voiced it: "elevenlabs: <voice>" or "local (Liam/VoxCPM)". */
+  narrator?: string;
 }
 
 // ------------------------------------------------------------------ matching (spec section 4)
@@ -848,6 +855,8 @@ export interface LoopJson {
   series?: SeriesJson;
   /** The Why length test (WHY_LENGTH_AB): median 72-hour views and subscribers per 1,000 per arm; absent with no arm yet. */
   length_ab?: { groups: SplitGroup[]; reading: LengthAbReading };
+  /** Writer and narrator per YouTube Short (19 Nov audit): median 72-hour views and subscribers per 1,000, within fit and not fit. */
+  authors?: { writer: SplitGroup[]; narrator: SplitGroup[] };
   /** RETENTION_LEARN (src/retentionlearn.ts): the week's retention curve study, its lines and lessons; absent while off. */
   retention?: {
     shorts: number;
@@ -1573,11 +1582,13 @@ export async function runAnalyticsLoop(
     has_run: boolean | null;
     plan_panel: unknown;
     frame_focus: unknown;
+    voice: unknown;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
             e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
             e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run,
-            e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus
+            e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus,
+            e.assets_json->'voice' AS voice
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1692,6 +1703,19 @@ export async function runAnalyticsLoop(
         ? { next_line: { arm: sc.next_line.arm, said: sc.next_line.said } }
         : {}),
       ...(sc?.length_arm ? { length_arm: sc.length_arm.arm } : {}),
+      ...(sc?.writer && sc.writer.provider !== "unknown"
+        ? {
+            writer: sc.writer.provider,
+            ...(sc.writer.fallback ? { writer_fallback: true } : {}),
+          }
+        : {}),
+      ...((n) => (n ? { narrator: n } : {}))(
+        narratorOf(
+          (typeof r.voice === "string" ? JSON.parse(r.voice) : r.voice) as
+            | { provider?: string; name?: string }
+            | null,
+        ),
+      ),
     });
   }
   const snaps = new Map<
@@ -2666,6 +2690,17 @@ export async function runAnalyticsLoop(
   const lengthAb = lengthGroups.length
     ? { groups: lengthGroups, reading: lengthAbReading(lengthGroups) }
     : undefined;
+  // Writer and narrator (recorded from 19 Nov 2026), each split by fit so a fit-heavy writer does not look better.
+  const fitOf = (id: string) => {
+    const e = eps.get(id)!;
+    return isFit({ title: e.title, hook: e.hook, game: e.game, durationSeconds: e.duration }) ? "fit" : "not fit";
+  };
+  const writerGroups = splitReading(
+    ytShorts,
+    (r) => ((w) => (w ? `${w}, ${fitOf(r.episode_id)}` : undefined))(eps.get(r.episode_id)?.writer),
+    now,
+  );
+  const narratorGroups = splitReading(ytShorts, (r) => eps.get(r.episode_id)?.narrator, now);
   const json: LoopJson = {
     version: 1,
     run_at: now.toISOString(),
@@ -2693,6 +2728,9 @@ export async function runAnalyticsLoop(
     next_test: test.test,
     series,
     ...(lengthAb ? { length_ab: lengthAb } : {}),
+    ...(writerGroups.length || narratorGroups.length
+      ? { authors: { writer: writerGroups, narrator: narratorGroups } }
+      : {}),
     ...(retentionStudy
       ? {
           retention: {
@@ -2952,6 +2990,14 @@ export function renderReport(x: RenderInput): string {
       "**Subscribers per 1,000 views by series** (YouTube Shorts 72 hours or older; the control's GTA news apart; TikTok and Instagram give no per-post follows, so they are left out)",
       "",
       ...seriesLines(json.series),
+      "",
+    );
+  if (json.authors)
+    L.push(
+      "**Writer and narrator** (YouTube Shorts 72 hours or older, recorded from 19 Nov 2026; the writer within fit and not fit)",
+      "",
+      ...splitLines(json.authors.writer).map((l) => `- Writer ${l}`),
+      ...splitLines(json.authors.narrator).map((l) => `- Narrator ${l}`),
       "",
     );
   if (json.length_ab)

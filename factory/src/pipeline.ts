@@ -415,6 +415,14 @@ import {
   strongFandom,
   withoutFandomWeight,
 } from "./loopfeedback.ts";
+import {
+  captureCalls,
+  writerRecord,
+  writerSplit,
+  type WriterProvider,
+} from "./editorial/authorship.ts";
+import { siteListed, withRoute } from "./editorial/codex.ts";
+import type { UsageLine } from "./editorial/llm.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { directorStep, retrainTick } from "./retentionstep.ts";
 import {
@@ -653,6 +661,7 @@ import {
   seriesPulseCheckNote,
 } from "./editorial/newssegment.ts";
 import {
+  isSerial,
   FLOOR_LANES,
   breakingAllowed,
   floorBackFactor,
@@ -7979,9 +7988,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         await logEvent(s.db, ep.id, "style_warnings", { problems: room.warnings, room: true }).catch(() => undefined);
     }
   }
+  // WRITER_SPLIT (src/editorial/authorship.ts): Claude for the Shorts most likely to travel, Codex for the rest. The
+  // writer is recorded on the script either way, from the model calls the main draft made.
+  const split = s.cfg.writerSplit
+    ? writerSplit({
+        maxSeconds: length?.seconds.max,
+        strongFandom: strongFandom({ title: cluster.headline, game: cluster.gameHint }),
+        serial: isSerial(series),
+      })
+    : undefined;
+  const writerCalls: UsageLine[] = [];
   if (!roomWrote)
   for (let attempt = 0; attempt < 2; attempt++) {
-    script = await writeScript(s.llm, cluster, articles, {
+    script = await captureCalls(writerCalls, () => withRoute(split?.route, async () => writeScript(s.llm, cluster, articles, {
       // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
       // vault's brief until 14 Nov 2026, so most invented-credit drops were stories the vault knew nothing about).
       vault: newsVault?.brief || CREDIT_RULE,
@@ -8017,7 +8036,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         : cluster.reply
           ? { site: "reply.write" }
           : {}),
-    });
+    })));
     // LEARN_HOOKS (src/learn/breadth.ts): 4 to 6 hooks from distinct angle briefs in one call, refused when they break a
     // house rule the draft kept or read like the last 30 hooks, scored and clarity-judged; the winner is fact-checked
     // below like every other word. A plain news Short's first draft only; never a holdout Short.
@@ -8606,6 +8625,14 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
   const tag = seriesTagFor(ep, script);
   if (tag) script = { ...script, series: tag };
+  // Who wrote it (always recorded): the main draft's calls; a room-written script is the room's.
+  if (!roomWrote) {
+    const site = cluster.search ? SEARCH_WRITE_SITE : cluster.reply ? "reply.write" : "editorial";
+    const intended: WriterProvider | undefined =
+      split?.route ??
+      (s.cfg.codexLlm ? (siteListed(site, s.cfg.codexCalls) ? "codex" : "claude") : "claude");
+    script = { ...script, writer: writerRecord(writerCalls, intended, split?.why) };
+  }
   if (lengthAb && length)
     script = { ...script, length_arm: { arm: lengthAb, band: `${length.seconds.min}-${length.seconds.max}` } };
   if (lineArm)

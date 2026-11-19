@@ -852,6 +852,10 @@ export interface Config {
    * favours on middle views with 15 or more a side, series Shorts counted in the fit test, a test ended "inconclusive" after
    * 2 extensions, and a retention lesson only from 15 or more Shorts: LOOP_MEDIAN_JUDGE, default off. */
   loopMedianJudge: boolean;
+  /** The main news Short writer split by value (19 Nov audit, upgrade 4): Claude for fit-length (35 s or under), strong-fandom
+   * and series Shorts, Codex for the rest, whatever CODEX_CALLS says (needs CODEX_LLM and the runner); the writer is
+   * recorded on every script either way: WRITER_SPLIT, default off. */
+  writerSplit: boolean;
   /** Retention curve learning (src/retentionlearn.ts): every Short and long video's audience retention curve read once it
    * is 48 hours old, each drop lined up with what was on screen and in the narration, and the patterns across videos
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
@@ -2050,6 +2054,7 @@ export function loadConfig(): Config {
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
     loopFandomWeight: bool("LOOP_FANDOM_WEIGHT", false),
     loopMedianJudge: bool("LOOP_MEDIAN_JUDGE", false),
+    writerSplit: bool("WRITER_SPLIT", false),
     retentionLearn: bool("RETENTION_LEARN", false),
     retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),

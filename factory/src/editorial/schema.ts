@@ -276,6 +276,11 @@ export type Script = z.infer<typeof ScriptSchema> & {
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
   /** The Why length test (WHY_LENGTH_AB, src/shortlengths.ts): the day's arm and the band the writer was given. */
   length_arm?: { arm: import("../shortlengths.ts").LengthArm; band: string };
+  /**
+   * Who wrote the script (always recorded, src/editorial/authorship.ts): Claude or Codex for the main draft's last
+   * answer, the model, whether it fell back from the provider it was meant for, and WRITER_SPLIT's reason.
+   */
+  writer?: import("./authorship.ts").WriterRecord;
   /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
   voice_tags?: VoiceTagMark[];
   /**

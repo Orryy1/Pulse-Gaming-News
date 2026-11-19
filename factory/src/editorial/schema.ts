@@ -334,6 +334,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   desk_plan?: import("./desk.ts").DeskPlan;
   /** SCRIPT_DESK: the editor's desk's arm, each read's six scores and note, the rewrites and the version kept. */
   desk?: import("./desk.ts").DeskRecord;
+  /** SCRIPT_ROOM: the writers' room's arm, its pack, angles, each critic's marks, a kill or fallback and its calls. */
+  room?: import("./room.ts").RoomRecord;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

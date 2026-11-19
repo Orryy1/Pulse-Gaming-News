@@ -678,6 +678,31 @@ export interface Config {
   /** SCRIPT_DESK_ROUNDS (1-3, default 2): rewrite rounds at most; the desk also stops when a read clears or no score
    * moves. The call cap follows: one read per version (rounds + 1) and one rewrite and fact check per round. */
   scriptDeskRounds: number;
+  /** The writers' room (src/editorial/room.ts, ten/room_spec.md, 19 Nov 2026): a clean, separate path for the same Shorts
+   * the desk covers (news, breaking and Why; not replies, search Shorts, GTA File parts or cut-downs), split by episode
+   * id. SCRIPT_ROOM=off (default: nothing runs, nothing changes), "check" (the room's arm gets only the fact pack, one
+   * call, recorded on script.room beside the normal script: a stated reason, verified quotes, a surprise, thin or not,
+   * and whether the published script used any of it; nothing published changes) or "on" (the room writes the arm's
+   * script: fact pack ("room.pack"), writer ("room.write": four angles, kill, point, three drafts), critics on title and
+   * narration only ("room.critic", and "room.viewer" under SCRIPT_ROOM_VIEWER), edits ("room.edit"), layout into the
+   * normal Script without changing a word ("room.layout"); the fact check, rumour labelling, monetisation and house
+   * safety checks, air-time checks and attribution still run and can block; a block gets one edits-only repair
+   * ("room.repair"), then the normal writer; a kill, a drop by both critics or a failed step falls back to the normal
+   * writer, recorded). CODEX_CALLS=room routes every step. Calls a Short at most: 1 pack, 1 write, 3 reads per critic,
+   * 2 edits, 2 layouts, 1 repair. */
+  scriptRoom: "off" | "check" | "on";
+  /** SCRIPT_ROOM_SHARE (0-1, default 0.5): the share of covered Shorts in the room's arm, split by episode id. */
+  scriptRoomShare: number;
+  /** SCRIPT_ROOM_VIEWER (default true): the viewer critic reads beside the editor critic. */
+  scriptRoomViewer: boolean;
+  /** SCRIPT_ROOM_ROUNDS (0-2, default 2): edit rounds at most; the room also stops when a read clears or a round does not
+   * improve the mean mark. */
+  scriptRoomRounds: number;
+  /** SCRIPT_ROOM_MIN (1-10, default 8): the mean overall mark that clears the room (no editor mark under 7 either). */
+  scriptRoomMin: number;
+  /** SCRIPT_ROOM_LINKS (default false): the pack also reads up to three primary sources the articles link to (the
+   * publisher's own post, a filing, an interview), only on hosts the factory already reads. */
+  scriptRoomLinks: boolean;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1876,6 +1901,12 @@ export function loadConfig(): Config {
     scriptDeskShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_DESK_SHARE", "0.5"))))),
     scriptDeskMin: Math.min(10, Math.max(1, int("SCRIPT_DESK_MIN", 7))),
     scriptDeskRounds: Math.min(3, Math.max(1, int("SCRIPT_DESK_ROUNDS", 2))),
+    scriptRoom: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SCRIPT_ROOM", "off").trim().toLowerCase()),
+    scriptRoomShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_ROOM_SHARE", "0.5"))))),
+    scriptRoomViewer: str("SCRIPT_ROOM_VIEWER", "true").trim().toLowerCase() !== "false",
+    scriptRoomRounds: Math.min(2, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 2))),
+    scriptRoomMin: Math.min(10, Math.max(1, int("SCRIPT_ROOM_MIN", 8))),
+    scriptRoomLinks: str("SCRIPT_ROOM_LINKS", "false").trim().toLowerCase() === "true",
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

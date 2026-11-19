@@ -26,6 +26,8 @@ import { numberWords } from "../voice/speakable.ts";
 import { stripVoiceTags } from "../voice/tags.ts";
 import { SOURCE_TRUTH_RULE, absenceClaims } from "./shortrules.ts";
 import type { Llm } from "./llm.ts";
+import { PULSE_FACT_RULES } from "./voice.ts";
+import { layoutRule } from "./room.ts";
 import { reviseByEdits } from "./revise.ts";
 import { skeletonRule, type Skeleton } from "./skeletons.ts";
 import { DROP_ANGLE_RULE } from "./dropangle.ts";
@@ -74,6 +76,31 @@ You are the editor choosing today's story. Pick the single candidate that will m
 Return candidate_index -1 if nothing is worth a Short today.`;
 }
 
+/** The card kinds a news Short's beats choose from (scriptPrompt, and the writers' room's layout). */
+export const SHORT_CARD_RULES = `   - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
+   - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
+   - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
+   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, secondary says whose score it is, items up to 3 outlets that themselves gave exactly that score. An aggregate (Metacritic, OpenCritic) has empty items: critics who gave a 5/5 or a 9/10 did not give it a 96, and listing them under it is a misattribution the fact check rejects.
+   - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
+   - "platforms" when the platforms are the news (a port, a new console, a "not on Switch" story): primary is a 2-5 word phrase, items are 1-6 platform names as written (PS5, Xbox Series X|S, PC, Switch 2), secondary may carry a short note such as "Day one on Game Pass". The card carries the full list; the narration says platforms the way people do ("PS5, Xbox and PC"), never "Xbox Series X|S" in a list.
+   - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
+   - "specs" for a sheet of facts (hardware specs, what an edition includes): primary is a 2-5 word phrase, items are 2-6 rows as "label:value" with short values.
+   - "milestones" for a history of three to five dates (announced, delayed, trailer, launch): primary is a 2-5 word phrase, items are rows as "YYYY-MM:label" or "YYYY-MM-DD:label", oldest first, labels of 1-3 words.
+   - "report" when the news is a named outlet's report (Bloomberg, The Verge, Insider Gaming): primary is what it reported as a 4-10 word headline, stating only what the sources say; secondary is the outlet exactly as the sources name it. It shows as a recreated news page credited to that outlet, never the outlet's real page.
+   - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
+   Never pad a card with numbers the sources do not give.`;
+/** The footage line every beat carries (scriptPrompt, and the room's layout). */
+export const SHORT_FOOTAGE_RULE = `   Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.`;
+/** The person and people fields (scriptPrompt, and the room's layout). */
+export const SHORT_PEOPLE_RULE = `person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
+people: every real person the narration names by name (artists, developers, actors), spelled as in the narration, so each can get a small licensed photo on their name; never a band, company, outlet or game character. tracklist: only for a soundtrack, album or tracklist story, the songs the sources name (artist and title as the sources give them); omit it otherwise.`;
+/** The stamp (scriptPrompt, and the room's layout). */
+export const SHORT_STAMP_RULE = `3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.`;
+/** Claims, hashtags, title and description (scriptPrompt, and the room's layout). */
+export const SHORT_PACKAGE_RULES = `List every factual claim in "claims" with the URL of the provided source that supports it.
+"hashtags": 3-5 tags fans of this story actually search, most specific first (#GTA6, #GTA, #RockstarGames); never generic ones like #gaming or #fyp.
+The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, the point (the consequence, the surprise or the stakes) and, when the story has one, the number that carries it (a price, a date, a count: titles with a number were more common among hits, and on our own channel they drew 2.7 times the views a day). A fifth of our views come from YouTube search, so name the game the way people type it into the search bar ("GTA 6", "Switch 2", "MW4", "Elden Ring Nightreign"), never only a subtitle or an internal code name. Under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver: never "BIG problem" or "ruined" over a small detail, never "no one is talking about" (viewers answer that everyone noticed), and never "every", "ultimate" or "complete" unless the Short truly covers all of it (those titles drew lists of what was missing). Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
+
 /** A Short's length lane (SHORT_LENGTHS, src/shortlengths.ts): its seconds, its word budget and how many beats it may have. */
 export interface ScriptLength {
   seconds: { min: number; max: number };
@@ -110,35 +137,21 @@ Structure:
    Whatever the shape, a viewer who hears only the hook knows what the Short is about: the news is in it, said plainly, not hinted at. A curiosity gap is a question the Short answers, never a riddle. No "your" on something that isn't the viewer's ("Your GTA 6 Ultimate upgrade", "your unfinished trilogy"): say the thing itself ("GTA 6's Ultimate upgrade isn't confirmed").
    No superlatives or hype in the hook (biggest, greatest, craziest, insane, massive, ever): they were rarer in hits than in weak Shorts. Never open with "So", "Today", "Hey", "Welcome", "In this", "Guys", a greeting or the channel's name, and never a question the Short does not answer.
 2. beats: ${beats} short fact beats, each with one on-screen visual card. The first beat must be the single most surprising concrete detail in the story (a number, a date, a price, a named feature), never background, history or "here is what we know": half our viewers leave between seconds five and twelve, so the best fact goes there. It adds a new detail: never the hook's own date or price said again (the card can show it), and no date or price said more than twice in the whole Short. Context and history come later or in the take. Each beat follows from the line before it and tells the story; beats carry no "I" lines, and the narrator's opinion waits for the take. Pick the card that fits the fact:
-   - "timeline" for a delay or date change: primary is a 2-5 word phrase, date_from is the old date and date_to the new date, both ISO (YYYY-MM or YYYY-MM-DD).
-   - "countdown" for a confirmed release date: primary is the date as spoken, date_to is the ISO date.
-   - "price" for a price: primary is the US dollar price exactly as written (e.g. $69.99) when the sources or Steam facts give one, else the price as given; was is the old price in the same currency if the story gives one; region is the platform or "US"; items lists the same price in the other currencies (£ and €) only when the sources or Steam facts state them. Speak the US price in the narration.
-   - "score" for a review score or rating out of 100: primary is the score as written, value_a the number 0-100, secondary says whose score it is, items up to 3 outlets that themselves gave exactly that score. An aggregate (Metacritic, OpenCritic) has empty items: critics who gave a 5/5 or a 9/10 did not give it a 96, and listing them under it is a misattribution the fact check rejects.
-   - "compare" for one number against others (sales, players, prices across platforms): items are 2-5 rows as "label:value" with the subject row marked "*label:value".
-   - "platforms" when the platforms are the news (a port, a new console, a "not on Switch" story): primary is a 2-5 word phrase, items are 1-6 platform names as written (PS5, Xbox Series X|S, PC, Switch 2), secondary may carry a short note such as "Day one on Game Pass". The card carries the full list; the narration says platforms the way people do ("PS5, Xbox and PC"), never "Xbox Series X|S" in a list.
-   - "versus" for one thing against another (new against old hardware, two games, two prices): primary is a 2-5 word phrase, items are exactly two rows as "label:value", the subject marked with a leading *.
-   - "specs" for a sheet of facts (hardware specs, what an edition includes): primary is a 2-5 word phrase, items are 2-6 rows as "label:value" with short values.
-   - "milestones" for a history of three to five dates (announced, delayed, trailer, launch): primary is a 2-5 word phrase, items are rows as "YYYY-MM:label" or "YYYY-MM-DD:label", oldest first, labels of 1-3 words.
-   - "report" when the news is a named outlet's report (Bloomberg, The Verge, Insider Gaming): primary is what it reported as a 4-10 word headline, stating only what the sources say; secondary is the outlet exactly as the sources name it. It shows as a recreated news page credited to that outlet, never the outlet's real page.
-   - "stat" for any other number, "date" for other dates, "quote" for a short official quote (under 12 words, from the sources), "list" for 2-3 short items separated by " | ", "title" for a key phrase.
-   Never pad a card with numbers the sources do not give.
+${SHORT_CARD_RULES}
    Numbers move: a before and after, a this against that, a countdown ($69.99 to $79.99; 10 hours to 3), never a list of specs read out (13 maps, 30 weapons, 6 modes). One turn line by about the second beat pivots to the detail that changes the story, in words that differ from Short to Short ("Except there's a catch.", "That's not the strange part.", "And that's where you come in."); never the banned stock phrases.
    Frame the story by what it does to the viewer (their money, their console, their pre-order, their weekend) or as players against a company, publisher against platform, studio against its own past: that framing carried the news Shorts that broke out, and a price is a conflict, never just a figure.
-   Every beat also carries "footage": what the trailer picture should show while that line is spoken, with 1-4 keywords naming the thing, place, character or action in the line. The picture editor matches real trailer moments to these, so be concrete ("Hyrule Field", "the new ship interior", "a car chase"), and use "calm" for lines whose card needs a quiet background (numbers, dates, prices). "hook_footage" does the same for the opening line and should want the most striking gameplay moment.
-person: when the story is about one real person (a cameo, a hire, a departure, a statement), their name as commonly written, so the Short can show a licensed photo of them; otherwise empty.
-people: every real person the narration names by name (artists, developers, actors), spelled as in the narration, so each can get a small licensed photo on their name; never a band, company, outlet or game character. tracklist: only for a soundtrack, album or tracklist story, the songs the sources name (artist and title as the sources give them); omit it otherwise.
+${SHORT_FOOTAGE_RULE}
+${SHORT_PEOPLE_RULE}
 3. pulse_take: the Pulse angle, and the payoff: when the hook asked a question, the take answers it, plainly, in its first sentence. This is the reason the Short exists and must add something the headline does not: context (previous delay, series history, price versus the last entry), a comparison, or a clearly framed opinion in natural words that differ from Short to Short (never the stock opener "Our read"). Use the take shape this Short is given below (a concession then a verdict, a comparison, a consequence for the viewer, what happens next, or a plain verdict); never pose a question in the beats or the take and then answer it (no \"Why trust them? Not yet.\"): say the doubt as a statement (\"After September's hike, trust is thin.\"); when the shape is not a concession, no line in the Short concedes a point ("sure", "fair enough", "granted", "in fairness", "to be fair", "yes, but"). The opening words and the closing shape must differ from the recent Shorts listed below when a list is given. Opinions must be framed as opinion. Say it as the narrator's own call: one opinion about the point, with its reason, then at most one first-person line that owns it ("That's steep for a remaster. I'd wait for a sale."): a friend's verdict, never a neutral summary. At most one light aside in the whole Short, and only one that follows straight from the line before and makes sense heard once; none is better than one nobody follows. One "I think" or "honestly" in the whole Short at most, never stacked. Do not invent data.
 Talk to the viewer where it is natural: "you" when a fact really lands on them (their console, their money, their pre-order), and "you" rather than "fans" or "gamers" wherever it would do, but never to a count, and never a "your" bolted onto something that isn't theirs.
 Community stakes: the framing says plainly what the fan gains, loses or can do about it (save, wait, claim, pre-order, skip), and when the loop line asks, it is a personal either/or the viewer answers about their own choice ("Keep your disc drive, or go all digital?"), never a question about the company.
-3a. stamp: the one word that carries the news gets a rubber stamp on screen as it is spoken: a date that was confirmed ("NOV 19" / "CONFIRMED"), a delay ("DELAYED" / "TO 2027"), a price ("$49.99"), "FREE", "LEAKED" (with "REPORTED" under it for a rumor). "word" is that word exactly as written in your narration; the stamp's figures must be the narration's own. Omit it when nothing deserves it.
+${SHORT_STAMP_RULE}
 ${desk ? "3b. desk_question: before the take, the sceptic's objection, the line the top comment would otherwise make, put by a second presenter at the desk in 5-12 words, ending with \"?\". Shapes that work, always in this story's own specifics and fresh words: the feature an older game already had, who wanted this at all, whether it's worth the price on day one, what it means for people who already bought in. Never open two Shorts' questions the same way. The take then answers it head on. In a study of 12,679 top comments on gaming Shorts, the most-liked comment on news Shorts was very often exactly that objection; saying it first takes it off the table. Always provide one." : "3b. desk_question: leave it out. The take answers the hook, so it must make sense on its own."}
 4. loop_line: one complete closing sentence (it ends with a full stop or a question mark) that a viewer understands on its own and that follows from the take: never a quip, metaphor or callback the viewer has to decode, and never a pointer to another video. It echoes the hook's subject, so a rewatch feels connected: the game, the people or the stake, never the hook's number again (a price, size or date said in the hook stays out of the loop). Vary the closing shape: a fact, a comma, then a question ("After that, which one...?") is one shape of many, and never the shape the recent Shorts listed below just used. When it asks the viewer something, make it specific enough to answer in five words: a named fork ("Should Pokemon keep turn-based battles, or go full action?"), three options for a buying story ("Day one, wait for a sale, or skip it?"), "name one" ("Which starter deserves a Mega next?") or the viewer's own numbers ("How many raids before your first shiny?"); put the money in it, dollars first, when the story is about money. Specific questions were answered by 73% of top comments in the comment study, "thoughts?" by 46% and rhetorical ones by 12%. Never a rhetorical question, a punchline dressed as a question, or "will you play it?". Never an unfinished sentence or a line ending on "because", "and", "so", "but", "which" or "that": the voice reads it as a stumble followed by silence.
 
 Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone.
 ${SOURCE_TRUTH_RULE}
-List every factual claim in "claims" with the URL of the provided source that supports it.
-"hashtags": 3-5 tags fans of this story actually search, most specific first (#GTA6, #GTA, #RockstarGames); never generic ones like #gaming or #fyp.
-The YouTube title reads like a sharp headline a friend would text you, not a press release: the game or company named early, a strong verb, the point (the consequence, the surprise or the stakes) and, when the story has one, the number that carries it (a price, a date, a count: titles with a number were more common among hits, and on our own channel they drew 2.7 times the views a day). A fifth of our views come from YouTube search, so name the game the way people type it into the search bar ("GTA 6", "Switch 2", "MW4", "Elden Ring Nightreign"), never only a subtitle or an internal code name. Under 60 characters, sentence-style with no "Game: fact" colon template, no exclamation marks, no all-caps words, no clickbait the video does not deliver: never "BIG problem" or "ruined" over a small detail, never "no one is talking about" (viewers answer that everyone noticed), and never "every", "ultimate" or "complete" unless the Short truly covers all of it (those titles drew lists of what was missing). Good: "Nintendo Just Made Switch 2 Games Cost $80", "GTA 6 Slips Again, and This Time It's Fall". Bad: "GTA 6: Release Date Delayed". A rumor's title says it is a rumor or report. The description opens with one conversational sentence on why it matters, then credits the sources by name.`;
+${SHORT_PACKAGE_RULES}`;
 }
 
 export function factCheckPrompt(): string {
@@ -238,8 +251,15 @@ export async function writeScript(
     deskPlan?: boolean;
     /** The desk's rewrite: edits to the draft only; when they don't apply it throws instead of writing the draft again. */
     editsOnly?: boolean;
+    /**
+     * SCRIPT_ROOM's layout (src/editorial/room.ts): the room's finished words laid into the Script without a word
+     * changed, on the layout's own short brief (none of the stacked shapes). `repair`: an edits-only fix of the
+     * laid-out draft for the problems in `feedback` (step "room.repair").
+     */
+    layout?: { title: string; narration: string; repair?: boolean };
   },
 ): Promise<Script> {
+  if (opts.layout) return layoutScript(llm, cluster, articles, { ...opts, layout: opts.layout });
   // The gate's and the desk's arms ask for their plans in the same answer; off, the schema is the one every Short has
   // always had.
   const plans: Record<string, ZodTypeAny> = {};
@@ -333,6 +353,78 @@ export async function writeScript(
     cluster.why ? { ...script, story_type: "explainer" } : script,
     cluster.hash,
   );
+}
+
+/** The room's layout brief (SCRIPT_ROOM): the cards, footage, stamp, claims and title rules, and the house safety rules. */
+export function layoutPrompt(length?: ScriptLength): string {
+  const beats =
+    length && length.beatsMax > 4
+      ? `two to ${numberWords(length.beatsMax)}`
+      : "two to four";
+  return `You lay out a finished narration for Pulse Gaming News, a YouTube Shorts channel about video game news. The words are already written; your job is everything around them.
+
+${PULSE_FACT_RULES}
+
+Structure:
+1. hook: the narration's first sentence, as written.
+2. beats: ${beats} beats, each one or two of the narration's sentences in order, each with one on-screen visual card that fits its line. Pick the card that fits the fact:
+${SHORT_CARD_RULES}
+${SHORT_FOOTAGE_RULE}
+${SHORT_PEOPLE_RULE}
+3. pulse_take: narration is the verdict sentence or two, as written; label is a short card label (WHY IT MATTERS, THE CATCH, THE VERDICT); on_screen is a 3-8 word summary of the take.
+4. loop_line: the narration's last sentence, as written.
+${SHORT_STAMP_RULE}
+Visual "primary" text must be short enough to read in a second. The headline is factual and readable on a phone, 3-8 words, and never gives the held-back answer away.
+${SOURCE_TRUTH_RULE}
+${SHORT_PACKAGE_RULES}`;
+}
+
+/** SCRIPT_ROOM's layout: the locked words into the Script (or, with `repair`, an edits-only fix of the laid-out draft). */
+async function layoutScript(
+  llm: Llm,
+  cluster: StoryCluster,
+  articles: ArticleText[],
+  opts: {
+    mustLabelRumour: boolean;
+    feedback?: string[];
+    storeData?: string;
+    vault?: string;
+    draft?: Script;
+    length?: ScriptLength;
+    site?: string;
+    layout: { title: string; narration: string; repair?: boolean };
+  },
+): Promise<Script> {
+  const rules = opts.mustLabelRumour
+    ? "\nThis story is NOT confirmed by an official source or two independent outlets. Set is_rumour true; the narration already labels it, and the on-screen text and title must say it is a report too."
+    : "";
+  const system = layoutPrompt(opts.length);
+  const base = `Sources:\n${sourcesBlock(articles, cluster)}${storeBlock(opts.storeData)}${opts.vault ? `\n\n${opts.vault}` : ""}${rules}${launchNotes(cluster)}`;
+  if (opts.layout.repair) {
+    if (!opts.draft || !opts.feedback?.length)
+      throw new Error("a room repair needs the laid-out draft and its problems");
+    const edited = await reviseByEdits(llm, {
+      site: opts.site ?? "room.repair",
+      system,
+      content: base,
+      schema: ScriptSchema,
+      draft: opts.draft,
+      problems: opts.feedback,
+      job: "writers' room repair",
+    });
+    if (!edited) throw new Error("the repair's edits did not apply to the draft");
+    return edited;
+  }
+  const feedback = opts.feedback?.length
+    ? `\n\nThe last layout was rejected. Fix this and lay the narration out again, word for word:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
+    : "";
+  return llm.structured({
+    site: opts.site ?? "room.layout",
+    system,
+    content: `${base}\n\n${layoutRule(opts.layout)}${feedback}`,
+    schema: ScriptSchema,
+    effort: "medium",
+  });
 }
 
 /** Everything a card will print: its text plus the dates, prices, scores and rows the graphic draws from. */

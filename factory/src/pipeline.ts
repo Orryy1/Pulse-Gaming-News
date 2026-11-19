@@ -719,6 +719,16 @@ import {
   type DeskArm,
   type DeskRecord,
 } from "./editorial/desk.ts";
+import { roomArm, roomRecord, type RoomArm, type RoomRecord } from "./editorial/room.ts";
+import {
+  roomCheckStep,
+  roomControlRecord,
+  roomEvent,
+  roomWriteStep,
+  type RoomStepInput,
+} from "./roomstep.ts";
+import { FEEDS } from "./discovery/feeds.ts";
+import { fetchOutboundLinks } from "./discovery/article.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
 import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
@@ -913,6 +923,8 @@ export interface Services {
   discover(): Promise<StoryCluster[]>;
   discoverEvergreen(): Promise<EvergreenCandidate[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
+  /** SCRIPT_ROOM_LINKS: an article's outbound links (absent: src/discovery/article.ts fetchOutboundLinks). */
+  fetchLinks?(url: string): Promise<string[]>;
   synthesise(
     text: string,
     outPath: string,
@@ -7540,7 +7552,23 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // A holdout Short (LEARN_HOLDOUT_SHARE, src/learn/holdout.ts) is the factory as pinned: no test arm, and the winners
   // the tests had settled when the baseline was pinned.
   const holdout = holdoutOf(s.cfg);
-  const testAssigned = await (cluster.run || cluster.reply || holdout
+  // SCRIPT_ROOM (src/editorial/room.ts, src/roomstep.ts): the same Shorts the desk covers, split by episode into the
+  // room's arm and the control arm. Under "on" the room writes its arm's script on its own short brief, so the stacked
+  // experiments (the growth test, the voice test) are not assigned to that arm and stay clean; a fallback to the normal
+  // writer writes without them.
+  const roomArmOf: RoomArm | undefined =
+    s.cfg.scriptRoom !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? roomArm(ep.id, s.cfg.scriptRoomShare)
+      : undefined;
+  const roomOn = roomArmOf === "room" && s.cfg.scriptRoom === "on";
+  const testAssigned = await (cluster.run || cluster.reply || holdout || roomOn
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
@@ -7554,7 +7582,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // test's variant and the other factors' arms come from the bandit; shadow records its draws only. growth.ts's
   // bootstrap stays the verdict, reading assets_json.test as before.
   const { test, defaults: testDefaults } =
-    holdout || cluster.run || cluster.reply
+    holdout || cluster.run || cluster.reply || roomOn
       ? { test: testAssigned, defaults: testDefaultsBase }
       : await banditForShort(s, ep, testAssigned, testDefaultsBase);
   // LEARN_PLAYBOOK=on (src/learn/playbook.ts): the tracked lessons, recorded against this Short; never for a holdout.
@@ -7615,8 +7643,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       : undefined;
   // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
   // with a person's take. Half the Shorts get that voice; assignment by episode, so a retry keeps its side.
-  const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
-  if (s.cfg.voiceTestShare > 0)
+  const personal = !roomOn && s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
+  if (s.cfg.voiceTestShare > 0 && !roomOn)
     await logEvent(s.db, ep.id, "voice_test", { personal }).catch(() => undefined);
   // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
   const series = seriesTagFor(ep);
@@ -7790,6 +7818,96 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const said = [narrationOf(sc), sc.headline, sc.youtube.title, ...sc.beats.map((b) => cardText(b.visual))];
     return `${newsVault.brief}${newsVault.verified(said)}`.trim() || undefined;
   };
+  // SCRIPT_ROOM's inputs: the story's sources, the vault and the length lane, as the normal writer has them.
+  const roomInput = (): RoomStepInput => ({
+    llm: s.llm,
+    cfg: s.cfg,
+    cluster,
+    articles,
+    ...(storeData ? { storeData } : {}),
+    vaultBrief: newsVault?.brief || CREDIT_RULE,
+    ...(newsVault?.brief ? { vaultNote: newsVault.brief } : {}),
+    ...(length ? { length } : {}),
+    mustLabelRumour,
+    feedUrls: FEEDS.map((f) => f.url),
+    fetchLinks: (u) => (s.fetchLinks ? s.fetchLinks(u) : fetchOutboundLinks(u)),
+    fetchArticle: (u) => s.fetchArticle(u),
+  });
+  // SCRIPT_ROOM=on, the room's arm: the room writes the Short. Its script meets the fact check, rumour labelling, the
+  // air-time words and the house safety checks (one edits-only repair); otherwise the normal writer writes it below.
+  let roomRec: RoomRecord | undefined;
+  let roomWrote = false;
+  if (roomOn) {
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const outlets = cluster.items.map((i) => i.source.toLowerCase());
+    const room = await roomWriteStep(
+      roomInput(),
+      {
+        // The house rules that guard facts, money and the render, not the stacked style rules.
+        safety: (sc) => [
+          ...validateScript(sc, undefined, length).filter((p) => ROOM_SAFETY.test(p)),
+          ...absenceProblems(narrationOf(sc)),
+          ...preorderProblems(
+            narrationOf(sc),
+            [...articles.map((a) => a.text), ...cluster.items.map((i) => `${i.title} ${i.summary}`)].join("\n"),
+          ),
+          ...(s.cfg.shortLabelsClean ? cardFigureProblems(sc.beats) : []),
+          ...releaseDateProblems(publicText(sc)),
+          ...videoPlugProblems(narrationOf(sc)),
+          ...sc.beats
+            .filter(
+              (b) =>
+                b.visual.kind === "report" &&
+                !outlets.some(
+                  (o) =>
+                    o.includes(b.visual.secondary.toLowerCase().trim()) ||
+                    b.visual.secondary.toLowerCase().includes(o),
+                ),
+            )
+            .map((b) => `Report card names "${b.visual.secondary}", which is not one of this story's sources.`),
+        ],
+        factCheck: (sc) => factCheck(s.llm, sc, cluster, articles, storeData, undefined, vaultNote(sc)),
+        airTime: (sc) => (airsAt ? airTimeProblems(publicText(sc), new Date(airsAt)) : []),
+        ...(newsVault
+          ? { settle: (sc: Script, blockers: string[]) => newsVault.settle(sc, blockers, ep.id, "room") }
+          : {}),
+        ...(s.cfg.creditScrub
+          ? {
+              scrub: (sc: Script) =>
+                scrubScriptCredits(
+                  sc,
+                  givenSources({
+                    outlets: [
+                      ...cluster.items.map((i) => i.source),
+                      ...articles.map((a) => a.via),
+                      storeData ? "Steam" : undefined,
+                    ],
+                    vault: newsVault?.brief,
+                  }),
+                ).script,
+            }
+          : {}),
+      },
+      roomSkipped(s.cfg, { pulseCheck, skeleton: !!skeleton }),
+    ).catch((err) => {
+      log("warn", "writers' room failed; the normal writer writes the Short", { episode: ep.id, error: errorMessage(err) });
+      return {
+        record: roomRecord({ arm: "room", mode: "on", fallback: `the room failed: ${errorMessage(err)}`.slice(0, 300), wrote: false }),
+        script: undefined,
+        check: undefined,
+        warnings: undefined,
+      };
+    });
+    roomRec = room.record;
+    if (room.script && room.check) {
+      script = room.script;
+      check = room.check;
+      roomWrote = true;
+      if (room.warnings?.length)
+        await logEvent(s.db, ep.id, "style_warnings", { problems: room.warnings, room: true }).catch(() => undefined);
+    }
+  }
+  if (!roomWrote)
   for (let attempt = 0; attempt < 2; attempt++) {
     script = await writeScript(s.llm, cluster, articles, {
       // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
@@ -8070,6 +8188,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The friend pass (FRIEND_PASS): with the facts settled, one rewrite of the delivery, kept only when nothing
   // factual moved, no house rule newly breaks and the fact check passes it again.
   if (
+    !roomWrote &&
     friendPassOn(s.cfg, "shorts") &&
     check.verdict === "pass" &&
     check.rumour_labelling_ok &&
@@ -8130,6 +8249,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // plain rewrite; under CLARITY_MIN the writer revises once first. Each version is kept only when no fact moved, no
   // house rule newly breaks and the fact check passes it, so the worst case is the script as it was.
   if (
+    !roomWrote &&
     friendPassOn({ friendPass: s.cfg.clarityGate }, "shorts") &&
     check.verdict === "pass" &&
     check.rumour_labelling_ok &&
@@ -8236,7 +8356,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const passedCheck = new Map<Script, typeof check>();
     const loop = await runDesk<Script>({
       value: script,
-      mode: deskFix && factsOk && !deskKilled ? "fix" : "check",
+      // A room script is read and recorded, never rewritten for style.
+      mode: deskFix && factsOk && !deskKilled && !roomWrote ? "fix" : "check",
       min: s.cfg.scriptDeskMin,
       rounds: s.cfg.scriptDeskRounds,
       angle: script.desk_plan?.angle,
@@ -8329,7 +8450,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     };
     let humanCheck: typeof check | undefined;
     const human = await humaniseStep<Script>({
-      mode: s.cfg.humanise,
+      // A room script is measured and logged, never rewritten for style.
+      mode: roomWrote && s.cfg.humanise === "fix" ? "check" : s.cfg.humanise,
       value: script,
       run: (v, mode) => {
         const r = humaniseShort(v, { mode, ...(publishAt ? { publishAt } : {}) });
@@ -8401,6 +8523,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     return;
   }
   // CHARACTER_QUOTES (src/charquotestep.ts): one real line from the game's cutscene, set up and answered by the narrator.
+  // A room script keeps its words: no cutscene line is woven into it.
+  if (!roomWrote)
   script = await quoteScriptStep(s, ep, script, {
     house: (sc) => houseProblems(sc).problems,
     wordsMax: length?.wordsMax ?? WORDS_MAX,
@@ -8424,7 +8548,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // weekly report compares the arms). The gate's arm gets the cold read of title, first frame and hook too; the control
   // arm only the rules that need no plan. Measuring never changes the script.
   if (payoffArmOf) {
-    const gated = payoffArmOf === "gate";
+    // A room script carries no payoff plan: it is measured on the rules that need none.
+    const gated = payoffArmOf === "gate" && !roomWrote;
     const measured = payoffFindings({
       script,
       recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
@@ -8469,8 +8594,21 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   }
   // SCRIPT_DESK: the desk's record rides on the script beside payoff_gate (the weekly report reads arm and score).
   if (deskRec) script = { ...script, desk: deskRec };
+  // SCRIPT_ROOM: "check" builds the room's pack beside the published script (one call, nothing changed); the control arm
+  // is recorded with no call; "on" carries what the room did, or why the normal writer wrote it.
+  if (roomArmOf) {
+    if (!roomOn)
+      roomRec =
+        roomArmOf === "room"
+          ? await roomCheckStep(roomInput(), script).catch(() => undefined)
+          : roomControlRecord(s.cfg.scriptRoom === "on" ? "on" : "check");
+    if (roomRec) {
+      script = { ...script, room: roomRec };
+      await logEvent(s.db, ep.id, "script_room", roomEvent(roomRec)).catch(() => undefined);
+    }
+  }
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
-  if (skeleton) script = { ...script, skeleton: skeleton.key };
+  if (skeleton && !roomWrote) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: check,
@@ -8479,6 +8617,30 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ? { ...(steam ? { steam } : {}), ...(test ? { test } : {}) }
         : null,
   });
+}
+
+/** SCRIPT_ROOM: the house rules from validateScript that guard facts, money and the render (not the stacked style). */
+const ROOM_SAFETY =
+  /^Banned phrase matched|^A rumour script must attribute|^The stamp|^There must be|card|^On-screen text|^The YouTube title is over|^The on-screen headline is longer|^The Pulse take is empty|^The loop line .* is unfinished/;
+
+/** SCRIPT_ROOM: what a room script skipped or ran record-only, for its record (pure). */
+function roomSkipped(cfg: Config, o: { pulseCheck: boolean; skeleton: boolean }): string[] {
+  return [
+    "take_shape",
+    "desk_question",
+    "loop_question",
+    ...(o.skeleton ? ["skeleton"] : []),
+    ...(o.pulseCheck ? ["pulse_check"] : []),
+    ...(cfg.voiceTestShare > 0 ? ["voice_test"] : []),
+    "growth_test",
+    ...(cfg.learn.hooks !== "off" ? ["learn_hooks"] : []),
+    ...(friendPassOn(cfg, "shorts") ? ["friend_pass"] : []),
+    ...(friendPassOn({ friendPass: cfg.clarityGate }, "shorts") ? ["clarity_gate"] : []),
+    ...(cfg.shortPayoffGate === "fix" ? ["payoff_fix (record only)"] : []),
+    ...(cfg.scriptDesk === "fix" ? ["desk_fix (record only)"] : []),
+    ...(cfg.humanise === "fix" ? ["humanise (record only)"] : []),
+    "character_quotes",
+  ];
 }
 
 /**

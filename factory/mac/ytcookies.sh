@@ -76,6 +76,8 @@ echo
 umask 077
 mkdir -p "$DATA"
 RAW="$(mktemp "$DATA/.yt_cookies_raw.XXXXXX")"
+# yt-dlp reads an existing --cookies file first and refuses an empty one, so start it as an empty Netscape file.
+echo '# Netscape HTTP Cookie File' > "$RAW"
 KEPT="$(mktemp "$DATA/.yt_cookies_kept.XXXXXX")"
 ERR="$(mktemp "$DATA/.yt_cookies_err.XXXXXX")"
 cleanup() { rm -f "$RAW" "$KEPT" "$ERR"; }

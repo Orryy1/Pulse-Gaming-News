@@ -8,6 +8,7 @@ import { runCapped } from "../lib/child.ts";
 import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { namesOtherEntry, titleNamesGame } from "../sceneindex/gamenames.ts";
 import { orchClientUrl } from "../platform.ts";
 import {
   appleSoundReady,
@@ -197,7 +198,11 @@ export function pickCutsceneUpload(
       if (item.isLive || (item.liveStatus && item.liveStatus !== "not_live"))
         return false;
       const title = titleWords(item.title);
-      if (!names.some((name) => ` ${title} `.includes(` ${name} `)))
+      // 19 Nov 2026: fans write "GTA 6" for Grand Theft Auto VI; every GTA VI movie was refused as another game.
+      if (
+        !names.some((name) => ` ${title} `.includes(` ${name} `)) &&
+        !(titleNamesGame(item.title, gameTitle) && !namesOtherEntry(item.title, gameTitle))
+      )
         return false;
       if (!/\b(cut\s*scenes?|movies?|no\s+commentary)\b/i.test(title) &&
           !(opts.sceneKeyword && /\bscenes?\b/i.test(title)))

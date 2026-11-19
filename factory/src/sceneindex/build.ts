@@ -263,6 +263,11 @@ export function pickSource(
 /** Part of a series, not the whole game: early launch uploads are "Part 1" while the uploader is still playing. */
 const PARTIAL =
   /\b(?:part|pt|ep(?:isode)?|chapter|mission|act|day)\s*#?\s*\d+\b|\b(?:first|opening)\s+\d+\s+(?:hours?|minutes?|missions?)\b/i;
+/** The first of a series ("Part 1", "Chapter 1", "Pt. I"), and no other part number in the title. */
+export function firstPart(title: string): boolean {
+  const parts = [...title.matchAll(/\b(?:part|pt|chapter|ep(?:isode)?)\.?\s*#?\s*(\d+|one|i)\b/gi)].map((m) => m[1]!.toLowerCase());
+  return parts.length > 0 && parts.every((n) => n === "1" || n === "one" || n === "i");
+}
 /** Burned-in subtitles, captions, translations or a channel's own extras over the picture. */
 const SUBTITLED =
   /\b(?:subtitles?|subtitled|subbed|eng(?:lish)?\s*subs?|with\s+subs|cc|captions?|dubbed|dublado|doblado|legendado|subtitulado|sous[-\s]titres?|untertitel\w*|sottotitoli|napisy|altyaz\w*|espanol|latino|deutsch|italiano|portugues|pt[-\s]?br)\b|(?:türkçe|español|français|português|русск|日本語|中文|한국어)/i;
@@ -363,7 +368,9 @@ export function judgeUploads(
     if (ONE_ENDING.test(upload.title) && !WHOLE_GAME.test(upload.title)) return no("one ending, not the whole story");
     if (upload.uploadDate && Number.isFinite(earliest) && Date.parse(`${upload.uploadDate}T00:00:00Z`) < earliest)
       return no(`uploaded ${upload.uploadDate}, before the game came out`);
-    if (PARTIAL.test(upload.title))
+    // 19 Nov 2026: a long game's movie comes in parts (GTA VI's in three or more). Part 1 is taken while no whole
+    // movie exists: it is the opening, the only story the spoiler window lets us use, and a longer upload replaces it.
+    if (PARTIAL.test(upload.title) && !(kind === "movie" && firstPart(upload.title)))
       return no("part of a series, not the whole game");
     if (upload.duration > max)
       return no(`longer than ${o.maxHours ?? 12} hours`);
@@ -383,7 +390,7 @@ export function judgeUploads(
       kind,
       reason:
         kind === "movie"
-          ? "clean full movie"
+          ? PARTIAL.test(upload.title) ? "clean first part of the movie" : "clean full movie"
           : "clean no-commentary playthrough",
     };
   });
@@ -404,6 +411,7 @@ export function pickComplete(
     .sort(
       (a, b) =>
         Number(b.kind === "movie") - Number(a.kind === "movie") ||
+        Number(!PARTIAL.test(b.upload.title)) - Number(!PARTIAL.test(a.upload.title)) ||
         Number(CUTSCENE_WORDS.test(b.upload.title)) - Number(CUTSCENE_WORDS.test(a.upload.title)) ||
         b.upload.duration - a.upload.duration ||
         Number((b.upload.height ?? 0) >= 1080) -

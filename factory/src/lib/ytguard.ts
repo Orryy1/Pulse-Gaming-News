@@ -21,8 +21,10 @@
 // of its candidates and the download of the chosen full movie or no-commentary playthrough proxy) may sign in
 // with YTDLP_COOKIES_FILE, the cookies of a separate, disposable 18+ Google account made only for this, never the
 // Pulse or Orryy channel accounts (src/lib/ytsignin.ts signedInArgs; mac/ytcookies.sh exports them on the Mac
-// mini). Nothing else in the factory ever sends those cookies: Shorts clip pulls, scene search, the light index and
-// the archive stay anonymous. A call carrying --cookies is a signed-in call and has its own lane here:
+// mini). Nothing else in the factory sends those cookies unless switched on (19 Nov 2026, each default off:
+// SIGNED_CLIPS, SIGNED_LIGHT_INDEX, TREND_FEED; together at most YT_SIGNED_CLIP_SHARE of the signed-in budget, so the
+// fetcher keeps the rest), and no signed-in call may name Pulse's own channel or videos (src/lib/ytown.ts; refused
+// here). A call carrying --cookies is a signed-in call and has its own lane here:
 // - its own budget, YT_SIGNED_HOURLY calls in any hour (default 20), not counted in the anonymous budget;
 // - its own pause: a bot answer on the signed-in lane pauses only that lane (6 hours, doubling, 48 at most), and the
 //   anonymous lane's pause does not stop it. While it is paused the fetcher's calls go anonymous instead;
@@ -37,7 +39,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { log } from "./util.ts";
+import { ownChannel, touchesOwnChannel, type OwnChannel } from "./ytown.ts";
 
 // ---------------------------------------------------------------- settings
 
@@ -62,6 +66,11 @@ export interface GuardSettings {
   backgroundMaxWaitMs: number;
   /** The signed-in lane's own budget (YT_SIGNED_HOURLY): the game fetcher's calls with the download account's cookies. */
   signedHourlyBudget: number;
+  /**
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of that budget everything other than the game fetcher may use (age-gated
+   * Shorts clips, the light index's captions, the trend feed), so the fetcher is never starved. 0: none of it.
+   */
+  signedClipShare: number;
 }
 
 const num = (v: string | undefined, d: number): number => {
@@ -86,6 +95,7 @@ export function guardSettings(
     urgentMaxWaitMs: 3 * 60_000,
     backgroundMaxWaitMs: 15 * 60_000,
     signedHourlyBudget: Math.floor(num(env.YT_SIGNED_HOURLY, 20)),
+    signedClipShare: Math.min(1, num(env.YT_SIGNED_CLIP_SHARE, 0.5)),
   };
 }
 
@@ -144,6 +154,24 @@ export function videoIdOf(args: readonly string[]): string | undefined {
 
 export type CallClass = "urgent" | "background";
 
+/**
+ * Who a signed-in call is for: the game fetcher (the default, the whole signed-in budget) or one of the smaller users
+ * that share YT_SIGNED_CLIP_SHARE of it: an age-gated clip pull (SIGNED_CLIPS), the light index (SIGNED_LIGHT_INDEX)
+ * or the trend feed (TREND_FEED). Carried through the async call chain, so the callers' own runners need no change.
+ */
+export type YtPurpose = "fetcher" | "clip" | "trend";
+const purposeStore = new AsyncLocalStorage<YtPurpose>();
+
+/** Runs `fn` with every YouTube call inside it counted as `purpose` on the signed-in lane. */
+export function withYtPurpose<T>(purpose: YtPurpose, fn: () => Promise<T>): Promise<T> {
+  return purposeStore.run(purpose, fn);
+}
+
+/** The purpose of the calls being made now (the fetcher when none was set). */
+export function currentYtPurpose(): YtPurpose {
+  return purposeStore.getStore() ?? "fetcher";
+}
+
 /** A child started with YT_CLASS=background (the scene index, the archive) is background; anything else is a video's own fetch. */
 export function callClass(env: NodeJS.ProcessEnv = process.env): CallClass {
   return String(env.YT_CLASS ?? "").toLowerCase() === "background"
@@ -173,6 +201,8 @@ export interface LaneState {
   liftedAt?: number;
   /** Strikes of the last block, carried into the next one when it comes within a day. */
   lastStrikes?: number;
+  /** Signed-in lane only: the calls made for clips, the light index and the trend feed (YT_SIGNED_CLIP_SHARE). */
+  auxCalls?: number[];
 }
 
 export interface GuardState extends LaneState {
@@ -216,7 +246,7 @@ export type Decision =
   | { go: true; at: number; probe: boolean }
   | {
       go: false;
-      reason: "blocked" | "probing" | "budget" | "busy";
+      reason: "blocked" | "probing" | "budget" | "share" | "busy";
       until?: number;
     };
 
@@ -231,6 +261,7 @@ export function decide(
   s: GuardSettings,
   rand: number,
   lane: Lane = "anon",
+  purpose: YtPurpose = "fetcher",
 ): Decision {
   // Each lane keeps its own count, spacing and pause: the anonymous pause never stops a signed-in call, nor the
   // reverse. The signed-in lane has its own small budget and no background share (only the fetcher uses it).
@@ -238,6 +269,8 @@ export function decide(
   const budget = lane === "signed" ? s.signedHourlyBudget : s.hourlyBudget;
   state.calls = state.calls.filter((t) => now - t < HOUR);
   state.backgroundCalls = state.backgroundCalls.filter((t) => now - t < HOUR);
+  const aux = lane === "signed" && purpose !== "fetcher";
+  if (lane === "signed") state.auxCalls = (state.auxCalls ?? []).filter((t) => now - t < HOUR);
   let probe = false;
   if (state.block) {
     if (now < state.block.until)
@@ -256,6 +289,11 @@ export function decide(
         reason: "budget",
         until: state.backgroundCalls[0]! + HOUR,
       };
+    // Clips, the light index and the trend feed share at most YT_SIGNED_CLIP_SHARE of the signed-in budget: the rest
+    // is always left for the game fetcher.
+    const auxCap = Math.floor(budget * s.signedClipShare);
+    if (aux && state.auxCalls!.length >= auxCap)
+      return { go: false, reason: "share", until: (state.auxCalls![0] ?? now) + HOUR };
   }
   const at = Math.max(now, state.nextAt);
   const maxWait =
@@ -268,6 +306,7 @@ export function decide(
   state.nextAt = at + gap;
   state.calls.push(at);
   if (cls === "background") state.backgroundCalls.push(at);
+  if (aux) state.auxCalls!.push(at);
   if (probe) state.probeAt = now;
   return { go: true, at, probe };
 }
@@ -434,7 +473,7 @@ export function cookiesUsable(state: GuardState, fileMtimeMs: number, now: numbe
 /** A YouTube call refused by the guard: the caller falls back as it does for any failed fetch. */
 export class YtPausedError extends Error {
   constructor(
-    readonly reason: "blocked" | "probing" | "budget" | "busy",
+    readonly reason: "blocked" | "probing" | "budget" | "share" | "busy",
     until?: number,
     readonly lane: Lane = "anon",
   ) {
@@ -448,7 +487,9 @@ export class YtPausedError extends Error {
             ? signed
               ? "the hourly signed-in YouTube budget (YT_SIGNED_HOURLY) is used up"
               : "the hourly YouTube budget (YT_HOURLY_BUDGET) is used up"
-            : "too many YouTube calls are queued ahead of this one";
+            : reason === "share"
+              ? "the clips' share of the signed-in YouTube budget (YT_SIGNED_CLIP_SHARE) is used up; the rest is kept for the game fetcher"
+              : "too many YouTube calls are queued ahead of this one";
     super(`YouTube fetch skipped: ${why}`);
     this.name = "YtPausedError";
   }
@@ -459,6 +500,14 @@ export function isYtPaused(err: unknown): boolean {
     err instanceof YtPausedError ||
     (err as Error | undefined)?.name === "YtPausedError"
   );
+}
+
+/** A signed-in call that names Pulse's own channel or one of its videos: refused outright, never a strike. */
+export class YtOwnChannelError extends Error {
+  constructor() {
+    super("YouTube fetch refused: the signed-in download account never touches Pulse's own channel or videos");
+    this.name = "YtOwnChannelError";
+  }
 }
 
 // ---------------------------------------------------------------- caching (pure parts)
@@ -520,6 +569,8 @@ export interface GuardIo {
   rand: () => number;
   settings: () => GuardSettings;
   cls: () => CallClass;
+  /** Pulse's own channel (src/lib/ytown.ts); the environment's when not given. */
+  own?: () => OwnChannel;
 }
 
 function readState(file: string): GuardState {
@@ -540,6 +591,7 @@ function readState(file: string): GuardState {
               ...j.signed,
               calls: Array.isArray(j.signed.calls) ? j.signed.calls : [],
               backgroundCalls: Array.isArray(j.signed.backgroundCalls) ? j.signed.backgroundCalls : [],
+              auxCalls: Array.isArray(j.signed.auxCalls) ? j.signed.auxCalls : [],
             }
           : undefined,
     };
@@ -593,7 +645,7 @@ export interface YtGuard {
     cmd: string,
     args: readonly string[],
     fn: () => Promise<T>,
-    o?: { cls?: CallClass; cache?: boolean },
+    o?: { cls?: CallClass; cache?: boolean; purpose?: YtPurpose },
   ): Promise<T>;
   /** Sends the queued Discord lines, each once. */
   flushAlerts(send: (text: string) => unknown): Promise<number>;
@@ -746,14 +798,20 @@ export function createYtGuard(io: GuardIo): YtGuard {
   return {
     async run(cmd, args, fn, o = {}) {
       if (!isYouTubeCall(cmd, args)) return fn();
+      const lane = laneOfCall(args);
+      // The hard rule: the download account never views, reads or touches Pulse's own channel or videos.
+      if (lane === "signed" && touchesOwnChannel(args, io.own ? io.own() : ownChannel())) {
+        log("warn", "signed-in youtube call refused: it names Pulse's own channel or video");
+        throw new YtOwnChannelError();
+      }
       const cache = o.cache !== false;
       const hit = fromCache<Awaited<ReturnType<typeof fn>>>(args, cache);
       if (hit) return hit;
       const s = io.settings();
       const cls = o.cls ?? io.cls();
-      const lane = laneOfCall(args);
+      const purpose = o.purpose ?? currentYtPurpose();
       const d = await withState(io, (st) =>
-        decide(st, io.now(), cls, s, io.rand(), lane),
+        decide(st, io.now(), cls, s, io.rand(), lane, purpose),
       );
       if (!d.go) {
         if (d.reason !== "blocked")
@@ -761,6 +819,7 @@ export function createYtGuard(io: GuardIo): YtGuard {
             reason: d.reason,
             class: cls,
             lane,
+            ...(lane === "signed" ? { purpose } : {}),
           });
         throw new YtPausedError(d.reason, d.until, lane);
       }
@@ -887,7 +946,7 @@ export function guardedYt<
   cmd: string,
   args: readonly string[],
   fn: () => Promise<T>,
-  o?: { cls?: CallClass; cache?: boolean },
+  o?: { cls?: CallClass; cache?: boolean; purpose?: YtPurpose },
 ): Promise<T> {
   if (!guardActive()) return fn();
   return ytGuard.run(cmd, args, fn, o);

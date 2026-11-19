@@ -85,6 +85,39 @@ export function whySlotsFrom(list: string, single: string): string[] {
   return one.length ? one : ["12:00", "18:30"];
 }
 
+/**
+ * The channels the download account subscribes to for the trend feed (TREND_FEED), by handle: big gaming news,
+ * platform and documentary channels, picked 19 Nov 2026. src/tools/trendchannels.ts prints them as links to follow.
+ */
+export const DEFAULT_TREND_CHANNELS = [
+  "IGN",
+  "GameSpot",
+  "PlayStation",
+  "Xbox",
+  "NintendoAmerica",
+  "RockstarGames",
+  "TheGameAwards",
+  "Ubisoft",
+  "DigitalFoundry",
+  "gameranx",
+  "SkillUp",
+  "NoclipDocs",
+  "DidYouKnowGaming",
+  "AngryJoeShow",
+  "YongYea",
+  "Eurogamer",
+  "PCGamer",
+  "Polygon",
+  "KindaFunnyGames",
+  "GameInformer",
+];
+
+/** TREND_CHANNELS as handles (pure): unset is the default list, empty is none; "@" and spaces are dropped. */
+export function trendChannelList(raw: string | undefined): string[] {
+  if (raw === undefined) return [...DEFAULT_TREND_CHANNELS];
+  return [...new Set(raw.split(",").map((h) => h.trim().replace(/^@/, "")).filter(Boolean))];
+}
+
 function bool(name: string, fallback: boolean): boolean {
   const raw = process.env[name];
   if (raw === undefined || raw === "") return fallback;
@@ -1178,9 +1211,40 @@ export interface Config {
    * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
    * Pulse or Orryy channel accounts), exported on the Mac mini by mac/ytcookies.sh, so the game footage fetcher alone
    * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own budget,
-   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else ever uses the cookies.
+   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else uses the cookies except the
+   * opt-in switches below (each default off, together within YT_SIGNED_CLIP_SHARE), and never on Pulse's own videos.
    */
   ytdlpCookiesFile: string;
+  /**
+   * SIGNED_CLIPS (default off): a Short's or long video's YouTube clip pull that met an age gate (or the anonymous
+   * lane's bot-check pause) is tried once more signed in with YTDLP_COOKIES_FILE (src/lib/child.ts, src/lib/ytsignin.ts
+   * signedPull). Read from the environment by the asset modules; mirrored here for the doctor and the docs.
+   */
+  signedClips: boolean;
+  /**
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of YT_SIGNED_HOURLY that clips, the light index and the trend feed may
+   * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
+   */
+  ytSignedClipShare: number;
+  /**
+   * SIGNED_LIGHT_INDEX (default off): the light index reads an age-gated upload's details and captions again signed in
+   * (skip-download only), within YT_SIGNED_CLIP_SHARE (src/sceneindex/light.ts). Read from the environment there.
+   */
+  signedLightIndex: boolean;
+  /**
+   * TREND_FEED (default off): every 3 hours the download account's subscriptions feed (YTDLP_COOKIES_FILE, at most 2
+   * signed-in calls, metadata only) is read for new gaming uploads, kept as labelled story leads for discovery
+   * (src/discovery/trendfeed.ts). TREND_CHANNELS: the channel handles the account should subscribe to
+   * (src/tools/trendchannels.ts prints them for the owner); the feed itself is whatever the account subscribes to.
+   */
+  trendFeed: boolean;
+  trendChannels: string[];
+  /**
+   * AGE_ALARM (default off): every hour one videos.list call (1 quota unit) checks Pulse's uploads from the last 14 days
+   * for YouTube's age restriction and sends one Discord line per newly restricted video (src/agealarm.ts). Uses the
+   * channel's own API login, never the download account.
+   */
+  ageAlarm: boolean;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
@@ -2195,6 +2259,12 @@ export function loadConfig(): Config {
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
+    signedClips: bool("SIGNED_CLIPS", false),
+    signedLightIndex: bool("SIGNED_LIGHT_INDEX", false),
+    ageAlarm: bool("AGE_ALARM", false),
+    trendFeed: bool("TREND_FEED", false),
+    trendChannels: trendChannelList(process.env.TREND_CHANNELS),
+    ytSignedClipShare: ((n) => (Number.isFinite(n) && n >= 0 ? Math.min(1, n) : 0.5))(Number(str("YT_SIGNED_CLIP_SHARE", "0.5"))),
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
       .map((g) => g.trim())

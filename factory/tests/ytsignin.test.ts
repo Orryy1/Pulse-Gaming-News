@@ -337,7 +337,7 @@ test("only the game fetcher's own build turns get the cookies file", () => {
 });
 
 // The cookies must never reach any other yt-dlp call: Shorts clip pulls, scene search, the light index, the archive.
-test("no other call site signs in: signedInArgs and --cookies appear only where the fetcher uses them", () => {
+test("no other call site signs in: signedInArgs and --cookies appear only where the fetcher and the opt-in switches use them", () => {
   const src = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
@@ -357,7 +357,14 @@ test("no other call site signs in: signedInArgs and --cookies appear only where 
     .filter((f) => /signedInArgs\s*\(/.test(fs.readFileSync(f, "utf8")))
     .map(rel)
     .sort();
-  assert.deepEqual(using, ["lib/ytsignin.ts", "sceneindex/build.ts"]);
+  // 19 Nov 2026: the trend feed (TREND_FEED) reads the subscriptions page signed in; clips (SIGNED_CLIPS, child.ts)
+  // and the light index (SIGNED_LIGHT_INDEX) go through signedPull, all default off.
+  assert.deepEqual(using, ["discovery/trendfeed.ts", "lib/ytsignin.ts", "sceneindex/build.ts"]);
+  const pulling = files
+    .filter((f) => /signedPull\s*\(/.test(fs.readFileSync(f, "utf8")))
+    .map(rel)
+    .sort();
+  assert.deepEqual(pulling, ["lib/child.ts", "sceneindex/light.ts"]);
   const cookieFlag = files
     .filter((f) => /["'`]--cookies["'`=]/.test(fs.readFileSync(f, "utf8")))
     .map(rel)

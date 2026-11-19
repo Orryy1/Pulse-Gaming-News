@@ -160,6 +160,11 @@ export function clusterItems(items: FeedItem[], now = new Date(), maxAgeHours = 
 
 export function scoreCluster(items: FeedItem[], now = new Date()): StoryCluster {
   const sources = [...new Set(items.map((i) => i.source))];
+  // Trend leads (TREND_FEED, src/discovery/trendfeed.ts) are not sources: they add a small push to a press story
+  // and leave its breadth and corroboration alone; a story of leads alone is never picked (score at most 0).
+  const press = items.filter((i) => i.sourceKind !== "lead");
+  const pressSources = new Set(press.map((i) => i.source));
+  const leads = items.length - press.length;
   // An outlet that publishes the same story twice still counts once.
   const hasOfficial = items.some((i) => i.sourceKind === "official");
   const outlets = new Set(items.filter((i) => i.sourceKind === "outlet").map((i) => i.source));
@@ -170,15 +175,17 @@ export function scoreCluster(items: FeedItem[], now = new Date()): StoryCluster 
   const ageHours = (now.getTime() - new Date(newestAt).getTime()) / 3600_000;
 
   let score = 0;
-  score += Math.min(sources.length, 5) * 12; // coverage breadth is the strongest "this matters" signal
+  score += Math.min(pressSources.size, 5) * 12; // coverage breadth is the strongest "this matters" signal
+  score += leads > 0 ? 6 : 0; // creators are already covering it on YouTube
   score += hasOfficial ? 15 : 0;
   score += Math.min(termScore(text, HOT_TERMS), 40);
   score += Math.min(termScore(text, NEWSWORTHY_TERMS), 30);
   score += termScore(text, PENALTY_TERMS);
   score -= Math.max(0, ageHours - 3) * 2; // speed matters: decay after three hours
   if (!corroborated) score -= 20;
+  if (!press.length) score = Math.min(score, 0);
 
-  const lead = [...items].sort((a, b) => (a.sourceKind === "official" ? -1 : 0) - (b.sourceKind === "official" ? -1 : 0))[0]!;
+  const lead = [...(press.length ? press : items)].sort((a, b) => (a.sourceKind === "official" ? -1 : 0) - (b.sourceKind === "official" ? -1 : 0))[0]!;
   return {
     hash: storyHash(items),
     headline: lead.title,

@@ -8,7 +8,8 @@ export interface FeedItem {
   summary: string;
   publishedAt: string; // ISO
   source: string;
-  sourceKind: Feed["kind"];
+  /** "lead": a trend lead (src/discovery/trendfeed.ts), never a source; it only nudges a press story. */
+  sourceKind: Feed["kind"] | "lead";
   imageUrl?: string;
 }
 

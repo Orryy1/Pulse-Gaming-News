@@ -56,6 +56,7 @@ import {
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
+import { roomLinesForReport, type RoomArm } from "./editorial/room.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -221,6 +222,8 @@ export interface EpisodeInfo {
   payoff?: { arm: PayoffArm; pass: boolean };
   /** The editor's desk's arm and the kept version's overall score (SCRIPT_DESK, src/editorial/desk.ts). */
   desk?: { arm: DeskArm; overall?: number };
+  /** The writers' room's arm, whether its words went out and each critic's mark (SCRIPT_ROOM, src/editorial/room.ts). */
+  room?: { arm: RoomArm; wrote?: boolean; editor?: number; viewer?: number };
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1423,6 +1426,16 @@ export async function runAnalyticsLoop(
       ...(sc?.desk
         ? { desk: { arm: sc.desk.arm, overall: sc.desk.scores?.overall } }
         : {}),
+      ...(sc?.room
+        ? {
+            room: {
+              arm: sc.room.arm,
+              wrote: sc.room.wrote,
+              editor: sc.room.editor_overall,
+              viewer: sc.room.viewer_overall,
+            },
+          }
+        : {}),
       series: seriesTagFor(
         {
           lane: r.lane,
@@ -1955,12 +1968,34 @@ export async function runAnalyticsLoop(
   signalLines.push(
     ...deskLinesForReport(
       [...eps.values()]
-        .filter((e) => !e.long && e.live_at >= periodStart && e.desk)
+        // A Short the writers' room wrote was only read by the desk, never written by its arm.
+        .filter((e) => !e.long && e.live_at >= periodStart && e.desk && !e.room?.wrote)
         .map((e) => {
           const y = yt.get(e.id);
           return {
             arm: e.desk!.arm,
             overall: e.desk!.overall,
+            views: y?.views,
+            viewed_pct: y?.viewed_pct,
+            comments: y?.comments,
+          };
+        }),
+      spearman,
+    ),
+  );
+  // SCRIPT_ROOM: where the room wrote against the control arm, and each critic's mark against average viewed, with no
+  // verdict before 20 Shorts a side.
+  signalLines.push(
+    ...roomLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.room)
+        .map((e) => {
+          const y = yt.get(e.id);
+          return {
+            arm: e.room!.arm,
+            wrote: e.room!.wrote,
+            editor: e.room!.editor,
+            viewer: e.room!.viewer,
             views: y?.views,
             viewed_pct: y?.viewed_pct,
             comments: y?.comments,

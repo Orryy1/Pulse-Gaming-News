@@ -41,6 +41,7 @@ import {
   WEIGHT_MAX,
   WEIGHT_MIN,
   WEIGHT_STEP,
+  FANDOM_WEIGHT_KEY,
   FAVOUR_KEYS,
   durationBand,
   hasNumber,
@@ -64,6 +65,15 @@ import { focusLinesForReport, focusReportRow, type FrameFocusRecord } from "./qa
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
+import type { LengthArm } from "./shortlengths.ts";
+import {
+  lengthAbReading,
+  splitLines,
+  splitReading,
+  type LengthAbReading,
+  type SplitGroup,
+  type SplitRow,
+} from "./loopsplits.ts";
 import { retentionModelLessons } from "./retentionstep.ts";
 
 const DAY = 86_400_000;
@@ -248,6 +258,8 @@ export interface EpisodeInfo {
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
   next_line?: { arm: "line" | "none"; said: boolean };
+  /** The Why length test's arm (WHY_LENGTH_AB, src/shortlengths.ts). */
+  length_arm?: LengthArm;
 }
 
 // ------------------------------------------------------------------ matching (spec section 4)
@@ -832,6 +844,8 @@ export interface LoopJson {
   next_test: NextTest;
   /** Subscribers per 1,000 views by series, the line test and the verdicts so far (src/seriesreport.ts); absent in older reports. */
   series?: SeriesJson;
+  /** The Why length test (WHY_LENGTH_AB): median 72-hour views and subscribers per 1,000 per arm; absent with no arm yet. */
+  length_ab?: { groups: SplitGroup[]; reading: LengthAbReading };
   /** RETENTION_LEARN (src/retentionlearn.ts): the week's retention curve study, its lines and lessons; absent while off. */
   retention?: {
     shorts: number;
@@ -1125,6 +1139,45 @@ export function storyWeights(
     };
   }
   return { weights, signals };
+}
+
+/**
+ * Tier 2, the strong-fandom pick multiplier (LOOP_FANDOM_WEIGHT, 19 Nov audit): while YouTube's "strong-identity
+ * fandom" pattern has strong evidence, the key is its middle-views ratio (or 1.0 if the pattern points the other way
+ * from its ratio) inside WEIGHT_MIN to WEIGHT_MAX; once the evidence is no longer strong it eases back to 1.0 by
+ * WEIGHT_STEP a week and then goes. Undefined: no key.
+ */
+export function fandomWeight(
+  patterns: LoopPattern[],
+  previous: number | undefined,
+): { weight?: number; basis: string } {
+  const p = patterns.find(
+    (x) =>
+      x.platform === "youtube" &&
+      x.dim === "strong-identity fandom" &&
+      x.group === "yes",
+  );
+  if (p && p.strength === "strong" && p.rest_median > 0) {
+    const ratio = p.median / p.rest_median;
+    const aimed = p.direction === "better" ? Math.max(1, ratio) : Math.min(1, ratio);
+    const weight =
+      Math.round(Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, aimed)) * 100) / 100;
+    return {
+      ...(weight !== 1 ? { weight } : {}),
+      basis: `YouTube strong-identity fandom: middle of ${n0(p.median)} views against ${n0(p.rest_median)} (${p.n} against ${p.rest_n} Shorts, evidence strong)`,
+    };
+  }
+  if (previous === undefined || previous === 1)
+    return { basis: "YouTube's fandom pattern is not strong this week" };
+  const eased =
+    previous > 1
+      ? Math.max(1, previous - WEIGHT_STEP)
+      : Math.min(1, previous + WEIGHT_STEP);
+  const weight = Math.round(eased * 100) / 100;
+  return {
+    ...(weight !== 1 ? { weight } : {}),
+    basis: "YouTube's fandom pattern is no longer strong, so the multiplier eases back to 1.00",
+  };
 }
 
 // ------------------------------------------------------------------ the platform readers
@@ -1507,6 +1560,7 @@ export async function runAnalyticsLoop(
       ...(sc?.next_line
         ? { next_line: { arm: sc.next_line.arm, said: sc.next_line.said } }
         : {}),
+      ...(sc?.length_arm ? { length_arm: sc.length_arm.arm } : {}),
     });
   }
   const snaps = new Map<
@@ -2343,11 +2397,16 @@ export async function runAnalyticsLoop(
       score: (viewsRel + 2 * subsRel) / 3,
     };
   });
+  const { [FANDOM_WEIGHT_KEY]: prevFandom, ...prevWeights } =
+    prev?.feedback.weights ?? {};
   const sw = storyWeights(
     weightGroups,
-    prev?.feedback.weights ?? {},
+    prevWeights,
     prev?.feedback.weight_signals ?? {},
   );
+  // The strong-fandom key (LOOP_FANDOM_WEIGHT), written whatever the settings say like the rest.
+  const fw = fandomWeight(patterns, prevFandom);
+  if (fw.weight !== undefined) sw.weights[FANDOM_WEIGHT_KEY] = fw.weight;
 
   const changes: LoopChange[] = [];
   const prevPosting = prev?.feedback.posting ?? {
@@ -2401,6 +2460,15 @@ export async function runAnalyticsLoop(
       basis: `score ${sw.moved.score.toFixed(2)} against 1.00 (24-hour views and subscribers per 1,000, subscribers counted double), two runs in the same direction`,
       applied: cfg.analyticsLoopScoring,
     });
+  if ((fw.weight ?? 1) !== (prevFandom ?? 1))
+    changes.push({
+      date,
+      lever: "story-pick multiplier, strong-identity fandom",
+      old: (prevFandom ?? 1).toFixed(2),
+      new: (fw.weight ?? 1).toFixed(2),
+      basis: fw.basis,
+      applied: cfg.analyticsLoopScoring && cfg.loopFandomWeight,
+    });
   for (const c of changes.filter((c) => c.applied))
     await logEvent(db, null, "analytics_loop_change", { ...c });
 
@@ -2425,6 +2493,20 @@ export async function runAnalyticsLoop(
       }),
     now,
   );
+  // The Why length test (WHY_LENGTH_AB): YouTube Shorts with an arm, both series pooled.
+  const ytShorts: SplitRow[] = all
+    .filter((r) => r.platform === "youtube" && r.kind === "short" && r.episode_id && eps.get(r.episode_id))
+    .map((r) => ({
+      episode_id: r.episode_id!,
+      posted_at: r.posted_at,
+      views: r.views,
+      ...(r.views_72h !== undefined ? { views_72h: r.views_72h } : {}),
+      ...(r.subs !== undefined ? { subs: r.subs } : {}),
+    }));
+  const lengthGroups = splitReading(ytShorts, (r) => eps.get(r.episode_id)?.length_arm, now);
+  const lengthAb = lengthGroups.length
+    ? { groups: lengthGroups, reading: lengthAbReading(lengthGroups) }
+    : undefined;
   const json: LoopJson = {
     version: 1,
     run_at: now.toISOString(),
@@ -2451,6 +2533,7 @@ export async function runAnalyticsLoop(
     changes,
     next_test: test.test,
     series,
+    ...(lengthAb ? { length_ab: lengthAb } : {}),
     ...(retentionStudy
       ? {
           retention: {
@@ -2710,6 +2793,14 @@ export function renderReport(x: RenderInput): string {
       "**Subscribers per 1,000 views by series** (YouTube Shorts 72 hours or older; the control's GTA news apart; TikTok and Instagram give no per-post follows, so they are left out)",
       "",
       ...seriesLines(json.series),
+      "",
+    );
+  if (json.length_ab)
+    L.push(
+      "**The Why length test** (WHY_LENGTH_AB: The Why and The GTA File at 30-35 s on short-arm days against the serial band; YouTube Shorts 72 hours or older)",
+      "",
+      ...splitLines(json.length_ab.groups).map((l) => `- ${l}`),
+      `- Reading: ${json.length_ab.reading.verdict} (${json.length_ab.reading.why}).`,
       "",
     );
   if (x.tooFew.length)

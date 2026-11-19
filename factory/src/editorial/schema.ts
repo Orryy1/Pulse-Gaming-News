@@ -274,6 +274,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   series?: import("../series.ts").SeriesTag;
   /** The next-part line test (SERIES_NEXT_LINE): the day's arm, whether the line was said, and the part it named. */
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
+  /** The Why length test (WHY_LENGTH_AB, src/shortlengths.ts): the day's arm and the band the writer was given. */
+  length_arm?: { arm: import("../shortlengths.ts").LengthArm; band: string };
   /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
   voice_tags?: VoiceTagMark[];
   /**

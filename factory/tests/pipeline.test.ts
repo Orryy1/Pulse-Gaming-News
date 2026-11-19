@@ -2740,7 +2740,7 @@ test("under the hero rule a long video's thumbnails are posters of the right gam
   const main = seen[0].thumb;
   assert.equal(main.layout, "poster");
   // The writer's cryptic words gave way to plain ones, and the words name no game, so the winner's art leads.
-  assert.equal(main.headline, "HALO RANKED");
+  assert.equal(main.headline, "ONLY ONE IS #1");
   assert.equal(main.imageFile, "entry_1/assets/a.jpg");
   assert.ok(seen[0].thumbVariants.every((v: any) => v.thumb.layout === "poster"));
   const files = [main.imageFile, ...seen[0].thumbVariants.map((v: any) => v.thumb.imageFile)];

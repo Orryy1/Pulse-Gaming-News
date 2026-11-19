@@ -223,6 +223,7 @@ import {
   artVerdict,
   cutoutProblems,
   heroRuleDesigns,
+  designProblems,
   heroRuleFallback,
   posterProblems,
 } from "./qa/thumbrule.ts";
@@ -13503,9 +13504,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     ];
     for (const [name, thumb] of rendered) {
       const t = thumb as { layout?: string; fgFile?: string | null; imageFile?: string | null };
-      let problems: string[] = [];
-      if (t.layout === "poster" && ruled.length)
-        problems = await posterProblems(path.join(dir, name), thumb as never);
+      // The design itself under the rule (19 Nov 2026 review): words that repeat the title, more than three
+      // pictures, lines too small to read at 168x94, words cut off.
+      let problems: string[] = s.cfg.thumbHeroRule
+        ? designProblems(thumb as Record<string, unknown>, script, motif?.id)
+        : [];
+      if (t.layout === "poster")
+        problems = [...problems, ...(await posterProblems(path.join(dir, name), thumb as never))];
       // Any older design that draws a depth cut-out must keep the face whole, rule or no rule.
       else if ((t.layout === "hero" || t.layout === "depth") && t.fgFile && t.imageFile) {
         const face = await heroLook(path.join(dir, t.imageFile));

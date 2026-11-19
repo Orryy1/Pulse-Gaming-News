@@ -912,12 +912,12 @@ test("a planned game's turn asks for the most complete upload from its release d
     calls[0]!,
     /build Grand Theft Auto VI --steps=3 --recent --complete --released=2026-11-18$/,
   );
-  // Under the free-space floor (the Mac keeps 40 GB): no turn.
+  // Under the free-space floor (the Mac keeps 40 GB, a launch turn 3 GB above it): no turn.
   assert.equal(
     await sceneIndexTick(cfg, [], {
       now: () => new Date("2026-11-18T16:00:00Z"),
       run,
-      freeGb: async () => 44,
+      freeGb: async () => 42,
     }),
     undefined,
   );

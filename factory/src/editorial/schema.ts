@@ -210,6 +210,12 @@ export const ScriptSchema = z.object({
     .describe(
       "One rubber-stamp moment on the word that carries the news; omit when nothing deserves it",
     ),
+  comment_question: z
+    .string()
+    .optional()
+    .describe(
+      "The question the channel posts as its own comment under this Short, to start the comments: one two-sided question about this story's specifics that a viewer can answer with their own opinion or choice, 6-18 words, ends with '?'. Never generic ('What do you think?', 'Thoughts?'), never a link, hashtag or mention, and not the same words as the loop line",
+    ),
   desk_question: z
     .string()
     .optional()

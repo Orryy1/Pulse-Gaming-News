@@ -1,0 +1,482 @@
+[
+ {
+  "code": "V01",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Dense; the late-2028 conclusion is a soft sum of two quotes, not a real reveal."
+ },
+ {
+  "code": "V02",
+  "clarity": 6,
+  "hook": 5,
+  "payoff": 6,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Opens on search-advice housekeeping and meanders before the point."
+ },
+ {
+  "code": "V03",
+  "clarity": 8,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 7,
+  "human": 7,
+  "overall": 7,
+  "note": "Debunk answer is given in the first line, so little is held back."
+ },
+ {
+  "code": "V04",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Slightly dry designer retelling; the scope-blur payoff is good."
+ },
+ {
+  "code": "V05",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Verdict first, so no payoff; price line and used-copy catch feel tacked on."
+ },
+ {
+  "code": "V06",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Answer is a news-desk quote and the hook is a status report."
+ },
+ {
+  "code": "V07",
+  "clarity": 4,
+  "hook": 5,
+  "payoff": 3,
+  "voice": 5,
+  "human": 6,
+  "overall": 3,
+  "note": "Transcribed listicle of mission examples with a pasted game quote and no through-line."
+ },
+ {
+  "code": "V08",
+  "clarity": 5,
+  "hook": 5,
+  "payoff": 3,
+  "voice": 5,
+  "human": 6,
+  "overall": 4,
+  "note": "Loose list of viral clips with shouted caps; nothing is held back."
+ },
+ {
+  "code": "V09",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 7,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Explanation for the secrecy is a touch neat, but the story lands."
+ },
+ {
+  "code": "V10",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Plain and clear, but the payoff is just a spec and a purchase nudge."
+ },
+ {
+  "code": "V11",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Slightly long, and the closing opinion repeats the point."
+ },
+ {
+  "code": "V12",
+  "clarity": 6,
+  "hook": 6,
+  "payoff": 6,
+  "voice": 6,
+  "human": 7,
+  "overall": 5,
+  "note": "Long and numbers-heavy with a muddled early timeline."
+ },
+ {
+  "code": "V13",
+  "clarity": 6,
+  "hook": 5,
+  "payoff": 4,
+  "voice": 4,
+  "human": 3,
+  "overall": 4,
+  "note": "Forced Nvidia multitasking quip and 'My Pulse check?' tag read as AI-formula."
+ },
+ {
+  "code": "V14",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 7,
+  "voice": 8,
+  "human": 7,
+  "overall": 8,
+  "note": "Strong, but the closing line restates the setup."
+ },
+ {
+  "code": "V15",
+  "clarity": 8,
+  "hook": 7,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Good tease and reveal; the ending is slightly flat."
+ },
+ {
+  "code": "V16",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 7,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Clean mystery then fix; ending is functional rather than memorable."
+ },
+ {
+  "code": "V17",
+  "clarity": 7,
+  "hook": 8,
+  "payoff": 7,
+  "voice": 7,
+  "human": 6,
+  "overall": 7,
+  "note": "Crams metacritic figures and a remake-versus-remaster argument into one short."
+ },
+ {
+  "code": "V18",
+  "clarity": 6,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 5,
+  "human": 5,
+  "overall": 5,
+  "note": "Spoils the fix while spouting stat lines, and the ending sounds stiff."
+ },
+ {
+  "code": "V19",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 6,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "The 'sounds backwards' setup is slow and the advice is stated before the reason."
+ },
+ {
+  "code": "V20",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 8,
+  "human": 7,
+  "overall": 8,
+  "note": "Great quote landing; the irony is clean."
+ },
+ {
+  "code": "V21",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Too many numbers in a row and a tidy 'not your wallet's problem' close."
+ },
+ {
+  "code": "V22",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 6,
+  "voice": 6,
+  "human": 6,
+  "overall": 6,
+  "note": "Hypothetical 'say there's a pricey one' is clumsy and the ending trails off."
+ },
+ {
+  "code": "V23",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 7,
+  "human": 7,
+  "overall": 7,
+  "note": "Fair take, but 'I'd hold the outrage' is a predictable stance."
+ },
+ {
+  "code": "V24",
+  "clarity": 4,
+  "hook": 3,
+  "payoff": 3,
+  "voice": 3,
+  "human": 3,
+  "overall": 3,
+  "note": "Reads like a search-friendly fact list with stiff, repeated lines and no hook."
+ },
+ {
+  "code": "V25",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 7,
+  "human": 7,
+  "overall": 7,
+  "note": "Ending fizzles on a timing point rather than a clear payoff."
+ },
+ {
+  "code": "V26",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Good withheld detail; ending is a bit of a list of losses."
+ },
+ {
+  "code": "V27",
+  "clarity": 7,
+  "hook": 6,
+  "payoff": 5,
+  "voice": 7,
+  "human": 7,
+  "overall": 6,
+  "note": "Answer in the first line leaves nothing to reveal."
+ },
+ {
+  "code": "V28",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 8,
+  "human": 8,
+  "overall": 8,
+  "note": "Short and sharp; the franchise-not-E-Day turn is excellent."
+ },
+ {
+  "code": "V29",
+  "clarity": 3,
+  "hook": 2,
+  "payoff": 2,
+  "voice": 5,
+  "human": 6,
+  "overall": 2,
+  "note": "Rambling transcribed rant with no clear opening or single point."
+ },
+ {
+  "code": "V30",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 7,
+  "voice": 7,
+  "human": 6,
+  "overall": 7,
+  "note": "Film angle is slightly grand and the farewell-or-first-act line is overwritten."
+ },
+ {
+  "code": "V31",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Good reveal; closing opinion on lobby size is a weaker note."
+ },
+ {
+  "code": "V32",
+  "clarity": 6,
+  "hook": 5,
+  "payoff": 5,
+  "voice": 6,
+  "human": 6,
+  "overall": 5,
+  "note": "Mashes a giveaway, a mode and a season into one muddled point."
+ },
+ {
+  "code": "V33",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Tight with a good last-word kicker; 'Himself.' is slightly cute."
+ },
+ {
+  "code": "V34",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 7,
+  "voice": 6,
+  "human": 6,
+  "overall": 7,
+  "note": "Hook reveals the answer up front, and the booking opinion is soft."
+ },
+ {
+  "code": "V35",
+  "clarity": 5,
+  "hook": 4,
+  "payoff": 3,
+  "voice": 4,
+  "human": 4,
+  "overall": 4,
+  "note": "Price-checking opener, odd 'we' voice and a vague tank follower detail."
+ },
+ {
+  "code": "V36",
+  "clarity": 4,
+  "hook": 4,
+  "payoff": 5,
+  "voice": 5,
+  "human": 6,
+  "overall": 3,
+  "note": "Transcribed lore dump that is hard to follow on one listen."
+ },
+ {
+  "code": "V37",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 8,
+  "human": 8,
+  "overall": 8,
+  "note": "Tight; 'Some secret.' lands perfectly."
+ },
+ {
+  "code": "V38",
+  "clarity": 8,
+  "hook": 7,
+  "payoff": 8,
+  "voice": 8,
+  "human": 8,
+  "overall": 8,
+  "note": "Excellent dry turn on the timing; very little to fix."
+ },
+ {
+  "code": "V39",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 7,
+  "human": 6,
+  "overall": 7,
+  "note": "Lots of name and province info with a slightly stock closing line."
+ },
+ {
+  "code": "V40",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 7,
+  "voice": 6,
+  "human": 6,
+  "overall": 7,
+  "note": "Good but jammed with the hotwiring quote and a bolted-on opinion."
+ },
+ {
+  "code": "V41",
+  "clarity": 6,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 6,
+  "human": 7,
+  "overall": 6,
+  "note": "Long play-by-play that ends on a subscribe plug and a stock sign-off."
+ },
+ {
+  "code": "V42",
+  "clarity": 9,
+  "hook": 8,
+  "payoff": 9,
+  "voice": 8,
+  "human": 8,
+  "overall": 9,
+  "note": "Very tight with a withheld stat that pays off in the last line."
+ },
+ {
+  "code": "V43",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 6,
+  "voice": 7,
+  "human": 6,
+  "overall": 7,
+  "note": "Choreography argument is sound but the ending sounds like a formula."
+ },
+ {
+  "code": "V44",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 7,
+  "voice": 7,
+  "human": 6,
+  "overall": 7,
+  "note": "Build-up is good, but the closing 'sideshow' opinion is bland."
+ },
+ {
+  "code": "V45",
+  "clarity": 8,
+  "hook": 7,
+  "payoff": 8,
+  "voice": 8,
+  "human": 8,
+  "overall": 8,
+  "note": "Good reframing; ending restates the claim."
+ },
+ {
+  "code": "V46",
+  "clarity": 7,
+  "hook": 7,
+  "payoff": 5,
+  "voice": 6,
+  "human": 7,
+  "overall": 6,
+  "note": "Trick is stated up front and the ending is a plain restatement."
+ },
+ {
+  "code": "V47",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 8,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Strong reveal; the studio credit is a little unsurprising for fans."
+ },
+ {
+  "code": "V48",
+  "clarity": 8,
+  "hook": 8,
+  "payoff": 7,
+  "voice": 7,
+  "human": 7,
+  "overall": 8,
+  "note": "Clear, though the headline fact is delivered in the first line."
+ }
+]

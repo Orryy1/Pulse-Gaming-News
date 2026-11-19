@@ -1,0 +1,134 @@
+[
+  {
+    "code": "S01",
+    "title": "The Doom number behind Xbox's id cuts",
+    "narration": "One Doom number probably explains why Xbox gutted id Software. Doom: The Dark Ages pulled in over 3 million players. Xbox's memo said it was focusing on its strongest franchises, and Doom's about as strong as Xbox gets. But most of those players came through Game Pass. Sales were reportedly nearer 1 million. Three million players sounds like a hit right up until someone asks how many bought it.",
+    "form": "blunt opinion up front, then proven",
+    "ending": "dry line",
+    "words": 69,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Moved the opinion to the first line and softened it to 'probably', so the ending is a dry line instead of the overstated 'never count as sales' verdict."
+  },
+  {
+    "code": "S02",
+    "title": "NBA 2K27 missed, and Take-Two's boss shrugged",
+    "narration": "NBA 2K27 missed its sales target, and Take-Two's boss blamed GTA 6. His own company's game. 2K still sold about 4 million copies, just not as many as Take-Two forecast. But with GTA 6 days from launch, he said it had influenced shoppers. And he sounded pretty relaxed about it. Here's how he put it: \"If your lunch is going to be eaten, I'd rather be the one eating it.\"",
+    "form": "build to a quote, stop on the quote",
+    "ending": "reveal",
+    "words": 70,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Cut the 'excuse every publisher reaches for' line, the clunky rival-sales aside and the tacked-on verdict, and let the boss's quote close it."
+  },
+  {
+    "code": "S03",
+    "title": "What Zelda's Ocarina remake left out",
+    "narration": "Zelda's new Ocarina remake is missing something the 3DS version had. Nintendo's Switch 2 take on The Legend of Zelda: Ocarina of Time averages 96 with critics. Nothing released this year scores higher. But one complaint kept turning up in the reviews. Master Quest is gone. That's the harder remix of the whole game, and the 3DS remake included it. It doesn't unlock after the credits, and Nintendo hasn't said it's coming back. So the best-reviewed game of the year gives you less than 3DS owners got.",
+    "form": "consequence-first comparison, told in order",
+    "ending": "consequence",
+    "words": 87,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Dropped the 'remake from the nineties' opener and the stalling before Master Quest; it now arrives as soon as the complaint is raised and the script ends on what the player loses."
+  },
+  {
+    "code": "S04",
+    "title": "Who's hosting GTA 6's morning radio show?",
+    "narration": "GTA 6 brings back a real radio show that ended in 2021. Rockstar's station preview names the morning hosts as Trick and Trina. First names only. If you know Southern rap, that pairing just rang a bell. Music press says it's exactly who you'd think: Trick Daddy and Trina, reviving the morning show they actually hosted. Now it's on the air in a fake version of their hometown.",
+    "form": "wait, hear that again, on one detail",
+    "ending": "dry line",
+    "words": 68,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Replaced the 'You'd assume they're invented' setup and the 'best booking' verdict with a raised eyebrow at the first names and a dry hometown line, and stopped repeating the full title."
+  },
+  {
+    "code": "S05",
+    "title": "The BioWare petition that skips EA",
+    "narration": "A petition to save BioWare skips EA and asks Canada for money. EA closed the Mass Effect studio in October and ended early work on the next game. This petition went to Canada's parliament, and it wants public money so BioWare's former staff can buy the studio and Mass Effect, then run it themselves. It got enough signatures that the government has to reply in writing. It doesn't have to agree. I'd love to see it work, but EA would still have to want to sell.",
+    "form": "straight 'what nobody mentions', told in order",
+    "ending": "verdict",
+    "words": 86,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Cut the stock 'It's much bolder than that' connective and the stretched EA-debt reasoning; the ask comes straight after the setup and the ending is an honest long-shot stance."
+  },
+  {
+    "code": "S06",
+    "title": "Why NieR: Automata suddenly wanted 366GB",
+    "narration": "NieR: Automata suddenly wanted 366GB on Steam, up from about 50. All Square Enix had done was patch in a few new languages, and the patch itself was tiny. Steam just wouldn't start installing until all that space was free, so anyone buying or reinstalling got stuck. Players worked out why pretty fast. Steam was counting every DLC pack as nearly a whole extra game. The fix is dumb, but it works. Untick the DLC in Properties and it installs at the normal size.",
+    "form": "friend's tech tip: problem, cause, fix",
+    "ending": "consequence",
+    "words": 84,
+    "drop": true,
+    "drop_reason": "A one-off Steam storage bug with no stated cause and a small payoff; the slot should go to a story with lasting player stakes, such as a confirmed price, access or release change.",
+    "what_changed": "Removed the bolted-on Square Enix praise and made the fix the payoff instead of an afterthought."
+  },
+  {
+    "code": "S07",
+    "title": "How soon is GTA 6 coming to PC?",
+    "narration": "GTA 6 might reach PC faster than any 3D GTA before it. A report last month, citing several sources, had Rockstar aiming the PC version at early 2027. GTA 5 made PC players wait about a year and a half. This month a former Rockstar director said AI could let someone knock together a rough fan-made PC version, and he wouldn't be surprised if Rockstar hurried. Fun theory. That early 2027 report landed weeks before he said it.",
+    "form": "player consequence first, one raised eyebrow",
+    "ending": "reveal",
+    "words": 78,
+    "drop": true,
+    "drop_reason": "Built on a hypothetical from someone who left Rockstar long ago; the only hard fact is an older PC-window report. The slot should go to a confirmed release date, port announcement or other on-record news.",
+    "what_changed": "Led with what PC players actually get, replaced the confusing 'AI-built port' phrase and the 'It sounds like... The dates say otherwise' pivot, and never says the full title."
+  },
+  {
+    "code": "S08",
+    "title": "When Elder Scrolls 6 might actually arrive",
+    "narration": "Elder Scrolls 6 finally has a name, but the wait hasn't moved. Bethesda revealed it as The Elder Scrolls VI: Sentinel, with a scroll rising out of desert sand and no date. Under oath in the Activision trial, Xbox's boss said it was five-plus years away. This month, a well-sourced reporter said it's still more than a couple of years off. Do that math and both land on late 2028 at the earliest.",
+    "form": "do the math: two clocks years apart",
+    "ending": "consequence",
+    "words": 73,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Swapped the coy 'hides a date' hook and the hard-to-follow Skyrim calendar for one simple sum that tells players when they can realistically play."
+  },
+  {
+    "code": "S09",
+    "title": "Blizzard told WoW fans they were wrong",
+    "narration": "Blizzard told World of Warcraft fans they didn't want the original game. Fans had asked for the old version back, and Blizzard's J. Allen Brack answered with a line people still quote: \"You think you do, but you don't.\" So fans built it anyway. An unofficial server called Nostalrius ran the original game for 150,000 active players, until Blizzard shut it down. Then Blizzard met that team, and they shared their code. A year and a half later, Brack walked on stage and announced WoW Classic. Himself.",
+    "form": "tiny story with a person in it, in order",
+    "ending": "dry line",
+    "words": 87,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Straightened the muddled timeline into one order of events, dropped the 'blamed cost' detour and the verdict, and ended on Brack announcing it himself."
+  },
+  {
+    "code": "S10",
+    "title": "Is Warhammer Survivors just a cheap copy?",
+    "narration": "Warhammer Survivors sounds like a Vampire Survivors rip-off in Warhammer armor. It costs eight bucks and borrows half the name. You mow down endless hordes. One stage is a miniature painting desk. Every sign points to a quick licensed cash-in, apart from one name in the credits. Poncle. The studio that made Vampire Survivors helped build it.",
+    "form": "single contradiction left hanging to the last line",
+    "ending": "reveal",
+    "words": 57,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Cut the 'genre crowded with copies' line, the split-reviews filler and the salesy verdict, and stopped on the poncle reveal."
+  },
+  {
+    "code": "S11",
+    "title": "The GTA 6 early start trick on Xbox",
+    "narration": "Xbox players can reportedly start GTA 6 hours before their local launch. It unlocks at midnight one region at a time, and the US is near the back of the line. New Zealand goes first, about 18 hours ahead of the East Coast. So switch your Xbox's region to New Zealand before launch. When it hits midnight there, you're in. Your console just has to think it lives in New Zealand.",
+    "form": "practical how-to, said like a friend",
+    "ending": "dry line",
+    "words": 71,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Removed the 'It isn't early access... you'd assume you're stuck' padding and the 'best launch trick' oversell; the trick now comes as soon as the problem is clear."
+  },
+  {
+    "code": "S12",
+    "title": "How GTA San Andreas secretly auditioned CJ",
+    "narration": "GTA San Andreas auditioned CJ's voice actor without telling him. Young Maylay thought he was just on the phone with DJ Pooh, one of the game's writers. The phone was on speaker, and Rockstar staff were listening. Pooh never mentioned it. Why would you hide that from the guy? Maylay says it was deliberate. Pooh wanted Rockstar to hear him talk like himself, before he had any reason to put on a voice. Rockstar liked it enough to bring him in for a real audition. He got the part.",
+    "form": "a question the narrator asks, then answers",
+    "ending": "consequence",
+    "words": 89,
+    "drop": false,
+    "drop_reason": "",
+    "what_changed": "Said the full title once, gave the real audition its place instead of the 'nobody told him to act' overclaim, and dropped the neat closing opinion."
+  }
+]

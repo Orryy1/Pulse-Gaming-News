@@ -334,3 +334,38 @@ The one failing test in every suite is the same known failure in existing code (
 - Pulse Gaming News chat: whether the "Pulse check" and "My verdict:" segment stays on for Shorts that go through the editor's desk.
 
 **How each will be judged.** Payoff gate and desk: once 20 Shorts per arm have retention data, compare loss per second through the facts, average viewed and comments per 1,000 views, and read the desk score against average viewed. If the desk score does not track retention, its rubric gets re-weighted before `fix` is ever switched on.
+
+## Writers' room, 19 Nov
+
+Martin asked on 19 Nov to get the scripts as close to 10 as possible. Full write-up with the scores, six before-and-after examples and all data: `reports/research-2026-11-18/writers-room-test.md`.
+
+**What was tested.** The same 24 published stories, on the PC with Opus helpers: a fact pack per story, four angles and three drafts, two blind critics (an editor and an audience stand-in), an edit, a voice pass and a pick between the two versions. No API spend.
+
+**Result, two blind judges, one sitting.**
+
+| Version | Overall, out of 10 |
+|---|---|
+| Published originals | 3.4 |
+| Top human creators' breakout Shorts | 4.7 |
+| Editor's loop rewrites (18 Nov) | 5.9 |
+| Writers' room, best version per story | 7.3 |
+| Writers' room, weakest quarter of stories dropped | 7.5 |
+
+- These sittings marked about 0.8 lower than the 18 Nov one, so the room's 7.5 is roughly 8.3 on the scale where the editor's loop scored 6.9.
+- 12 of the 19 kept stories scored 7.5 or more and 5 scored 8 or more. None got 9 from both judges. The scores have levelled off: a third round of edits moved the average by 0.1.
+- The audience stand-in expected viewers to finish 23 of 24 final scripts, against 2 of 8 earlier rewrites.
+
+**What did the work, in order.** Better material (the fact pack, about one point); at most two spoken names and two numbers; the answer late by cutting, never by padding; plain endings; a different form per story; dropping the fifth of stories that cannot carry a Short.
+
+**Check against real retention.** On the 54 Pulse Shorts with 100 or more views, two blind readers' feature scores link to real numbers as follows: one point all the way through 0.45 with average viewed, a conflict 0.35, sounding human 0.32, clarity 0.30; the editor's overall mark 0.36 with viewers staying. A stated opinion on its own shows no link. Modest links, right direction; no Pulse Short has yet scored above 7, so the value of an 8 in views is still unmeasured.
+
+**Side finding.** Seven of the 24 published Shorts carried a detail the sources do not support. Sent to the Pulse Gaming News chat, which is checking each and will post corrections.
+
+**Build.** `claude/gap-room` (setting `SCRIPT_ROOM`, default off), cut from stage e0a70f5e0, following `reports/research-2026-11-18/writers-room-data/room_spec.md`. Status is in the table below once its checks have run.
+
+**Limits to be straight about.**
+
+- The room adds about six model calls a Short. Codex has no room for that until its weekly reset on Sun 22 Nov 16:43, so nothing switches on before then unless script writing moves back to Claude.
+- The test writers were Opus. Codex wrote the 3.4 originals, so the room on Codex will score lower than these figures until that is measured.
+- The factory cannot search the web. Its fact packs come from the articles it already fetches, links inside them and the Fact Vault, so they will be thinner than the test packs, which used open web research.
+- A high mark on paper is not a view count. Human hits score 4.7 on this sheet and still get millions, on topic, footage and delivery.

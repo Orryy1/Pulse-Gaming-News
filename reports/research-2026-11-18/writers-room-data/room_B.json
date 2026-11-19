@@ -1,0 +1,680 @@
+[
+  {
+    "code": "S13",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Nvidia's stand-in CEO is reportedly the one executive who pushed back on Jensen Huang's AI spending, and that is not obviously bad news for gamers.",
+    "angles": [
+      "Who is Nvidia's new boss? The executive who reportedly pushed back on Huang's AI bets ($250B OpenAI plan cut to $120B, reported via Reuters). Non-players stop for a boardroom 'she said no to the founder' story. Line: Nvidia's new boss reportedly told Jensen Huang no.",
+      "Does 'without interruption' cover GeForce? The chair's statement never mentions gaming, and the real GPU delay (RTX 50 Super) came from memory, under Huang (reported). Line: Nvidia promised nothing changes. Gaming wasn't in the promise.",
+      "Who was above Huang for 33 years? Nobody: Harvey Jones is Nvidia's first-ever chair (confirmed, 8-K). Line: For 33 years, nobody sat above Jensen Huang.",
+      "Why did Huang leave? Nvidia gave no reason; reported allegations only (reported, sensitive, not advertiser-safe). Rejected."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Nvidia's New Boss Once Pushed Back on Jensen",
+        "narration": "Nvidia's new boss reportedly once told Jensen Huang no. Huang was Nvidia's only CEO for 33 years, and on November 12 he resigned on the spot. Finance chief Colette Kress is interim CEO, and she keeps the finance job too. That sounds like a caretaker. The chair's promise that the roadmap continues \"without interruption\" never mentions gaming. So what did Kress say no to? Reuters sources say a $250 billion plan to back OpenAI's data centers was cut to $120 billion after pushback from her side. I don't read that as bad news for GeForce, because AI chips coming first is what reportedly delayed the last refresh. The person who said no to Jensen now has his job.",
+        "answer": "She reportedly got a $250B OpenAI plan cut to $120B",
+        "facts_used": [
+          "Huang resigned Nov 12 after 33 years, only CEO",
+          "Kress interim CEO and still CFO",
+          "Jones: roadmap 'without interruption', no gaming mention",
+          "Reuters sources: $250B OpenAI plan cut to $120B after Kress pushback",
+          "RTX 50 Super delay blamed on memory, AI chips first (reported)"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "tiny story: wanted, obstacle, turn, outcome",
+        "title": "Who Is Nvidia's New Boss, Really?",
+        "narration": "For 33 years, nobody sat above Jensen Huang at Nvidia. He never even had a board chair. Then on November 12 he resigned, and Nvidia gave no reason. Its first-ever chair, Harvey Jones, says the roadmap carries on \"without interruption.\" Running things for now is finance chief Colette Kress, who keeps that job too. On paper, a caretaker. Reuters sources disagree. They describe Kress as the executive who pushed back on Huang's big AI bets, and say a $250 billion OpenAI data center plan shrank to $120 billion after her side objected. I think gamers should be quietly pleased. The last GeForce delay reportedly happened because AI chips came first. Now the one who pushed back sits in Jensen's chair.",
+        "answer": "Kress reportedly pushed the $250B OpenAI plan down to $120B",
+        "facts_used": [
+          "33 years, Jones is first-ever chair",
+          "Nov 12 resignation, no reason given in 8-K",
+          "Kress interim CEO and CFO",
+          "Reuters sources: Kress pushed back on AI bets, $250B to $120B",
+          "RTX 50 Super delayed, AI chips first (reported)"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "news in the hook, hold back the reason",
+        "title": "Nvidia's 'Nothing Changes' Promise Skips Gaming",
+        "narration": "Nvidia promised nothing changes after Jensen Huang's exit. Gaming wasn't in the promise. Huang resigned November 12 after 33 years, and new chair Harvey Jones said the product roadmap would continue \"without interruption.\" GeForce never comes up. That silence has some fans sure Nvidia becomes an AI-only shop. But the CEO isn't what's been holding up your next card. In January, reports said Nvidia told partners the RTX 50 Super cards were delayed indefinitely by the GDDR7 memory shortage, with AI chips put first. That was with Huang in charge. I'd stop watching the boardroom and start watching memory supply. The delay worth worrying about was there before he left.",
+        "answer": "The RTX 50 Super delay predates the exit and was blamed on memory",
+        "facts_used": [
+          "Jones statement: roadmap 'without interruption', no gaming mention",
+          "Fan argument: Nvidia becomes AI-only",
+          "Jan-Feb 2026 reports: RTX 50 Super delayed indefinitely, GDDR7 shortage, AI first"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S14",
+    "kill": false,
+    "kill_reason": "",
+    "point": "GTA 5's mid-mission character switch took two years because the old consoles couldn't hold two copies of the city and Rockstar banned the usual way of hiding the load.",
+    "angles": [
+      "Why did three minutes take two years? The PS3/360 couldn't hold two cities ('We cannot have two copies of the city loaded at the same time') and the satellite-zoom cover was banned in missions (reported, Freedman via IGN). Anyone stops for 'two years for three minutes'. Line: One feature in GTA 5 took two years for three minutes.",
+      "What was the satellite zoom really? A loading screen in disguise, banned inside missions (reported). Line: Every time GTA 5 zoomed into the sky, it was buying time.",
+      "Why not just cut away? Freedman's rule, 'taking away player control is never the answer', and leadership sent back his hand-on-the-wall idea (reported). Line: GTA 5's switch designer says taking control away is never the answer.",
+      "Can you still see the trick? Yes, through a sniper scope at the horizon (reported). Line: There's a spot in GTA 5 where you can see the trick."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "GTA 5's Three Minutes That Took Two Years",
+        "narration": "One GTA 5 feature took two years for three minutes of play. That's every mid-mission switch added together, by designer Matt Freedman's count. In free roam, the zoom into the sky was a loading screen in disguise, and Rockstar banned it in missions. Leadership also wanted the skyline in view. His first fix, a tight shot on a hand against a wall, got sent back. So what was in the way? Memory. He told IGN, \"We cannot have two copies of the city loaded at the same time.\" Distant buildings lost detail, and blur hid the rest. I think that's the best kind of cheat. Two years of work so you'd never notice, and almost nobody did.",
+        "answer": "The consoles couldn't hold two copies of the city",
+        "facts_used": [
+          "~2 years for 2-3 minutes, total of mid-mission switches",
+          "Satellite zoom was a disguised loading screen, banned in missions",
+          "Leadership wanted skyline visible",
+          "First idea (hand on wall) sent back",
+          "Quote: 'We cannot have two copies of the city loaded at the same time.'",
+          "Distance detail reduction plus depth of field"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "open on the real quote, who said it and why it is strange, reveal",
+        "title": "The GTA 5 Rule That Cost Two Years",
+        "narration": "For GTA 5, \"taking away player control is never the answer.\" That was designer Matt Freedman's rule, and it cost him about two years, for two or three minutes of the game: the switches between leads in the middle of missions. In free roam, the satellite zoom bought time to load. Inside missions that trick was banned, and leadership wanted the skyline on screen. \"We cannot have two copies of the city loaded at the same time,\" he told IGN. So far-off traffic became points of light. I think he was right to be stubborn. Look down a sniper scope at the horizon and you can still catch it. It's the only place those two years show.",
+        "answer": "The consoles couldn't hold two cities, so distance was faked",
+        "facts_used": [
+          "Quote: 'taking away player control is never the answer'",
+          "~2 years for 2-3 minutes",
+          "Satellite view hid loading, banned in missions",
+          "Skyline had to stay visible",
+          "Quote: 'We cannot have two copies of the city loaded at the same time.'",
+          "Traffic as points of light, depth of field",
+          "Sniper scope still shows it"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "What GTA 5's Sky Zoom Was Hiding",
+        "narration": "GTA 5's sky zoom between characters was a loading screen in disguise. Former Rockstar Toronto designer Matt Freedman told IGN, and it raises a problem. Inside missions, Rockstar banned that trick, and still wanted the skyline in view. So how do you swap leads mid-mission with no loading cut? It took Freedman about two years. The old consoles couldn't hold two copies of the city, so the game streamed the new area in and hid the seams. Distant traffic turned into points of light, and depth of field blurred the far buildings. I think that's smarter than any loading screen. You've stared at that blurry skyline hundreds of times. Now you know what it was covering.",
+        "answer": "The far city was blurred and simplified while the new area loaded",
+        "facts_used": [
+          "Satellite zoom was a disguised loading screen",
+          "Banned in missions; skyline required",
+          "~2 years of work",
+          "Two copies of the city impossible",
+          "Points of light and depth of field"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S15",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Rockstar locked an early GTA 6 mission to Jason because it felt wrong for Lucia to give the orders that early in the story.",
+    "angles": [
+      "Why can't I pick Lucia in that mission? Rockstar took the choice away in development: 'we thought it was unnatural for Lucia to take the lead' (confirmed, translated Famitsu). Anyone stops for 'they built the choice, then cut it'. Line: Rockstar built a GTA 6 mission with free switching, then took it away.",
+      "Is GTA 6 taking away GTA 5's freedom? Missions sometimes switch for you, because the story should be seen through the right character; free roam stays open (confirmed). Line: GTA 5's mid-mission switch took two years. GTA 6 sometimes switches for you.",
+      "Can you play them together? Dazed reports you can play the pair as a unit or send either off alone (reported phrasing). Line: GTA 6 lets you play a couple, except when it doesn't.",
+      "Is the getaway auto-switch a one-off? No, story progress and missions decide (confirmed). Line: GTA 6 takes the controller handover out of your hands."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "tiny story: wanted, obstacle, turn, outcome",
+        "title": "GTA 6 Took Away One Lucia Mission",
+        "narration": "A GTA 6 mission once let you switch freely. Rockstar took that away. That's a strange cut for a game sold on two leads. Free roam keeps the freedom: Dazed reports you can play Jason and Lucia as a pair or send either off alone. So why lock an early high-rise mission? Rockstar North co-studio head Rob Nelson told Famitsu it came down to who should be in charge. Jason's a former soldier, and Nelson said \"we thought it was unnatural for Lucia to take the lead.\" I'll back that, but only this early in the story. If Lucia's still following orders at the end, that's a problem. Two leads only works if both get to lead.",
+        "answer": "Rockstar felt Lucia leading that early was unnatural",
+        "facts_used": [
+          "Early high-rise mission originally allowed free switching, locked to Jason",
+          "Jason a former soldier",
+          "Quote: 'we thought it was unnatural for Lucia to take the lead.'",
+          "Nelson via Famitsu (translated)",
+          "Dazed: play as a unit or alone in free roam"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Why GTA 6 Won't Always Let You Choose",
+        "narration": "GTA 6 has two leads, and some missions won't let you pick. In one chase, control jumps from Jason shooting to Lucia driving on its own. Rockstar North's Rob Nelson told Famitsu that switching depends on the mission and how far into the story you are. That isn't a technical limit. In development, an early high-rise mission let you swap freely, and Rockstar locked it to Jason. The reason is who gives the orders. Jason's a former soldier, and Nelson said \"we thought it was unnatural for Lucia to take the lead.\" I think that's right for one early mission, and a bad sign if it becomes a habit. Two leads only matter if both get to lead.",
+        "answer": "An early mission was locked to Jason because Lucia leading felt unnatural",
+        "facts_used": [
+          "Auto-switch chase: Jason shooting, Lucia driving",
+          "Switching depends on mission and story progress (Nelson, Famitsu)",
+          "High-rise mission once free, locked to Jason",
+          "Quote: 'we thought it was unnatural for Lucia to take the lead.'"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "GTA 6 Sometimes Switches Characters For You",
+        "narration": "GTA 5's mid-mission switch took one Rockstar designer about two years. GTA 6 sometimes skips the choice and switches for you. In one chase, control jumps from Jason shooting to Lucia driving. Rockstar North's Rob Nelson told Famitsu some missions lock you to one character, depending on story progress. Free roam stays open: Dazed reports you can play the pair together or alone. So why take the choice away in missions? Nelson's answer is that each scene should be seen through the right character at the right time. I'd rather have a director than a menu in the middle of a getaway. GTA 5 spent two years making switching seamless. GTA 6 decides when you shouldn't.",
+        "answer": "Each scene is meant to be seen through the right character",
+        "facts_used": [
+          "GTA 5 mid-mission switch took ~2 years (Freedman, Nov 2026)",
+          "Auto-switch chase example",
+          "Missions can lock one character by story point",
+          "Dazed: play together or alone in free roam",
+          "Nelson: right character at the right time"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S16",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Gears of War: E-Day's anniversary gives RAAM away free, but The Coalition still won't promise E-Day its missing chainsaw duels and meat shields.",
+    "angles": [
+      "Are chainsaw duels and meat shields coming back to E-Day? The Coalition only says they're 'not gone from the franchise' (confirmed wording, no E-Day commitment). Anyone stops for a careful non-promise. Line: Gears of War: E-Day is giving away RAAM, but not its chainsaw duels.",
+      "Why RAAM, and why November 7? The original Gears launched November 7, 2006 with RAAM as final boss (date is GamerFuzion's inference). Line: Gears of War: E-Day's free RAAM unlocks on one very specific day.",
+      "What does Legacy bring on December 1? Returning maps, modes and skins, none named yet (thin). Rejected as a maybe-answer.",
+      "Did E-Day lose the Gears feel? Fan split over faster movement (opinion only). Rejected: no held-back fact."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Gears E-Day's Free RAAM Has One Catch",
+        "narration": "Gears of War: E-Day is marking 20 years by giving away RAAM. One login from November 7 and he's yours in multiplayer. Generous, and a little odd. E-Day launched in October without chainsaw duels or meat shields, two Gears staples. So the anniversary brings back the first game's final boss and skips the series' signature melee. Are those coming back? The Coalition addressed it in its Season 1 post. Its answer was that they're \"not gone from the franchise.\" Read that again. It says franchise, not E-Day. I take that as a no for now, and I'd rather they just said it. A free RAAM is a nice gift. It's just not the one Gears fans asked for.",
+        "answer": "Only 'not gone from the franchise', no promise for E-Day",
+        "facts_used": [
+          "RAAM free with a login from Nov 7, 20th anniversary",
+          "E-Day launched Oct 6 without chainsaw duels and meat shields",
+          "Coalition Season 1 post: 'not gone from the franchise'",
+          "RAAM was the original game's final boss"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "news in the hook, hold back the catch",
+        "title": "Gears of War E-Day's Anniversary Is Missing Something",
+        "narration": "Gears of War: E-Day just made RAAM free with one login. The Coalition's Nicole Fawcette put it simply on Xbox Wire: \"Just login to claim him instantly.\" It's for the series' 20th birthday, with anniversary modes now and a Season 2 called Legacy on December 1, built around past games. But the game doing the celebrating launched without two pieces of Gears history: chainsaw duels and meat shields. So is Legacy where they return? The Coalition has only said they're \"not gone from the franchise.\" Franchise. Not E-Day. That wording looks careful to me, and I'd treat it as a no until they say otherwise. RAAM is back after 20 years. The chainsaw duel is still waiting.",
+        "answer": "The Coalition only says 'not gone from the franchise'",
+        "facts_used": [
+          "Fawcette quote: 'Just login to claim him instantly'",
+          "20th anniversary, two-week event, Season 2 Legacy Dec 1",
+          "Launched Oct at $70",
+          "Missing chainsaw duels and meat shields",
+          "'not gone from the franchise'"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "Why Gears of War E-Day Picked RAAM",
+        "narration": "Gears of War: E-Day gives RAAM away on a very specific day. From November 7, one login unlocks him as a multiplayer character, free for anyone who owns the game or plays on Game Pass. Most freebies land whenever a season needs a push. This one comes with a two-week anniversary event and Guardian back in Versus. So why RAAM, and why that date? By GamerFuzion's count, November 7, 2006 is when the original Gears of War launched in North America. RAAM was its final boss. I think that's the right gift. A skin would have been easy. Twenty years ago he stood between you and the credits. Now he's yours for a login.",
+        "answer": "November 7 is 20 years since the original Gears, where RAAM was the final boss",
+        "facts_used": [
+          "RAAM free via login from Nov 7",
+          "Owners and Game Pass",
+          "Two-week event, Guardian returns",
+          "Nov 7, 2006 original launch (GamerFuzion inference)",
+          "RAAM final boss of the original"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S17",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Silksong's manual promises more free packs while quietly swapping Sea of Sorrow's 2026 window for 'coming soon'.",
+    "angles": [
+      "When is Sea of Sorrow? The manual drops the 2026 window for 'coming soon' with about six weeks of 2026 left (confirmed, no date). Anyone stops for 'promised more before delivering the first'. Line: Hollow Knight: Silksong's manual promises more free expansions.",
+      "Is Sea of Sorrow on the physical disc? No, it's a free download that has no date (confirmed). Line: Silksong's physical edition ships without its first expansion.",
+      "Will it cost money? No, free, like the original's four packs (confirmed but predictable). Weak.",
+      "How big are the new packs? Only 'new friends, new abilities and new ferocious foes' (thin). Rejected."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Silksong's Manual Promises More Free Expansions",
+        "narration": "Hollow Knight: Silksong's manual promises more free expansions. That's odd, because nobody's played the first one yet. The physical edition's manual calls Sea of Sorrow the \"first giant expansion,\" with more free packs to follow. Team Cherry announced Sea of Sorrow last December, for 2026. It isn't on the disc either, so physical buyers download it like everyone else. So did the manual finally say when? It went the other way. Where the announcement said 2026, the manual says \"coming soon,\" with about six weeks of the year left. Free is great. I'd still rather have one date than a promise of more. From Team Cherry, \"coming soon\" isn't a date.",
+        "answer": "The manual swaps the 2026 window for 'coming soon'",
+        "facts_used": [
+          "Manual: 'first giant expansion', more free packs",
+          "Original had 4 free packs",
+          "Sea of Sorrow announced Dec 16, 2025 for 2026",
+          "Not on the disc, free download",
+          "Manual says 'coming soon', ~6 weeks of 2026 left"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "Silksong's Sea of Sorrow Was Due This Year",
+        "narration": "Hollow Knight: Silksong's free expansion was promised for this year. About six weeks are left. Team Cherry announced Sea of Sorrow last December for 2026, and over 7 million people have bought Silksong. None of them has a date. Now the physical edition's manual has surfaced, and it doubles down, calling Sea of Sorrow the \"first giant expansion\" and promising more free packs after it. So does it say when? It changed the answer. The 2026 window is gone. The manual just says \"coming soon.\" I don't mind waiting for something free. I do mind a second course being promised before the first is on the table. Six weeks left, and the year quietly fell off the box.",
+        "answer": "The manual drops 2026 and says 'coming soon'",
+        "facts_used": [
+          "Announced Dec 2025 for 2026",
+          "Over 7 million sold by Dec 2025",
+          "Manual quotes: 'first giant expansion', 'new friends, new abilities and new ferocious foes'",
+          "'coming soon' replaces 2026",
+          "Not on disc"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "news in the hook, hold back the catch",
+        "title": "Silksong's Physical Edition Is Missing Its Expansion",
+        "narration": "Hollow Knight: Silksong's physical edition ships without its first expansion. The manual even names it, calling Sea of Sorrow the \"first giant expansion,\" with more free packs after that. The price is the good part. It costs owners nothing, like the four free packs the original Hollow Knight got. So why isn't it on the disc? Because there's nothing to put there yet. Team Cherry announced it last December for 2026, and the manual now lists it as \"coming soon,\" with no year attached. Physical buyers will download it whenever it lands. I'll take free over fast. But a manual should tell you what's in the box, and this one mostly tells you what isn't.",
+        "answer": "It isn't finished: 'coming soon', no year",
+        "facts_used": [
+          "Sea of Sorrow not on the disc",
+          "Manual: 'first giant expansion', more free packs",
+          "Free for owners; original had 4 free packs",
+          "Announced Dec 2025 for 2026, now 'coming soon'"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S18",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Bandai Namco's Unknown 9 studio didn't close over Unknown 9; it spent nearly two more years on a project that never materialized, and closing it now costs about 21 million euros.",
+    "angles": [
+      "What was Reflector doing when it closed? Moved onto an existing Bandai Namco series after Unknown 9 flopped; Gematsu says those plans never materialized (reported). Anyone stops for 'two years on a game nobody saw'. Line: Bandai Namco is closing the Unknown 9 studio, but not over Unknown 9.",
+      "Is there any chance of a sequel? No: follow-up cancelled January 2025, studio liquidated (confirmed). Line: Unknown 9 took four years to make and got one game.",
+      "Who's to blame? Publisher overreach with a transmedia universe vs other theories (opinion, partly culture-war). Rejected.",
+      "What does closing cost? About 21 million euros (confirmed). Supporting fact rather than angle."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Unknown 9's Studio Didn't Close Over Unknown 9",
+        "narration": "Bandai Namco is closing Unknown 9's studio, but not over Unknown 9. Unknown 9: Awakening launched in October 2024 with a Metascore of 59. A month later, Reflector Entertainment cut 18 percent of its staff, and by January 2025 its CEO said the game \"didn't come near the company expectations.\" So what has Reflector been doing for the two years since? Bandai Namco moved it onto one of its existing series. Gematsu says those plans never materialized. Nearly two years on a project nobody saw, and now an expected loss of about 21 million euros. I'd put that on Bandai Namco. Keeping a team busy on a game that never happens is the most expensive way to say no.",
+        "answer": "Its replacement project on an existing Bandai Namco series never materialized",
+        "facts_used": [
+          "Oct 2024 launch, Metascore 59",
+          "18% staff cut a month after launch",
+          "Hoerdt Jan 2025: 'didn't come near the company expectations'",
+          "Moved to existing Bandai Namco IP; Gematsu: never materialised",
+          "~21 million euro loss"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "tiny story: wanted, obstacle, turn, outcome",
+        "title": "The Unknown 9 Studio's Last Two Years",
+        "narration": "Reflector Entertainment wanted Unknown 9 to be a whole universe. Bandai Namco has just voted to dissolve the studio. Unknown 9: Awakening took four years from its 2020 reveal to launch, and landed with a Metascore of 59. In January 2025 the studio called it a failure and cancelled a follow-up. That should have been the end. Instead, Bandai Namco handed Reflector one of its existing series. According to Gematsu, those plans never materialized. Almost two more years, nothing shown, and an expected loss of about 21 million euros. I think the second chance did more damage than the flop. A failed game is at least something people got to play.",
+        "answer": "The rescue project on an existing series never materialized",
+        "facts_used": [
+          "Transmedia universe plan",
+          "Board resolved to dissolve Reflector Nov 10",
+          "Revealed 2020, released Oct 2024",
+          "Metascore 59",
+          "Jan 2025: called a failure, follow-up cancelled, more layoffs",
+          "Moved to existing IP; never materialised (Gematsu)",
+          "~21 million euro loss"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "news in the hook, hold back the consequence",
+        "title": "Is Unknown 9 Getting a Sequel Now?",
+        "narration": "Unknown 9: Awakening was meant to start a whole universe. Bandai Namco just ended the studio behind it. Reflector Entertainment revealed it at Gamescom in 2020 and shipped it in October 2024, four years later. A Metascore of 59 followed, then an 18 percent staff cut. Books and comics were meant to carry the story alongside more games. So could a sequel still happen somewhere? The follow-up was cancelled in January 2025. And Bandai Namco's board has now decided to \"discontinue Reflector's business, dissolve, and liquidate it.\" I think the universe was planned before anyone knew if the first game would land. Four years built the world. One launch decided it.",
+        "answer": "No: the follow-up was cancelled in Jan 2025 and the studio is being liquidated",
+        "facts_used": [
+          "Revealed Gamescom 2020, released Oct 2024",
+          "Metascore 59",
+          "18% cut a month after launch",
+          "Transmedia universe plan",
+          "Follow-up cancelled Jan 2025",
+          "Official: 'discontinue Reflector's business, dissolve, and liquidate it.'"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S19",
+    "kill": false,
+    "kill_reason": "",
+    "point": "GTA 6's WAINK app means the most expensive car on the street can be the worst one to steal.",
+    "angles": [
+      "Which car should you steal in GTA 6? Not automatically the priciest: WAINK flags trackers, trackers bring police, and arrival condition reportedly affects payout (Rockstar-shown plus Edge coverage, reported). Anyone stops for 'the best car is the worst steal'. Line: In GTA 6, the fanciest car might be the worst steal.",
+      "Has Rockstar ended one-button theft? Only for parked cars; moving cars can still be instantly carjacked (confirmed, Nelson via IGN). Line: Rockstar ended one-button car theft in GTA 6. Mostly.",
+      "Was Edge's preview really hands-on? No, Rob Nelson held the controller for 90 minutes (reported). Line: Edge's big GTA 6 hands-on had one catch.",
+      "Is WAINK new? First shown in August, not an Edge find (reported). Weak."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "In GTA 6, Don't Steal the Fanciest Car",
+        "narration": "In GTA 6, the fanciest car might be the worst steal. Normally in GTA you grab the shiniest thing and go. Rockstar North's Rob Nelson told IGN that one-button hotwiring \"left a lot of potential gameplay on the table.\" So now there's a phone app, WAINK, that scans a parked car and lists the models car fences want. That still sounds like the priciest car wins. The catch is the tracker. WAINK flags it, and a tracked car brings the police. Edge's preview says a car's condition on arrival changes the payout, too. I like that GTA finally makes you choose a car instead of just taking one. The shiny one's still parked there. Now it's bait.",
+        "answer": "Trackers bring police, so the priciest car can cost you",
+        "facts_used": [
+          "Nelson to IGN: 'left a lot of potential gameplay on the table'",
+          "WAINK scans parked cars, lists what fences want",
+          "Trackers flagged; trackers bring police",
+          "Edge coverage: condition affects payout (reported)"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "news in the hook, hold back the catch",
+        "title": "GTA 6 Has an App for Stealing Cars",
+        "narration": "GTA 6 has an app that tells you which cars to steal. It's called WAINK, and it lists the models car fences are asking for. Rockstar showed it in August, scanning a parked car for its lock and resale value. That sounds like you just pick the priciest car. Edge's 90-minute demo, played by Rockstar's Rob Nelson, adds a wrinkle: a car's condition on delivery reportedly changes the payout. And the scan checks one more thing. Trackers. A tracked car brings the police, so the dream car can cost you the most. I think that's the smartest change to car theft in years. The app doesn't tell you what to steal. It tells you what not to.",
+        "answer": "Trackers bring police, and damage reportedly cuts the payout",
+        "facts_used": [
+          "WAINK lists what fences want",
+          "August reveal: scans lock, alarm, value, tracker",
+          "Edge 90-minute demo played by Nelson",
+          "Condition affects payout (reported)",
+          "Trackers bring police"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Did GTA 6 Kill One-Button Car Theft?",
+        "narration": "Rockstar says GTA 6 ends one-button car theft. That's not the whole story. Rob Nelson, co-studio head at Rockstar North, told IGN, \"Previously, you could just press triangle to automatically hotwire.\" Now parked cars have security, and a phone app called WAINK to scan them. Some fans already say that realism turns GTA's chaos into chores. So is the old smash-and-grab gone? No. Nelson says a car that's being driven can still be carjacked instantly. Pull the driver out and go. The new layers only apply to parked cars. I think that's the right split. The chores are there for people who want a job, and everyone else still gets the GTA they know.",
+        "answer": "Moving cars can still be carjacked instantly; the new rules hit parked cars",
+        "facts_used": [
+          "Nelson quote on pressing triangle to hotwire",
+          "Parked-car security, WAINK, buyers want models and condition",
+          "Fan argument: chores",
+          "Nelson: moving cars still instantly carjackable"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S20",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Rockstar has never announced GTA 6 Online, but its own tribunal filing already described a 32-player online format.",
+    "angles": [
+      "Is GTA 6 Online real if Rockstar never announced it? Rockstar described a 32-player online format as 'one of the most closely guarded secrets of the company' in a tribunal filing (confirmed document via GTA BOOM). Non-players stop for 'the secret came out in court'. Line: Rockstar hasn't announced GTA 6 Online. Its court filing described it.",
+      "Why does the preload have multiplayer code with no multiplayer? Online comes later; Twitch's CEO expects 2027 (speculation from an informed party). Line: GTA 6's preload has multiplayer code and launches with no multiplayer.",
+      "How big are lobbies? 32, barely above GTA Online's 30, not the 64 fans guessed (document). Line: GTA 6 Online's player count is smaller than fans guessed.",
+      "Is a story-first launch good? GTA 5 never got story expansions once Online took over (fan argument). Supporting verdict."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "Rockstar Described GTA 6 Online in Court",
+        "narration": "Rockstar has never announced GTA 6 Online. Its own court filing already describes it. Dataminers just found lines like joinSession in the preload, and Rockstar said nothing, which fits a story-only launch. The bigger clue came from a Glasgow employment tribunal, where Rockstar defended firing 34 staff over Discord posts. In its filing, it called an online format for 32 players \"one of the most closely guarded secrets of the company.\" So Online exists, and the cap is 32. That's barely above GTA Online's 30, nowhere near the 64 fans guessed. I'm fine with that. I'd take a lobby that works over a bigger one that doesn't. Rockstar kept the secret from everyone except a courtroom.",
+        "answer": "A tribunal filing describes a 32-player online format",
+        "facts_used": [
+          "Datamined strings joinSession, launchMultiplayerActivity",
+          "Rockstar silent; Online not at launch",
+          "Tribunal: 34 staff fired over Discord posts",
+          "Quote: 'one of the most closely guarded secrets of the company'",
+          "32 players vs GTA Online's 30, fans guessed 64"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "open on the real quote, who said it and why it is strange, reveal",
+        "title": "GTA 6 Online's Worst-Kept Secret",
+        "narration": "One of Rockstar's \"most closely guarded secrets\" is about GTA 6 Online. That's strange, because Rockstar hasn't announced an online mode. GTA 6 launches November 19 as a story game, and multiplayer lines found in the preload prove nothing on their own. The phrase came from a Glasgow employment tribunal. Rockstar was defending firing 34 staff over Discord posts, and it described what was at stake: an online format for 32 players. So the secret is real, and it's smaller than fans hoped. Thirty-two is barely above GTA Online's 30, and well short of the 64 people guessed. I think 32 is plenty if it runs well. Rockstar's biggest secret turned out to be how modest it is.",
+        "answer": "A 32-player online format, described in a tribunal filing",
+        "facts_used": [
+          "Quote: 'one of the most closely guarded secrets of the company'",
+          "Launch Nov 19 story-only",
+          "Preload strings",
+          "Tribunal, 34 staff fired over Discord posts",
+          "32 players vs 30 and guessed 64",
+          "Clancy to Bloomberg: 2027"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "GTA 6's Preload Has Multiplayer Code",
+        "narration": "GTA 6's preload has multiplayer code, but the game launches without multiplayer. Dataminers found joinSession and launchMultiplayerActivity in the PlayStation files. Last time, GTA Online arrived about two weeks after GTA 5. So is Online in there, waiting to be switched on? Rockstar hasn't announced it or given a date. The best guess comes from outside the company. Twitch CEO Dan Clancy told Bloomberg he expects GTA 6's online mode in 2027, after spending time talking with Rockstar. That means a year of story mode, at least. I think that's good news. GTA 5 never got a story expansion once Online took over. This time, single-player gets a year to itself.",
+        "answer": "Twitch's CEO expects Online in 2027, a year after launch",
+        "facts_used": [
+          "Three strings found in PS data",
+          "GTA Online two weeks after GTA 5",
+          "No Rockstar announcement",
+          "Clancy to Bloomberg: 2027 after talks with Rockstar",
+          "GTA 5 got no story expansions once Online dominated"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S21",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Nintendo says another Switch 2 price rise isn't planned, but it said nearly the same thing in February before announcing a $50 rise in May.",
+    "angles": [
+      "Can you trust 'not considering' a Switch 2 price rise? Furukawa said no imminent hike in February; in May Nintendo announced the $50 rise (confirmed). Anyone stops for a broken promise. Line: Switch 2 sales fell 37 percent, and Nintendo says the price holds.",
+      "Is the Switch 2 in trouble after a 37% drop? The comparison is against the launch rush (10.36M), software rose about 19% and the 16.5M forecast held (confirmed). Line: Switch 2 sales fell 37 percent. That number is misleading.",
+      "Why hold the price now? Nintendo says it secured enough memory (confirmed stance). Supporting fact.",
+      "Is $499 now the bargain? PS5 Digital is $600, disc $650 (confirmed; original wrongly said PS5 starts at $649). Supporting comparison."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Nintendo Says No Switch 2 Price Hike. Again.",
+        "narration": "Switch 2 sales fell 37 percent, and Nintendo says the price holds. Good news, if you believe it. The Switch 2 already went from $450 to $500 in September. This month, president Shuntaro Furukawa said Nintendo isn't considering another rise, and he gave a reason. Nintendo has secured enough memory to ride out the shortage. So why the doubt? Because Furukawa said almost the same thing in February: no imminent price hike. In May, Nintendo announced the $50 rise. I'd believe him a little more this time, because now he's named a concrete reason. But I wouldn't wait on it. Nintendo's \"no\" has an expiry date. It just doesn't print it.",
+        "answer": "Furukawa promised no imminent hike in February, then the rise came in May",
+        "facts_used": [
+          "Sell-in down 37.4% Apr-Sep",
+          "$449.99 to $499.99 effective Sep 1",
+          "Furukawa: not considering another rise, enough memory",
+          "Quote: 'no major change'",
+          "Feb 2026: no imminent hike; May: rise announced"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "news in the hook, hold back the catch",
+        "title": "Can You Trust Nintendo's Switch 2 Price Promise?",
+        "narration": "Nintendo says the Switch 2 won't cost more again. President Shuntaro Furukawa said this month that no further rise is planned, with hardware sales down 37 percent. He even gave a reason: Nintendo has secured enough memory. The US price is $500, up $50 since September, and a PS5 Digital is $600, so on paper Nintendo looks like the steady one. The catch is Nintendo's own record. In February, Furukawa said there was no imminent price hike. In May, Nintendo announced the $50 rise. And this time it kept a caveat about costs over the medium to long term. I'd take the promise at about half its face value. If you want one, the safe price is today's.",
+        "answer": "He said the same in February, then raised the price in May",
+        "facts_used": [
+          "No further rise planned; enough memory",
+          "Sales down 37.4%",
+          "$499.99 since Sep 1",
+          "PS5 Digital $599.99",
+          "Feb no imminent hike, May rise announced",
+          "Medium-to-long-term caveat"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "Switch 2 Sales Fell 37 Percent. Look Closer.",
+        "narration": "Switch 2 sales fell 37 percent, and Nintendo didn't flinch. It kept its forecast of 16.5 million consoles and said no more price rises are planned. That's a lot of calm after losing more than a third of your sales. So is the Switch 2 in trouble? Look at what it's being compared with. April to September last year was the launch rush, with over 10 million shipped. This year it was six and a half million. And software sales rose about 19 percent over the same stretch. I don't think that's a slump. It's a console coming down from its first six months. The scary number is real. It's just measuring the wrong thing.",
+        "answer": "The drop is against the launch half-year, and software rose about 19%",
+        "facts_used": [
+          "Sell-in 6.49M vs 10.36M, down 37.4%",
+          "16.5M forecast kept",
+          "No further rise; $50 hike in Sep",
+          "Software up ~19%"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S22",
+    "kill": false,
+    "kill_reason": "",
+    "point": "GTA 6's boxed copy has no disc, so a PS4 owner upgrading for it should buy the cheaper disc-less PS5.",
+    "angles": [
+      "Which PS5 should a PS4 owner buy for GTA 6? The cheapest, because even the boxed copy has no disc: 'A disc will not be included in the box.' (confirmed, Rockstar Support). Anyone stops for 'the physical edition has no disc'. Line: Upgrading from PS4 for GTA 6? Skip the disc drive.",
+      "Will GTA 6 fit on a Series S? It takes over half the usable 512 GB (about 364 GB usable, one report). Line: GTA 6 wants more than half of an Xbox Series S.",
+      "Can I play GTA 6 on PS4? No (confirmed, but everyone knows). Weak.",
+      "What does upgrading cost? About $680 for a PS5 Digital plus the game (confirmed figures). Supporting fact."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Leaving PS4 for GTA 6? Read This First",
+        "narration": "If you're leaving a PS4 for GTA 6, skip the disc drive. That sounds backwards for a big boxed game. Rockstar only lists PS5 and Xbox Series consoles, so a PS4 owner is buying new hardware either way. The cheapest route is already steep: a $600 PS5 Digital and the $80 game come to about $680. So why not the disc model? Because GTA 6 doesn't come on a disc. Rockstar's support page says \"A disc will not be included in the box.\" The boxed copy is a download code. I think that's a bad call, because it kills lending and resale. But for GTA 6, the disc drive is the one part of a PS5 you'll never use.",
+        "answer": "Even the boxed copy has no disc, only a code",
+        "facts_used": [
+          "PS5 and Xbox Series only",
+          "PS5 Digital $599.99",
+          "Game $79.99, ~$680 total",
+          "Up to 212 GB",
+          "Rockstar: 'A disc will not be included in the box.'",
+          "Fan argument: kills resale and lending"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "news in the hook, hold back the consequence",
+        "title": "GTA 6's Physical Edition Has No Disc",
+        "narration": "Grand Theft Auto 6 ships in a box with no disc inside. Rockstar's support page says it plainly: \"A disc will not be included in the box.\" You get a download code. That matters if you're still on a PS4, because GTA 6 skips PS4 and Xbox One entirely. Most people would reach for the disc PS5 to play a boxed game. Here, there's nothing to gain. The cheapest PS5, the $600 Digital Edition, runs it the same, and either way you'll need up to 212 gigabytes free. I don't love it. A code in a box means no lending and no used copies. But it makes the cheap console the smart one.",
+        "answer": "The cheaper digital PS5 loses nothing for GTA 6",
+        "facts_used": [
+          "Rockstar: 'A disc will not be included in the box.'",
+          "Download code only",
+          "No PS4 or Xbox One version",
+          "PS5 Digital $599.99 cheapest",
+          "Up to 212 GB",
+          "No resale or lending"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "Will GTA 6 Fit on Xbox Series S?",
+        "narration": "GTA 6 needs up to 212 gigabytes. One Xbox will feel it. Rockstar says the exact size depends on your device, and the game only runs on PS5 and Xbox Series consoles. The tight one is the 512 gigabyte Series S. That sounds like room for one game. It isn't, because not all of that drive is usable. One report puts the usable space at about 364 gigabytes. So GTA 6 alone takes more than half. And with no disc in the box, all of it lives on the drive. I think Series S owners should clear space now, or budget for extra storage. The cheapest Xbox runs GTA 6. It just won't fit much else beside it.",
+        "answer": "On a Series S it fills more than half the usable ~364 GB",
+        "facts_used": [
+          "Up to 212 GB depending on device",
+          "PS5 and Xbox Series only",
+          "Series S 512 GB, ~364 GB usable (one report)",
+          "No disc in the box"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S23",
+    "kill": false,
+    "kill_reason": "",
+    "point": "Rockstar billed the GTA 6 album as 34 brand-new, original tracks, but the leaked list includes at least one cover.",
+    "angles": [
+      "Is the 'brand-new, original' album all original? No: the leaked list includes Keith Richards covering Jimmy Reed's 'Bright Lights, Big City' (reported tracklist). Anyone stops for a promise that doesn't match. Line: Rockstar promised the GTA 6 album would be 34 brand-new, original tracks.",
+      "Is this what you'll hear on the radio? No, Insider Gaming says the album differs from the score and the radio; overlap unknown (confirmed distinction). Line: The GTA 6 album leaked. It isn't the radio.",
+      "Who's behind the biggest track? Travis Scott's 'RHYNO' produced by Daft Punk's Guy-Manuel de Homem-Christo (reported). Line: One GTA 6 song has a Daft Punk member behind it.",
+      "How long did it take? Atlantic says 'two years of our lives' (reported). Supporting fact."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "GTA 6's 'Brand-New' Album Has an Old Song",
+        "narration": "Rockstar promised the GTA 6 album would be 34 brand-new, original tracks. Then the tracklist leaked, and it doesn't quite match. It came from a video of advance vinyl on November 14, and sources for Rolling Stone and Billboard reportedly backed it up. The big names are there, like Dua Lipa and Lana Del Rey. Atlantic Records says it took \"two years of our lives.\" So what doesn't fit? On the leaked list, Keith Richards is doing \"Bright Lights, Big City.\" That's a Jimmy Reed song. A cover, on an album sold as all original. I don't mind the song. Keith Richards doing the blues suits GTA fine. But \"original\" was Rockstar's word, not mine. Brand-new, mostly.",
+        "answer": "Keith Richards covering Jimmy Reed's 'Bright Lights, Big City'",
+        "facts_used": [
+          "Announcement: '34 brand-new, original tracks'",
+          "Leak Nov 14 via advance vinyl video",
+          "Rolling Stone/Billboard sources reportedly confirmed",
+          "Dua Lipa, Jennie, Lana Del Rey",
+          "Atlantic: 'two years of our lives'",
+          "Keith Richards covers Jimmy Reed"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "cold fact, the odd part, escalate, reveal",
+        "title": "The GTA 6 Album Isn't All New",
+        "narration": "Atlantic says the GTA 6 album took \"two years of our lives.\" Rockstar and Atlantic Records sold it in September as 34 brand-new, original tracks. On November 14 the list leaked from a video of advance vinyl, and sources for Rolling Stone and Billboard reportedly confirmed it. There's Dua Lipa, and a Travis Scott track produced by Daft Punk's Guy-Manuel de Homem-Christo. Most of it really is new. Not all of it. Keith Richards is on there doing \"Bright Lights, Big City,\" a Jimmy Reed song. That's a cover, on an album billed as original. I'd keep it anyway. It's probably the track I'll play most. Two years of work, and the standout might be the oldest song on it.",
+        "answer": "At least one track is a cover: Keith Richards doing Jimmy Reed",
+        "facts_used": [
+          "Atlantic: 'two years of our lives'",
+          "Announced Sep 17 as '34 brand-new, original tracks'",
+          "Leak Nov 14, advance vinyl",
+          "Reported confirmation",
+          "Travis Scott 'RHYNO' produced by Guy-Manuel de Homem-Christo",
+          "Keith Richards covers Jimmy Reed"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "news in the hook, hold back the catch",
+        "title": "GTA 6's Album Leaked. Is It the Radio?",
+        "narration": "GTA 6's 34-track album leaked, and fans think they've heard the radio. The list came from advance vinyl, packed with names like Dua Lipa and Lana Del Rey, and sources for Rolling Stone and Billboard reportedly confirmed it. Some fans already hate it, calling it a festival lineup, not Vice City. So is this what you'll hear driving around? Insider Gaming says the album \"differs from\" both Justice's original score and the game's radio soundtrack. The score even gets its own album on December 11. Rockstar hasn't said which album songs reach the stations at all. I think judging the radio from this list is like judging a city by its gift shop. The stations are what you'll actually hear.",
+        "answer": "The album is separate from the radio and the score",
+        "facts_used": [
+          "34 tracks leaked via advance vinyl",
+          "Dua Lipa, Lana Del Rey",
+          "Reported confirmation",
+          "Fan argument: Coachella lineup",
+          "Insider Gaming: album differs from score and radio",
+          "Justice score album Dec 11",
+          "Overlap not stated"
+        ]
+      }
+    ]
+  },
+  {
+    "code": "S24",
+    "kill": false,
+    "kill_reason": "",
+    "point": "The most useful GTA 6 video isn't a trailer at all: it's the 26-minute Extended Look, which Netflix says was captured on a base PS5.",
+    "angles": [
+      "What's the GTA 6 video worth watching before you pay? The Extended Look, about 26 minutes captured on a base PS5 per Netflix (confirmed claim). Anyone stops for 'premiered on Netflix, not YouTube'. Line: GTA 6's longest gameplay video premiered on Netflix, not YouTube.",
+      "Where is Trailer 3? Rockstar never used the name; the third trailer is the October 15 'Launch Trailer' (confirmed). Line: Fans waited over a year for GTA 6 Trailer 3.",
+      "What did the launch trailer debut? Justice's 'Flower in a Hurricane' with Tame Impala, SZA and King Gizzard (confirmed, weeks old). Weak.",
+      "How did the Extended Look do? 31 million views in a weekend (unchecked against Rockstar). Rejected."
+    ],
+    "candidates": [
+      {
+        "id": "A",
+        "structure": "news in the hook, hold back the catch",
+        "title": "GTA 6's Longest Look Premiered on Netflix",
+        "narration": "GTA 6's longest gameplay video premiered on Netflix, not YouTube. That's an odd home for a series whose Trailer 2 pulled 475 million views in a day. It's called An Extended Look, it runs about 26 minutes, and it reached YouTube around six hours after Netflix. It came out August 27, while fans were still hunting for a Trailer 3. So why watch this over any trailer? Netflix says it was captured on a base PS5. Not the Pro. The regular console most people actually own. I'd watch it before spending $80 on the game. Trailer 2 sold the dream. This one shows you what you're buying.",
+        "answer": "It was captured on a base PS5",
+        "facts_used": [
+          "Extended Look premiered on Netflix Aug 27, YouTube ~6 hours later",
+          "Trailer 2: 475 million views in 24 hours",
+          "About 26 minutes",
+          "'Trailer 3' never named by Rockstar",
+          "Netflix: captured on base PS5",
+          "$80 standard edition (S22/S24 stakes)"
+        ]
+      },
+      {
+        "id": "B",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "The GTA 6 Video to Watch Before Buying",
+        "narration": "The best GTA 6 video to watch isn't any of its trailers. Rockstar's October 15 Launch Trailer was captured in-game on a PS5, and it looks great. It's also the best bits, cut tight. Back on August 27, Rockstar put out something longer. An Extended Look runs about 26 minutes, and premiered on Netflix before reaching YouTube hours later. Long footage can still be shot on the fanciest hardware, though. So what's it running on? Netflix says a base PS5. Not the Pro. The console most people already have. I'd skip the trailers and watch that before paying $80. A trailer is a highlight reel. Twenty-six minutes on a normal PS5 is a test drive.",
+        "answer": "The Extended Look was captured on a base PS5",
+        "facts_used": [
+          "Launch Trailer Oct 15, captured in-game on PS5",
+          "Extended Look Aug 27, ~26 minutes",
+          "Netflix exclusive, YouTube hours later",
+          "Netflix: base PS5",
+          "$80 price"
+        ]
+      },
+      {
+        "id": "C",
+        "structure": "contradiction, rule out the obvious, reveal, verdict",
+        "title": "Where Is GTA 6 Trailer 3?",
+        "narration": "Fans waited over a year for GTA 6 Trailer 3. Rockstar never released anything by that name. Trailer 2 dropped in May 2025 and pulled 475 million views in 24 hours. Then the countdown started, and some fans felt Rockstar dragged it out. Search for Trailer 3 today and you mostly get fan uploads. So did it get skipped? No. It came out on October 15, under a different name. Rockstar calls it the Launch Trailer, and it was captured entirely in-game on a PS5. It also debuted Justice's new song, \"Flower in a Hurricane.\" I think the name is the reason people missed it. Trailer 3 was never late. Rockstar just never called it that.",
+        "answer": "It's the October 15 'Launch Trailer'",
+        "facts_used": [
+          "Trailer 2 May 2025, 475M views in 24h",
+          "Fan argument: dragged out",
+          "Searching 'Trailer 3' finds fan uploads",
+          "Launch Trailer Oct 15, captured in-game on PS5",
+          "Debuted Justice's 'Flower in a Hurricane'"
+        ]
+      }
+    ]
+  }
+]

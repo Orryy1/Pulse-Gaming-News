@@ -1,0 +1,482 @@
+[
+  {
+    "code": "V01",
+    "clarity": 8,
+    "hook": 6,
+    "payoff": 6,
+    "voice": 5,
+    "human": 7,
+    "overall": 6,
+    "note": "Reads like a news desk and the 'do that math' ending lands flat rather than with a view."
+  },
+  {
+    "code": "V02",
+    "clarity": 7,
+    "hook": 4,
+    "payoff": 6,
+    "voice": 6,
+    "human": 6,
+    "overall": 5,
+    "note": "The search-query opener is SEO bait, not a hook, and it takes three lines to reach the interesting part."
+  },
+  {
+    "code": "V03",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "The last two lines restate the same point instead of ending on a sharper beat."
+  },
+  {
+    "code": "V04",
+    "clarity": 8,
+    "hook": 8,
+    "payoff": 8,
+    "voice": 6,
+    "human": 8,
+    "overall": 8,
+    "note": "Delivery is a little flat; the narrator never says what they think of the trick."
+  },
+  {
+    "code": "V05",
+    "clarity": 8,
+    "hook": 5,
+    "payoff": 4,
+    "voice": 5,
+    "human": 7,
+    "overall": 5,
+    "note": "Gives the answer in the first line, so nothing is held back and the closing catch feels tacked on."
+  },
+  {
+    "code": "V06",
+    "clarity": 7,
+    "hook": 5,
+    "payoff": 4,
+    "voice": 5,
+    "human": 5,
+    "overall": 5,
+    "note": "Filler quip 'Two jobs at once' and a limp board-statement payoff with no real surprise."
+  },
+  {
+    "code": "V07",
+    "clarity": 6,
+    "hook": 6,
+    "payoff": 5,
+    "voice": 6,
+    "human": 8,
+    "overall": 6,
+    "note": "A repetitive list ('but if he doesn't have enough money') that leans on game clips to carry it."
+  },
+  {
+    "code": "V08",
+    "clarity": 7,
+    "hook": 6,
+    "payoff": 6,
+    "voice": 7,
+    "human": 8,
+    "overall": 6,
+    "note": "The shouty middle and clip-dependent list structure make it hard to follow on audio alone."
+  },
+  {
+    "code": "V09",
+    "clarity": 8,
+    "hook": 8,
+    "payoff": 7,
+    "voice": 6,
+    "human": 7,
+    "overall": 7,
+    "note": "The rhetorical 'why would you hide that from the guy?' feels inserted and the ending is plain."
+  },
+  {
+    "code": "V10",
+    "clarity": 6,
+    "hook": 7,
+    "payoff": 4,
+    "voice": 5,
+    "human": 6,
+    "overall": 5,
+    "note": "The Netflix angle in the hook is never explained, which leaves the listener confused."
+  },
+  {
+    "code": "V11",
+    "clarity": 7,
+    "hook": 8,
+    "payoff": 6,
+    "voice": 6,
+    "human": 6,
+    "overall": 7,
+    "note": "Reveals the WoW Classic turnaround mid-script, and the final line just repeats the opinion."
+  },
+  {
+    "code": "V12",
+    "clarity": 6,
+    "hook": 7,
+    "payoff": 8,
+    "voice": 8,
+    "human": 9,
+    "overall": 7,
+    "note": "The strawberry arithmetic and a few garbled lines are hard to follow on one listen."
+  },
+  {
+    "code": "V13",
+    "clarity": 6,
+    "hook": 5,
+    "payoff": 3,
+    "voice": 3,
+    "human": 2,
+    "overall": 3,
+    "note": "Stacked AI tells: a forced multitasking quip, a branded 'Pulse check' and a strained 'hog a slot' pun."
+  },
+  {
+    "code": "V14",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 7,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "Ends abruptly; the implied criticism could use one clearer line of the narrator's own view."
+  },
+  {
+    "code": "V15",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 7,
+    "voice": 6,
+    "human": 7,
+    "overall": 7,
+    "note": "Thin, and the reveal only lands for people who already know Southern rap."
+  },
+  {
+    "code": "V16",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 7,
+    "voice": 7,
+    "human": 8,
+    "overall": 7,
+    "note": "The cause is explained before the fix, so the payoff is useful but not surprising."
+  },
+  {
+    "code": "V17",
+    "clarity": 6,
+    "hook": 9,
+    "payoff": 7,
+    "voice": 7,
+    "human": 6,
+    "overall": 7,
+    "note": "A pile-up of review scores (96, 94, 99) muddies an otherwise great hook."
+  },
+  {
+    "code": "V18",
+    "clarity": 5,
+    "hook": 6,
+    "payoff": 4,
+    "voice": 4,
+    "human": 4,
+    "overall": 4,
+    "note": "Odd word choices ('bills') and a nonsensical last line about the patch 'coming back for your drive'."
+  },
+  {
+    "code": "V19",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 7,
+    "voice": 6,
+    "human": 6,
+    "overall": 6,
+    "note": "Overlong, and the 'bad call' aside muddies the main advice."
+  },
+  {
+    "code": "V20",
+    "clarity": 8,
+    "hook": 8,
+    "payoff": 8,
+    "voice": 6,
+    "human": 7,
+    "overall": 7,
+    "note": "Leans on the quote for the whole payoff and offers no take of its own."
+  },
+  {
+    "code": "V21",
+    "clarity": 6,
+    "hook": 6,
+    "payoff": 5,
+    "voice": 6,
+    "human": 5,
+    "overall": 5,
+    "note": "Too many figures and two competing points (sales drop vs price) blur the message."
+  },
+  {
+    "code": "V22",
+    "clarity": 6,
+    "hook": 7,
+    "payoff": 5,
+    "voice": 5,
+    "human": 6,
+    "overall": 5,
+    "note": "The hypothetical walkthrough is awkward and the closing line is a soft shrug."
+  },
+  {
+    "code": "V23",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "The payoff is a deflation ('nobody's heard it yet') rather than a real reveal."
+  },
+  {
+    "code": "V24",
+    "clarity": 4,
+    "hook": 2,
+    "payoff": 2,
+    "voice": 2,
+    "human": 1,
+    "overall": 2,
+    "note": "Robotic, repetitive sentences with no hook; it reads like generated instructions."
+  },
+  {
+    "code": "V25",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 6,
+    "human": 7,
+    "overall": 6,
+    "note": "The final timing-based rebuttal is hard to parse on one listen."
+  },
+  {
+    "code": "V26",
+    "clarity": 7,
+    "hook": 6,
+    "payoff": 7,
+    "voice": 6,
+    "human": 7,
+    "overall": 6,
+    "note": "The opener is a plain news line; the 'two years, no screenshot' mystery should lead."
+  },
+  {
+    "code": "V27",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 5,
+    "voice": 6,
+    "human": 7,
+    "overall": 6,
+    "note": "Gives the whole petition up front and the payoff is just a caveat."
+  },
+  {
+    "code": "V28",
+    "clarity": 7,
+    "hook": 6,
+    "payoff": 8,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "The opening is a flat statement; the good 'franchise, not E-Day' twist arrives quickly but thinly."
+  },
+  {
+    "code": "V29",
+    "clarity": 4,
+    "hook": 3,
+    "payoff": 4,
+    "voice": 8,
+    "human": 9,
+    "overall": 3,
+    "note": "An unedited rant clip that starts mid-thought and repeats 'I think it's because they knew' three times."
+  },
+  {
+    "code": "V30",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 5,
+    "human": 5,
+    "overall": 6,
+    "note": "The writerly 'farewell, or a first act' framing feels polished rather than spoken."
+  },
+  {
+    "code": "V31",
+    "clarity": 7,
+    "hook": 8,
+    "payoff": 8,
+    "voice": 6,
+    "human": 6,
+    "overall": 7,
+    "note": "The tribunal backstory runs long before the 32-player reveal."
+  },
+  {
+    "code": "V32",
+    "clarity": 6,
+    "hook": 5,
+    "payoff": 4,
+    "voice": 4,
+    "human": 4,
+    "overall": 4,
+    "note": "Promo-speak with a try-hard closer ('Legacy has to earn the evenings')."
+  },
+  {
+    "code": "V33",
+    "clarity": 8,
+    "hook": 8,
+    "payoff": 8,
+    "voice": 6,
+    "human": 8,
+    "overall": 8,
+    "note": "No personal view, though the 'Himself.' ending does the work."
+  },
+  {
+    "code": "V34",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 6,
+    "human": 5,
+    "overall": 6,
+    "note": "Stock 'Not a parody. The actual show.' beats and the full game name; the reveal drags."
+  },
+  {
+    "code": "V35",
+    "clarity": 4,
+    "hook": 3,
+    "payoff": 3,
+    "voice": 3,
+    "human": 2,
+    "overall": 2,
+    "note": "Stilted 'seven dollars nineteen', a corporate 'we' and a formulaic closing line."
+  },
+  {
+    "code": "V36",
+    "clarity": 4,
+    "hook": 7,
+    "payoff": 5,
+    "voice": 6,
+    "human": 7,
+    "overall": 4,
+    "note": "A tangled lore dump that is impossible to follow on one listen."
+  },
+  {
+    "code": "V37",
+    "clarity": 8,
+    "hook": 8,
+    "payoff": 8,
+    "voice": 7,
+    "human": 8,
+    "overall": 8,
+    "note": "The chat-server backstory line is slightly cramped, but there is little to fix."
+  },
+  {
+    "code": "V38",
+    "clarity": 8,
+    "hook": 6,
+    "payoff": 7,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "The hook is a mild 'manual promises' line that undersells the delay angle."
+  },
+  {
+    "code": "V39",
+    "clarity": 6,
+    "hook": 6,
+    "payoff": 5,
+    "voice": 5,
+    "human": 5,
+    "overall": 5,
+    "note": "Too many points (name, province, date) and a formulaic recap-style ending."
+  },
+  {
+    "code": "V40",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 7,
+    "voice": 6,
+    "human": 6,
+    "overall": 6,
+    "note": "The inserted studio-boss quote is stiff and interrupts the flow to the catch."
+  },
+  {
+    "code": "V41",
+    "clarity": 7,
+    "hook": 8,
+    "payoff": 6,
+    "voice": 7,
+    "human": 7,
+    "overall": 7,
+    "note": "Run-on anecdote that ends with a subscribe plug."
+  },
+  {
+    "code": "V42",
+    "clarity": 7,
+    "hook": 7,
+    "payoff": 8,
+    "voice": 6,
+    "human": 7,
+    "overall": 7,
+    "note": "The hedged 'probably explains' weakens an otherwise sharp hook."
+  },
+  {
+    "code": "V43",
+    "clarity": 7,
+    "hook": 6,
+    "payoff": 5,
+    "voice": 6,
+    "human": 5,
+    "overall": 6,
+    "note": "Stacked source citations (Famitsu, Dazed) make it read like a report."
+  },
+  {
+    "code": "V44",
+    "clarity": 6,
+    "hook": 6,
+    "payoff": 6,
+    "voice": 5,
+    "human": 4,
+    "overall": 5,
+    "note": "Repeated full game name and a 'sideshow' ending that restates rather than reveals."
+  },
+  {
+    "code": "V45",
+    "clarity": 7,
+    "hook": 6,
+    "payoff": 6,
+    "voice": 7,
+    "human": 7,
+    "overall": 6,
+    "note": "The final line restates the point and needs a punchier close."
+  },
+  {
+    "code": "V46",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 5,
+    "voice": 6,
+    "human": 7,
+    "overall": 6,
+    "note": "Gives the trick away early, so the ending only repeats it."
+  },
+  {
+    "code": "V47",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 9,
+    "voice": 7,
+    "human": 8,
+    "overall": 8,
+    "note": "The middle list of evidence is a touch thin before the Poncle reveal."
+  },
+  {
+    "code": "V48",
+    "clarity": 8,
+    "hook": 7,
+    "payoff": 6,
+    "voice": 5,
+    "human": 6,
+    "overall": 6,
+    "note": "Full formal game title and a closing line that just repeats the hook."
+  }
+]

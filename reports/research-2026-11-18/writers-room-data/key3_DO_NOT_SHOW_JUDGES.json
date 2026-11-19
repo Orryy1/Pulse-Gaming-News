@@ -1,0 +1,314 @@
+[
+ {
+  "code": "U01",
+  "src": "anchor_human",
+  "ref": "WbdQeNP4Kuk",
+  "r2code": "T02",
+  "r2overall": 4.0,
+  "words": 243
+ },
+ {
+  "code": "U02",
+  "src": "room",
+  "ref": "S14",
+  "kill": false,
+  "words": 115
+ },
+ {
+  "code": "U03",
+  "src": "anchor_rewrite",
+  "ref": "S08",
+  "r2code": "T14",
+  "r2overall": 6.5,
+  "words": 102
+ },
+ {
+  "code": "U04",
+  "src": "room",
+  "ref": "S16",
+  "kill": false,
+  "words": 106
+ },
+ {
+  "code": "U05",
+  "src": "anchor_rewrite",
+  "ref": "S21",
+  "r2code": "T03",
+  "r2overall": 7.0,
+  "words": 111
+ },
+ {
+  "code": "U06",
+  "src": "anchor_rewrite",
+  "ref": "S03",
+  "r2code": "T04",
+  "r2overall": 7.5,
+  "words": 109
+ },
+ {
+  "code": "U07",
+  "src": "room",
+  "ref": "S21",
+  "kill": false,
+  "words": 114
+ },
+ {
+  "code": "U08",
+  "src": "room",
+  "ref": "S12",
+  "kill": false,
+  "words": 104
+ },
+ {
+  "code": "U09",
+  "src": "anchor_original",
+  "ref": "S13",
+  "r2code": "T20",
+  "r2overall": 4.5,
+  "words": 84
+ },
+ {
+  "code": "U10",
+  "src": "anchor_original",
+  "ref": "S06",
+  "r2code": "T09",
+  "r2overall": 5.5,
+  "words": 97
+ },
+ {
+  "code": "U11",
+  "src": "room",
+  "ref": "S02",
+  "kill": false,
+  "words": 108
+ },
+ {
+  "code": "U12",
+  "src": "room",
+  "ref": "S01",
+  "kill": false,
+  "words": 102
+ },
+ {
+  "code": "U13",
+  "src": "anchor_original",
+  "ref": "S10",
+  "r2code": "T15",
+  "r2overall": 3.5,
+  "words": 80
+ },
+ {
+  "code": "U14",
+  "src": "room",
+  "ref": "S08",
+  "kill": false,
+  "words": 114
+ },
+ {
+  "code": "U15",
+  "src": "room",
+  "ref": "S07",
+  "kill": false,
+  "words": 112
+ },
+ {
+  "code": "U16",
+  "src": "anchor_rewrite",
+  "ref": "S13",
+  "r2code": "T39",
+  "r2overall": 6.5,
+  "words": 88
+ },
+ {
+  "code": "U17",
+  "src": "room",
+  "ref": "S22",
+  "kill": false,
+  "words": 104
+ },
+ {
+  "code": "U18",
+  "src": "room",
+  "ref": "S23",
+  "kill": false,
+  "words": 107
+ },
+ {
+  "code": "U19",
+  "src": "room",
+  "ref": "S15",
+  "kill": false,
+  "words": 112
+ },
+ {
+  "code": "U20",
+  "src": "room",
+  "ref": "S04",
+  "kill": false,
+  "words": 114
+ },
+ {
+  "code": "U21",
+  "src": "anchor_rewrite",
+  "ref": "S15",
+  "r2code": "T36",
+  "r2overall": 7.5,
+  "words": 100
+ },
+ {
+  "code": "U22",
+  "src": "room",
+  "ref": "S18",
+  "kill": true,
+  "words": 112
+ },
+ {
+  "code": "U23",
+  "src": "room",
+  "ref": "S03",
+  "kill": false,
+  "words": 109
+ },
+ {
+  "code": "U24",
+  "src": "anchor_human",
+  "ref": "NBkoA3PzxME",
+  "r2code": "T25",
+  "r2overall": 3.0,
+  "words": 263
+ },
+ {
+  "code": "U25",
+  "src": "room",
+  "ref": "S11",
+  "kill": false,
+  "words": 113
+ },
+ {
+  "code": "U26",
+  "src": "room",
+  "ref": "S10",
+  "kill": false,
+  "words": 104
+ },
+ {
+  "code": "U27",
+  "src": "room",
+  "ref": "S09",
+  "kill": false,
+  "words": 112
+ },
+ {
+  "code": "U28",
+  "src": "anchor_human",
+  "ref": "ohlsvOlO9VI",
+  "r2code": "T32",
+  "r2overall": 7.5,
+  "words": 197
+ },
+ {
+  "code": "U29",
+  "src": "room",
+  "ref": "S24",
+  "kill": false,
+  "words": 107
+ },
+ {
+  "code": "U30",
+  "src": "room",
+  "ref": "S05",
+  "kill": false,
+  "words": 112
+ },
+ {
+  "code": "U31",
+  "src": "anchor_rewrite",
+  "ref": "S24",
+  "r2code": "T27",
+  "r2overall": 7.5,
+  "words": 103
+ },
+ {
+  "code": "U32",
+  "src": "anchor_human",
+  "ref": "SKCrY8LBR5s",
+  "r2code": "T17",
+  "r2overall": 5.0,
+  "words": 229
+ },
+ {
+  "code": "U33",
+  "src": "anchor_human",
+  "ref": "6nf3JTMo8To",
+  "r2code": "T05",
+  "r2overall": 7.0,
+  "words": 195
+ },
+ {
+  "code": "U34",
+  "src": "room",
+  "ref": "S19",
+  "kill": false,
+  "words": 109
+ },
+ {
+  "code": "U35",
+  "src": "anchor_rewrite",
+  "ref": "S16",
+  "r2code": "T11",
+  "r2overall": 5.0,
+  "words": 86
+ },
+ {
+  "code": "U36",
+  "src": "anchor_rewrite",
+  "ref": "S05",
+  "r2code": "T21",
+  "r2overall": 7.0,
+  "words": 95
+ },
+ {
+  "code": "U37",
+  "src": "room",
+  "ref": "S13",
+  "kill": false,
+  "words": 107
+ },
+ {
+  "code": "U38",
+  "src": "room",
+  "ref": "S06",
+  "kill": false,
+  "words": 107
+ },
+ {
+  "code": "U39",
+  "src": "anchor_original",
+  "ref": "S24",
+  "r2code": "T07",
+  "r2overall": 2.0,
+  "words": 90
+ },
+ {
+  "code": "U40",
+  "src": "room",
+  "ref": "S17",
+  "kill": false,
+  "words": 106
+ },
+ {
+  "code": "U41",
+  "src": "room",
+  "ref": "S20",
+  "kill": false,
+  "words": 102
+ },
+ {
+  "code": "U42",
+  "src": "anchor_human",
+  "ref": "u9WodhQNsyw",
+  "r2code": "T38",
+  "r2overall": 5.5,
+  "words": 173
+ }
+]

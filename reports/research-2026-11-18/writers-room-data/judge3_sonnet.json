@@ -1,0 +1,422 @@
+[
+{
+"code": "U01",
+"clarity": 3,
+"hook": 3,
+"payoff": 2,
+"voice": 4,
+"human": 4,
+"overall": 2,
+"note": "Lore dump with confusing character names and no single point or held-back reveal."
+},
+{
+"code": "U02",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Strong, but the opening 'took two years for minutes of play' is slightly awkward and the closing opinion is a bit tidy."
+},
+{
+"code": "U03",
+"clarity": 8,
+"hook": 7,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "Reveals the name in the first line so little is held back, and the ending quip is a bit forced."
+},
+{
+"code": "U04",
+"clarity": 7,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "Good parsing of 'franchise, not E-Day', but the opener is slightly muddled and the story is niche."
+},
+{
+"code": "U05",
+"clarity": 7,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 5,
+"overall": 6,
+"note": "Numbers pile up, and the closing lines read like a stock wrap-up."
+},
+{
+"code": "U06",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "The 1998 hook is great, but the stats at the start crowd the explanation and the answer is a bit vague."
+},
+{
+"code": "U07",
+"clarity": 8,
+"hook": 7,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Good reframe and a late payoff, though the opener is only mildly surprising."
+},
+{
+"code": "U08",
+"clarity": 8,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "The answer to the 'why hide it' question is thin, and the closing opinion is a little neat."
+},
+{
+"code": "U09",
+"clarity": 5,
+"hook": 5,
+"payoff": 3,
+"voice": 4,
+"human": 3,
+"overall": 3,
+"note": "Filler quips like 'multitasking' and 'hog a slot in your PC', plus the stray 'My Pulse check?', sound like AI."
+},
+{
+"code": "U10",
+"clarity": 7,
+"hook": 7,
+"payoff": 4,
+"voice": 5,
+"human": 5,
+"overall": 5,
+"note": "The fix and the cause are given early with nothing held back, and the ending is a flat threat."
+},
+{
+"code": "U11",
+"clarity": 6,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "Muddled logic about the target and sales, and the 'so no rival beat it' line is clunky."
+},
+{
+"code": "U12",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Good Game Pass versus sales payoff, though the causal claim at the end is asserted too confidently."
+},
+{
+"code": "U13",
+"clarity": 4,
+"hook": 4,
+"payoff": 3,
+"voice": 3,
+"human": 2,
+"overall": 3,
+"note": "Reads like a product blurb, with a 'we'd happily recruit' voice and the price spelled out in words."
+},
+{
+"code": "U14",
+"clarity": 8,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Solid, but the last line about Skyrim's world mattering is a weak, generic opinion."
+},
+{
+"code": "U15",
+"clarity": 7,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "Reasonable argument, but the ending drags and the 'sideshow' conclusion rests on thin evidence."
+},
+{
+"code": "U16",
+"clarity": 7,
+"hook": 5,
+"payoff": 4,
+"voice": 6,
+"human": 6,
+"overall": 5,
+"note": "Gives the answer immediately and is a bland news recap."
+},
+{
+"code": "U17",
+"clarity": 6,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "Confusing logic about a disc-less box with a download code, and the advice is odd."
+},
+{
+"code": "U18",
+"clarity": 7,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "Sensible, but the payoff of 'the album isn't the radio' is soft and hedged."
+},
+{
+"code": "U19",
+"clarity": 7,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "A decent mini-argument, but the final aside about Lucia is a bit muddy."
+},
+{
+"code": "U20",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "A good reveal, though the 'You'd assume' framing and the tidy closing opinion feel templated."
+},
+{
+"code": "U21",
+"clarity": 8,
+"hook": 7,
+"payoff": 6,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "The 'not where it counts' answer comes quickly and the story has little surprise."
+},
+{
+"code": "U22",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "Good tension, but the payoff 'a game that never got off the ground' is thin and the blame is generic."
+},
+{
+"code": "U23",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Withholds Master Quest well, but 'a Zelda remake from the nineties' is a bit off."
+},
+{
+"code": "U24",
+"clarity": 4,
+"hook": 2,
+"payoff": 2,
+"voice": 8,
+"human": 9,
+"overall": 2,
+"note": "Raw transcript with no setup, so a viewer cannot tell what is being discussed, and it has no hook."
+},
+{
+"code": "U25",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "A great hook, but 'best launch trick going' is overselling a reported workaround."
+},
+{
+"code": "U26",
+"clarity": 8,
+"hook": 7,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Good late reveal that poncle co-made it, but 'an eight-dollar knock-off' opener is a bit stock."
+},
+{
+"code": "U27",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "A good story, but the final claim and the 'years before' line are a little muddled."
+},
+{
+"code": "U28",
+"clarity": 7,
+"hook": 6,
+"payoff": 5,
+"voice": 6,
+"human": 6,
+"overall": 5,
+"note": "A long sequence of events with a tacked-on subscribe CTA and a timid payoff."
+},
+{
+"code": "U29",
+"clarity": 7,
+"hook": 6,
+"payoff": 7,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The advice to 'skip the trailers' is an odd opener, and the PS5 payoff is modest."
+},
+{
+"code": "U30",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "A nice twist, but the ending reasoning about EA's debt is a stretch."
+},
+{
+"code": "U31",
+"clarity": 6,
+"hook": 5,
+"payoff": 4,
+"voice": 5,
+"human": 5,
+"overall": 5,
+"note": "A search-query tidy-up with no tension that ends on a flat line."
+},
+{
+"code": "U32",
+"clarity": 6,
+"hook": 6,
+"payoff": 3,
+"voice": 5,
+"human": 6,
+"overall": 4,
+"note": "A list of mission examples with no held-back payoff, plus embedded game audio."
+},
+{
+"code": "U33",
+"clarity": 6,
+"hook": 7,
+"payoff": 8,
+"voice": 8,
+"human": 8,
+"overall": 7,
+"note": "A fun story with a real payoff, but the numbers are confusing and it runs long."
+},
+{
+"code": "U34",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "The closing 'best change in years' is a stock opinion for a good concept."
+},
+{
+"code": "U35",
+"clarity": 6,
+"hook": 6,
+"payoff": 5,
+"voice": 6,
+"human": 5,
+"overall": 5,
+"note": "A choppy giveaway news item with a cryptic last line, 'Legacy has to earn the evenings'."
+},
+{
+"code": "U36",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 6,
+"overall": 7,
+"note": "The 'a farewell or a first act' ending is neat but a bit writerly and the film itself is thin."
+},
+{
+"code": "U37",
+"clarity": 8,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Good twist that it was delayed anyway, but 'only CEO it's ever had' is slightly overstated."
+},
+{
+"code": "U38",
+"clarity": 8,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "Clear, but the Square Enix praise ending is a bit tame."
+},
+{
+"code": "U39",
+"clarity": 4,
+"hook": 3,
+"payoff": 3,
+"voice": 3,
+"human": 3,
+"overall": 3,
+"note": "A stiff, choppy instructional list with an awkward ending line about video titles."
+},
+{
+"code": "U40",
+"clarity": 7,
+"hook": 6,
+"payoff": 6,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "The hook is a bit flat and 'coming soon' is a thin reveal."
+},
+{
+"code": "U41",
+"clarity": 7,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "A great reveal via court papers, but the connecting logic of the firing story is loose."
+},
+{
+"code": "U42",
+"clarity": 7,
+"hook": 6,
+"payoff": 5,
+"voice": 6,
+"human": 6,
+"overall": 5,
+"note": "A listy viral roundup with shouty caps and no payoff."
+}
+]

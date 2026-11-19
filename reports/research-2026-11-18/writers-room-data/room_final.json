@@ -1,0 +1,524 @@
+[
+ {
+  "code": "S01",
+  "title": "Why Xbox gutted the studio behind Doom",
+  "narration": "Xbox gutted id Software, and Doom was supposed to be safe. Xbox's own memo said it was focusing on its strongest franchises, and Doom is about as strong as Xbox has. The cuts even landed the day before id shipped an expansion the team had crunched on for months. So this wasn't a studio coasting. Doom: The Dark Ages drew over 3 million players, one report says. That sounds like a hit worth protecting. But those players came through Game Pass. Sales were reportedly nearer 1 million. I think that gap cost id its people, because subscription players never count as sales.",
+  "from": "S01-2",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Xbox",
+   "Game Pass"
+  ],
+  "numbers_spoken": [
+   "3 million",
+   "1 million"
+  ],
+  "what_changed": "Opened on the cut and the safe-franchise expectation instead of the memo, cut the repeated number recap and slogan, and held the Game Pass reveal to the last third.",
+  "what_still_limits_it": "The answer rests on reported numbers plus my reading of why Xbox cut, so a sharp viewer may call the verdict speculative.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S02",
+  "title": "NBA 2K27 missed, and Take-Two's boss shrugged",
+  "narration": "NBA 2K27 missed its sales target, and Take-Two's boss isn't worried. It still sold about 4 million copies. It reportedly outsold every other sports game this year, so no rival beat it. He mentioned a crowded fall, the excuse every publisher reaches for, but that doesn't explain a calm boss. Then he named the real cause, his own company's GTA 6, days from launch, which he said had influenced shoppers. And he sounded fine with that. In his words, \"If your lunch is going to be eaten, I'd rather be the one eating it.\" I think he's right not to worry, because that money still goes to Take-Two.",
+  "from": "S02-1, S02-3",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "GTA 6"
+  ],
+  "numbers_spoken": [
+   "4 million"
+  ],
+  "what_changed": "Cut all bookings figures and the CEO's name, took the rival-sports ruling-out from S02-3, and replaced the 'thief works for him' slogan with a plain reason.",
+  "what_still_limits_it": "GTA 6 is named a little before the lunch quote, so the sharpest viewers may guess the punch a beat early.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S03",
+  "title": "Zelda's best-reviewed remake is missing something",
+  "narration": "This year's best-reviewed game is a Zelda remake from the nineties. Nintendo's new take on The Legend of Zelda: Ocarina of Time averages 96 from critics, ahead of everything new. So you'd expect the most complete version ever made. Reviewers didn't knock the price, and they barely knocked the changes. They kept noticing a gap. Something the old 3DS remake included is missing here. It doesn't unlock after the credits, and Nintendo hasn't said whether it's coming back. The missing piece is Master Quest, a harder remix of the whole game. I think the score is earned anyway. But at full price, you're getting less than 3DS owners got.",
+  "from": "S03-3, S03-2",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "3DS",
+   "Master Quest"
+  ],
+  "numbers_spoken": [
+   "nineties",
+   "96"
+  ],
+  "what_changed": "Switched from S03-2's reviewer-quote answer to S03-3's missing Master Quest angle, cut Sektori, the all-time rank and the quote, and held the 3DS reveal back.",
+  "what_still_limits_it": "Master Quest is a modest loss for anyone who never played the 3DS version, so the stakes stay mid-sized.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S04",
+  "title": "GTA 6 brings back a real radio show",
+  "narration": "GTA 6 revives a real radio show that ended in 2021. Not a parody. The actual show. Rockstar has previewed some of Grand Theft Auto 6's stations, and one plays classic Southern rap with a morning duo on the mic. Rockstar lists them by first name only. You'd assume they're invented, because this series has always filled its radio with made-up DJs poking fun at someone. This time the hosts are two real rappers from the very city the game spoofs. Music press reports they're Trick Daddy and Trina, back with the morning show they really hosted. I think it's the best booking on the radio list, because hometown fans get their show back.",
+  "from": "S04-1, S04-3",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Trick Daddy",
+   "Trina"
+  ],
+  "numbers_spoken": [
+   "2021"
+  ],
+  "what_changed": "Held the host names until the reveal, dropped the Newswire, station name and Florida references, and swapped the slogan closer for the hometown-fans reason.",
+  "what_still_limits_it": "Viewers outside the South may not know Trick Daddy and Trina, so the reveal lands harder for some than others.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S05",
+  "title": "A BioWare petition that isn't asking EA",
+  "narration": "A petition to save BioWare isn't asking EA for anything. EA closed the Mass Effect studio in October and stopped early work on the next game. You'd expect fans to beg EA to change its mind, and they've tried that. This petition went to Canada's parliament instead. It drew enough signatures that the government must reply in writing, though it doesn't have to agree. And it isn't asking for a rescue grant or a reversal. It's much bolder than that. It wants public money so BioWare's former staff can buy the studio and Mass Effect. I think it's a long shot worth backing, because EA owes about $18 billion and might sell.",
+  "from": "S05-2",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "EA",
+   "Canada"
+  ],
+  "numbers_spoken": [
+   "$18 billion"
+  ],
+  "what_changed": "Cut the petition number, MP name and Times Square, added the 'reply but need not agree' ruling-out, and ended on the debt as the reason instead of echoing the hook.",
+  "what_still_limits_it": "The outcome is a long shot with no decision yet, so the payoff is a bold ask rather than a result.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S06",
+  "title": "Why NieR: Automata suddenly wanted 366GB",
+  "narration": "NieR: Automata suddenly wanted 366GB of space on Steam. It used to need about 50. The only change was a patch adding a few languages, so you'd guess a monster download. It wasn't. The patch itself was tiny, and the store page still listed the old size. Anyone already playing barely noticed the update. The pain hit people buying or reinstalling, because Steam wouldn't start until all that space was free. Players worked out the cause. Steam was counting every DLC pack as almost a full game. I think Square Enix handled it well, answering within a day. Untick the DLC in Properties and it installs normally.",
+  "from": "S06-1, S06-3",
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Steam"
+  ],
+  "numbers_spoken": [
+   "366GB",
+   "50"
+  ],
+  "what_changed": "Dropped the outlet and patch-size figure, revealed the DLC cause in the last third and replaced the paperwork slogan with the untick-the-DLC fix.",
+  "what_still_limits_it": "It's a small, already-handled bug that matters only to Steam players installing it, so the ceiling is low.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S07",
+  "title": "Did AI scare Rockstar on GTA 6 PC?",
+  "narration": "A former Rockstar director thinks AI could beat GTA 6 to PC. He says an unofficial AI-built port of Grand Theft Auto 6 could be made cheaply, though it would be worse than Rockstar's own. That's a real worry for a company that makes PC players wait. GTA 5 took about a year and a half to get there. He wouldn't be surprised if Rockstar now hurried its PC version. It sounds like AI is forcing Rockstar's hand. The dates say otherwise. Weeks before he spoke, a report citing several sources already had PC aimed at early 2027. I think the AI talk is a sideshow, because that plan was reported first.",
+  "from": "S07-2, S07-3",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "GTA 5"
+  ],
+  "numbers_spoken": [
+   "a year and a half",
+   "2027"
+  ],
+  "what_changed": "Cut the director's name, the outlet and the quote, set up the AI-scared-Rockstar theory and made the earlier PC report the late reveal.",
+  "what_still_limits_it": "The ending is still a reported date and an ex-staffer's hypothetical, so a viewer wanting confirmation gets none.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S08",
+  "title": "Elder Scrolls 6's teaser hides a date",
+  "narration": "Elder Scrolls 6's teaser hides a date, but not a release date. Bethesda finally gave it a name, The Elder Scrolls VI: Sentinel, and little else. An Elder Scroll rises out of desert sand, which fits Hammerfell, the desert province fans have wanted for years, though Bethesda hasn't confirmed the setting. Then a lore note flashes up, dated in the game's own calendar. That date has nothing to do with when you can play. It tells you where the story sits. Line it up with Skyrim's, and the new game takes place five years after it. I think that's the best news in the teaser, because Skyrim's world should still matter that soon after.",
+  "from": "S08-1",
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Hammerfell",
+   "Skyrim"
+  ],
+  "numbers_spoken": [
+   "five years"
+  ],
+  "what_changed": "Cut the queen's name and the 4E jargon, explained the lore date in plain words and held the five-years-after-Skyrim reveal to the end.",
+  "what_still_limits_it": "A lore date is less than fans really want, which is a release window, so the payoff is warm rather than big.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S09",
+  "title": "Blizzard told WoW fans they were wrong",
+  "narration": "Blizzard told World of Warcraft fans they didn't want the original game. Fans had asked for the old version back. Blizzard's production director answered with a line people still quote: \"You think you do, but you don't.\" Years later, the same man announced World of Warcraft Classic. Blizzard blamed cost. But something happened in between. Fans built it themselves. An unofficial server called Nostalrius ran the original game for 150,000 active players, until Blizzard shut it down and a huge petition followed. Then Blizzard met the Nostalrius team, and they shared their code. I think that server changed Blizzard's mind more than any rethink did. Fans had it running years before Blizzard.",
+  "from": "S09-2, S09-3",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Nostalrius"
+  ],
+  "numbers_spoken": [
+   "150,000"
+  ],
+  "what_changed": "Opened on the plain refusal instead of the quote or Brack's name, cut Kern, Morhaime, the award and the 200,000 figure, and ended on a plain line instead of 'They did.'",
+  "what_still_limits_it": "It's an old story, not news, so it leans on being a good tale rather than anything new.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S10",
+  "title": "Is Warhammer Survivors just a cheap copy?",
+  "narration": "Warhammer Survivors looks like an eight-dollar Vampire Survivors knock-off. It borrows the name, in a genre already crowded with copies that swap in a new coat of paint. That usually means a quick cash-in. Reviews didn't settle it either. One critic said it's more than a reskin, and another outlet panned it. So is it a copy? Check who made it. Auroch Digital, the studio behind a well-liked Warhammer shooter, didn't build it alone. It built the game with poncle, the studio that created Vampire Survivors. I think that makes it the licensed Survivors game worth your money, because the inventors helped make it.",
+  "from": "S10-3, S10-2",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Vampire Survivors",
+   "poncle"
+  ],
+  "numbers_spoken": [
+   "eight-dollar"
+  ],
+  "what_changed": "Cut Boltgun, Malum Caedo, Game Pass and the score roll call, kept one review split, and ended on a plain verdict instead of the knock-off slogan.",
+  "what_still_limits_it": "It's a cheap licensed launch with a thin pack, so the poncle reveal is the only real hook and some viewers won't care.",
+  "self_editor": 7,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S11",
+  "title": "How Xbox players can start GTA 6 early",
+  "narration": "Xbox players can reportedly start GTA 6 hours before their local launch. It isn't early access. Rockstar only offers pre-loads for Grand Theft Auto 6, and the game unlocks at midnight, one region at a time. That schedule puts players here near the back of the line. Store listings show the first region unlocking about 18 hours earlier. Pre-loading early doesn't help, because the files stay locked until your own midnight. So you'd assume you're stuck waiting. Not quite. One report says Xbox players can switch their console's region to New Zealand, the first to unlock, and play then. I think it's the best launch trick going, since it's just a settings change.",
+  "from": "S11-3, S11-2",
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Xbox",
+   "New Zealand"
+  ],
+  "numbers_spoken": [
+   "18 hours"
+  ],
+  "what_changed": "Cut the 212GB line and the outlet name, avoided naming the rival console, added a pre-load ruling-out and held the region trick to the last third.",
+  "what_still_limits_it": "It's reported, unconfirmed by Rockstar and useful only on launch night, so its shelf life is one evening.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S12",
+  "title": "How GTA San Andreas secretly auditioned CJ",
+  "narration": "GTA San Andreas auditioned CJ's voice actor without telling him. Young Maylay thought he was on an ordinary call with DJ Pooh, a co-writer on Grand Theft Auto: San Andreas. The phone was on speaker, and Rockstar staff were listening. Pooh never mentioned it. It wasn't even the final test, because Rockstar had him do a proper audition afterward and picked him from the tapes. So why hide the first one from the person auditioning? Maylay says Pooh kept it secret on purpose, so Rockstar would hear him talk naturally. I think that's why CJ still sounds real, because nobody told him to act.",
+  "from": "S12-3, S12-2",
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Young Maylay",
+   "DJ Pooh"
+  ],
+  "numbers_spoken": [],
+  "what_changed": "Cut the Houser and Wikipedia line and the year, held 'so he'd talk naturally' as the late reveal and ended on the reason CJ sounds real.",
+  "what_still_limits_it": "It's evergreen trivia with nothing at stake today, carried only by the fame of CJ.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S13",
+  "title": "What Nvidia's CEO Exit Means for Your GPU",
+  "narration": "Nvidia just lost the only CEO it's ever had. If you're saving for a new graphics card, that sounds bad. Jensen Huang resigned without giving a reason, and the promise that the roadmap continues \"without interruption\" never mentions gaming. Some fans fear Nvidia now drops gamers for AI. But the stand-in boss is the finance chief, reportedly the one who pushed back on Huang's biggest AI bets. So will the shake-up delay your next card? It was delayed before he left. In January, a memory shortage reportedly stalled Nvidia's next gaming cards. I'd watch memory supply, not the boardroom, because that's what decides when new cards ship.",
+  "from": [
+   "S13-3",
+   "S13-1"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Jensen Huang"
+  ],
+  "numbers_spoken": [],
+  "what_changed": "Re-angled the pick around the viewer's next graphics card, cut the chair's name, the GDDR7 and RTX 50 Super jargon and the OpenAI dollar figures, and used the finance chief's reported pushback only to rule out the AI-only fear.",
+  "what_still_limits_it": "The memory-shortage answer leans on January reports rather than anything new this week, so sharp viewers may feel the news itself is thin for gamers.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S14",
+  "title": "GTA 5's Two-Year Trick You Never Noticed",
+  "narration": "One GTA 5 trick took two years for minutes of play. Switch characters in free roam and the camera zooms up into the sky. That was a loading screen in disguise. Inside missions, Rockstar banned it, and it still wanted the skyline on screen during every swap. And the old consoles couldn't hold the city in memory twice. The designer's first workaround got sent back too. So how do you swap leads in the middle of a chase with no cut? Far-off traffic shrank to dots of light and distant buildings blurred while the new area loaded. I think it's the game's cleverest trick, because you stared at that blur for years and never noticed.",
+  "from": [
+   "S14-2",
+   "S14-3"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [],
+  "numbers_spoken": [
+   "two years"
+  ],
+  "what_changed": "Opened on two years for minutes of play, dropped the designer's name, the outlet and the depth-of-field jargon, and held the dots-of-light and blur trick back as the reveal.",
+  "what_still_limits_it": "It is a 2013 game with no money at stake, and the sniper-scope tell had to go to keep the answer late, so the ending is satisfying rather than useful.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S15",
+  "title": "Why GTA 6 Won't Always Let You Choose",
+  "narration": "In GTA 6, some missions won't let you pick who you play. Free roam stays open, with Jason and Lucia together or apart. But one story chase hands you from his gun to her steering wheel without asking. And it isn't a technical limit. One early high-rise mission let you swap freely during development, and Rockstar took that away on purpose. Two leads were this game's whole pitch. So why would the game lock one of them out? Jason's a former soldier, and a studio head said \"it was unnatural for Lucia to take the lead.\" I'm fine with that for now, but not if she's still following him at the end.",
+  "from": [
+   "S15-1",
+   "S15-3"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Jason",
+   "Lucia"
+  ],
+  "numbers_spoken": [],
+  "what_changed": "Cut the executive name and the outlet, ruled out a technical limit before the reveal, held the who-gives-orders reason until the end and replaced the two-leads slogan with a plain conditional verdict.",
+  "what_still_limits_it": "The quote is a translation of one interview and the only example is one early mission, so the stakes stay modest until people play the story.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S16",
+  "title": "Gears of War: E-Day's Anniversary Is Missing Something",
+  "narration": "Gears of War: E-Day is celebrating 20 years without chainsaw duels. Log in and you get RAAM, the first game's final boss, free in multiplayer. But E-Day launched without chainsaw duels or meat shields, two moves the series is known for. Next month, a new season brings back old maps and modes. So is that where the duels come back? The Coalition has addressed it only once, in a post about features missing at launch. It said they're \"not gone from the franchise.\" The franchise, not E-Day. I'd read that as a no for this game, because a studio bringing them back would just say so.",
+  "from": [
+   "S16-1",
+   "S16-3"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "RAAM"
+  ],
+  "numbers_spoken": [
+   "20 years"
+  ],
+  "what_changed": "Led with the missing chainsaw duels and made free RAAM the context, cut the executive quote and the season name and date, and ended on the 'franchise, not E-Day' reading as a plain verdict.",
+  "what_still_limits_it": "People who don't play Gears may not know what a chainsaw duel is, and the answer is a reading of careful wording, not a confirmed no.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S17",
+  "title": "Silksong's Sea of Sorrow Was Due This Year",
+  "narration": "Hollow Knight: Silksong's free expansion was promised for this year. About six weeks are left. Team Cherry announced Sea of Sorrow last December, and it still has no date. Silksong fans know long waits. Now the manual from the boxed edition has surfaced. It calls Sea of Sorrow the \"first giant expansion\" and promises more free packs after it. So with even more content now promised in print, does it finally say when it arrives? No. Where the announcement said this year, the manual says \"coming soon.\" Promising more before the first has a date bothers me, so I wouldn't plan on it before the holidays.",
+  "from": [
+   "S17-2",
+   "S17-1"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Sea of Sorrow"
+  ],
+  "numbers_spoken": [
+   "six weeks"
+  ],
+  "what_changed": "Cut the sales figure and the disc detail, held the 2026-to-'coming soon' swap until after the question, and replaced the 'fell off the box' slogan with what it means for when you can play.",
+  "what_still_limits_it": "The broken-promise angle rests on one word change in a manual, so it is a gentle slip rather than a real delay announcement.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S18",
+  "title": "Unknown 9's Studio Didn't Close Over Unknown 9",
+  "narration": "Bandai Namco is shutting a studio over a game nobody ever saw. You'd guess it was the flop. Unknown 9: Awakening launched to weak reviews, and its own studio called it a failure early last year. That should have been the end, and it wasn't. Bandai Namco kept the team on, and now the closure comes with an expected loss of about 21 million euros. So what has the studio been making all this time? Nothing was ever announced. A game in one of Bandai Namco's own series, which reportedly never got off the ground. I'd blame the publisher for keeping them on it almost two more years without showing a thing.",
+  "from": [
+   "S18-2",
+   "S18-1"
+  ],
+  "rounds": 3,
+  "drop": true,
+  "drop_reason": "A little-known studio closing over a game nobody saw changes nothing a general gamer can play, pay for or wait for, and the pack offers no famous name or wider promise to hang it on.",
+  "names_spoken": [
+   "Unknown 9: Awakening"
+  ],
+  "numbers_spoken": [
+   "21 million euros",
+   "two more years"
+  ],
+  "what_changed": "Cut the staff cut, the CEO quote and the score, and re-ordered it so the never-shown Bandai Namco project lands after the obvious flop answer is ruled out.",
+  "what_still_limits_it": "Both critics would still swipe because nothing is at stake for anyone who never played Unknown 9.",
+  "self_editor": 7,
+  "self_viewer": 5,
+  "kill": true
+ },
+ {
+  "code": "S19",
+  "title": "GTA 6 Has an App for Stealing Cars",
+  "narration": "GTA 6 has an app that tells you which cars to steal. It's called WAINK. Point it at a parked car and it shows the security and what a buyer will pay, and it lists the models car fences want. So the obvious play is the priciest car on the list. But Rockstar scrapped one-button hotwiring because, as one studio boss put it, that \"left a lot of potential gameplay on the table.\" So where's the catch? The scan also flags trackers, and a tracked car brings the police. I think that's the best change to car theft in years, because you finally have to think before taking one.",
+  "from": [
+   "S19-1",
+   "S19-3"
+  ],
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "WAINK"
+  ],
+  "numbers_spoken": [],
+  "what_changed": "Cut the magazine demo credit and the payout-condition aside so the tracker is the only twist, and replaced the 'what not to steal' flip with a plain reason.",
+  "what_still_limits_it": "The tracker detail comes from Rockstar's August reveal, so fans who followed the previews closely won't be surprised.",
+  "self_editor": 9,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S20",
+  "title": "Rockstar Described GTA 6 Online in Court",
+  "narration": "Rockstar still hasn't announced GTA 6 Online. Its own court papers already describe it. The game launches as story only, with no word on multiplayer. But last year Rockstar fired dozens of staff over posts in a chat server and had to defend that at an employment tribunal. Its filing described an online format it called \"one of the most closely guarded secrets of the company.\" Fans had guessed at much bigger lobbies. So how big is it? Thirty-two players, barely above GTA Online's 30. I'm fine with that, because a lobby that holds together beats a bigger one that falls apart.",
+  "from": [
+   "S20-1",
+   "S20-2"
+  ],
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "GTA Online"
+  ],
+  "numbers_spoken": [
+   "32",
+   "30"
+  ],
+  "what_changed": "Cut the datamined code names, the city and the exact firing count, dropped the fans' 64-player guess to stay at two numbers, and ended on the verdict's reason instead of the courtroom slogan.",
+  "what_still_limits_it": "The court context still takes a sentence to explain, and the 32-player format is described in a filing rather than announced as a product.",
+  "self_editor": 9,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S21",
+  "title": "Switch 2 Sales Fell 37 Percent. Look Closer.",
+  "narration": "Switch 2 sales just fell 37 percent, and Nintendo barely blinked. It kept its forecast for the year and said it isn't planning another price rise. That's a lot of calm for a console that just shrank that much. So is the Switch 2 in trouble? Look at what it's measured against. The same stretch last year was the launch rush, when the console first hit shelves. Of course this year looks smaller. The better test is whether owners are still buying games. Over the same months, software sales rose about 19 percent. I don't read that as a slump, because the people who own one are buying more games for it, not fewer.",
+  "from": [
+   "S21-2"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [],
+  "numbers_spoken": [
+   "37 percent",
+   "19 percent"
+  ],
+  "what_changed": "Cut the shipment totals and forecast figure down to the two percentages, held the software rise as the answer and replaced 'measuring the wrong thing' with a plain reason.",
+  "what_still_limits_it": "The launch-rush explanation arrives a little before the software number, so part of the answer is guessable early.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S22",
+  "title": "Leaving PS4 for GTA 6? Read This First",
+  "narration": "If you're leaving a PS4 for GTA 6, skip the disc drive. That sounds backwards for a game this big. GTA 6 skips the last generation of consoles, so a PS4 owner needs new hardware either way. The cheapest option is the $600 PS5 Digital Edition. Plenty of people would still pay extra for the disc model, so they can lend the game out or sell it later. So why not buy that one? Because the box holds no disc, only a download code. I think that's a bad call, because it kills lending and resale. For this game, the drive buys you nothing.",
+  "from": [
+   "S22-1",
+   "S22-2"
+  ],
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "PS4",
+   "PS5"
+  ],
+  "numbers_spoken": [
+   "$600"
+  ],
+  "what_changed": "Cut the $680 sum, the game price and the support-page quote, held the no-disc box as the reveal and kept the resale objection as the verdict's reason.",
+  "what_still_limits_it": "It only matters to people buying a console for GTA 6, and many of them already know the boxed copy is a code.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ },
+ {
+  "code": "S23",
+  "title": "GTA 6's Album Leaked. Is It the Radio?",
+  "narration": "GTA 6's album leaked, and fans think they've just heard the radio. The tracklist came from a video of advance vinyl, and reportedly it's real. It's 34 songs with big current names like Dua Lipa, and Rockstar hasn't published the list itself. Some fans already hate it. They say it sounds like a festival lineup, not Vice City. If that's the car radio, they'd have a point. So is this what you'll hear while driving around? Reportedly not. The album is separate from the in-game stations, and Rockstar hasn't said which songs overlap. So I'd hold the backlash, because the actual radio lineup hasn't been shown yet.",
+  "from": [
+   "S23-2"
+  ],
+  "rounds": 3,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Dua Lipa",
+   "Vice City"
+  ],
+  "numbers_spoken": [
+   "34"
+  ],
+  "what_changed": "Cut the outlet names, the score album and its date, kept one star name, and replaced the gift-shop simile with a plain reason to hold the backlash.",
+  "what_still_limits_it": "The answer is 'the album isn't the radio', which some viewers will feel is obvious once said.",
+  "self_editor": 8,
+  "self_viewer": 7,
+  "kill": false
+ },
+ {
+  "code": "S24",
+  "title": "The GTA 6 Video to Watch Before Buying",
+  "narration": "Before you pay $80 for GTA 6, skip the trailers. Trailers are the best moments cut tight, so they can't tell you much about how the game really runs. Back in August, Rockstar put out a much longer gameplay video. It runs about 26 minutes, and it premiered on Netflix of all places. Even long footage can flatter a game if it's running on the priciest console you can buy. So what was this one running on? Netflix says a base PS5, the one most people already own. I'd watch it before buying, because it's the closest you'll get to seeing the game on your own setup.",
+  "from": [
+   "S24-3",
+   "S24-1"
+  ],
+  "rounds": 2,
+  "drop": false,
+  "drop_reason": "",
+  "names_spoken": [
+   "Netflix",
+   "PS5"
+  ],
+  "numbers_spoken": [
+   "$80",
+   "26 minutes"
+  ],
+  "what_changed": "Opened on what the viewer pays, cut the launch trailer date, the six-hour delay and the video's title, and replaced the highlight-reel versus test-drive flip with a plain reason.",
+  "what_still_limits_it": "The video is almost three months old, so regular GTA followers may have seen it already.",
+  "self_editor": 8,
+  "self_viewer": 8,
+  "kill": false
+ }
+]

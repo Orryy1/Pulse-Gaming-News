@@ -1,0 +1,969 @@
+[
+ {
+  "code": "S13",
+  "what_happened": "On November 12, 2026 Nvidia said in an SEC 8-K filing that Jensen Huang had resigned as president, CEO and board member, effective immediately, after 33 years leading the company he co-founded. CFO Colette Kress became interim CEO while keeping her CFO job, and Harvey C. Jones was named chair while the board searches for a permanent CEO.",
+  "the_why": "No stated reason: the 8-K gives none. Reuters-sourced reporting (carried by Onmanorama and others) ties the exit to reported personal relationships, including one with a woman US officials suspect of being a Chinese intelligence asset, and says the board has opened its own investigation. These are reported allegations; China denies the spying claims and the woman could not be reached.",
+  "quotes": [
+   {
+    "text": "we expect the company's operations, customer commitments and product roadmap to continue without interruption",
+    "speaker": "Harvey C. Jones",
+    "role": "newly appointed Nvidia Chair",
+    "outlet": "Nvidia 8-K / press release",
+    "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm"
+   },
+   {
+    "text": "Our focus remains on serving our customers, partners, developers and shareholders.",
+    "speaker": "Colette Kress",
+    "role": "Interim CEO and CFO, Nvidia",
+    "outlet": "Nvidia 8-K / press release",
+    "url": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm"
+   },
+   {
+    "text": "I don't think she is the long-term visionary that Nvidia needs",
+    "speaker": "Anshel Sag",
+    "role": "principal analyst, Moor Insights and Strategy",
+    "outlet": "Reuters via Onmanorama",
+    "url": "https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "33 years as CEO, the only CEO Nvidia has had",
+    "source": "https://www.tweaktown.com/news/114649/nvidia-faces-first-ceo-change-in-33-years-as-jensen-huang-steps-down-amid-extramarital-affair-scandal/index.html"
+   },
+   {
+    "figure": "Shares fell about 14% intraday, then closed down about 4%",
+    "source": "https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html"
+   },
+   {
+    "figure": "Kress has been CFO since 2013; she is 59",
+    "source": "https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html"
+   },
+   {
+    "figure": "A proposed $250 billion OpenAI data-centre backing plan was reportedly cut to $120 billion after pushback from Kress's side",
+    "source": "https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html"
+   }
+  ],
+  "surprise": "Jones is Nvidia's first-ever board chair: in 33 years Huang never held the title, and the new top two are a finance chief and a chip-design veteran from Synopsys. The board's statement about the roadmap never mentions gaming or PC at all, and Reuters sources describe Kress as the one executive who pushed back on Huang's big AI bets.",
+  "surprise_source": "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm ; https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html",
+  "stakes_for_player": "Nothing changes on shelves today: no GeForce product change was announced. The bigger factor for GPU buyers was already the memory shortage: reports since January 2026 say the RTX 50 Super refresh was delayed indefinitely and RTX 60 may slip to 2028. A CEO who reportedly reined in AI spending is not obviously worse for gamers, but nobody has said what she thinks of GeForce.",
+  "fan_argument": {
+   "side_a": "Huang built Nvidia on gamers; without him the company becomes an AI-only shop and GeForce withers (PCWorld, TechJack opinion pieces).",
+   "side_b": "GPU plans are locked years ahead, an RTX 60 generation is still expected, and prices are set by memory supply, not by the CEO (TechRadar's GeForce evangelist piece).",
+   "links": [
+    "https://www.pcworld.com/article/3284206/jensen-huang-built-nvidia-on-gamers-ai-made-them-an-afterthought.html",
+    "https://www.techradar.com/computing/gpu/if-you-thought-jensen-huangs-exit-meant-the-worst-for-nvidias-gaming-graphics-cards-think-again-geforce-evangelist-assures-us-it-isnt-the-end-for-these-gpus"
+   ]
+  },
+  "callback": "January to February 2026: multiple reports said Nvidia told partners the RTX 50 Super cards were delayed indefinitely because of the GDDR7 memory shortage, putting AI chips first.",
+  "best_questions": [
+   {
+    "q": "Will my next GeForce card be delayed or cancelled because of this?",
+    "a": "No change was announced; the chair says the product roadmap continues without interruption. Existing delays (RTX 50 Super) predate the exit and were blamed on memory supply.",
+    "solidity": "confirmed (statement); delays reported"
+   },
+   {
+    "q": "Why did Huang actually leave?",
+    "a": "Nvidia gave no reason. Reporting links it to personal relationships, one with a woman US officials suspect of spying for China; the board is investigating.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "Nvidia's Q3 fiscal 2027 results were scheduled for November 17, 2026; not covered here.",
+  "sources": [
+   "https://www.sec.gov/Archives/edgar/data/0001045810/000104581026000082/nvidiaannouncesceotransiti.htm",
+   "https://www.onmanorama.com/news/world/2026/11/13/colette-kress-cfo-who-challenged-jensen-huang-s-bets-named-nvidia-interim-ceo.amp.html",
+   "https://www.axios.com/2026/11/12/colette-kress-nvidia-interim-ceo-jensen-huang",
+   "https://www.tweaktown.com/news/114649/nvidia-faces-first-ceo-change-in-33-years-as-jensen-huang-steps-down-amid-extramarital-affair-scandal/index.html",
+   "https://www.techradar.com/computing/gpu/if-you-thought-jensen-huangs-exit-meant-the-worst-for-nvidias-gaming-graphics-cards-think-again-geforce-evangelist-assures-us-it-isnt-the-end-for-these-gpus",
+   "https://www.tweaktown.com/news/109694/geforce-rtx-50-super-series-delayed-indefinitely-as-nvidia-informs-its-partners/index.html"
+  ],
+  "unverified": [
+   "The 'without interruption' line is from Chair Harvey C. Jones in Nvidia's release, not a general board statement; Eurogamer's wording was not checked directly.",
+   "PC Gamer's own article was only seen as a live-blog snippet."
+  ]
+ },
+ {
+  "code": "S14",
+  "what_happened": "On November 17, 2026 IGN published an interview with former Rockstar Toronto technical designer Matt Freedman about GTA 5's mid-mission character switch on PS3 and Xbox 360. He said he spent about two years on it, for what amounts to two or three minutes of actual gameplay.",
+  "the_why": "Freedman (to IGN, as reported by eGamers.io and NeoTeo): Rockstar leadership insisted players see the city skyline during switches, but the engine could not hold two copies of the city in memory, and in missions the team was not allowed to hide loading behind the satellite zoom used in free roam. The fix was distance-based detail reduction plus depth of field to hide streaming.",
+  "quotes": [
+   {
+    "text": "two years on what amounts to about two, maybe three minutes of actual gameplay",
+    "speaker": "Matt Freedman",
+    "role": "former technical designer, Rockstar Toronto (GTA 5)",
+    "outlet": "IGN, as quoted by eGamers.io",
+    "url": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   },
+   {
+    "text": "We cannot have two copies of the city loaded at the same time.",
+    "speaker": "Matt Freedman",
+    "role": "former technical designer, Rockstar Toronto",
+    "outlet": "IGN, as quoted by eGamers.io",
+    "url": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   },
+   {
+    "text": "taking away player control is never the answer",
+    "speaker": "Matt Freedman",
+    "role": "former technical designer, Rockstar Toronto",
+    "outlet": "IGN, as quoted by eGamers.io",
+    "url": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "About 2 years of work",
+    "source": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   },
+   {
+    "figure": "2 to 3 minutes of gameplay: the total of mid-mission switches across the game",
+    "source": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   },
+   {
+    "figure": "Close to 9 years at Rockstar (Max Payne 3, GTA 5, Red Dead Redemption 2)",
+    "source": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/"
+   },
+   {
+    "figure": "In a separate September 2026 interview he said one part, the camera transitions, took five months",
+    "source": "https://www.eldorado.gg/blog/?p=20011"
+   }
+  ],
+  "surprise": "The famous satellite zoom-out you see when switching in free roam was a loading screen in disguise, and Rockstar banned it inside missions, which is why the in-mission version took two years. His first idea, opening on the new character leaning on a wall with the camera tight on his hand to buy loading time, was sent back by leadership.",
+  "surprise_source": "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/",
+  "stakes_for_player": "None for money or access: it is a 2013 game. The value is explaining something players saw: distant traffic turning into points of light and blurry far buildings during switches were deliberate. Freedman says the trick still shows if you look far off through a sniper scope.",
+  "fan_argument": {
+   "side_a": "Seamless switching was GTA 5's best trick and GTA 6 should copy it.",
+   "side_b": "Even the re-releases kept pop-in and the satellite cut in free roam, so it was never truly seamless (Sportskeeda on Expanded and Enhanced fan doubts).",
+   "links": [
+    "https://www.sportskeeda.com/gta/gta-5-e-e-fans-remain-doubtful-character-switching"
+   ]
+  },
+  "callback": "September 17, 2013: GTA 5 launched on PS3 and Xbox 360 with three switchable leads, a design Rockstar later called a 'leap of faith'.",
+  "best_questions": [
+   {
+    "q": "What does 'three minutes of gameplay' mean?",
+    "a": "The combined screen time of the mid-mission character switches across the whole game, by Freedman's estimate.",
+    "solidity": "reported (his recollection)"
+   },
+   {
+    "q": "Why not just show a loading screen?",
+    "a": "Leadership required the skyline to stay visible and the satellite-view trick was banned in missions; the PS3/360 could not hold two cities in memory.",
+    "solidity": "reported (Freedman via IGN)"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "",
+  "sources": [
+   "https://www.ign.com/articles/gta-5s-seamless-character-switching-working-ps3-xbox-360",
+   "https://egamers.io/rockstar-toronto-designer-matt-freedman-on-two-years-of-work-behind-gta-5s-mission-character-swaps-on-ps3-and-xbox-360/",
+   "https://www.neoteo.com/en/how-gta-5-made-character-switches-feel-seamless-on-ps3-and-xbox-360",
+   "https://www.eldorado.gg/blog/?p=20011",
+   "https://www.engadget.com/2014-01-04-rockstar-gta5s-multi-character-approach-was-a-leap-of-faith.html"
+  ],
+  "unverified": [
+   "IGN could not be fetched directly; quotes come from eGamers.io's write-up of the IGN interview.",
+   "'Steam News' attribution not checked.",
+   "Freedman's two-year figure is his recollection; his September Eldorado.gg interview gives five months for the camera transitions, which may be one part of the job."
+  ]
+ },
+ {
+  "code": "S15",
+  "what_happened": "In a Famitsu interview reported on September 1, 2026, Rockstar North co-studio head Rob Nelson said whether you can swap between Jason and Lucia depends on the mission and how far into the story you are. Some missions hand you control automatically, such as a chase where Jason shoots and the game then switches you to Lucia driving.",
+  "the_why": "Rob Nelson (Famitsu, translated via GamesRadar and MeinMMO): the story should be experienced through the right character at the right time; an early high-rise mission that once allowed free switching was locked to Jason because, as a former soldier, he should lead and it felt unnatural for Lucia to give orders that early.",
+  "quotes": [
+   {
+    "text": "we felt it was more natural for Jason, as a former soldier, to take control",
+    "speaker": "Rob Nelson",
+    "role": "co-studio head, Rockstar North",
+    "outlet": "Famitsu (translated, via GamesRadar+/MeinMMO)",
+    "url": "https://mein-mmo.de/en/gta-6-offers-two-characters-to-choose-from-but-rockstar-now-says-this-doesnt-always-work,1585496/"
+   },
+   {
+    "text": "we thought it was unnatural for Lucia to take the lead.",
+    "speaker": "Rob Nelson",
+    "role": "co-studio head, Rockstar North",
+    "outlet": "Famitsu (translated, via MeinMMO)",
+    "url": "https://mein-mmo.de/en/gta-6-offers-two-characters-to-choose-from-but-rockstar-now-says-this-doesnt-always-work,1585496/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "2 playable leads, down from GTA 5's 3",
+    "source": "https://www.tweaktown.com/news/113383/rockstar-explains-how-gta-6-character-switching-will-work-between-jason-and-lucia/index.html"
+   },
+   {
+    "figure": "Extended look: about 26 minutes of PS5 footage, premiered on Netflix August 27",
+    "source": "https://techradar.com/gaming/netflix-confirms-that-the-gta-6-extended-look-has-an-official-runtime-of-just-under-half-an-hour-and-is-captured-on-the-base-ps5"
+   },
+   {
+    "figure": "Interview reported September 1, 2026, about 10 weeks before this Short",
+    "source": "https://www.tweaktown.com/news/113383/rockstar-explains-how-gta-6-character-switching-will-work-between-jason-and-lucia/index.html"
+   }
+  ],
+  "surprise": "Rockstar took choice away during development: a high-rise mission originally let you swap freely, and the team locked it to Jason because he is an ex-soldier and it is early in the story. Dazed separately reports you can treat the pair as a unit in free roam, or send them off alone.",
+  "surprise_source": "https://mein-mmo.de/en/gta-6-offers-two-characters-to-choose-from-but-rockstar-now-says-this-doesnt-always-work,1585496/ ; https://dazeddigital.com/life-culture/article/70859/1/gta-6-grand-theft-auto-vi-rockstar-exclusive-deep-dive-game-unparalleled-world",
+  "stakes_for_player": "In story missions you may not get to choose who you play; in the open world you can play as both together or either alone. It changes how you plan a session, not what you pay.",
+  "fan_argument": {
+   "side_a": "Locking the character is a step back from GTA 5, where you could switch almost any time.",
+   "side_b": "Story-driven seat assignment makes heists feel directed, and free roam stays open.",
+   "links": [
+    "https://www.pcgamer.com/games/grand-theft-auto/gta-6s-story-is-too-important-for-rockstar-to-let-you-swap-between-lucia-and-jason-whenever-you-want/",
+    "https://mein-mmo.de/en/gta-6-offers-two-characters-to-choose-from-but-rockstar-now-says-this-doesnt-always-work,1585496/"
+   ]
+  },
+  "callback": "2013: GTA 5's three-lead switch was the series' signature; Rockstar's own former designer said in November 2026 it took two years to make work mid-mission.",
+  "best_questions": [
+   {
+    "q": "Can I switch between Jason and Lucia whenever I want?",
+    "a": "In free roam yes, or play as a pair; in story missions it depends on the mission and story point.",
+    "solidity": "confirmed (Rockstar via Famitsu/Dazed)"
+   },
+   {
+    "q": "Why does Rockstar decide for me?",
+    "a": "Nelson says some scenes only make sense through one character; one early mission was changed to Jason because of his military past.",
+    "solidity": "confirmed (translated interview)"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "The news itself was 10 weeks old by publication, but the reversed high-rise mission gives a real reason.",
+  "later": "Game releases November 19, 2026; actual mission behaviour verifiable only after that.",
+  "sources": [
+   "https://www.tweaktown.com/news/113383/rockstar-explains-how-gta-6-character-switching-will-work-between-jason-and-lucia/index.html",
+   "https://mein-mmo.de/en/gta-6-offers-two-characters-to-choose-from-but-rockstar-now-says-this-doesnt-always-work,1585496/",
+   "https://www.gamesradar.com/games/grand-theft-auto/gta-6-wont-let-you-switch-between-lucia-and-jason-whenever-you-want-because-it-would-be-unnatural-for-story-progression/",
+   "https://www.pcgamer.com/games/grand-theft-auto/gta-6s-story-is-too-important-for-rockstar-to-let-you-swap-between-lucia-and-jason-whenever-you-want/",
+   "https://dazeddigital.com/life-culture/article/70859/1/gta-6-grand-theft-auto-vi-rockstar-exclusive-deep-dive-game-unparalleled-world",
+   "https://pcgamer.com/games/grand-theft-auto/big-new-gta-6-gameplay-details-revealed-including-specifics-about-jason-and-lucia-character-swapping-play-as-a-couple-or-go-off-and-cause-chaos-independently"
+  ],
+  "unverified": [
+   "Famitsu original not read; quotes are English translations via GamesRadar+/MeinMMO.",
+   "'Bank getaway' is TweakTown's description of the trailer scene; MeinMMO describes the extended-look example as a police chase with Raul in the back seat.",
+   "'play as a couple' is PC Gamer's/Dazed's phrasing, not a Rockstar quote verified here."
+  ]
+ },
+ {
+  "code": "S16",
+  "what_happened": "On November 6, 2026 The Coalition announced on Xbox Wire that every Gears of War: E-Day player gets RAAM as a free multiplayer character by logging in from November 7, the series' 20th anniversary. It also ran a two-week anniversary event with Guardian (Versus) and For the Queen (Horde Siege), and dated Season 2: Legacy for December 1.",
+  "the_why": "Stated reason: the 20th anniversary of Gears of War, per The Coalition's Studio Brand Director Nicole Fawcette on Xbox Wire. No further rationale given.",
+  "quotes": [
+   {
+    "text": "Just login to claim him instantly",
+    "speaker": "Nicole Fawcette",
+    "role": "Studio Brand Director, The Coalition",
+    "outlet": "Xbox Wire",
+    "url": "https://news.xbox.com/en-us/?p=228001"
+   },
+   {
+    "text": "For us at The Coalition, these are the stories that matter most.",
+    "speaker": "Nicole Fawcette",
+    "role": "Studio Brand Director, The Coalition",
+    "outlet": "Xbox Wire",
+    "url": "https://news.xbox.com/en-us/?p=228001"
+   },
+   {
+    "text": "not gone from the franchise",
+    "speaker": "The Coalition",
+    "role": "developer (Season 1 post on missing features)",
+    "outlet": "gearsofwar.com via GamerFuzion",
+    "url": "https://gamerfuzion.com/gears-of-war-e-day-season-1-ranked-chainsaw-duels-meat-shields/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "E-Day launched October 6, 2026 at $70 ($100 Premium), day one on Game Pass Ultimate and PC Game Pass",
+    "source": "https://www.keengamer.com/articles/news/gears-of-war-e-day-launches-october-6-2026-on-xbox-steam-and-game-pass/"
+   },
+   {
+    "figure": "Season 2: Legacy starts December 1",
+    "source": "https://news.xbox.com/en-us/?p=228001"
+   },
+   {
+    "figure": "Two-week anniversary event with two limited modes",
+    "source": "https://news.xbox.com/en-us/?p=228001"
+   },
+   {
+    "figure": "Critic average in the high 80s (about 87 on Metacritic, reported)",
+    "source": "https://www.windowscentral.com/gaming/xbox/gears-of-war-e-day-review-round-up"
+   }
+  ],
+  "surprise": "E-Day launched without two Gears staples, chainsaw duels and meat shields, and The Coalition would only say they are 'not gone from the franchise', with no promise they come to E-Day. So the anniversary gives you RAAM back while the series' signature melee moves are still missing.",
+  "surprise_source": "https://gamerfuzion.com/gears-of-war-e-day-season-1-ranked-chainsaw-duels-meat-shields/",
+  "stakes_for_player": "Free for anyone who owns E-Day or plays via Game Pass Ultimate/PC Game Pass: one login unlocks RAAM for multiplayer. No end date for claiming was announced, so logging in during the event is the safe move. Season 2 on December 1 adds returning maps, modes and skins such as a Solemn Memories Dom skin.",
+  "fan_argument": {
+   "side_a": "E-Day's faster movement and new Horde structure lose the heavy, deliberate feel that defined Gears.",
+   "side_b": "It is the best Gears since Gears 3 and the anniversary content shows The Coalition listening (fans even got Versus added to the early beta).",
+   "links": [
+    "https://www.digitalcitizen.life/gears-of-war-e-day-multiplayer-beta-gets-mixed-but-mostly-positive-early-reactions/",
+    "https://www.purexbox.com/news/2026/08/gears-of-war-fans-convince-the-coalition-to-add-versus-to-e-day-early-access-beta"
+   ]
+  },
+  "callback": "November 7, 2006: the original Gears of War launched on Xbox 360 with RAAM as its final boss (date is GamerFuzion's inference from '20 years ago'; it matches the North American launch).",
+  "best_questions": [
+   {
+    "q": "Is RAAM really free, and for how long?",
+    "a": "Yes, a login grants him from November 7; no end date was announced.",
+    "solidity": "confirmed (Xbox Wire); end date unknown"
+   },
+   {
+    "q": "Are chainsaw duels and meat shields coming back?",
+    "a": "The Coalition says they are not gone from the franchise but has not committed to adding them to E-Day.",
+    "solidity": "confirmed (no commitment)"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "The giveaway itself is thin; the missing-features angle is the real story.",
+  "later": "Season 2: Legacy launches December 1, 2026; its maps and modes were not named by November 8.",
+  "sources": [
+   "https://news.xbox.com/en-us/?p=228001",
+   "https://www.gamerfuzion.com/gears-of-war-e-day-20th-anniversary-free-raam-november-7-season-2-legacy-december-1/",
+   "https://gamerfuzion.com/gears-of-war-e-day-season-1-ranked-chainsaw-duels-meat-shields/",
+   "https://godisageek.com/2026/11/gears-of-war-e-day-free-raam-20th-anniversary/",
+   "https://www.keengamer.com/articles/news/gears-of-war-e-day-launches-october-6-2026-on-xbox-steam-and-game-pass/",
+   "https://www.purexbox.com/news/2026/08/gears-of-war-fans-convince-the-coalition-to-add-versus-to-e-day-early-access-beta"
+  ],
+  "unverified": [
+   "Xbox Wire says RAAM is a 'multiplayer character'; it does not say Versus only.",
+   "'Protecting the leader keeps your squad respawning' is the usual Guardian rule but Xbox Wire only says 'only one leader makes it out alive'.",
+   "Game Rant's piece was not read directly."
+  ]
+ },
+ {
+  "code": "S17",
+  "what_happened": "Around November 9, 2026 the manual in Hollow Knight: Silksong's physical edition surfaced online, promising free content packs with 'even more adventures' and calling Sea of Sorrow the game's 'first giant expansion'. Sea of Sorrow is listed as 'coming soon' and is not on the disc; it is a free download.",
+  "the_why": "No new stated reason. Team Cherry's existing policy, set when it announced Sea of Sorrow on December 16, 2025, is that the expansion is free for all owners, following the original Hollow Knight's free packs.",
+  "quotes": [
+   {
+    "text": "first giant expansion",
+    "speaker": "Team Cherry",
+    "role": "developer (Silksong physical-edition manual)",
+    "outlet": "GamingBolt",
+    "url": "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc"
+   },
+   {
+    "text": "new friends, new abilities and new ferocious foes",
+    "speaker": "Team Cherry",
+    "role": "developer (Silksong physical-edition manual)",
+    "outlet": "GamingBolt",
+    "url": "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "Over 7 million sold by December 2025",
+    "source": "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc"
+   },
+   {
+    "figure": "Sea of Sorrow announced December 16, 2025 for 2026; almost a year later, still no date",
+    "source": "https://www.gematsu.com/2025/12/hollow-knight-silksong-free-expansion-sea-of-sorrow-announced"
+   },
+   {
+    "figure": "Original Hollow Knight got 4 free content packs",
+    "source": "https://gameluster.com/?p=169500"
+   }
+  ],
+  "surprise": "The manual quietly swaps Sea of Sorrow's '2026' window for 'coming soon', with about six weeks of 2026 left and no date, and Sea of Sorrow is not on the disc at all. Silksong itself started life as planned DLC for the first game before growing into a full sequel.",
+  "surprise_source": "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc ; https://www.fangamer.eu/products/hollow-knight-silksong-physical-game-xbox",
+  "stakes_for_player": "Free: Sea of Sorrow and the further packs cost nothing for owners. Physical buyers still need to download the expansion. Timing is the open question; nothing says it lands in 2026.",
+  "fan_argument": {
+   "side_a": "Team Cherry's free updates are the best value in gaming and worth any wait.",
+   "side_b": "Promising more packs while Sea of Sorrow has no date after a year repeats the long Silksong wait.",
+   "links": [
+    "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc"
+   ]
+  },
+  "callback": "December 16, 2025: Team Cherry announced Sea of Sorrow as a free nautical expansion for 2026, alongside a Hollow Knight Switch 2 Edition.",
+  "best_questions": [
+   {
+    "q": "Do I have to pay for Sea of Sorrow or the new packs?",
+    "a": "No, Team Cherry says Sea of Sorrow is free, and the manual says the further packs are free.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "When does Sea of Sorrow come out?",
+    "a": "No date; announced for 2026, the manual now says 'coming soon'.",
+    "solidity": "confirmed (no date)"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "",
+  "sources": [
+   "https://gamingbolt.com/hollow-knight-silksong-sea-of-sorrow-is-still-missing-but-physical-edition-teases-more-free-dlc",
+   "https://tech-insider.org/hollow-knight-silksong-physical-edition-sea-of-sorrow-free-packs-2026/",
+   "https://gameluster.com/?p=169500",
+   "https://www.gematsu.com/2025/12/hollow-knight-silksong-free-expansion-sea-of-sorrow-announced",
+   "https://www.fangamer.eu/products/hollow-knight-silksong-physical-game-xbox",
+   "https://gematsu.com/2026/05/hollow-knight-silksong-physical-edition-announced-for-ps5-xbox-series-and-switch-2"
+  ],
+  "unverified": [
+   "Eurogamer's article was not opened; GamingBolt credits the manual text to X user @arfa2706.",
+   "The manual says 'new abilities'; that they are specifically Hornet's is a reasonable reading, not quoted.",
+   "Silksong's origin as planned DLC is widely reported history but was not re-sourced in this pass."
+  ]
+ },
+ {
+  "code": "S18",
+  "what_happened": "On November 10, 2026 Bandai Namco's board resolved to dissolve and liquidate Reflector Entertainment, the Montreal studio behind Unknown 9: Awakening. It expects an extraordinary loss of about 21 million euros from Q3 of the fiscal year ending March 2027.",
+  "the_why": "Bandai Namco (official disclosure via Gematsu): after reviewing future strategy, the investment required and the chances of profitability and continuing the business, it decided to discontinue Reflector. Reflector's own post reportedly said Bandai Namco could not justify several more years of additional investment (paraphrased by Gaming ProMax; verbatim not confirmed).",
+  "quotes": [
+   {
+    "text": "the Company has decided to discontinue Reflector's business, dissolve, and liquidate it.",
+    "speaker": "Bandai Namco Holdings",
+    "role": "parent company (official disclosure)",
+    "outlet": "Gematsu",
+    "url": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "text": "didn't come near the company expectations",
+    "speaker": "Herve Hoerdt",
+    "role": "CEO, Reflector Entertainment (January 2025)",
+    "outlet": "PC Gamer",
+    "url": "https://www.pcgamer.com/gaming-industry/action-adventure-game-unknown-9-awakening-was-a-failure-says-developer-which-has-cancelled-a-follow-up-project-and-laid-off-staff"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "About 21 million euros expected loss",
+    "source": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment"
+   },
+   {
+    "figure": "18% of staff cut in November 2024, a month after launch",
+    "source": "https://gameinformer.com/2026/11/10/bandai-namco-shuts-down-unknown-9-awakening-developer-reflector-entertainment"
+   },
+   {
+    "figure": "Metascore 59",
+    "source": "https://gameinformer.com/2026/11/10/bandai-namco-shuts-down-unknown-9-awakening-developer-reflector-entertainment"
+   },
+   {
+    "figure": "Revealed at Gamescom 2020, released October 2024: 4 years for its only game",
+    "source": "https://gameinformer.com/2026/11/10/bandai-namco-shuts-down-unknown-9-awakening-developer-reflector-entertainment"
+   }
+  ],
+  "surprise": "Reflector did not close making Unknown 9. After calling the game a failure in January 2025, it was reassigned to an existing Bandai Namco series, and Gematsu says those plans never materialised. The studio spent almost two more years on a project nobody ever saw.",
+  "surprise_source": "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment ; https://www.pushsquare.com/news/2025/01/unknown-9-labelled-a-failure-as-dev-cancels-project-moves-to-existing-bandai-namco-ip",
+  "stakes_for_player": "The game remains a single-player purchase; there will be no sequel or further Unknown 9 games from this team. The planned transmedia universe (books, comics, web series) loses its games arm.",
+  "fan_argument": {
+   "side_a": "A mediocre game (Metascore 59) from a publisher overreaching with a transmedia universe before proving the first game.",
+   "side_b": "Some commenters blame the game's writing consultants; others reject that and blame Bandai Namco's portfolio cuts for ending the studio.",
+   "links": [
+    "https://fandompulse.substack.com/p/sweet-baby-inc-infected-reflector",
+    "https://gameinformer.com/2026/11/10/bandai-namco-shuts-down-unknown-9-awakening-developer-reflector-entertainment"
+   ]
+  },
+  "callback": "January 21, 2025: Reflector called Unknown 9 a failure, cancelled a follow-up project, laid off more staff and moved to an existing Bandai Namco IP.",
+  "best_questions": [
+   {
+    "q": "Is there any chance of an Unknown 9 sequel?",
+    "a": "The franchise's game plans were cancelled in January 2025 and the studio is now being liquidated.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "What was the studio working on when it closed?",
+    "a": "It was assigned to an existing Bandai Namco IP after Unknown 9; Gematsu says those plans never materialised. The project was never named.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "",
+  "sources": [
+   "https://www.gematsu.com/2026/11/bandai-namco-to-shut-down-reflector-entertainment",
+   "https://gameinformer.com/2026/11/10/bandai-namco-shuts-down-unknown-9-awakening-developer-reflector-entertainment",
+   "https://gamingpromax.com/bandai-namco-shuts-down-reflector-entertainment/",
+   "https://www.pcgamer.com/gaming-industry/action-adventure-game-unknown-9-awakening-was-a-failure-says-developer-which-has-cancelled-a-follow-up-project-and-laid-off-staff",
+   "https://www.pushsquare.com/news/2025/01/unknown-9-labelled-a-failure-as-dev-cancels-project-moves-to-existing-bandai-namco-ip",
+   "https://wnhub.io/news/finance/item-52647"
+  ],
+  "unverified": [
+   "Reflector's 'could not justify several more years of investment' line: only seen paraphrased (Gaming ProMax adds 'additional'); Reflector's own page returned 403.",
+   "Steam price of $20 and 'three players' not checked (no SteamDB lookup).",
+   "Staff numbers at closure not disclosed."
+  ]
+ },
+ {
+  "code": "S19",
+  "what_happened": "Edge issue 430, on sale October 29, 2026, ran a 16-page GTA 6 cover feature built on a 90-minute demo of a live build played by Rockstar North's Rob Nelson. Coverage of it says the in-game phone app WAINK lists the models car fences want, flags security such as trackers, and that a car's condition on arrival affects the payout.",
+  "the_why": "Rob Nelson (to IGN, August 2026): one-button hotwiring of any car left gameplay on the table, so Rockstar added scouting, security tiers and selling decisions to car theft.",
+  "quotes": [
+   {
+    "text": "Previously, you could just press triangle to automatically hotwire and steal any vehicle",
+    "speaker": "Rob Nelson",
+    "role": "co-studio head, Rockstar North",
+    "outlet": "IGN, via Rockstar Intel",
+    "url": "https://rockstarintel.com/gta-6-completely-changes-how-stealing-cars-works/"
+   },
+   {
+    "text": "We felt like that left a lot of potential gameplay on the table",
+    "speaker": "Rob Nelson",
+    "role": "co-studio head, Rockstar North",
+    "outlet": "IGN, via Rockstar Intel",
+    "url": "https://rockstarintel.com/gta-6-completely-changes-how-stealing-cars-works/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "90-minute demo, played by Rob Nelson",
+    "source": "https://vgtimes.com/articles/172804-gta-6-edge-preview-breakdown.html"
+   },
+   {
+    "figure": "16-page Edge cover feature",
+    "source": "https://gamesradar.com/games/grand-theft-auto/gta-6-exclusive-leads-edge-430-check-out-the-16-page-cover-feature-that-includes-interviews-with-rockstar-bespoke-screenshots-and-more-this-week"
+   },
+   {
+    "figure": "Most ordinary cars sell for a couple of thousand dollars (guide, unconfirmed)",
+    "source": "https://www.gtaboss.gg/gta-6/guides/gta-6-car-stealing"
+   }
+  ],
+  "surprise": "WAINK was not a new Edge find: it was first described in August, when Rockstar showed it scanning parked cars for lock type, alarm, tracker, chop-shop value and the cost of forging papers to keep the car. And Edge's 'hands-on' was really Rockstar's Rob Nelson holding the controller for 90 minutes.",
+  "surprise_source": "https://www.notebookcheck.net/Rockstar-is-ending-one-button-car-theft-in-GTA-6.1381985.0.html ; https://vgtimes.com/articles/172804-gta-6-edge-preview-breakdown.html",
+  "stakes_for_player": "Car theft becomes a money loop: scan, pick what a buyer wants, deliver it clean. Trackers bring police, so the expensive car is not automatically the best steal. You can also keep a stolen car by paying to forge registration.",
+  "fan_argument": {
+   "side_a": "Realism like trackers, papers and condition payouts turns GTA's chaos into chores.",
+   "side_b": "Rockstar says you can still instantly carjack any car being driven; the depth is for those who want it.",
+   "links": [
+    "https://www.notebookcheck.net/Rockstar-is-ending-one-button-car-theft-in-GTA-6.1381985.0.html"
+   ]
+  },
+  "callback": "August 27-28, 2026: the Netflix extended look and Rob Nelson's IGN interview revealed WAINK and the end of one-button hotwiring.",
+  "best_questions": [
+   {
+    "q": "Does crashing a stolen car lower what you get for it?",
+    "a": "Edge coverage says condition on arrival affects the payout; Rockstar has not confirmed details.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Can I still just pull someone out of a car and drive off?",
+    "a": "Yes, Nelson says moving cars can still be instantly carjacked; the new layers apply to parked cars.",
+    "solidity": "confirmed (IGN interview, via Notebookcheck)"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "Game released November 19, 2026; final payout rules checkable only after that.",
+  "sources": [
+   "https://vgtimes.com/articles/172804-gta-6-edge-preview-breakdown.html",
+   "https://pcgamer.com/games/grand-theft-auto/edge-magazine-went-to-rockstar-to-see-gta-6-and-will-tell-you-all-about-in-lavish-detail-this-thursday-october-29",
+   "https://gamesradar.com/games/grand-theft-auto/gta-6-exclusive-leads-edge-430-check-out-the-16-page-cover-feature-that-includes-interviews-with-rockstar-bespoke-screenshots-and-more-this-week",
+   "https://rockstarintel.com/gta-6-completely-changes-how-stealing-cars-works/",
+   "https://www.notebookcheck.net/Rockstar-is-ending-one-button-car-theft-in-GTA-6.1381985.0.html",
+   "https://www.player.one/gta-6-car-stealing-mechanics-revealed-rockstar-games-making-it-tad-bit-realistic-164119",
+   "https://www.gtaboss.gg/gta-6/guides/gta-6-car-stealing"
+  ],
+  "unverified": [
+   "Edge's text was not read directly; WAINK/fence/payout details come from VGTimes's summary.",
+   "GTA BOOM's WAINK article was not found.",
+   "Calling Edge's session 'hands-on' is wrong: Rob Nelson played the demo.",
+   "'Damage shrinks your payout' is reported from Edge coverage, not confirmed by Rockstar."
+  ]
+ },
+ {
+  "code": "S20",
+  "what_happened": "Around November 9, 2026, as GTA 6 preloads began, dataminer PlayStationSize reported the strings joinSession, launchActivity and launchMultiplayerActivity in the release build's PlayStation data. Rockstar has not commented and has not announced GTA 6 Online, which is not expected at the November 19 launch.",
+  "the_why": "No stated reason from Rockstar for Online's timing. The best-evidenced explanation is that online is a separate product coming later: Twitch CEO Dan Clancy told Bloomberg he expects it in 2027 after talks with Rockstar, and Rockstar's own tribunal filings describe an online 32-player format under wraps.",
+  "quotes": [
+   {
+    "text": "one of the most closely guarded secrets of the company",
+    "speaker": "Rockstar Games (court document)",
+    "role": "respondent, Glasgow employment tribunal",
+    "outlet": "GTA BOOM",
+    "url": "https://www.gtaboom.com/rockstar-games-just-called-the-gta-6-online-player-format-a-closely-guarded-secret-8dc7"
+   },
+   {
+    "text": "It absolutely will spike the overall viewership meaningfully",
+    "speaker": "Dan Clancy",
+    "role": "CEO, Twitch (on GTA 6 multiplayer)",
+    "outlet": "Bloomberg, via FRVR/PC Gamer coverage",
+    "url": "https://frvr.com/blog/news/gta-6-online-launches-in-2027-twitch-ceo-reveals-after-spending-a-lot-of-time-talking-with-rockstar/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "3 multiplayer-related strings found",
+    "source": "https://insider-gaming.com/gta-6-datamine-reveals-multiplayer-references/"
+   },
+   {
+    "figure": "32-player online format named in tribunal documents",
+    "source": "https://www.gtaboom.com/rockstar-games-just-called-the-gta-6-online-player-format-a-closely-guarded-secret-8dc7"
+   },
+   {
+    "figure": "34 staff dismissed in late October 2025 over Discord posts, per Rockstar",
+    "source": "https://www.gtaboom.com/rockstar-games-just-called-the-gta-6-online-player-format-a-closely-guarded-secret-8dc7"
+   },
+   {
+    "figure": "GTA Online arrived about 2 weeks after GTA 5 in 2013",
+    "source": "https://www.vice.com/en/article/gta-6-online-release-date/"
+   }
+  ],
+  "surprise": "Rockstar has already all but confirmed an online mode, in court: defending its firing of 34 staff, it called an online 32-player format one of its most closely guarded secrets. That 32-player cap is barely above GTA Online's 30, not the 64 fans had guessed.",
+  "surprise_source": "https://www.gtaboom.com/rockstar-games-just-called-the-gta-6-online-player-format-a-closely-guarded-secret-8dc7 ; https://www.tweaktown.com/news/109693/rockstar-testing-32-player-lobbies-for-gta-6-online-new-court-documents-reveal/index.html",
+  "stakes_for_player": "At launch you get story mode only; don't buy expecting lobbies with friends. If Clancy is right, online comes in 2027, and Xbox store entries split GTA 6 into 'Story' and other entitlements, so how online is sold or delivered is still unknown.",
+  "fan_argument": {
+   "side_a": "Online should launch with the game like GTA Online did two weeks after GTA 5; waiting a year is a loss.",
+   "side_b": "A story-first launch protects single-player, which GTA 5 never got expansions for once Online took over.",
+   "links": [
+    "https://www.vice.com/en/article/gta-6-online-release-date/"
+   ]
+  },
+  "callback": "October 1, 2013: GTA Online launched about two weeks after GTA 5 and went on to dominate Rockstar's attention for a decade.",
+  "best_questions": [
+   {
+    "q": "Is GTA Online in the GTA 6 launch?",
+    "a": "No; Online is not expected at launch and Rockstar has not announced it.",
+    "solidity": "reported (no Rockstar statement)"
+   },
+   {
+    "q": "When will GTA 6 Online arrive?",
+    "a": "Twitch's CEO expects 2027; Rockstar has not given a date.",
+    "solidity": "speculation from an informed third party"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "",
+  "sources": [
+   "https://insider-gaming.com/gta-6-datamine-reveals-multiplayer-references/",
+   "https://beebom.com/gta-6-multiplayer-online-files-found-in-ps5-preload/",
+   "https://www.gtaboom.com/gta-6-xbox-files-point-to-a-separate-online-mode",
+   "https://www.gtaboom.com/rockstar-games-just-called-the-gta-6-online-player-format-a-closely-guarded-secret-8dc7",
+   "https://www.tweaktown.com/news/109693/rockstar-testing-32-player-lobbies-for-gta-6-online-new-court-documents-reveal/index.html",
+   "https://www.videogameschronicle.com/news/twitch-ceo-says-grand-theft-auto-6s-multiplayer-mode-will-launch-next-year/",
+   "https://frvr.com/blog/news/gta-6-online-launches-in-2027-twitch-ceo-reveals-after-spending-a-lot-of-time-talking-with-rockstar/",
+   "https://www.vice.com/en/article/gta-6-online-release-date/"
+  ],
+  "unverified": [
+   "'Rockstar has called GTA 6 a single-player game': GTA BOOM says Rockstar marketed it as a single-player experience, exact wording not seen.",
+   "'Story is its own download': dataminers found a 'Story' entitlement in Xbox store data; GTA BOOM says these are entitlements, not confirmed separate downloads.",
+   "GameSpot's article not read directly.",
+   "Clancy quote seen via secondary coverage of Bloomberg, not Bloomberg itself."
+  ]
+ },
+ {
+  "code": "S21",
+  "what_happened": "At Nintendo's November 5, 2026 results briefing, president Shuntaro Furukawa said Nintendo is not considering another Switch 2 price increase, saying it has secured enough memory. That came as Switch 2 hardware sell-in for April to September fell 37.4% year on year, to 6.49 million units.",
+  "the_why": "Furukawa (via Reuters/KitGuru): no major change in the memory situation and Nintendo has secured sufficient supply to keep current pricing and its 16.5 million forecast. The original September rise was blamed mainly on the AI-driven memory shortage, plus exchange rates, oil and tariffs.",
+  "quotes": [
+   {
+    "text": "no major change",
+    "speaker": "Shuntaro Furukawa",
+    "role": "President, Nintendo (on memory supply)",
+    "outlet": "KitGuru (citing Reuters)",
+    "url": "https://www.kitguru.net/?p=751092"
+   },
+   {
+    "text": "difficult to maintain business viability if we bear the increased costs",
+    "speaker": "Shuntaro Furukawa",
+    "role": "President, Nintendo (May 2026, announcing the rise)",
+    "outlet": "Toy People News",
+    "url": "https://www.toy-people.com/en/?p=110214"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "6.49 million Switch 2 units in April to September, down 37.4% from 10.36 million",
+    "source": "https://tech-insider.org/switch-2-6-49-million-consoles-24-49-million-games-six-months-2026/"
+   },
+   {
+    "figure": "26.35 million Switch 2 sold lifetime by September 30",
+    "source": "https://otakukart.com/nintendo-reports-november-2026-financial-results-switch-2-sales-reach-26-35-million-original-switch-hits-157-20-million-units-as-operating-profit-rises-49-1/"
+   },
+   {
+    "figure": "US price went from $449.99 to $499.99 on September 1",
+    "source": "https://www.wpxi.com/contributor/switch-2-price/KET42PLN4M62VCTEURUOWX4OHY/"
+   },
+   {
+    "figure": "PS5 Digital $599.99, PS5 disc $649.99, PS5 Pro $899.99 since April 2",
+    "source": "https://www.slashgear.com/2133749/ps5-price-increase-april-2026-how-much-more-cost"
+   }
+  ],
+  "surprise": "Nintendo has made this promise before: in February 2026 Furukawa said there would be no imminent Switch 2 price hike, and in May Nintendo announced the $50 rise. Also, the 37.4% drop compares against the console's launch-rush half-year, and software sales rose about 19% over the same period.",
+  "surprise_source": "https://www.kitguru.net/?p=751092 ; https://tech-insider.org/switch-2-6-49-million-consoles-24-49-million-games-six-months-2026/",
+  "stakes_for_player": "If you're waiting, $499.99 is the US price and Nintendo says no further rise is planned for now; no time limit was given, and Nintendo kept a medium-to-long-term caveat. The cheapest bundle is $529.99 since the game-choice bundle ended August 31.",
+  "fan_argument": {
+   "side_a": "Nintendo said the same in February and raised prices three months later; don't trust 'not considering'.",
+   "side_b": "This time there is a concrete reason, secured memory stock, and Sony has raised PS5 prices twice.",
+   "links": [
+    "https://hothardware.com/news/no-nintendo-did-not-rule-out-future-switch-2-price-hikes",
+    "https://www.kitguru.net/?p=751092"
+   ]
+  },
+  "callback": "February 2026: Furukawa said no imminent price hike; May 2026: Nintendo announced the US rise to $499.99 effective September 1.",
+  "best_questions": [
+   {
+    "q": "Will the Switch 2 cost more again soon?",
+    "a": "Nintendo says it is not considering another increase for now, but would reconsider if costs can't be absorbed over the medium to long term.",
+    "solidity": "confirmed (stance, not a guarantee)"
+   },
+   {
+    "q": "Why are sales down so much?",
+    "a": "The comparison is against the launch half-year (10.36 million). Price rises and component costs are cited as pressure; Nintendo kept its 16.5 million forecast.",
+    "solidity": "confirmed figures; cause partly interpretation"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "",
+  "sources": [
+   "https://www.kitguru.net/?p=751092",
+   "https://powerupgaming.co.uk/2026/11/05/nintendo-is-not-considering-another-switch-2-price-increase-president-says/",
+   "https://www.ggrecon.com/articles/nintendo-switch-2-no-price-rise/",
+   "https://hothardware.com/news/no-nintendo-did-not-rule-out-future-switch-2-price-hikes",
+   "https://tech-insider.org/switch-2-6-49-million-consoles-24-49-million-games-six-months-2026/",
+   "https://www.toy-people.com/en/?p=110214",
+   "https://www.wpxi.com/contributor/switch-2-price/KET42PLN4M62VCTEURUOWX4OHY/",
+   "https://www.slashgear.com/2133749/ps5-price-increase-april-2026-how-much-more-cost"
+  ],
+  "unverified": [
+   "WRONG: 'A PS5 now starts at $649': the PS5 Digital Edition is $599.99; $649.99 is the disc model.",
+   "'not considering additional changes' was not found as a verbatim quote; reports paraphrase it.",
+   "'rose fifty dollars in September' is right for the effective date, but it was announced in May."
+  ]
+ },
+ {
+  "code": "S22",
+  "what_happened": "Rockstar's support pages list only PlayStation 5 and Xbox Series X|S for GTA 6, which launches November 19, 2026; there is no PS4 or Xbox One version. Rockstar says the preload needs up to 212 GB of free space depending on your device.",
+  "the_why": "No stated reason from Rockstar for skipping PS4 and Xbox One. Outlets such as Sportskeeda and All Things How attribute it to the game's scale and hardware demands.",
+  "quotes": [
+   {
+    "text": "up to 212 GB of available space depending on your device",
+    "speaker": "Rockstar Games",
+    "role": "publisher (Support pre-load FAQ)",
+    "outlet": "Rockstar Support",
+    "url": "https://support.rockstargames.com/articles/7nPqOA2uCbpEQHXx7KVrYd"
+   },
+   {
+    "text": "A disc will not be included in the box.",
+    "speaker": "Rockstar Games",
+    "role": "publisher (platforms and editions page)",
+    "outlet": "Rockstar Support",
+    "url": "https://support.rockstargames.com/articles/4QfG4FmZCf5W1gS8jy4UVT/grand-theft-auto-vi-platform-editions-and-versions"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "Up to 212 GB",
+    "source": "https://support.rockstargames.com/articles/7nPqOA2uCbpEQHXx7KVrYd"
+   },
+   {
+    "figure": "$79.99 Standard, $99.99 Ultimate",
+    "source": "https://www.techradar.com/gaming/we-finally-know-the-official-gta-6-price-its-expensive-but-not-too-bad"
+   },
+   {
+    "figure": "Cheapest PS5 is the $599.99 Digital Edition",
+    "source": "https://www.slashgear.com/2133749/ps5-price-increase-april-2026-how-much-more-cost"
+   },
+   {
+    "figure": "512 GB Series S has about 364 GB usable, so GTA 6 takes over half (one report)",
+    "source": "https://hothardware.com/news/gta-6-preload-guide-212gb-size-start-times-what-to-know"
+   }
+  ],
+  "surprise": "Even the boxed copy of GTA 6 has no disc, only a download code, so the cheaper disc-less PS5 loses nothing and there is no used copy to buy or resell. On a 512 GB Series S, one game fills more than half the usable drive.",
+  "surprise_source": "https://videogameschronicle.com/news/rockstar-confirms-there-will-be-no-disc-version-of-gta6-at-launch/ ; https://hothardware.com/news/gta-6-preload-guide-212gb-size-start-times-what-to-know",
+  "stakes_for_player": "A PS4 owner needs at least a $599.99 PS5 Digital plus $79.99 for the game: about $680 before storage. Since the boxed version is a code anyway, the digital console gives up nothing for GTA 6.",
+  "fan_argument": {
+   "side_a": "A discless 'physical' edition is a misstep that kills resale and lending.",
+   "side_b": "Analysts expect little sales impact and most players already buy digital.",
+   "links": [
+    "https://www.gfinityesports.com/article/rockstars-discless-physical-edition-of-gta-6-is-a-total-misstep",
+    "https://www.toy-people.com/en/?p=111445"
+   ]
+  },
+  "callback": "GTA 5 launched on PS3 and Xbox 360 in 2013 and was re-released on PS4 and then PS5 in 2022; GTA 6 skips the old generation entirely.",
+  "best_questions": [
+   {
+    "q": "Can I play GTA 6 on PS4?",
+    "a": "No; only PS5 and Xbox Series X|S are listed.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "Is there a disc version for my disc-drive PS5?",
+    "a": "No, the boxed version contains a download code only; a later disc is unconfirmed.",
+    "solidity": "confirmed (launch); later disc speculation"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "The headline question has an answer everyone knows and Rockstar gave no reason; only the discless box and storage angle add anything.",
+  "later": "",
+  "sources": [
+   "https://support.rockstargames.com/articles/4QfG4FmZCf5W1gS8jy4UVT/grand-theft-auto-vi-platform-editions-and-versions",
+   "https://support.rockstargames.com/articles/7nPqOA2uCbpEQHXx7KVrYd",
+   "https://videogameschronicle.com/news/rockstar-confirms-there-will-be-no-disc-version-of-gta6-at-launch/",
+   "https://hothardware.com/news/gta-6-preload-guide-212gb-size-start-times-what-to-know",
+   "https://www.techradar.com/gaming/we-finally-know-the-official-gta-6-price-its-expensive-but-not-too-bad",
+   "https://www.slashgear.com/2133749/ps5-price-increase-april-2026-how-much-more-cost",
+   "https://allthings.how/what-platforms-gta-6-will-be-on-ps5-xbox-series-xs-and-pc/"
+  ],
+  "unverified": [
+   "Rockstar Support pages timed out on direct fetch; wording taken from search extracts of those pages.",
+   "Rockstar's support pages give conflicting preload dates (November 10 vs 12).",
+   "Series S usable-space figure is from one report."
+  ]
+ },
+ {
+  "code": "S23",
+  "what_happened": "On November 14, 2026 a 34-song tracklist for Grand Theft Auto VI: The Album leaked via a video of advance vinyl copies, naming Dua Lipa, Blackpink's Jennie and Lana Del Rey among others. Rolling Stone's and Billboard's sources reportedly confirmed it; Rockstar has not published the full list.",
+  "the_why": "Not applicable as a decision; the leak's source was a video of advance vinyl. The album itself was announced by Rockstar and Atlantic Records on September 17 as 34 'brand-new, original tracks'.",
+  "quotes": [
+   {
+    "text": "34 brand-new, original tracks",
+    "speaker": "Rockstar Games and Atlantic Records",
+    "role": "album announcement",
+    "outlet": "Gematsu",
+    "url": "https://www.gematsu.com/2026/09/grand-theft-auto-vi-the-album-announced"
+   },
+   {
+    "text": "The 34-track album differs from Justice's original game score and the game's radio soundtrack.",
+    "speaker": "Insider Gaming",
+    "role": "reporting outlet",
+    "outlet": "Insider Gaming",
+    "url": "https://insider-gaming.com/gta-6-album-leak-lists-dua-lipa-jennie-and-lana-del-rey/"
+   },
+   {
+    "text": "two years of our lives",
+    "speaker": "Atlantic Records executive",
+    "role": "label leadership (Instagram post)",
+    "outlet": "GTA BOOM",
+    "url": "https://www.gtaboom.com/atlantic-records-spent-two-years-on-the-gta-6-album-with-rockstar-4789"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "34 tracks",
+    "source": "https://www.gematsu.com/2026/09/grand-theft-auto-vi-the-album-announced"
+   },
+   {
+    "figure": "Album out November 19 (some reports say November 20)",
+    "source": "https://www.keengamer.com/articles/news/gta-vi-the-album-launches-november-19-with-34-original-tracks/"
+   },
+   {
+    "figure": "Justice's separate score album due December 11",
+    "source": "https://www.keengamer.com/articles/news/gta-vi-the-album-launches-november-19-with-34-original-tracks/"
+   },
+   {
+    "figure": "About 2 years of work at Atlantic",
+    "source": "https://www.gtaboom.com/atlantic-records-spent-two-years-on-the-gta-6-album-with-rockstar-4789"
+   }
+  ],
+  "surprise": "The 'brand-new, original' album includes at least one cover: Keith Richards doing Jimmy Reed's 'Bright Lights, Big City'. Travis Scott's 'RHYNO' is produced by Daft Punk's Guy-Manuel de Homem-Christo, and Justice's track with Tame Impala, SZA and King Gizzard debuted in the October 15 launch trailer.",
+  "surprise_source": "https://gtaintel.com/news/gta-6-album-tracklist-running-order-spotify ; https://insider-gaming.com/every-confirmed-artist-song-for-grand-theft-auto-6-the-album/ ; https://www.rockstargames.com/VI/launch-trailer",
+  "stakes_for_player": "The album is a separate purchase or stream; it is not a guide to the in-game radio. Rockstar has not said which album songs play on the stations, so judging the radio from this list is premature.",
+  "fan_argument": {
+   "side_a": "A star-heavy, Coachella-style lineup feels like label marketing, not Vice City.",
+   "side_b": "The album is a side release; the licensed radio and Justice's score are what you hear while driving.",
+   "links": [
+    "https://www.notebookcheck.net/GTA-6-s-leaked-34-song-album-looks-like-a-Coachella-headliner-lineup.1450848.0.html"
+   ]
+  },
+  "callback": "September 17, 2026: Rockstar and Atlantic announced the album with six singles, including Travis Scott and Keith Richards.",
+  "best_questions": [
+   {
+    "q": "Is this the GTA 6 radio soundtrack?",
+    "a": "No, it is a separate 34-track album; Rockstar hasn't said which album songs also play on in-game stations.",
+    "solidity": "confirmed distinction; overlap unknown"
+   },
+   {
+    "q": "Is the leaked tracklist real?",
+    "a": "Rolling Stone's and Billboard's sources reportedly confirmed it; Rockstar hasn't.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "thin_reason": "",
+  "later": "Album and game release November 19, 2026; full tracklist confirmable then.",
+  "sources": [
+   "https://insider-gaming.com/gta-6-album-leak-lists-dua-lipa-jennie-and-lana-del-rey/",
+   "https://pcgamer.com/games/grand-theft-auto/gta-6-soundtrack-leak-confirmed-accurate-with-new-songs-from-lana-del-rey-playboi-carti-and-keith-richards",
+   "https://www.gematsu.com/2026/09/grand-theft-auto-vi-the-album-announced",
+   "https://www.keengamer.com/articles/news/gta-vi-the-album-launches-november-19-with-34-original-tracks/",
+   "https://gtaintel.com/news/gta-6-album-tracklist-running-order-spotify",
+   "https://www.gtaboom.com/atlantic-records-spent-two-years-on-the-gta-6-album-with-rockstar-4789",
+   "https://www.notebookcheck.net/GTA-6-s-leaked-34-song-album-looks-like-a-Coachella-headliner-lineup.1450848.0.html",
+   "https://www.rockstargames.com/VI/launch-trailer"
+  ],
+  "unverified": [
+   "PC Gamer's body text not read; Rolling Stone/Billboard corroboration seen via headlines and secondary reports.",
+   "'Recorded specifically for GTA 6' overstates it: at least one track is a cover.",
+   "'The radio includes licensed songs' is reasonable but Rockstar hasn't detailed the album/radio overlap."
+  ]
+ },
+ {
+  "code": "S24",
+  "what_happened": "Rockstar released GTA 6's launch trailer on October 15, 2026; it has never been called 'Trailer 3' by Rockstar. Separately, on August 27 Rockstar released 'An Extended Look', about 26 minutes of PS5 footage that premiered on Netflix before going to YouTube.",
+  "the_why": "No stated reason for the naming. Rockstar labels it 'Launch Trailer' on its site; fans used 'Trailer 3' after Trailers 1 (December 2023) and 2 (May 2025).",
+  "quotes": [
+   {
+    "text": "captured entirely in-game from a PlayStation 5",
+    "speaker": "Rockstar Games",
+    "role": "publisher (launch trailer note)",
+    "outlet": "9to5Toys",
+    "url": "https://9to5toys.com/2026/10/15/rockstar-new-grand-theft-auto-vi-launch-trailer/"
+   },
+   {
+    "text": "Jason and Lucia have always known the deck is stacked against them.",
+    "speaker": "Rockstar Games",
+    "role": "publisher (trailer description)",
+    "outlet": "9to5Toys",
+    "url": "https://9to5toys.com/2026/10/15/rockstar-new-grand-theft-auto-vi-launch-trailer/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "Extended look about 26 minutes (datamine said 26:49)",
+    "source": "https://techradar.com/gaming/netflix-confirms-that-the-gta-6-extended-look-has-an-official-runtime-of-just-under-half-an-hour-and-is-captured-on-the-base-ps5"
+   },
+   {
+    "figure": "Netflix exclusive for about 6 hours before YouTube",
+    "source": "https://gamesradar.com/games/grand-theft-auto/gta-6-an-extended-look-will-be-26-minutes-long-and-features-gameplay-captured-on-a-ps5/"
+   },
+   {
+    "figure": "Over 31 million views by its first Sunday",
+    "source": "https://techspot.com/news/113726-gta-6-extended-look-draws-over-50-million.html"
+   },
+   {
+    "figure": "Trailer 2 drew 475 million views across platforms in 24 hours",
+    "source": "https://www.videogameschronicle.com/news/at-nearly-half-a-billion-views-rockstar-says-gta-6s-new-trailer-is-the-biggest-video-launch-of-all-time"
+   }
+  ],
+  "surprise": "GTA 6's longest look premiered as a Netflix exclusive, captured on a base PS5, and only reached YouTube hours later; it was also offered as a 14 GB download. The launch trailer doubled as the debut of Justice's 'Flower in a Hurricane' with Tame Impala, SZA and King Gizzard.",
+  "surprise_source": "https://techradar.com/gaming/netflix-confirms-that-the-gta-6-extended-look-has-an-official-runtime-of-just-under-half-an-hour-and-is-captured-on-the-base-ps5 ; https://www.notebookcheck.net/GTA-6-Extended-Look-is-now-available-as-a-14-2GB-download.1381513.0.html ; https://www.rockstargames.com/VI/launch-trailer",
+  "stakes_for_player": "If you want to judge the game before paying $80, the 26-minute base-PS5 footage tells you far more than a trailer. Searching 'Trailer 3' finds fan uploads; Rockstar's title is 'Launch Trailer'.",
+  "fan_argument": {
+   "side_a": "Rockstar dragged out Trailer 3 for over a year while fans counted days.",
+   "side_b": "The extended look gave more real footage than any trailer could.",
+   "links": [
+    "https://www.gamingbible.com/news/gta-6-trailer-3-hype-271172-20250902"
+   ]
+  },
+  "callback": "May 6, 2025: Trailer 2 drew 475 million views in 24 hours, which Rockstar called the biggest video launch of all time.",
+  "best_questions": [
+   {
+    "q": "Where is GTA 6 Trailer 3?",
+    "a": "Rockstar's third main trailer is the October 15 'Launch Trailer'.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "Is the footage real gameplay on a normal PS5?",
+    "a": "Netflix and Rockstar say the extended look was captured on PS5 (base model per Netflix), and the launch trailer entirely in-game on PS5.",
+    "solidity": "confirmed (Rockstar/Netflix claim)"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "It answers a search query; the only real surprise is the Netflix premiere and the Justice song tie-in, both weeks old.",
+  "later": "",
+  "sources": [
+   "https://www.rockstargames.com/VI/launch-trailer",
+   "https://9to5toys.com/2026/10/15/rockstar-new-grand-theft-auto-vi-launch-trailer/",
+   "https://techradar.com/gaming/netflix-confirms-that-the-gta-6-extended-look-has-an-official-runtime-of-just-under-half-an-hour-and-is-captured-on-the-base-ps5",
+   "https://gamesradar.com/games/grand-theft-auto/gta-6-an-extended-look-will-be-26-minutes-long-and-features-gameplay-captured-on-a-ps5/",
+   "https://techspot.com/news/113726-gta-6-extended-look-draws-over-50-million.html",
+   "https://www.notebookcheck.net/GTA-6-Extended-Look-is-now-available-as-a-14-2GB-download.1381513.0.html",
+   "https://www.videogameschronicle.com/news/at-nearly-half-a-billion-views-rockstar-says-gta-6s-new-trailer-is-the-biggest-video-launch-of-all-time"
+  ],
+  "unverified": [
+   "Exact runtime 26:48 not confirmed: Netflix says about 26 minutes, a datamine said 26:49.",
+   "TechSpot's headline says over 50 million views; the 31 million figure is its first-weekend number. Neither checked against Rockstar.",
+   "Rockstar Newswire post itself not read."
+  ]
+ }
+]

@@ -1,0 +1,134 @@
+[
+ {
+  "code": "S13",
+  "title": "Does Nvidia's CEO Exit Delay Your GPU?",
+  "narration": "Nvidia's CEO quitting won't change when your next graphics card ships. Jensen Huang left last week after 33 years, with no reason given. PC players panicked, and I get it. But the cards were already stuck. Back in January, reports said Nvidia told partners its next GeForce refresh was on hold indefinitely, because the memory those cards need goes to AI chips first. None of that changed with him gone. If your upgrade's late, that's the memory shortage. It was late before he left.",
+  "form": "blunt opinion up front, then proven",
+  "ending": "dry line",
+  "words": 84,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Cut the AI-fears, finance-chief and roadmap-wording threads so the claim comes first and the January delay proves it, ending on a flat fact instead of an 'I'd watch' verdict."
+ },
+ {
+  "code": "S14",
+  "title": "GTA 5's Character Swap Hid a Secret",
+  "narration": "Two years of work, for maybe three minutes of GTA 5. That's how designer Matt Freedman describes the character swaps in the middle of missions. Rockstar's bosses wanted the city skyline on screen the whole time. No cutting away. But the old consoles couldn't hold the city in memory twice. So he cheated. During the swap, far-off traffic shrank to dots of light and distant buildings went soft and blurry. That blur was the game loading the new area. He says you can still catch it if you look far off through a sniper scope.",
+  "form": "tiny story with a person in it",
+  "ending": "consequence",
+  "words": 95,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Dropped the confusing satellite-zoom ban and the rejected first workaround, gave the trick a person, and swapped the tidy 'cleverest trick' verdict for where you can still spot it."
+ },
+ {
+  "code": "S15",
+  "title": "Why GTA 6 Locks One Mission to Jason",
+  "narration": "One GTA 6 mission used to let you play as Lucia. It's an early job in a high-rise, and during development you could swap between her and Jason whenever you liked. Rockstar locked it to Jason. A studio head explained why: Jason's an ex-soldier, and this early in the story, it felt \"unnatural for Lucia to take the lead.\" Unnatural. She's one of only two people you can play. Free roam still lets you be either one. That mission doesn't.",
+  "form": "one quoted word held up to the light",
+  "ending": "consequence",
+  "words": 80,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Removed the unclear gun-to-steering-wheel chase and the muddy closing aside, and let the word 'unnatural' carry the stance the judges said was brushed past."
+ },
+ {
+  "code": "S16",
+  "title": "Where Are Gears of War: E-Day's Chainsaw Duels?",
+  "narration": "Gears of War: E-Day still doesn't have chainsaw duels. The series turned 20 this month, and one of its signature moves wasn't there at launch. When's it coming back? The Coalition has said one thing about it, in a post about missing features. Duels are \"not gone from the franchise.\" I had to read that twice. The franchise. Not E-Day.",
+  "form": "a question the narrator asks and answers",
+  "ending": "reveal",
+  "words": 60,
+  "drop": true,
+  "drop_reason": "Niche feature-parsing story with the lowest audience stop score in the set; the slot should go to news with a broad money or access consequence for players, such as a price, delay or platform change.",
+  "what_changed": "Fixed the contradictory opener, cut meat shields, RAAM and the new season down to one thread, and stopped on the 'franchise, not E-Day' reveal instead of explaining it."
+ },
+ {
+  "code": "S17",
+  "title": "Silksong's Manual Promises More Free Expansions",
+  "narration": "Hollow Knight: Silksong's boxed edition promises more free expansions. It's in the manual, which just turned up online. Sea of Sorrow gets called the \"first giant expansion,\" with more packs after it. Nice. Except Team Cherry announced Sea of Sorrow last December for this year, and there are about six weeks left. The manual doesn't say this year. It says \"coming soon.\" You're still getting more free Silksong. Eventually.",
+  "form": "spot the changed wording",
+  "ending": "dry line",
+  "words": 69,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Replaced the obvious 'does it say when?' question with the good news first and the missing year as the late turn, ending on one dry word instead of a verdict."
+ },
+ {
+  "code": "S18",
+  "title": "Unknown 9's Studio Spent Two Years on What?",
+  "narration": "Bandai Namco is closing the studio behind Unknown 9: Awakening. That game flopped, and the studio said so itself. What's odd is what happened next. Bandai Namco kept the team and put it on a game in one of its own series. It never said which one. Nothing was announced, and reportedly the project never got off the ground. Now the studio's being shut, at an expected loss of about 21 million euros. Almost two years of work, and not one screenshot ever came out of it.",
+  "form": "straight account told in order",
+  "ending": "dry line",
+  "words": 87,
+  "drop": true,
+  "drop_reason": "The payoff is an unnamed project and the pack has nothing bigger; the slot should go to a closure or cut that changes a game players own or are waiting for.",
+  "what_changed": "Dropped the 'you'd guess it was the flop' setup and the generic blame line, told it in order and turned the vague fragment into a plain 'it never said which one'."
+ },
+ {
+  "code": "S19",
+  "title": "GTA 6 Has an App for Picking Steals",
+  "narration": "GTA 6 has a phone app for choosing which cars to steal. It's called WAINK. Walk up to a parked car, point your phone, and it shows you the security and what a buyer will pay. It even lists the models buyers are after. Say there's a pricey one on that list, right there on the street. The scan says it's got a tracker. Take it anyway and the police come with it. You'll be passing up some very nice cars.",
+  "form": "second-person walk-through of one moment",
+  "ending": "consequence",
+  "words": 81,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Cut the hotwiring quote that broke the flow and the stock 'best change in years' verdict, so the scan leads straight into the tracker catch."
+ },
+ {
+  "code": "S20",
+  "title": "GTA 6 Online's Lobby Size, Revealed in Court",
+  "narration": "Rockstar let slip GTA 6's online lobby size in court. It still hasn't announced online at all. Last year it fired staff over posts in a chat server, and they fought it. Defending that, Rockstar's filing called the online format \"one of the most closely guarded secrets of the company.\" Then it named the format. Thirty-two players. GTA Online already holds 30. Some secret.",
+  "form": "how we know is the hook",
+  "ending": "dry line",
+  "words": 64,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Shortened the tribunal backstory to one plain sentence, dropped the fan-guess setup and replaced the 'I'm fine with that' verdict with a two-word dry line."
+ },
+ {
+  "code": "S21",
+  "title": "Switch 2's 37 Percent Drop, Compared to What?",
+  "narration": "Switch 2 sales fell 37 percent, and Nintendo didn't flinch. It kept its forecast for the year. That calm looked strange to me until I checked the comparison. Those numbers are measured against last year's launch months, when everyone who'd been waiting rushed to get one. Of course that's hard to beat. And over the same stretch, game sales went up about 19 percent. I don't read that as a slump, because games are still selling more than they were a year ago.",
+  "form": "misleading number re-measured",
+  "ending": "verdict",
+  "words": 83,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Removed the 'so is it in trouble?' setup and the price-rise aside, and trimmed the verdict so it no longer overclaims that each owner buys more games."
+ },
+ {
+  "code": "S22",
+  "title": "Buying a PS5 for GTA 6? Read This",
+  "narration": "If you're buying a PS5 for GTA 6, get the digital one. It won't run on a PS4, so you need new hardware either way. And the boxed copy has no disc in it. Rockstar's own support page says the box holds a download code. A disc drive buys you nothing for this game. Digital console plus the game comes to about $680. The catch is there won't be any used copies to pick up cheap.",
+  "form": "practical buying advice, straight",
+  "ending": "consequence",
+  "words": 76,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Put the disc-less box in one plain sentence early, cut the 'so why not buy that one?' stall and the 'bad call' verdict, and ended on the real cost to the player."
+ },
+ {
+  "code": "S23",
+  "title": "GTA 6's Leaked Album Has Fans Mad",
+  "narration": "GTA 6's album leaked, and fans are already mad about the radio. The tracklist came from a video of advance vinyl, and reportedly it's real. It's 34 songs full of big pop names, and plenty of people say it sounds more like a festival than Vice City. Thing is, the album's a separate release. Rockstar hasn't said which of those songs, if any, you'll hear on the in-game stations. I'd hold the outrage, because nobody's heard the actual radio yet.",
+  "form": "correcting the backlash",
+  "ending": "verdict",
+  "words": 80,
+  "drop": false,
+  "drop_reason": "",
+  "what_changed": "Used 'reportedly' once, stated the album-versus-radio split as fact instead of a hedge, and cut the 'so is this what you'll hear?' question."
+ },
+ {
+  "code": "S24",
+  "title": "GTA 6's Longest Gameplay Video Premiered on Netflix",
+  "narration": "GTA 6's longest gameplay video premiered on Netflix, of all places. It's about 26 minutes, and it came out back in August. The useful part is what it ran on. Netflix says it was captured on a base PS5, the one most people already own. Trailers are cut to make a game look its best. This is a long stretch of play on normal hardware. If you're on the fence about $80, watch that first.",
+  "form": "odd detail that turns useful",
+  "ending": "consequence",
+  "words": 75,
+  "drop": true,
+  "drop_reason": "A weeks-old video and a base-PS5 note are a small payoff; the slot should go to fresh launch-week news with something new for the buyer.",
+  "what_changed": "Led with the odd Netflix premiere instead of the 'skip the trailers' order and cut the 'even long footage can flatter' stall."
+ }
+]

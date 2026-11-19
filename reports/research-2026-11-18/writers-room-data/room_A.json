@@ -1,0 +1,677 @@
+[
+ {
+  "code": "S01",
+  "kill": false,
+  "kill_reason": "",
+  "point": "id Software is not pairing up with MachineGames after the cuts; GamesBeat says id staff were already on loan to Wolfenstein 3.",
+  "angles": [
+   "Why is id's boss 'bullish' after losing half the studio? Answer: GamesBeat reported id staff already loaned to MachineGames' Wolfenstein 3 (reported). Stops non-players: a boss smiling through layoffs. Line: id Software lost half its staff, and its boss sounds thrilled.",
+   "Did Doom fail? 3 million players but about 1 million sold. Answer: the Game Pass gap (Kotaku numbers; cause is opinion). Stops: two numbers that should not both be true. Line: id lost half its staff after Doom drew 3 million players.",
+   "Is id ditching its own engine? Answer: no, 'all in on id Tech' (confirmed). Stops: the engine team was cut. Line: id lost much of its engine team and swears it's keeping the engine.",
+   "Cut the day before launch: Stratton told staff on Slack not to come in, then promoted the same DLC. Answer: the upbeat comments came while promoting that DLC (confirmed). Line: id Software was cut the day before its Doom expansion shipped."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Why id Software's boss is bullish after layoffs",
+    "narration": "id Software lost half its staff, and its boss sounds thrilled. Co-director Marty Stratton told IGN they're \"really, really bullish\" on what's ahead. This is the studio Xbox cut the day before its Doom expansion shipped, when Stratton had to tell staff on Slack not to come in. So is it just a brave face? Stratton says id is working more closely with MachineGames than ever, and that the work started before the layoffs. GamesBeat explains what that means. It reported id staff were already on loan to MachineGames' Wolfenstein 3, which hasn't even been announced. I think id has become Xbox's engine room. GamesBeat says no new id game is greenlit. Bullish, just not about one of its own.",
+    "answer": "id staff were already loaned to Wolfenstein 3 (GamesBeat)",
+    "facts_used": [
+     "about half of id laid off, 6 July",
+     "cuts the day before Revelations; Slack message",
+     "Stratton: 'really, really bullish'",
+     "closer than ever with MachineGames; started pre-layoffs",
+     "GamesBeat: id staff loaned to Wolfenstein 3",
+     "GamesBeat: no new id game greenlit"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(iii) open on the quote, who said it, why strange, reveal",
+    "title": "id Software and MachineGames, closer than ever?",
+    "narration": "\"We're working more closely with MachineGames than ever.\" That's id Software co-director Marty Stratton, talking to IGN while promoting Doom's Revelations expansion. Xbox laid off about half of id the day before that expansion launched, much of the engine team included. Closer than ever, with half the people? Stratton says the technology work with MachineGames started before the cuts, so it isn't a rescue plan. GamesBeat's reporting fills in the rest. id staff were already being loaned to MachineGames' unannounced Wolfenstein 3, and to Arkane's Blade. The closeness is people. I think that makes id a support studio now, whatever the mood in interviews. Closer than ever is easy when your staff are working on their game.",
+    "answer": "id staff on loan to Wolfenstein 3 and Blade (GamesBeat)",
+    "facts_used": [
+     "Stratton quote via IGN/GamingBolt",
+     "said while promoting Revelations",
+     "about half cut incl. much of id Tech team",
+     "work started pre-layoffs",
+     "GamesBeat: staff loaned to Wolfenstein 3 and Blade"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Doom had 3 million players. Why cut id?",
+    "narration": "id lost half its staff after Doom drew 3 million players. Xbox's memo said Microsoft was focusing on its strongest franchises, and Doom is about as strong as Xbox gets. So why gut the team behind it? Doom: The Dark Ages wasn't ignored. Over 3 million people played it, Kotaku reports. But those players came through Game Pass. The estimated copies sold at launch were about 1 million. And the cuts landed the day before id shipped the expansion it had crunched on for months. I think Game Pass made Doom look huge to players and small on Xbox's spreadsheet. 3 million players, 1 million buyers. Xbox counted the second number.",
+    "answer": "3 million played via Game Pass, about 1 million copies sold",
+    "facts_used": [
+     "Braff memo: 'focuses on our strongest franchises'",
+     "over 3 million Game Pass players, est. 1 million sold (Kotaku)",
+     "cuts the day before Revelations after months of crunch",
+     "about half of id cut"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S02",
+  "kill": false,
+  "kill_reason": "",
+  "point": "NBA 2K27 missed its target because of Take-Two's own GTA 6, and the CEO said so and shrugged.",
+  "angles": [
+   "Who sank NBA 2K27? Answer: Take-Two's CEO named his own GTA 6 and said he'd rather eat his own lunch (confirmed quotes). Stops: a CEO blaming his own product. Line: NBA 2K27 sold about 4 million copies and still missed its target.",
+   "Why won't Take-Two raise its forecast when GTA 6 preorders beat expectations? Answer: preorders stay cancelable, as Zelnick warned (confirmed). Stops: record demand, no forecast change. Line: Take-Two says GTA 6 preorders beat its forecasts.",
+   "Is 2K's slide just yearly sameness? Answer: it still outsold every other 2026 sports game (Bloomberg). Stops: a winner that lost. Line: NBA 2K27 beat every sports game this year and still missed.",
+   "How far did it miss? Answer: undisclosed; bookings $50m under estimates. Weak, the answer is 'not disclosed'. Line: Take-Two won't say how badly NBA 2K27 missed."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Why NBA 2K27 missed despite 4 million sales",
+    "narration": "NBA 2K27 sold about 4 million copies and still missed its target. That's the series' second-best launch ever, and Take-Two's quarterly bookings still fell 18%, to $1.6 billion. The obvious culprit would be a rival sports game. It isn't. Bloomberg says 2K27 outsold every other sports game this year. CEO Strauss Zelnick named the real cause himself. It's Take-Two's own GTA 6, ten days from launch, with preorders running far above expectations. He said the timing \"may have affected performance.\" Then, via Bloomberg, he shrugged. If his lunch was going to be eaten, \"I'd rather be the one eating it.\" I think he's right to shrug. 2K27 didn't lose to a rival. It lost to its own family.",
+    "answer": "Zelnick blamed GTA 6 himself: 'I'd rather be the one eating it'",
+    "facts_used": [
+     "about 4 million units, second-best release",
+     "bookings $1.6bn, down 18%",
+     "outsold other 2026 sports games (Bloomberg)",
+     "Zelnick: timing 'may have affected performance'",
+     "lunch quote via Bloomberg",
+     "GTA 6 preorders far above expectations, launch 19 Nov"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(v) news in the hook, hold back the reason",
+    "title": "NBA 2K27 missed, and Take-Two's boss shrugged",
+    "narration": "NBA 2K27 missed its sales target, and Take-Two's boss isn't worried. It sold about 4 million copies, still the series' second-best launch. Take-Two's quarterly bookings fell 18% anyway, about $50 million under Wall Street's estimates. Normally a CEO blames a crowded fall. Strauss Zelnick did mention the crowded fall. Then he pointed at his own company's biggest game. GTA 6 was ten days out, with preorders far above expectations, and he said its arrival had influenced buyers. His line, via Bloomberg: if his lunch was going to be eaten, \"I'd rather be the one eating it.\" I think that's the most honest earnings call of the year. He isn't worried because the thief works for him.",
+    "answer": "the cause was Take-Two's own GTA 6, per the CEO",
+    "facts_used": [
+     "about 4 million units, second-best",
+     "bookings down 18%, about $50m under estimates",
+     "Zelnick cited crowded fall and GTA 6 influence",
+     "lunch quote via Bloomberg"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "GTA 6 preorders soar. Why no new forecast?",
+    "narration": "Take-Two says GTA 6 preorders beat its forecasts. It still won't raise its own. CEO Strauss Zelnick said preorders were \"tracking far above our initial expectations\" ten days before launch. Yet Take-Two kept its full-year forecast at $8 billion to $8.2 billion. The obvious reading is that the company is hiding bad news. But it gave no preorder number at all. The reason goes back to earlier this year. Zelnick warned then that GTA 6 preorders, exceptional as they are, can still be canceled. So Take-Two won't bank money that can walk away. I think that's a fair warning for you too. A preorder is a promise you can still break, and it says nothing about the game.",
+    "answer": "preorders are cancelable, Zelnick warned",
+    "facts_used": [
+     "'tracking far above our initial expectations'",
+     "guidance held $8bn-$8.2bn",
+     "no preorder number disclosed",
+     "callback: Zelnick warned preorders remain cancelable",
+     "stakes: preorders say nothing about quality"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S03",
+  "kill": false,
+  "kill_reason": "",
+  "point": "The best-reviewed game of 2026, Ocarina of Time on Switch 2, has less in it than the 2011 3DS version: no Master Quest.",
+  "angles": [
+   "How does the year's best game have less than a 2011 handheld version? Answer: no Master Quest (confirmed by reviews). Stops: best of the year and missing something. Line: The best-reviewed game of 2026 first came out in 1998.",
+   "Why has Nintendo now left Master Quest out twice? Answer: critics barely punished it, 96 (confirmed). Stops: a company repeating an omission. Line: Nintendo has now left Master Quest out of Ocarina of Time twice.",
+   "Is 2026 weak, or is the remake that good? Answer: VGC, Nintendo 'carefully refined what made it special' (critic view). Stops: a 28-year-old game beating new ones. Line: A 28-year-old Zelda is beating every new game released in 2026.",
+   "$60 to $70 for a 1998 game: worth it? Answer: 24th all-time on Metacritic (confirmed). Line: Nintendo is charging $70 boxed for a 1998 Zelda."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Zelda's best-reviewed remake is missing something",
+    "narration": "The best-reviewed game of 2026 first came out in 1998. Ocarina of Time on Switch 2 hit 96 on Metacritic, three points clear of anything else this year. It's already 24th on the site's all-time list. And it somehow has less in it than the 2011 3DS version. Reviewers didn't knock the price. They kept finding the same gap. The 3DS remake shipped with Master Quest, the harder version of the game. GamesRadar's review put it plainly: \"There's no Master Quest version to play through.\" It doesn't unlock after the credits either, and Nintendo hasn't said a word. I think the 96 is earned. But at $70 boxed, the year's best game is missing what a 2011 handheld managed.",
+    "answer": "no Master Quest, which the 3DS version had",
+    "facts_used": [
+     "96 on Metacritic, 3 clear of Sektori 93",
+     "24th all-time",
+     "3DS 2011 included Master Quest",
+     "GamesRadar quote via Kotaku",
+     "not unlocked after finishing; Nintendo silent",
+     "$69.99 boxed"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Ocarina of Time's missing mode, again",
+    "narration": "Nintendo has now left Master Quest out of Ocarina of Time twice. It's missing from the new Switch 2 remake, and from the N64 original on Switch Online. That's odd, because Nintendo knows how to ship it. The 2011 3DS remake included it. Back in 2003, it came out in limited quantities around Wind Waker's GameCube launch. So did critics punish the remake for leaving it out? They noticed. RPG Site's reviewers said it \"bums me out\" there's no Hero Mode either. Then they scored it anyway. The remake sits at 96 on Metacritic, the best of 2026. I think that's the problem. A 96 without its hardest mode gives Nintendo no reason to add it back.",
+    "answer": "barely: it still scored 96, best of 2026",
+    "facts_used": [
+     "Master Quest missing from remake and NSO N64",
+     "3DS 2011 included it",
+     "2003 limited release around Wind Waker",
+     "RPG Site 'bums me out' quote",
+     "96, best of 2026"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Why a 1998 Zelda tops 2026's reviews",
+    "narration": "A 28-year-old Zelda is beating every new game released in 2026. Ocarina of Time on Switch 2 sits at 96 on Metacritic. The runner-up, Sektori, is on 93. So is this a weak year, or is the remake that good? It isn't extra content. The biggest complaint in reviews is something missing, the Master Quest mode the 3DS version had. And it costs up to $70 for a game from 1998. VGC's review explains the score. It says Nintendo \"carefully refined what made it special.\" Not reinvented. Refined. I think that's the safest bet in gaming right now. Leave a classic's bones alone, and the year's best score is yours.",
+    "answer": "VGC: Nintendo 'carefully refined what made it special'",
+    "facts_used": [
+     "96 vs Sektori 93",
+     "1998 original",
+     "Master Quest missing (reviews)",
+     "$59.99/$69.99",
+     "VGC quote"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S04",
+  "kill": false,
+  "kill_reason": "",
+  "point": "One of GTA 6's new radio shows is a real Miami morning show, brought back by its real hosts Trick Daddy and Trina.",
+  "angles": [
+   "Who are 'Trick and Trina' on Dirty South Classics? Answer: real Miami rappers Trick Daddy and Trina, reviving their show that ended in 2021 (HotNewHipHop; hosts confirmed). Stops: a fake world reviving a real show. Line: GTA 6 is reviving a real radio show that went off air in 2021.",
+   "How does a car radio follow you on foot? Answer: headphones or earbuds on Jason and Lucia's phones (Rockstar). Stops: a small immersion trick. Line: In GTA 6, the radio keeps playing after you leave the car.",
+   "Do headphones shut out the city? Fan argument; the answer is opinion. Line: GTA 6's best new feature might mute its best sound.",
+   "Flash FM is back: Vice City's 2002 pop station is now a 'Vice City institution'. Answer: callback (confirmed). Line: GTA 6 brings back a radio station from 2002."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "GTA 6 revives a real Miami radio show",
+    "narration": "GTA 6 is reviving a real radio show that ended in 2021. Not a spoof. The real show. Rockstar's Newswire previewed six stations in October, and one of them, Dirty South Classics, lists its hosts only as Trick and Trina. You'd expect two more made-up DJs in Rockstar's version of Florida. The station plays Southern rap and hip-hop, and in Miami those two names ring a bell. They're Trick Daddy and Trina, real Miami rappers, and HotNewHipHop says this is their actual morning show, back five years after it ended. I think it's the best thing on the whole radio list. In a game built on mocking Florida, the most Florida thing in it is real.",
+    "answer": "the hosts are Trick Daddy and Trina, reviving their own show",
+    "facts_used": [
+     "Newswire 8 Oct, six stations",
+     "Dirty South Classics hosts Trick and Trina, Southern rap",
+     "real Trick & Trina Morning Show ended 2021 (HotNewHipHop)",
+     "Trick Daddy and Trina are Miami rappers"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Who hosts GTA 6's Dirty South Classics?",
+    "narration": "GTA 6's Dirty South Classics station is hosted by Trick and Trina. In a Rockstar game, you'd assume those are joke names. The station is one of six Rockstar previewed in October, playing Southern rap and hip-hop. Miami had a real Trick and Trina Morning Show, and it ended in 2021. Five years later, a station with the same two names turns up in a game set in Rockstar's take on Florida. That isn't a coincidence. HotNewHipHop says the hosts are Trick Daddy and Trina themselves, two real Miami rappers, reviving their actual show inside the game. I think that's the smartest booking Rockstar has made. The joke names are the only part that isn't a joke.",
+    "answer": "it's Trick Daddy and Trina themselves",
+    "facts_used": [
+     "six stations previewed Oct",
+     "Southern rap and hip-hop",
+     "real morning show ended 2021",
+     "HotNewHipHop: real hosts reviving the show"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(v) news in the hook, hold back the how",
+    "title": "How GTA 6's radio works on foot",
+    "narration": "In GTA 6, the radio keeps playing after you leave the car. Fans have asked for years for music that isn't stuck inside a vehicle. So how does Rockstar justify a station following you down the sidewalk? It goes further than music, too. Podcasts are in the series for the first time, and they're on demand, so you pick the episode instead of catching it live. The explanation is a small detail in Rockstar's Newswire. Jason and Lucia are wearing headphones or earbuds, connected to their phones. I'm only half sold. The city's traffic and police chatter is the point of walking around Leonida, and earbuds shut it out. Still, I'd rather have the choice than a silent sidewalk.",
+    "answer": "headphones or earbuds on Jason and Lucia's phones",
+    "facts_used": [
+     "radio and podcasts on foot via headphones/earbuds on phones",
+     "podcasts a series first, on demand",
+     "long-standing fan request",
+     "fan argument: city sound shut out"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S05",
+  "kill": false,
+  "kill_reason": "",
+  "point": "The Canadian petition to save BioWare asks Ottawa to fund a worker buyout of the studio from EA, not EA to change its mind.",
+  "angles": [
+   "What does the Canadian petition actually ask? Answer: government funding for ex-staff to buy BioWare and its IP from EA (e-7898, MP Don Davies; reported by several outlets). Stops: workers buying a closed studio. Line: A Canadian petition to save BioWare isn't asking EA for anything.",
+   "How did a documentary catch BioWare's end? Answer: it had been filming for two years as a rise story (confirmed). Stops: a film that became a farewell by accident. Line: A BioWare documentary started filming two years before EA shut the studio.",
+   "Why did EA close BioWare now? Answer: two months after a $55bn buyout left $18bn debt and $700m cuts (confirmed). Line: EA closed BioWare two months after a $55 billion deal.",
+   "Mass Effect's director said a year ago the next game was in development. Answer: it was cancelled (confirmed). Line: Mass Effect's next game was confirmed a year ago. Now it's gone."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "The Canadian plan to save Mass Effect's studio",
+    "narration": "A Canadian petition to save BioWare isn't asking EA for anything. EA closed the Mass Effect studio in October and ended early work on the next game. You'd expect fans to beg EA to change its mind. They've tried that, with billboards as far away as Times Square. Petition e-7898 drew enough signatures that Canada's government has to answer it in writing. What it asks is bolder. Sponsored by MP Don Davies, it wants Ottawa to fund BioWare's former staff to buy the studio and its IP from EA, then run it themselves. I think it's a long shot, but not a joke. EA owes about $18 billion after its buyout. It isn't asking EA for anything, except a price.",
+    "answer": "fund ex-staff to buy BioWare and its IP from EA",
+    "facts_used": [
+     "EA closed BioWare 21 Oct; next Mass Effect ended",
+     "Save Mass Effect billboards incl. Times Square",
+     "e-7898 passed threshold; written government response",
+     "worker buyout ask, MP Don Davies",
+     "about $18bn debt after $55bn buyout"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(iii) open on the quote, who said it, why strange, reveal",
+    "title": "BioWare's founders say the story isn't over",
+    "narration": "BioWare's founders say \"the best stories never really end.\" Ray Muzyka and Greg Zeschuk said it about a documentary on their studio, filmed for two years. Strange line, because EA closed BioWare in October and ended work on the next Mass Effect. The cameras caught the end. Except it might not be the end. A House of Commons petition has passed its signature threshold, so Canada's government must reply. It asks Ottawa to fund BioWare's former staff to buy the studio and its IP, and run it themselves. I think it's a long shot worth taking. EA has about $18 billion of debt to pay down. The best stories never end. This one just needs a buyer.",
+    "answer": "petition asks Ottawa to fund a worker buyout",
+    "facts_used": [
+     "founders quote via Deadline/Kotaku",
+     "documentary filmed two years",
+     "EA closed BioWare, next Mass Effect ended",
+     "e-7898 threshold, government must respond",
+     "worker buyout ask",
+     "about $18bn debt"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(iv) tiny story: wanted, obstacle, turn, outcome",
+    "title": "The BioWare documentary that filmed the ending",
+    "narration": "A BioWare documentary started filming two years before EA shut the studio. It was meant to tell how the Mass Effect makers rose, from an Edmonton studio founded in 1995. In October, EA closed BioWare and ended early work on the next Mass Effect. Why then? EA's $55 billion buyout had closed two months earlier, leaving about $18 billion of debt and $700 million a year in planned cuts. EA's letter said it had taken \"a hard look at our business.\" So the film, Massive Effect: The BioWare Story, became a farewell by accident. It premieres in 2027. I think that's the saddest fact in gaming this year. The next Mass Effect story is one you watch.",
+    "answer": "EA's debt-laden buyout closed two months earlier",
+    "facts_used": [
+     "filming two years, Super Channel, 2027 premiere",
+     "founded 1995, Edmonton",
+     "closure 21 Oct, next Mass Effect ended",
+     "$55bn buyout, $18bn debt, $700m cuts",
+     "EA letter quote"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S06",
+  "kill": false,
+  "kill_reason": "",
+  "point": "Nier: Automata's 366GB demand was not a giant download: the patch was about 108MB and Steam was reserving about 40GB per DLC.",
+  "angles": [
+   "Where did the other 300GB come from? Answer: the patch was about 108MB; Steam counted each DLC at about 40GB and reserved space (Tbreak, players; workaround confirmed). Stops: seven times the size for three languages. Line: Nier: Automata's new patch added three languages and asked for 366GB.",
+   "Is this Square Enix neglecting PC again? Answer: the 2021 fix took four years; this time it answered within a day (confirmed). Line: Nier: Automata's PC players have learned to expect the worst.",
+   "Do I have to download 366GB? Answer: no, untick the DLC (confirmed). Fix-it angle, no conflict. Line: Nier: Automata wants 366GB on Steam, and you don't owe it.",
+   "Thin-pack flag: Square Enix gave no technical cause; the 40GB-per-DLC reading comes from players, so it is attributed to them."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Nier: Automata's 366GB patch, explained",
+    "narration": "Nier: Automata's new patch added three languages and asked for 366GB. The game used to need about 50, a seventh of that. The obvious guess is a monster download. It isn't. Tbreak found the patch itself was about 108 megabytes, and the store page still said 50GB. So where did more than 300 gigabytes come from? Players worked it out. Steam was listing each DLC at about 40GB and reserving room for all of them. Square Enix said it was investigating, and told players to untick the DLC in Steam's Properties menu. I think this one's a slip, not neglect. It was owned within a day. A 108 megabyte patch in a 366GB costume.",
+    "answer": "Steam counted each DLC at about 40GB; the patch was 108MB",
+    "facts_used": [
+     "366GB vs about 50GB, about seven times",
+     "patch about 108MB; store page said 50GB (Tbreak)",
+     "each DLC listed at about 40GB (players via Tbreak/Dexerto)",
+     "Square Enix investigating; untick DLC workaround",
+     "acknowledged within a day"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(v) news in the hook, hold back the reason",
+    "title": "Why Nier: Automata suddenly wants 366GB",
+    "narration": "Nier: Automata's Steam install jumped from about 50GB to 366GB overnight. The only change was a patch adding three languages. You'd think Square Enix had shipped the whole game again, seven times over. Then the size of the patch came out. Tbreak puts it at about 108 megabytes. The pain was for anyone buying or reinstalling, because Steam wanted 366GB free before it would start. The reason was the DLC. Players found Steam listing each pack at about 40GB, nearly a full game each, and reserving space for every one. Untick the DLC in Properties and the base game installs at its normal size. I'd call it Steam bookkeeping, not bloat. Nier didn't grow. Its paperwork did.",
+    "answer": "Steam reserved about 40GB per DLC",
+    "facts_used": [
+     "50GB to 366GB",
+     "three languages added",
+     "patch about 108MB",
+     "new buyers/reinstallers hit; existing installs only the small patch",
+     "about 40GB per DLC",
+     "untick DLC workaround"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Nier: Automata's PC patches: four years, one day",
+    "narration": "Nier: Automata's PC players have learned to expect the worst. The 2017 Steam version waited until July 2021 for its promised upgrade, with HDR and 60fps cutscenes. That's four years. So when this month's patch made the game demand 366GB instead of 50, fans had a ready answer: Square Enix neglects this port. Then the details came in. The patch was about 108 megabytes. Players found Steam counting each DLC at roughly 40GB. And within a day, Square Enix posted that it was \"investigating the cause,\" with a workaround: untick the DLC. I think fans are right about the history and wrong about this one. Four years for a fix in 2021. One day for an answer now.",
+    "answer": "Square Enix responded within a day this time",
+    "facts_used": [
+     "2017 PC launch; July 2021 upgrade patch (HDR, 60fps cutscenes)",
+     "366GB vs 50GB",
+     "patch about 108MB",
+     "about 40GB per DLC",
+     "Square Enix 'investigating the cause' quote",
+     "workaround; acknowledged within a day"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S07",
+  "kill": false,
+  "kill_reason": "",
+  "point": "AI isn't what's pushing GTA 6 to PC early: a Q1 2027 PC target was reported three weeks before the ex-Rockstar director's AI warning.",
+  "angles": [
+   "Will an AI port scare Rockstar into an early PC version? Answer: GamesBeat reported a Q1 2027 target three weeks before Vermeij spoke (reported, four sources). Stops: AI versus a giant studio. Line: An ex-Rockstar director says AI could bring GTA 6 to PC cheaply.",
+   "Could GTA 6 be Rockstar's fastest PC port? Answer: about four months vs about 19 for GTA V (reported). Line: GTA 6 could reach PC faster than any 3D-era GTA.",
+   "Why would Rockstar fear a port worse than its own? Answer: Vermeij says it could still hurt sales; 'I think I would be concerned'. Line: A worse GTA 6 port could still worry Rockstar, says an ex-director.",
+   "Is anyone making an AI port? Answer: no evidence. A 'nothing' answer, rejected."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Is AI rushing GTA 6 to PC?",
+    "narration": "An ex-Rockstar director says AI could bring GTA 6 to PC cheaply. Obbe Vermeij, Rockstar North's former technical director, told Rock Paper Shotgun an unofficial port might cost tens of thousands of dollars in AI tokens. That's a real threat to a company that makes PC players wait. GTA V took about 19 months to reach PC. On Rockstar's position, Vermeij said, \"I think I would be concerned.\" He wouldn't be surprised if Rockstar moved the PC release closer. So is AI about to hurry Rockstar up? The timing says no. GamesBeat, citing four sources, reported a PC target of early 2027 three weeks before Vermeij said a word. I think the AI port is noise. Rockstar was already moving.",
+    "answer": "the early 2027 PC target was reported three weeks earlier",
+    "facts_used": [
+     "Vermeij, former Rockstar North technical director, RPS",
+     "'tens of thousands of dollars in tokens'",
+     "GTA V about 19 months to PC",
+     "'I think I would be concerned'",
+     "GamesBeat 13 Oct, four sources, Q1 2027",
+     "report predates comments by three weeks"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(v) news in the hook, hold back the reason",
+    "title": "GTA 6 on PC could break Rockstar's record",
+    "narration": "GTA 6 could reach PC faster than any 3D-era GTA. GTA IV took about seven months. GTA V took about 19. GamesBeat, citing four sources, reports Rockstar is aiming for early 2027, about four months after console. Rockstar hasn't confirmed it. This month, an ex-Rockstar technical director, Obbe Vermeij, warned that AI could produce an unofficial PC port for tens of thousands of dollars in tokens. So the easy story is that AI scared Rockstar into hurrying. Check the dates. The GamesBeat report came out on October 13, three weeks before Vermeij's comments. Even he admits he doesn't know Rockstar's plans. I think PC players should plan around early 2027 and ignore the AI talk. Rockstar's clock started first.",
+    "answer": "the PC date report predates the AI warning by three weeks",
+    "facts_used": [
+     "GTA IV about 7 months, GTA V about 19",
+     "GamesBeat Q1 2027, four sources, about four months",
+     "Vermeij tokens estimate",
+     "GamesBeat 13 Oct predates comments",
+     "Vermeij admits he doesn't know Rockstar's plans"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Why a worse GTA 6 port worries Rockstar",
+    "narration": "A worse GTA 6 port could still worry Rockstar, says an ex-director. Obbe Vermeij, who left Rockstar North in 2009, thinks someone could build an unofficial PC version with AI for tens of thousands of dollars in tokens. He also says it wouldn't be as good as Rockstar's own. So why would a far richer studio care about a worse copy? Because of timing. Rockstar's PC versions usually trail consoles, GTA V by about 19 months. Vermeij's point is that an unofficial port could eat into sales anyway, during that wait. I think he's right about the risk. A bad port arriving first can still beat a good one arriving late.",
+    "answer": "an unofficial port could hurt sales during the PC wait",
+    "facts_used": [
+     "Vermeij left 2009",
+     "tokens estimate",
+     "AI port would be worse",
+     "GTA V about 19 months",
+     "unofficial port could hurt sales",
+     "'It really has changed the world'"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S08",
+  "kill": false,
+  "kill_reason": "",
+  "point": "The Elder Scrolls 6 finally got a name, but its timeline has barely moved since 2023: both estimates land on 2028 or later.",
+  "angles": [
+   "Is the wait finally getting shorter? Answer: Spencer's 2023 'five-plus years' and Schreier's 2026 'more than two years' both land on 2028 or later (sworn testimony; reported Bluesky post). Stops: three years pass and the date doesn't move. Line: The Elder Scrolls 6 finally has a name, eight years on.",
+   "When is Sentinel set? Answer: the lore note is dated 4E 206, five years after Skyrim (reported). Line: The Elder Scrolls 6's teaser hides a date, not a release date.",
+   "Is it Hammerfell? Answer: strongly implied by a note to Hammerfell's High Queen, never stated (reported). Weaker, 'implied'. Line: Bethesda never said Hammerfell, but its teaser did.",
+   "Did The Verge beat Bethesda to the name? Answer: yes (KeenGamer). Line: Bethesda's own Elder Scrolls 6 reveal was scooped."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "The Elder Scrolls 6 has a name. Date?",
+    "narration": "The Elder Scrolls 6 finally has a name, eight years on. Todd Howard tucked it onto the end of Bethesda Game Studios' 40th anniversary video: The Elder Scrolls VI: Sentinel. There's still no date and no gameplay. So is the wait finally getting shorter? Go back to June 2023. In the FTC trial, Xbox head Phil Spencer called it \"a game that's five-plus years away.\" That points to 2028 or later. On the day of the reveal, Bloomberg's Jason Schreier posted on Bluesky that it's still \"more than two years away.\" That's 2028 or later. Again. I think the name is a reward for patience, not a sign it's close. Three years passed, and the finish line didn't move.",
+    "answer": "2023 and 2026 estimates both land on 2028 or later",
+    "facts_used": [
+     "announced E3 2018",
+     "name at end of 40th anniversary video",
+     "no date or gameplay",
+     "Spencer FTC June 2023 'five-plus years away'",
+     "Schreier Bluesky 'more than two years away'"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(v) news in the hook, hold back the consequence",
+    "title": "Elder Scrolls 6 is Sentinel, so when?",
+    "narration": "Bethesda named The Elder Scrolls 6 Sentinel, and still gave no date. The game was first announced at E3 2018, so the name took about eight and a half years. In 2023, a Microsoft court filing listed it as 2026 or later. It's late 2026 now, and there's nothing to preorder. Phil Spencer had been blunter in that same 2023 trial, calling it \"five-plus years away.\" So where does that leave it today? Bloomberg's Jason Schreier posted the answer the day of the reveal: \"more than two years away.\" Add it up and you land in 2028 at the earliest, exactly where Spencer pointed three years ago. I think Sentinel is the right name. It's been standing still since 2023.",
+    "answer": "still 2028 or later, unchanged since 2023",
+    "facts_used": [
+     "E3 2018 announcement, about 8.5 years",
+     "2023 filing '2026 or later'",
+     "Howard: too early on platforms",
+     "Spencer 'five-plus years away'",
+     "Schreier 'more than two years away'"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "When is Elder Scrolls 6 set?",
+    "narration": "The Elder Scrolls 6's teaser hides a date, not a release date. Bethesda revealed the name, Sentinel, with nothing on when you can play it. The teaser is short. An Elder Scroll rises out of desert sand. Then a lore note appears, addressed to High Queen Iradne of Hammerfell. Sentinel is a city in Hammerfell, the desert province fans have wanted for years, though Bethesda still hasn't confirmed the setting. The note carries a date: 4E 206. Skyrim takes place in 4E 201. So the next Elder Scrolls is set five years after Skyrim. I think that's the best news in the teaser. Five years is recent enough for Skyrim's world to still matter.",
+    "answer": "4E 206, five years after Skyrim",
+    "facts_used": [
+     "teaser: Elder Scroll from desert sand",
+     "lore note to High Queen Iradne of Hammerfell",
+     "Sentinel is a Hammerfell city; setting implied not stated",
+     "note dated 4E 206; Skyrim 4E 201"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S09",
+  "kill": false,
+  "kill_reason": "",
+  "point": "Blizzard said no to WoW Classic for years and changed course after a fan server it shut down proved the demand and handed over its code.",
+  "angles": [
+   "What changed Blizzard's mind? Answer: Nostalrius, a fan server with 150,000 active players that Blizzard shut, then met and got code from (reported). Stops: the man who said no announced it. Line: J. Allen Brack rejected World of Warcraft Classic, then announced it.",
+   "Why did Blizzard meet the team it shut down? Answer: Nostalrius shared its code (reported). Stops: shut them down, then sat down with them. Line: Blizzard shut a World of Warcraft fan server, then met its team.",
+   "Blizzard says it was technical, not stubbornness: true? Answer: discussed for years but blocked (reported). Weaker, no concrete reveal.",
+   "Did fans really want it? Answer: Classic won PC Game of the Year 2019 (confirmed). Line: Blizzard told fans they didn't want old WoW. It won Game of the Year."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Why Blizzard made WoW Classic after saying no",
+    "narration": "J. Allen Brack rejected World of Warcraft Classic, then announced it. At BlizzCon 2013, fans asked for the original game back, and his answer is still quoted: \"You think you do, but you don't.\" Four years later, he unveiled it. Blizzard's stated reasons for the wait were the cost of running two MMOs at once, and technical problems. Neither explains the change of heart. What happened in between was a fan server. Nostalrius ran the original game unofficially, with 150,000 active players. Blizzard shut it down in 2016. Then Blizzard met the Nostalrius team, and they shared their code. I think fans built Classic before Blizzard did. You think you do. Turns out they did.",
+    "answer": "Nostalrius, the fan server Blizzard shut and then met",
+    "facts_used": [
+     "Brack 2013 quote (widely repeated)",
+     "announced BlizzCon 2017",
+     "cost of two MMOs; technical problems",
+     "Nostalrius 150,000 active, shut April 2016",
+     "petition 200,000+",
+     "Blizzard met team, code shared"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(iii) open on the quote, who said it, why strange, reveal",
+    "title": "Blizzard told WoW fans they were wrong",
+    "narration": "Blizzard told WoW fans, \"You think you do, but you don't.\" That was J. Allen Brack, then World of Warcraft's production director, at BlizzCon 2013, to fans asking for the original game. Strange thing to say, because four years later Brack announced exactly that: WoW Classic. Blizzard says the blocker was cost and tech. But something else happened in between. Fans built it themselves. An unofficial server called Nostalrius had 150,000 active players when Blizzard shut it down in April 2016. Over 200,000 people signed a petition. Blizzard then met the Nostalrius team, who handed over their code. I think that's what changed Brack's mind. Classic won PC Game of the Year in 2019. They did.",
+    "answer": "a shut-down fan server with 150,000 players",
+    "facts_used": [
+     "Brack 2013 quote",
+     "announced 2017",
+     "cost and technical blockers",
+     "Nostalrius 800,000 accounts, 150,000 active, shut April 2016",
+     "petition 200,000+",
+     "Blizzard met team, code",
+     "Golden Joysticks PC GOTY 2019"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(iv) tiny story: wanted, obstacle, turn, outcome",
+    "title": "The WoW fan server Blizzard shut, then needed",
+    "narration": "Blizzard shut a World of Warcraft fan server, then met its team. The server was Nostalrius. Its players wanted the original WoW, the one later expansions had changed, and Blizzard wouldn't run it. So they ran it themselves, unofficially, and drew 150,000 active players. In April 2016, a Blizzard cease and desist ended it. Instead, a petition passed 200,000 signatures, and ex-WoW team lead Mark Kern delivered it to Blizzard's president, Mike Morhaime. Then came the turn. Blizzard met the Nostalrius team, and they shared their code. A year and a half later, Blizzard announced WoW Classic. I think Blizzard owes that server more than it ever admitted. It shut down the prototype.",
+    "answer": "Nostalrius handed Blizzard its code",
+    "facts_used": [
+     "Nostalrius 150,000 active",
+     "cease and desist 10 April 2016",
+     "petition 200,000+, Mark Kern to Mike Morhaime",
+     "Blizzard met team, code shared",
+     "announced Nov 2017"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S10",
+  "kill": false,
+  "kill_reason": "",
+  "point": "Warhammer Survivors looks like a cheap knock-off, but it was made with poncle, the studio behind Vampire Survivors.",
+  "angles": [
+   "Isn't it just a Vampire Survivors knock-off? Answer: made with poncle itself (confirmed, press release). Stops: a copy made by the original. Line: Warhammer Survivors looks like a Vampire Survivors knock-off for eight dollars.",
+   "Why is there a paint pot hidden in it? Answer: a stage is a miniature-painting desk with a Nuln Oil easter egg (reported). Line: Warhammer Survivors has a level set on a miniature-painting desk.",
+   "Is it worth $8 if you have Game Pass? Answer: day one on Game Pass (confirmed). Weak, no surprise.",
+   "Reviews split 80 vs 2.5 out of 5: who's right? Answer: opinion only. Line: Warhammer Survivors got an 80 and a 2.5 out of 5."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Is Warhammer Survivors just a cheap copy?",
+    "narration": "Warhammer Survivors looks like a Vampire Survivors knock-off for eight dollars. It borrows half the name, in a genre packed with copies. The studio, Auroch Digital, is known for a Warhammer shooter, Boltgun, whose hero Malum Caedo is playable here. PC Gamer gave it 80, and said \"It's more than Vampire Survivors with Space Marines.\" GamingOnLinux gave it 2.5 out of 5. So is it a copy? Check the credits. Auroch made it with poncle, the studio that made Vampire Survivors. I think that makes it the one licensed Survivors game worth $8. On Game Pass, it costs you nothing extra. The knock-off was made with the people it would be knocking off.",
+    "answer": "it was made with poncle, Vampire Survivors' studio",
+    "facts_used": [
+     "$7.99 ($7.19 launch week)",
+     "Auroch Digital, Boltgun; Malum Caedo playable",
+     "PC Gamer 80 + quote",
+     "GamingOnLinux 2.5/5",
+     "made with poncle",
+     "day one Game Pass"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(iii) open on the quote, who said it, why strange, reveal",
+    "title": "Warhammer Survivors, more than a reskin?",
+    "narration": "PC Gamer calls Warhammer Survivors more than Vampire Survivors with Space Marines. That's a high bar for an eight dollar game with Survivors in its name. Plenty of this genre is a famous formula in new skins. GamingOnLinux gave it 2.5 out of 5. Pocket Gamer said it has \"the heart, but not the spark.\" So why did PC Gamer, at 80, see more? Look at who made it. Auroch Digital built it together with poncle, the studio behind Vampire Survivors. It isn't borrowing the formula. The formula's owners are in the room. I think that's why it's worth $8. A reskin by the original painter is still the original.",
+    "answer": "co-made with poncle, the Vampire Survivors studio",
+    "facts_used": [
+     "PC Gamer 80 + 'more than' line",
+     "GamingOnLinux 2.5/5",
+     "Pocket Gamer 'heart, but not the spark'",
+     "Auroch Digital with poncle",
+     "$7.99; Game Pass"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "Warhammer Survivors hides a painter's secret",
+    "narration": "Warhammer Survivors has a level set on a miniature-painting desk. That's an odd place for a game about Space Marines fighting endless swarms. And the desk isn't just scenery. There's something hidden on it. A pot of Nuln Oil paint is tucked into the stage as an easter egg. Anyone who paints Warhammer models will recognize the name before the waves start. The game has over 40 characters and over 75 weapons, and that pot might be the detail fans talk about most. I think it's the moment the game stops feeling like a reskin. Someone on the team has painted a model or two. The desk is the tell.",
+    "answer": "a hidden pot of Nuln Oil paint",
+    "facts_used": [
+     "miniature-painting desk stage",
+     "Nuln Oil easter egg",
+     "40+ characters, 75+ weapons"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S11",
+  "kill": false,
+  "kill_reason": "",
+  "point": "GTA 6 unlocks in New Zealand about 18 hours before the US East Coast, and Xbox players can reportedly use that gap while PS5 players can't.",
+  "angles": [
+   "Can US players get in before the US unlock? Answer: Xbox players can reportedly switch region to New Zealand; PSN blocks it (MP1st, reported). Stops: an 18-hour gap. Line: GTA 6 unlocks in New Zealand about 18 hours before New York.",
+   "How much of a Series S does GTA 6 eat? Answer: almost 60% of usable space (fan-site figure). Line: GTA 6 needs up to 212GB, and one console feels it most.",
+   "Why did Xbox pre-load start before PS5? Answer: one global clock vs local midnight (confirmed). Time-bound, a day's shelf life.",
+   "Thin-pack flag: service news; the New Zealand head start is the only lasting hook."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "GTA 6 starts in New Zealand first",
+    "narration": "GTA 6 unlocks in New Zealand about 18 hours before New York. PlayStation Store listings showed regional midnight unlocks, New Zealand first and the Americas last. So US players wait the longest on every console, right? Not quite. Xbox already broke the pattern once. Its pre-loads opened on one global clock, midnight GMT, which was 7 p.m. Eastern the night before. PS5 waited for local midnight. And at launch, MP1st reports, Xbox players can switch their console's region to New Zealand and start early. PlayStation blocks that, because PSN accounts are tied to their home country. I think that's the best perk Xbox has had all year. For one night, an Xbox in Ohio can live in Auckland.",
+    "answer": "Xbox players can reportedly switch region to New Zealand",
+    "facts_used": [
+     "NZ about 18 hours before US East Coast (MP1st)",
+     "regional midnight unlocks, Americas last",
+     "Xbox pre-load midnight GMT = 7pm ET",
+     "PS5 local midnight",
+     "Xbox region switch reportedly works; PSN tied to country"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(v) news in the hook, hold back the how",
+    "title": "How Xbox players can start GTA 6 early",
+    "narration": "US Xbox players can reportedly start GTA 6 before PS5 players. It isn't early access. Rockstar only offers pre-loads, and the game unlocks at midnight, region by region. That schedule hurts Americans. PlayStation Store listings put New Zealand first and the Americas last, about 18 hours apart from New Zealand to the East Coast. The trick is in that gap. MP1st reports that Xbox players can switch their console's region to New Zealand and play when Auckland does. PS5 players can't, because PSN accounts are locked to their home country. You'll still need up to 212GB free. I think that's the cleverest head start of the launch. Your Xbox just needs a night in New Zealand.",
+    "answer": "switch the Xbox region to New Zealand (reported)",
+    "facts_used": [
+     "no early access, pre-load only",
+     "regional midnight unlocks, NZ first, Americas last",
+     "about 18 hours NZ to East Coast",
+     "MP1st Xbox region switch; PSN tied to country",
+     "up to 212GB"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(ii) cold fact, the odd part, escalate, reveal",
+    "title": "GTA 6's 212GB and the Series S",
+    "narration": "GTA 6 needs up to 212GB, and one console feels it most. Rockstar's advice was simple: \"make sure you've got ample space.\" On a PS5 or a Series X, that's a big game. On a Series S, it's something else. The 512GB model doesn't give you 512 to use. A fan-site breakdown puts the usable space at about 364GB. Rockstar did open pre-loads nine days before launch, earlier than first announced, so there's time to clear room. Do the math, though. GTA 6 alone takes almost 60% of a Series S, before a single other game. I think that's a fair price for a 2026 open world. Just know your Series S is now mostly Leonida.",
+    "answer": "almost 60% of a Series S's usable space",
+    "facts_used": [
+     "up to 212GB",
+     "Rockstar 'ample space' quote",
+     "512GB Series S about 364GB usable (fan-site)",
+     "pre-load nine days early",
+     "almost 60%"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "S12",
+  "kill": false,
+  "kill_reason": "",
+  "point": "Young Maylay won CJ in GTA San Andreas through a call he didn't know was an audition, kept secret so he'd sound natural.",
+  "angles": [
+   "Why would DJ Pooh hide an audition from the person auditioning? Answer: so Maylay would talk naturally, not perform (Maylay, 2026 interview; reported). Stops: a secret audition. Line: Young Maylay auditioned for GTA San Andreas without knowing it.",
+   "Was CJ's actor underpaid? He once called Rockstar 'culture vultures', now says the pay story is false and he got bonuses (his own account). Stops: two statements that clash. Line: CJ's voice actor once called Rockstar 'culture vultures.'",
+   "What do CJ and Franklin share? Their actors are cousins, both steered to Rockstar by DJ Pooh (reported). Line: GTA's CJ and Franklin share more than a neighborhood.",
+   "Why doesn't CJ look like his actor? The model was finished before casting (reported). Line: CJ in GTA San Andreas doesn't have his actor's face."
+  ],
+  "candidates": [
+   {
+    "id": "A",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "How GTA San Andreas secretly auditioned CJ",
+    "narration": "Young Maylay auditioned for GTA San Andreas without knowing it. He was on a call with DJ Pooh, the game's co-writer, and Rockstar staff were listening on speakerphone. Pooh never told him. Why hide an audition from the person auditioning? It wasn't the only test. Rockstar had him do a proper audition afterward, and chose him from the tapes. Wikipedia says Dan Houser was in that meeting. Maylay explained the trick in a 2026 interview. Pooh kept the speakerphone secret on purpose, so he'd talk naturally instead of performing. I think that's why CJ still sounds like a real guy, not an actor doing one. CJ doesn't even have Maylay's face. Everything of his came through that phone.",
+    "answer": "so he'd talk naturally instead of performing",
+    "facts_used": [
+     "DJ Pooh co-writer; speakerphone call; Rockstar staff listening",
+     "later audition, chosen from tapes",
+     "Dan Houser in the meeting (Wikipedia)",
+     "2026 interview: secret kept so he'd act naturally",
+     "CJ model finished before casting"
+    ]
+   },
+   {
+    "id": "B",
+    "structure": "(iv) tiny story: wanted, obstacle, turn, outcome",
+    "title": "The phone call that cast San Andreas's CJ",
+    "narration": "GTA San Andreas found its CJ on a call that seemed casual. Young Maylay was talking with DJ Pooh, the game's co-writer. What he didn't know was that the phone was on speaker, and Rockstar staff were listening. Rockstar had a problem every casting director knows. Tell someone it's an audition, and they start performing. Rockstar wanted to hear how he actually talks. So Pooh said nothing, on purpose, Maylay explained in a 2026 interview. A real audition came later, and Rockstar picked him from the tapes. I think the secret call is why CJ worked. CJ's model was finished before Maylay was cast. The voice had to carry everything.",
+    "answer": "Pooh kept the speakerphone secret on purpose",
+    "facts_used": [
+     "call with DJ Pooh; Rockstar staff listening",
+     "Dan Houser present (Wikipedia)",
+     "why: hear him talk naturally (2026 interview)",
+     "later audition, chosen from tapes",
+     "CJ model finished before casting"
+    ]
+   },
+   {
+    "id": "C",
+    "structure": "(i) contradiction, rule out, reveal, verdict",
+    "title": "Was GTA San Andreas's CJ underpaid?",
+    "narration": "CJ's voice actor once called Rockstar \"culture vultures.\" For years, fans read that as proof Rockstar had underpaid Young Maylay for GTA San Andreas. It fit a pattern people already believed. Michael Hollick, who voiced Niko Bellic in GTA IV, reportedly got about $100,000 flat for 15 months. Then, this month, Maylay went on Ned Luke's show, The Final Mission, and said the pay story was false. He knew the terms when he signed. And Rockstar sent him bonuses after launch that he didn't expect. I'll take his word over the internet's. He's the one who signed the contract. Whatever \"culture vultures\" meant, by his own account it wasn't about the paycheck.",
+    "answer": "Maylay says the pay story is false and Rockstar sent bonuses",
+    "facts_used": [
+     "'culture vultures' 2020-21",
+     "Hollick about $100,000 for 15 months (reported)",
+     "Nov 2026 Final Mission: pay claims untrue",
+     "knew terms; unexpected bonuses"
+    ]
+   }
+  ]
+ }
+]

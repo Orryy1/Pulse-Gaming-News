@@ -1,0 +1,428 @@
+[
+ {
+  "code": "V01",
+  "src": "room4",
+  "ref": "S08",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "do the math: two clocks years apart",
+  "ending": "consequence",
+  "words": 73
+ },
+ {
+  "code": "V02",
+  "src": "anchor_rewrite",
+  "ref": "S24",
+  "r2overall": 7.5,
+  "r3overall": 5.0,
+  "words": 103
+ },
+ {
+  "code": "V03",
+  "src": "room4",
+  "ref": "S13",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "blunt opinion up front, then proven",
+  "ending": "dry line",
+  "words": 84
+ },
+ {
+  "code": "V04",
+  "src": "room4",
+  "ref": "S14",
+  "drop": false,
+  "r3overall": 6.5,
+  "form": "tiny story with a person in it",
+  "ending": "consequence",
+  "words": 95
+ },
+ {
+  "code": "V05",
+  "src": "room4",
+  "ref": "S22",
+  "drop": false,
+  "r3overall": 5.5,
+  "form": "practical buying advice, straight",
+  "ending": "consequence",
+  "words": 76
+ },
+ {
+  "code": "V06",
+  "src": "anchor_rewrite",
+  "ref": "S13",
+  "r2overall": 6.5,
+  "r3overall": 5.0,
+  "words": 88
+ },
+ {
+  "code": "V07",
+  "src": "anchor_human",
+  "ref": "SKCrY8LBR5s",
+  "r2overall": 5.0,
+  "r3overall": 5.0,
+  "words": 229
+ },
+ {
+  "code": "V08",
+  "src": "anchor_human",
+  "ref": "u9WodhQNsyw",
+  "r2overall": 5.5,
+  "r3overall": 6.0,
+  "words": 173
+ },
+ {
+  "code": "V09",
+  "src": "room4",
+  "ref": "S12",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "a question the narrator asks, then answers",
+  "ending": "consequence",
+  "words": 89
+ },
+ {
+  "code": "V10",
+  "src": "room4",
+  "ref": "S24",
+  "drop": true,
+  "r3overall": 6.0,
+  "form": "odd detail that turns useful",
+  "ending": "consequence",
+  "words": 75
+ },
+ {
+  "code": "V11",
+  "src": "anchor_room3",
+  "ref": "S09",
+  "r3overall": 7.0,
+  "words": 112
+ },
+ {
+  "code": "V12",
+  "src": "anchor_human",
+  "ref": "6nf3JTMo8To",
+  "r2overall": 7.0,
+  "r3overall": 7.0,
+  "words": 195
+ },
+ {
+  "code": "V13",
+  "src": "anchor_original",
+  "ref": "S13",
+  "r2overall": 4.5,
+  "r3overall": 2.5,
+  "words": 84
+ },
+ {
+  "code": "V14",
+  "src": "room4",
+  "ref": "S15",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "one quoted word held up to the light",
+  "ending": "consequence",
+  "words": 80
+ },
+ {
+  "code": "V15",
+  "src": "room4",
+  "ref": "S04",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "wait, hear that again, on one detail",
+  "ending": "dry line",
+  "words": 68
+ },
+ {
+  "code": "V16",
+  "src": "room4",
+  "ref": "S06",
+  "drop": true,
+  "r3overall": 7.0,
+  "form": "friend's tech tip: problem, cause, fix",
+  "ending": "consequence",
+  "words": 84
+ },
+ {
+  "code": "V17",
+  "src": "anchor_rewrite",
+  "ref": "S03",
+  "r2overall": 7.5,
+  "r3overall": 7.0,
+  "words": 109
+ },
+ {
+  "code": "V18",
+  "src": "anchor_original",
+  "ref": "S06",
+  "r2overall": 5.5,
+  "r3overall": 5.0,
+  "words": 97
+ },
+ {
+  "code": "V19",
+  "src": "anchor_room3",
+  "ref": "S22",
+  "r3overall": 5.5,
+  "words": 104
+ },
+ {
+  "code": "V20",
+  "src": "room4",
+  "ref": "S02",
+  "drop": false,
+  "r3overall": 6.5,
+  "form": "build to a quote, stop on the quote",
+  "ending": "reveal",
+  "words": 70
+ },
+ {
+  "code": "V21",
+  "src": "anchor_rewrite",
+  "ref": "S21",
+  "r2overall": 7.0,
+  "r3overall": 6.0,
+  "words": 111
+ },
+ {
+  "code": "V22",
+  "src": "room4",
+  "ref": "S19",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "second-person walk-through of one moment",
+  "ending": "consequence",
+  "words": 81
+ },
+ {
+  "code": "V23",
+  "src": "room4",
+  "ref": "S23",
+  "drop": false,
+  "r3overall": 6.5,
+  "form": "correcting the backlash",
+  "ending": "verdict",
+  "words": 80
+ },
+ {
+  "code": "V24",
+  "src": "anchor_original",
+  "ref": "S24",
+  "r2overall": 2.0,
+  "r3overall": 2.0,
+  "words": 90
+ },
+ {
+  "code": "V25",
+  "src": "room4",
+  "ref": "S07",
+  "drop": true,
+  "r3overall": 6.5,
+  "form": "player consequence first, one raised eyebrow",
+  "ending": "reveal",
+  "words": 78
+ },
+ {
+  "code": "V26",
+  "src": "room4",
+  "ref": "S18",
+  "drop": true,
+  "r3overall": 6.5,
+  "form": "straight account told in order",
+  "ending": "dry line",
+  "words": 87
+ },
+ {
+  "code": "V27",
+  "src": "room4",
+  "ref": "S05",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "straight 'what nobody mentions', told in order",
+  "ending": "verdict",
+  "words": 86
+ },
+ {
+  "code": "V28",
+  "src": "room4",
+  "ref": "S16",
+  "drop": true,
+  "r3overall": 6.5,
+  "form": "a question the narrator asks and answers",
+  "ending": "reveal",
+  "words": 60
+ },
+ {
+  "code": "V29",
+  "src": "anchor_human",
+  "ref": "NBkoA3PzxME",
+  "r2overall": 3.0,
+  "r3overall": 2.5,
+  "words": 263
+ },
+ {
+  "code": "V30",
+  "src": "anchor_rewrite",
+  "ref": "S05",
+  "r2overall": 7.0,
+  "r3overall": 6.0,
+  "words": 95
+ },
+ {
+  "code": "V31",
+  "src": "anchor_room3",
+  "ref": "S20",
+  "r3overall": 8.0,
+  "words": 102
+ },
+ {
+  "code": "V32",
+  "src": "anchor_rewrite",
+  "ref": "S16",
+  "r2overall": 5.0,
+  "r3overall": 4.5,
+  "words": 86
+ },
+ {
+  "code": "V33",
+  "src": "room4",
+  "ref": "S09",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "tiny story with a person in it, in order",
+  "ending": "dry line",
+  "words": 87
+ },
+ {
+  "code": "V34",
+  "src": "anchor_room3",
+  "ref": "S04",
+  "r3overall": 7.5,
+  "words": 114
+ },
+ {
+  "code": "V35",
+  "src": "anchor_original",
+  "ref": "S10",
+  "r2overall": 3.5,
+  "r3overall": 2.5,
+  "words": 80
+ },
+ {
+  "code": "V36",
+  "src": "anchor_human",
+  "ref": "WbdQeNP4Kuk",
+  "r2overall": 4.0,
+  "r3overall": 2.5,
+  "words": 243
+ },
+ {
+  "code": "V37",
+  "src": "room4",
+  "ref": "S20",
+  "drop": false,
+  "r3overall": 8.0,
+  "form": "how we know is the hook",
+  "ending": "dry line",
+  "words": 64
+ },
+ {
+  "code": "V38",
+  "src": "room4",
+  "ref": "S17",
+  "drop": false,
+  "r3overall": 6.5,
+  "form": "spot the changed wording",
+  "ending": "dry line",
+  "words": 69
+ },
+ {
+  "code": "V39",
+  "src": "anchor_rewrite",
+  "ref": "S08",
+  "r2overall": 6.5,
+  "r3overall": 6.5,
+  "words": 102
+ },
+ {
+  "code": "V40",
+  "src": "anchor_room3",
+  "ref": "S19",
+  "r3overall": 7.0,
+  "words": 109
+ },
+ {
+  "code": "V41",
+  "src": "anchor_human",
+  "ref": "ohlsvOlO9VI",
+  "r2overall": 7.5,
+  "r3overall": 6.0,
+  "words": 197
+ },
+ {
+  "code": "V42",
+  "src": "room4",
+  "ref": "S01",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "blunt opinion up front, then proven",
+  "ending": "dry line",
+  "words": 69
+ },
+ {
+  "code": "V43",
+  "src": "anchor_rewrite",
+  "ref": "S15",
+  "r2overall": 7.5,
+  "r3overall": 6.5,
+  "words": 100
+ },
+ {
+  "code": "V44",
+  "src": "anchor_room3",
+  "ref": "S07",
+  "r3overall": 6.5,
+  "words": 112
+ },
+ {
+  "code": "V45",
+  "src": "room4",
+  "ref": "S21",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "misleading number re-measured",
+  "ending": "verdict",
+  "words": 83
+ },
+ {
+  "code": "V46",
+  "src": "room4",
+  "ref": "S11",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "practical how-to, said like a friend",
+  "ending": "dry line",
+  "words": 71
+ },
+ {
+  "code": "V47",
+  "src": "room4",
+  "ref": "S10",
+  "drop": false,
+  "r3overall": 7.5,
+  "form": "single contradiction left hanging to the last line",
+  "ending": "reveal",
+  "words": 57
+ },
+ {
+  "code": "V48",
+  "src": "room4",
+  "ref": "S03",
+  "drop": false,
+  "r3overall": 7.0,
+  "form": "consequence-first comparison, told in order",
+  "ending": "consequence",
+  "words": 87
+ }
+]

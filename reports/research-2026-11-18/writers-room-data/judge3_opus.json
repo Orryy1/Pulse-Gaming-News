@@ -1,0 +1,422 @@
+[
+{
+"code": "U01",
+"clarity": 3,
+"hook": 6,
+"payoff": 4,
+"voice": 4,
+"human": 6,
+"overall": 3,
+"note": "A tangled lore dump that jumps between games and tribes, so the single point gets lost on one listen."
+},
+{
+"code": "U02",
+"clarity": 4,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 5,
+"overall": 5,
+"note": "The middle is confusing (what was banned, which workaround got sent back), so the clever reveal doesn't land."
+},
+{
+"code": "U03",
+"clarity": 8,
+"hook": 7,
+"payoff": 5,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "Gives the name away in line two, and the 'A name, a province and no date' recap ending is formulaic."
+},
+{
+"code": "U04",
+"clarity": 6,
+"hook": 6,
+"payoff": 7,
+"voice": 7,
+"human": 6,
+"overall": 6,
+"note": "The opening line is awkward and reads like a contradiction until the explanation comes."
+},
+{
+"code": "U05",
+"clarity": 7,
+"hook": 6,
+"payoff": 5,
+"voice": 7,
+"human": 6,
+"overall": 6,
+"note": "The PS5 comparison arrives late and loose, and the closing quip feels tacked on."
+},
+{
+"code": "U06",
+"clarity": 6,
+"hook": 8,
+"payoff": 6,
+"voice": 7,
+"human": 6,
+"overall": 7,
+"note": "Too many review scores (96, 94, 99) crowd the middle before the real point."
+},
+{
+"code": "U07",
+"clarity": 8,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 7,
+"overall": 7,
+"note": "The software-sales payoff is solid but predictable once the launch-rush comparison comes up."
+},
+{
+"code": "U08",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 6,
+"human": 5,
+"overall": 7,
+"note": "Repeating the full game title is an AI tell, and the 'nobody told him to act' ending ignores his later formal audition."
+},
+{
+"code": "U09",
+"clarity": 5,
+"hook": 5,
+"payoff": 2,
+"voice": 3,
+"human": 2,
+"overall": 2,
+"note": "Filler quips ('really into multitasking', 'My Pulse check?', 'hog a slot') and nothing held back."
+},
+{
+"code": "U10",
+"clarity": 7,
+"hook": 7,
+"payoff": 4,
+"voice": 5,
+"human": 5,
+"overall": 5,
+"note": "Gives the fix straight away and ends on a confusing line about the patch 'coming back for your drive'."
+},
+{
+"code": "U11",
+"clarity": 7,
+"hook": 7,
+"payoff": 8,
+"voice": 7,
+"human": 6,
+"overall": 7,
+"note": "The 'doesn't explain a calm boss' link is a bit stiff, but the quote pays off well."
+},
+{
+"code": "U12",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 6,
+"overall": 7,
+"note": "The final line overstates things ('never count as sales') and loses some credibility."
+},
+{
+"code": "U13",
+"clarity": 3,
+"hook": 3,
+"payoff": 2,
+"voice": 3,
+"human": 2,
+"overall": 2,
+"note": "Choppy, disconnected facts with a royal 'we' and a try-hard closing line."
+},
+{
+"code": "U14",
+"clarity": 7,
+"hook": 8,
+"payoff": 8,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "The 'hides a date, but not a release date' hook is a little coy, and the setup runs long before the payoff."
+},
+{
+"code": "U15",
+"clarity": 6,
+"hook": 7,
+"payoff": 7,
+"voice": 6,
+"human": 5,
+"overall": 6,
+"note": "Repeating the full game name and the set-up-to-knock-down structure ('It sounds like... The dates say otherwise') feel formulaic."
+},
+{
+"code": "U16",
+"clarity": 8,
+"hook": 6,
+"payoff": 3,
+"voice": 6,
+"human": 6,
+"overall": 5,
+"note": "Clean, but there's no reveal: it just restates the board's quote and says don't panic."
+},
+{
+"code": "U17",
+"clarity": 5,
+"hook": 7,
+"payoff": 6,
+"voice": 6,
+"human": 5,
+"overall": 5,
+"note": "The key twist (the disc model's box holds only a code) is hard to follow on one listen."
+},
+{
+"code": "U18",
+"clarity": 7,
+"hook": 7,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "Leans heavily on 'reportedly', and the payoff is a non-answer."
+},
+{
+"code": "U19",
+"clarity": 6,
+"hook": 7,
+"payoff": 7,
+"voice": 7,
+"human": 6,
+"overall": 7,
+"note": "'From his gun to her steering wheel' is unclear, and the quote's sexism angle is brushed past."
+},
+{
+"code": "U20",
+"clarity": 7,
+"hook": 8,
+"payoff": 8,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "Using the full game name in the middle and the 'You'd assume...' setup feel templated."
+},
+{
+"code": "U21",
+"clarity": 7,
+"hook": 6,
+"payoff": 5,
+"voice": 7,
+"human": 6,
+"overall": 6,
+"note": "Answers its own question with a flat 'not where it counts', so the tension is gone early."
+},
+{
+"code": "U22",
+"clarity": 6,
+"hook": 7,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The payoff is a vague fragment about an unnamed game, so the mystery fizzles."
+},
+{
+"code": "U23",
+"clarity": 7,
+"hook": 7,
+"payoff": 7,
+"voice": 6,
+"human": 5,
+"overall": 6,
+"note": "Draws out the Master Quest reveal artificially, with stiff full-title phrasing."
+},
+{
+"code": "U24",
+"clarity": 4,
+"hook": 2,
+"payoff": 3,
+"voice": 8,
+"human": 9,
+"overall": 3,
+"note": "A rambling, repetitive rant clip with no hook and lots of filler."
+},
+{
+"code": "U25",
+"clarity": 7,
+"hook": 8,
+"payoff": 7,
+"voice": 6,
+"human": 5,
+"overall": 7,
+"note": "The setup ('It isn't early access...you'd assume you're stuck') pads before the New Zealand trick."
+},
+{
+"code": "U26",
+"clarity": 7,
+"hook": 7,
+"payoff": 8,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "The reviews-split line is filler, and the ending verdict is a bit salesy."
+},
+{
+"code": "U27",
+"clarity": 6,
+"hook": 8,
+"payoff": 7,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "The timeline is muddled ('announced Classic. Blizzard blamed cost. But something happened in between')."
+},
+{
+"code": "U28",
+"clarity": 7,
+"hook": 8,
+"payoff": 6,
+"voice": 8,
+"human": 8,
+"overall": 7,
+"note": "The anecdote runs long, and it ends on a subscribe plug."
+},
+{
+"code": "U29",
+"clarity": 7,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The base-PS5 reveal is a small payoff for this much setup."
+},
+{
+"code": "U30",
+"clarity": 7,
+"hook": 8,
+"payoff": 8,
+"voice": 6,
+"human": 6,
+"overall": 7,
+"note": "'It's much bolder than that' is a stock connective that delays the payoff."
+},
+{
+"code": "U31",
+"clarity": 7,
+"hook": 5,
+"payoff": 5,
+"voice": 5,
+"human": 6,
+"overall": 5,
+"note": "Reads like a search-intent help page more than a story with a point."
+},
+{
+"code": "U32",
+"clarity": 7,
+"hook": 7,
+"payoff": 5,
+"voice": 6,
+"human": 8,
+"overall": 6,
+"note": "A list of examples with no build, so it just stops instead of paying off."
+},
+{
+"code": "U33",
+"clarity": 6,
+"hook": 8,
+"payoff": 7,
+"voice": 7,
+"human": 8,
+"overall": 7,
+"note": "The strawberry maths in the opening is garbled and hard to follow."
+},
+{
+"code": "U34",
+"clarity": 7,
+"hook": 8,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The quote about hotwiring breaks the flow between the setup and the tracker catch."
+},
+{
+"code": "U35",
+"clarity": 6,
+"hook": 5,
+"payoff": 3,
+"voice": 5,
+"human": 4,
+"overall": 4,
+"note": "A thin announcement with a try-hard closing line ('Legacy has to earn the evenings')."
+},
+{
+"code": "U36",
+"clarity": 6,
+"hook": 7,
+"payoff": 5,
+"voice": 5,
+"human": 5,
+"overall": 5,
+"note": "Forces a link between the documentary and the petition, and ends on a writerly flourish."
+},
+{
+"code": "U37",
+"clarity": 6,
+"hook": 6,
+"payoff": 7,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "Too many threads (no reason given, AI fears, the finance chief, memory) before the real point."
+},
+{
+"code": "U38",
+"clarity": 7,
+"hook": 7,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The Square Enix praise feels bolted on, and the fix arrives as an afterthought."
+},
+{
+"code": "U39",
+"clarity": 4,
+"hook": 2,
+"payoff": 1,
+"voice": 2,
+"human": 2,
+"overall": 1,
+"note": "Robotic, repetitive instructions with a 'My verdict:' tag and no story at all."
+},
+{
+"code": "U40",
+"clarity": 7,
+"hook": 6,
+"payoff": 6,
+"voice": 6,
+"human": 6,
+"overall": 6,
+"note": "The 'does it finally say when?' question has an obvious answer, so the reveal is flat."
+},
+{
+"code": "U41",
+"clarity": 7,
+"hook": 8,
+"payoff": 8,
+"voice": 7,
+"human": 7,
+"overall": 8,
+"note": "The tribunal backstory is a little long-winded before the 32-player reveal."
+},
+{
+"code": "U42",
+"clarity": 7,
+"hook": 7,
+"payoff": 6,
+"voice": 7,
+"human": 8,
+"overall": 7,
+"note": "A list structure with a weak final example rather than a real climax."
+}
+]

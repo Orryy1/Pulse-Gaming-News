@@ -1,0 +1,857 @@
+[
+ {
+  "code": "S01",
+  "what_happened": "On 6 July 2026 Xbox laid off roughly half of id Software, including much of the id Tech engine team, as part of about 3,200 Xbox cuts. Around 31 October 2026, at a press event for Doom: The Dark Ages - Revelations, co-director Marty Stratton told IGN that id is working more closely with Wolfenstein studio MachineGames than ever.",
+  "the_why": "Stratton's stated reason: the joint work is on technology and engineering and 'had started pre-[layoffs]' (IGN via GamingBolt). His wider line is that id stays 'all in on id Tech' rather than moving to Unreal (Windows Central via Shacknews, Aug 2026). The cuts themselves: Bethesda president Jill Braff's memo said Microsoft is moving to a model that 'focuses on our strongest franchises' (via Kotaku). A Wolfenstein 3 co-development is speculation only.",
+  "quotes": [
+   {
+    "text": "We're working more closely with MachineGames than ever.",
+    "speaker": "Marty Stratton",
+    "role": "id Software co-director",
+    "outlet": "IGN (relayed by GamingBolt)",
+    "url": "https://gamingbolt.com/?p=656103"
+   },
+   {
+    "text": "We're both really, really bullish on what we have ahead.",
+    "speaker": "Marty Stratton",
+    "role": "id Software co-director",
+    "outlet": "IGN (relayed by GamingBolt)",
+    "url": "https://gamingbolt.com/?p=656103"
+   },
+   {
+    "text": "There are dozens of people working on id Tech across multiple locations.",
+    "speaker": "Xbox spokesperson",
+    "role": "Microsoft",
+    "outlet": "Kotaku",
+    "url": "https://kotaku.com/the-cuts-at-doom-maker-id-software-go-shockingly-deep-i-dont-see-how-they-make-a-game-with-that-team-2000713860"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "about 185 full-time staff before; at least 92 cut, just over half",
+    "source": "GamesBeat",
+    "url": "https://gamesbeat.com/inside-a-studio-layoff-big-questions-for-microsofts-intentions-for-id-software/"
+   },
+   {
+    "figure": "96 laid off at the Richardson, Texas office plus 40 remote staff (Texas WARN notice: 158 across ZeniMax)",
+    "source": "Kotaku",
+    "url": "https://kotaku.com/the-cuts-at-doom-maker-id-software-go-shockingly-deep-i-dont-see-how-they-make-a-game-with-that-team-2000713860"
+   },
+   {
+    "figure": "Doom: The Dark Ages: over 3 million players via Game Pass, but an estimated 1 million copies sold at launch",
+    "source": "Kotaku",
+    "url": "https://kotaku.com/the-cuts-at-doom-maker-id-software-go-shockingly-deep-i-dont-see-how-they-make-a-game-with-that-team-2000713860"
+   },
+   {
+    "figure": "part of about 3,200 Xbox layoffs",
+    "source": "GamesBeat / Kotaku",
+    "url": "https://gamesbeat.com/inside-a-studio-layoff-big-questions-for-microsofts-intentions-for-id-software/"
+   }
+  ],
+  "surprise": "The layoffs hit the day before id shipped the Revelations expansion it had crunched on for months; Stratton told staff on Slack not to come in, and meeting invites followed an hour later (Kotaku). Stratton made the MachineGames comments while promoting that same DLC. GamesBeat also reported id staff were already being loaned to MachineGames' Wolfenstein 3 and Arkane's Blade.",
+  "stakes_for_player": "No game is announced from the pairing. If id engineers are feeding MachineGames, the next Wolfenstein (casting calls reported February 2026) is the likeliest beneficiary; a new id-led Doom or Quake looks further off, as GamesBeat reports no new id game greenlit and nobody left on Quake.",
+  "fan_argument": "Side A: with half its people and much of the engine team gone, id is a support studio now, whatever Stratton says (Kotaku headline source: 'I don't see how they make a game with that team'). Side B: id Tech plus MachineGames is Xbox's best shooter pairing, and Stratton says it began before the cuts. No forum thread link verified.",
+  "callback": "6 July 2026: Xbox's cuts hit id the day before Revelations launched; John Romero posted 'I know what it feels like to leave id while id goes on.'",
+  "best_questions": [
+   {
+    "q": "Are id and MachineGames making Wolfenstein 3 together?",
+    "a": "Unknown. Stratton described closer technology work only. Wolfenstein 3 itself is reported (casting calls, Windows Central) and GamesBeat reported id staff loans to it.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Is id dropping its own engine for Unreal?",
+    "a": "No. Stratton: 'We're all in on id Tech' and 'We're not moving to Unreal Engine' (Windows Central, Aug 2026). Microsoft says dozens still work on id Tech.",
+    "solidity": "confirmed"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://gamingbolt.com/?p=656103",
+   "https://www.ign.com/articles/xboxs-doom-wolfenstein-developers-working-more-closely-than-ever-following-xbox-reset-layoffs",
+   "https://www.pcgamer.com/games/fps/id-software-co-director-says-the-doom-developer-is-working-more-closely-with-machinegames-than-ever-after-xbox-laid-off-about-half-of-our-studio/",
+   "https://kotaku.com/the-cuts-at-doom-maker-id-software-go-shockingly-deep-i-dont-see-how-they-make-a-game-with-that-team-2000713860",
+   "https://gamesbeat.com/inside-a-studio-layoff-big-questions-for-microsofts-intentions-for-id-software/",
+   "https://www.shacknews.com/article/150423/marty-stratton-id-tech-statement?amphtml=1"
+  ],
+  "unverified": [
+   "'The cuts hit id's Frankfurt engine team': not supported. Kotaku says Frankfurt helps maintain the toolset and it was unclear whether it would be cut; reported engine cuts were in Texas.",
+   "IGN's Ryan McCaffrey speculating about Wolfenstein 3: not confirmed (IGN page could not be fetched).",
+   "Layoff headcounts vary by source (92 to 136); 'about half' is consistent."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S02",
+  "what_happened": "On 9 November 2026 Take-Two reported fiscal Q2 net bookings of $1.6 billion, down 18%, with NBA 2K27 selling about 4 million units but missing the company's internal forecast. CEO Strauss Zelnick said GTA 6 preorders were coming in 'far in excess' of expectations, ten days before its 19 November launch.",
+  "the_why": "Stated by the CEO himself, not just Polygon: Zelnick said the timing 'may have affected performance' and that GTA 6 coming 'has had an influence on the consumer', plus a crowded fall (Kotaku, 9 Nov; also Bloomberg and IGN). President Karl Slatoff said it is 'really hard to know exactly' why.",
+  "quotes": [
+   {
+    "text": "If your lunch is going to be eaten, I'd rather be the one eating it.",
+    "speaker": "Strauss Zelnick",
+    "role": "Take-Two CEO",
+    "outlet": "Bloomberg (via Insider Gaming)",
+    "url": "https://insider-gaming.com/nba-2k27-missed-sales-expectations/"
+   },
+   {
+    "text": "I do think that this timing may have affected performance so far.",
+    "speaker": "Strauss Zelnick",
+    "role": "Take-Two CEO",
+    "outlet": "Kotaku",
+    "url": "https://kotaku.com/nba-2k27-sold-less-than-expected-because-of-gta-6-2000755174"
+   },
+   {
+    "text": "tracking far above our initial expectations",
+    "speaker": "Strauss Zelnick",
+    "role": "Take-Two CEO",
+    "outlet": "Game Developer",
+    "url": "https://www.gamedeveloper.com/business/take-two-financials-are-steady-while-the-ceo-claims-that-grand-theft-auto-vi-pre-orders-are-exceeding-expectations"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "NBA 2K27: about 4 million units, still the franchise's second-best release",
+    "source": "Kotaku / Insider Gaming",
+    "url": "https://kotaku.com/nba-2k27-sold-less-than-expected-because-of-gta-6-2000755174"
+   },
+   {
+    "figure": "Q2 net bookings $1.6 billion, down 18% from almost $2 billion; about $50 million under Wall Street estimates",
+    "source": "Take-Two release / Insider Gaming",
+    "url": "https://seekingalpha.com/pr/20719548"
+   },
+   {
+    "figure": "recurrent consumer spending down 9%",
+    "source": "Take-Two release",
+    "url": "https://seekingalpha.com/pr/20719548"
+   },
+   {
+    "figure": "full-year net bookings guidance held at $8 billion to $8.2 billion",
+    "source": "Take-Two release",
+    "url": "https://seekingalpha.com/pr/20719548"
+   }
+  ],
+  "surprise": "Zelnick openly named his own biggest game as the cause and shrugged: 'If your lunch is going to be eaten, I'd rather be the one eating it.' Bloomberg also reported NBA 2K27 still outsold the other 2026 sports games despite missing its target.",
+  "stakes_for_player": "For 2K players, a missed target usually means earlier discounts and promotions; for GTA buyers, record preorders say nothing about quality, and preorders stay cancelable until launch. No price or access change from the report itself.",
+  "fan_argument": "Side A: 2K's slide is yearly sameness and VC monetisation, not GTA. Side B: anyone with $70 this fall was saving it for GTA 6, as Zelnick says. No forum thread link verified.",
+  "callback": "Earlier in 2026 Zelnick warned that GTA 6 preorders, while exceptional, remain cancelable, which is why Take-Two again refused to raise guidance.",
+  "best_questions": [
+   {
+    "q": "How far did NBA 2K27 miss?",
+    "a": "Not disclosed. Take-Two gave about 4 million units and said it was below forecast, without the target.",
+    "solidity": "confirmed (undisclosed)"
+   },
+   {
+    "q": "How many GTA 6 preorders are there?",
+    "a": "No number; only 'far in excess' and 'far above our initial expectations'. Guidance was not raised.",
+    "solidity": "confirmed"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://seekingalpha.com/pr/20719548",
+   "https://kotaku.com/nba-2k27-sold-less-than-expected-because-of-gta-6-2000755174",
+   "https://insider-gaming.com/nba-2k27-missed-sales-expectations/",
+   "https://www.gamedeveloper.com/business/take-two-financials-are-steady-while-the-ceo-claims-that-grand-theft-auto-vi-pre-orders-are-exceeding-expectations"
+  ],
+  "unverified": [
+   "The original framed the GTA cause as Polygon's suggestion; Zelnick said it himself. Polygon's article was not fetched.",
+   "Game Developer's '235 million copies sold in the last quarter' for GTA V is a garble; do not use."
+  ],
+  "later": "GTA 6 launched 19 November 2026; no sales data existed at research time."
+ },
+ {
+  "code": "S03",
+  "what_happened": "Reviews for Nintendo's Switch 2 remake of The Legend of Zelda: Ocarina of Time went live on 4 November 2026 and put it at 96 on Metacritic, the highest of any 2026 game, a day before its 5 November launch. The remake was revealed in the 9 June 2026 Nintendo Direct.",
+  "the_why": "Critics' stated reason: VGC's review praised 'thoughtful modernizations' and said Nintendo 'carefully refined what made it special' rather than reinventing it (VGC, 4 Nov). The common knock across reviews was the missing Master Quest.",
+  "quotes": [
+   {
+    "text": "There's no Master Quest version to play through.",
+    "speaker": "Anna Koselke",
+    "role": "reviewer",
+    "outlet": "GamesRadar (via Kotaku)",
+    "url": "https://kotaku.com/the-zelda-ocarina-of-time-remake-has-no-master-quest-2000753351"
+   },
+   {
+    "text": "It honestly bums me out that the remake doesn't include a sort of Hero Mode.",
+    "speaker": "Scott White and Alex Donaldson",
+    "role": "reviewers",
+    "outlet": "RPG Site (via Kotaku)",
+    "url": "https://kotaku.com/the-zelda-ocarina-of-time-remake-has-no-master-quest-2000753351"
+   },
+   {
+    "text": "carefully refined what made it special",
+    "speaker": "VGC review verdict",
+    "role": "outlet",
+    "outlet": "VGC",
+    "url": "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "96 on Metacritic from about 70 reviews on 4 Nov; 24th on Metacritic's all-time list",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/"
+   },
+   {
+    "figure": "three points clear of 2026's runner-up, Sektori, at 93",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/"
+   },
+   {
+    "figure": "N64 original 99, Metacritic's highest ever; remake reported two points above the 3DS version (94)",
+    "source": "80.lv / search coverage",
+    "url": "https://80.lv/articles/the-legend-of-zelda-ocarina-of-time-switch-2-remake-is-the-highest-rated-game-of-2026/"
+   },
+   {
+    "figure": "$59.99 digital, $69.99 boxed",
+    "source": "Kami Labs / retail listings",
+    "url": "https://kami-labs.fr/en/gaming/zelda-ocarina-of-time-switch-2-70-dollars/"
+   }
+  ],
+  "surprise": "Master Quest is missing from the remake and also from the N64 Ocarina on Nintendo Switch Online, even though the 2011 3DS version included it; in 2003 it shipped only in limited quantities around Wind Waker's GameCube launch (Kotaku).",
+  "stakes_for_player": "$60 to $70 buys the best-reviewed game of the year, but 3DS owners who valued the harder Master Quest get less; Kotaku notes Nintendo has added free modes to other Switch 2 games, so a later update is possible but unannounced.",
+  "fan_argument": "Side A: a 96 for a remake of a 28-year-old game says more about this year's new releases. Side B: it earns it; the only real complaint is no Master Quest or Hero Mode (Player.One: fans 'disappointed'). Link: https://www.player.one/legend-zelda-ocarina-time-remake-removed-secret-content-fans-are-disappointed-164395",
+  "callback": "2011: Grezzo's 3DS remake included Master Quest; this one drops it.",
+  "best_questions": [
+   {
+    "q": "Is Master Quest coming later?",
+    "a": "Nintendo has not commented. It is not in the game at launch and does not unlock after finishing.",
+    "solidity": "confirmed absent; any return is speculation"
+   },
+   {
+    "q": "Who made the remake?",
+    "a": "Not confirmed in sources found; Grezzo made the 3DS version and listings name Nintendo.",
+    "solidity": "speculation"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://www.videogameschronicle.com/news/the-zelda-ocarina-of-time-remake-has-shot-to-the-top-of-metacritics-best-games-of-2026-so-far-makes-its-all-time-top-30/",
+   "https://kotaku.com/the-zelda-ocarina-of-time-remake-has-no-master-quest-2000753351",
+   "https://gameinformer.com/nintendo-direct/2026/06/09/the-nintendo-switch-2-remake-of-the-legend-of-zelda-ocarina-of-time",
+   "https://80.lv/articles/the-legend-of-zelda-ocarina-of-time-switch-2-remake-is-the-highest-rated-game-of-2026/",
+   "https://www.player.one/legend-zelda-ocarina-time-remake-removed-secret-content-fans-are-disappointed-164395",
+   "https://tbreak.com/ocarina-of-time-switch-2-remake-master-quest/"
+  ],
+  "unverified": [
+   "'Link finally jumps' and humming into the mic: only seen in retailer listings ('Jump, Run And Free Camera Controls', 'Microphone Ocarina Tune Support'), not in a Nintendo or review source fetched.",
+   "'Rebuilt Hyrule but kept the dungeons': not verified.",
+   "Nintendo Life docking it for Master Quest: Nintendo Life's review not reached; the criticism is confirmed from GamesRadar, RPG Site and Nintendo Everything."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S04",
+  "what_happened": "On 8 October 2026 Rockstar's Newswire revealed GTA 6's first six radio stations and said radio and new on-demand podcasts can be heard on foot through headphones or earbuds on Jason and Lucia's phones. Podcasts are a first for the series.",
+  "the_why": "No stated design reason from Rockstar beyond presenting podcasts as something for Jason and Lucia beyond Leonida's terrestrial radio (via 9to5Toys). Best-evidenced explanation: a long-standing fan request that radio should not be tied to the car (Reddit suggestions cited by Sportskeeda).",
+  "quotes": [
+   {
+    "text": "Crushing metal has landed in Leonida.",
+    "speaker": "Rockstar station copy (The Chamber 106.6)",
+    "role": "Rockstar Games",
+    "outlet": "Black America Web",
+    "url": "https://blackamericaweb.com/2026/10/11/grand-theft-auto-6-radio-stations-bad-bunny-trick-daddy-trina-new-cardi-b-song/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "6 stations previewed: Cocoteo FM, Back Country Radio, AfroBank FM, The Chamber 106.6, Flash FM, Dirty South Classics",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/rockstar-reveals-some-of-gta-6s-radio-stations-says-players-can-now-listen-to-the-radio-and-podcasts-on-foot/"
+   },
+   {
+    "figure": "GTA VI: The Album has 34 tracks",
+    "source": "Gagadget",
+    "url": "https://gagadget.com/en/729298-gta-vi-radio-rockstar-lets-you-hear-six-stations-now-amp/"
+   },
+   {
+    "figure": "the real Trick & Trina Morning Show ended in 2021, five years before this revival",
+    "source": "HotNewHipHop",
+    "url": "https://www.hotnewhiphop.com/1012401-trick-daddy-trina-gta-vi"
+   }
+  ],
+  "surprise": "'Trick and Trina' on Dirty South Classics are real Miami rappers Trick Daddy and Trina, reviving their actual Miami morning show that ended in 2021 (HotNewHipHop). Music outlets also report Bad Bunny and RaiNao as Cocoteo FM's El Martillo and La Gata (Black America Web; not confirmed by Rockstar in sources fetched).",
+  "stakes_for_player": "Music or a podcast keeps playing while you walk, swim or explore instead of sitting in a parked car; podcasts are pick-an-episode, so talk shows are not missed. Unknown: whether headphones must be equipped or unlocked first.",
+  "fan_argument": "Side A: long-requested, makes on-foot exploring less dull. Side B: the city's own sound (traffic, peds, police chatter) is the point and headphones shut it out. No direct Reddit reaction thread verified; earlier fan requests at https://www.sportskeeda.com/gta/5-best-gta-6-fan-suggestions-highlighting-much-needed-features",
+  "callback": "2002: Flash FM was Vice City's pop station; Rockstar now calls it a 'Vice City institution' as the series returns there.",
+  "best_questions": [
+   {
+    "q": "Does every station work on foot, and do headphones need unlocking?",
+    "a": "Rockstar has not said; coverage flags both as unclear.",
+    "solidity": "confirmed unknown"
+   },
+   {
+    "q": "Are the hosts real stars?",
+    "a": "Trick Daddy and Trina: yes. Bad Bunny as El Martillo, and the identities of Burna, Robyn and Alex: reported by music outlets.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://www.videogameschronicle.com/news/rockstar-reveals-some-of-gta-6s-radio-stations-says-players-can-now-listen-to-the-radio-and-podcasts-on-foot/",
+   "https://www.rockstargames.com/VI/music",
+   "https://gameinformer.com/2026/10/08/you-can-preview-6-of-the-radio-stations-in-grand-theft-auto-vi-right-now-plus-new",
+   "https://www.hotnewhiphop.com/1012401-trick-daddy-trina-gta-vi",
+   "https://blackamericaweb.com/2026/10/11/grand-theft-auto-6-radio-stations-bad-bunny-trick-daddy-trina-new-cardi-b-song/",
+   "https://www.sportskeeda.com/gta/5-best-gta-6-fan-suggestions-highlighting-much-needed-features"
+  ],
+  "unverified": [
+   "Timing: the Short went out 17 Nov but the Newswire news dates from 8 Oct, so it was not new on the published date.",
+   "The Newswire post itself was not fetched; wording comes via VGC, Game Informer and 9to5Toys."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S05",
+  "what_happened": "EA closed BioWare on 21 October 2026 and ended early development of the next Mass Effect. On 5 November 2026 Deadline reported the documentary Massive Effect: The BioWare Story for Canada's Super Channel, which had already been filming for two years and will premiere in 2027.",
+  "the_why": "EA's reason, in a letter reported by Bloomberg: 'over the past several months, we've taken a hard look at our business' (VGC). The closure came two months after EA's $55 billion Saudi PIF-led buyout closed, leaving about $18 billion of debt and $700 million of planned annual cost cuts (VGC). The film became a farewell by accident: it started as the studio's rise story.",
+  "quotes": [
+   {
+    "text": "BioWare is closing and early development on the next Mass Effect project is ending.",
+    "speaker": "BioWare",
+    "role": "studio farewell statement",
+    "outlet": "VGC",
+    "url": "https://www.videogameschronicle.com/news/ea-is-closing-bioware-and-cancelling-the-next-mass-effect/"
+   },
+   {
+    "text": "The best stories never really end.",
+    "speaker": "Ray Muzyka and Greg Zeschuk",
+    "role": "BioWare co-founders",
+    "outlet": "Deadline (via Kotaku)",
+    "url": "https://kotaku.com/massive-effect-bioware-story-documentary-canada-ea-2000754242"
+   },
+   {
+    "text": "BioWare was never just about the logo or the building.",
+    "speaker": "Ray Muzyka and Greg Zeschuk",
+    "role": "BioWare co-founders",
+    "outlet": "Deadline (via Kotaku)",
+    "url": "https://kotaku.com/massive-effect-bioware-story-documentary-canada-ea-2000754242"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "about 400 EA job cuts, about 50 at BioWare (Bloomberg, not confirmed by EA)",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/ea-is-closing-bioware-and-cancelling-the-next-mass-effect/"
+   },
+   {
+    "figure": "$55 billion buyout, about $18 billion debt, $700 million a year in cost cuts",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/ea-is-closing-bioware-and-cancelling-the-next-mass-effect/"
+   },
+   {
+    "figure": "petition e-7898: about 1,700 verified signatures against a 500 threshold (single low-grade source); the government must answer within 45 days of presentation",
+    "source": "Tech Insider / search coverage",
+    "url": "https://tech-insider.org/bioware-petition-e-7898-1662-signatures-500-needed-ea-2026/"
+   },
+   {
+    "figure": "founded 1995, bought by EA 2007: 31 years",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/ea-is-closing-bioware-and-cancelling-the-next-mass-effect/"
+   }
+  ],
+  "surprise": "The petition is not a plea to EA: House of Commons e-petition e-7898, sponsored by NDP MP Don Davies, asks Ottawa to fund BioWare's former staff to buy the studio and its IP and run it themselves. Also, Mass Effect's director had reassured fans only about a year earlier that the next game was in development (VGC).",
+  "stakes_for_player": "No new Mass Effect is in development anywhere; the next official Mass Effect-adjacent release is a 2027 Canadian documentary with no confirmed wider distribution. A government response is required but need not agree, and EA still owns the IP.",
+  "fan_argument": "Side A: a worker buyout is the only way Mass Effect survives, and Canada should back its own studio. Side B: EA owns the IP and has no reason to sell, so it is symbolic. Fans have also used billboards (including Times Square) for 'Save Mass Effect' (Kotaku). Link: https://kotaku.com/mass-effect-petitions-bioware-canadian-government-house-of-commons-2000753458",
+  "callback": "2007: EA bought BioWare, the Edmonton studio three co-founders started in 1995.",
+  "best_questions": [
+   {
+    "q": "What does the Canadian petition actually ask?",
+    "a": "Federal funding for a worker buyout of BioWare and its IP from EA, to run independently (e-7898, sponsor MP Don Davies).",
+    "solidity": "reported (several outlets; Parliament page not fetched)"
+   },
+   {
+    "q": "Is Mass Effect dead?",
+    "a": "The next game is cancelled and the studio closed; EA has not said the franchise is permanently retired.",
+    "solidity": "confirmed"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://www.videogameschronicle.com/news/ea-is-closing-bioware-and-cancelling-the-next-mass-effect/",
+   "https://www.videogameschronicle.com/news/biowares-final-days-to-feature-in-upcoming-documentary/",
+   "https://kotaku.com/massive-effect-bioware-story-documentary-canada-ea-2000754242",
+   "https://kotaku.com/mass-effect-petitions-bioware-canadian-government-house-of-commons-2000753458",
+   "https://www.pcgamer.com/games/mass-effect/a-public-petition-to-save-bioware-has-drawn-enough-signatures-that-the-canadian-government-will-at-least-have-to-think-about-it-this-is-absolutely-possible-mp-says/",
+   "https://tech-insider.org/bioware-petition-e-7898-1662-signatures-500-needed-ea-2026/"
+  ],
+  "unverified": [
+   "Some coverage says the petition triggers a House of Commons 'debate'; under Canadian rules it gets a written government response, which the original narration had right.",
+   "Signature count varies (1,662 vs 3,000+) between low-grade sources.",
+   "Director credit differs between reports (Akash Sherman vs Shane Fennessey and Adam Scorgie); unresolved."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S06",
+  "what_happened": "Square Enix's 6 November 2026 Steam patch for NieR: Automata added Simplified Chinese, Traditional Chinese and Korean, but Steam then demanded about 366GB instead of about 50GB to install. Square Enix said it was investigating and advised unticking the DLC in Steam's Properties menu.",
+  "the_why": "No stated technical cause from Square Enix. Best-evidenced explanation (players, relayed by Dexerto and Tbreak): Steam counted each DLC at roughly the base game's size, about 40GB each.",
+  "quotes": [
+   {
+    "text": "currently investigating the cause and working to resolve the issue",
+    "speaker": "Square Enix",
+    "role": "official Japanese NieR account (translated)",
+    "outlet": "Dexerto",
+    "url": "https://www.dexerto.com/gaming/square-enix-responds-after-nier-automata-update-triggers-massive-366gb-storage-requirement-3425350/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "about 366GB required vs about 50GB before, roughly seven times",
+    "source": "Dexerto",
+    "url": "https://www.dexerto.com/gaming/square-enix-responds-after-nier-automata-update-triggers-massive-366gb-storage-requirement-3425350/"
+   },
+   {
+    "figure": "the actual patch download was about 108MB",
+    "source": "Tbreak",
+    "url": "https://tbreak.com/nier-automata-366gb-steam-update-bug/"
+   },
+   {
+    "figure": "each DLC listed at about 40GB",
+    "source": "Tbreak",
+    "url": "https://tbreak.com/nier-automata-366gb-steam-update-bug/"
+   }
+  ],
+  "surprise": "The patch itself was only about 108MB; the 366GB was reserved space, not a download, and the store page still said 50GB (Tbreak). It is reportedly the Steam version's first patch since 2021, and that 2021 fix itself came about four years after the 2017 PC launch.",
+  "stakes_for_player": "New buyers or reinstallers on Steam needed 366GB free unless they unticked DLC; the base game installs at its normal size and DLC can be re-added later. Existing installs only needed the small patch.",
+  "fan_argument": "Side A: Square Enix has always neglected Automata on PC (the long wait for the 2021 fix). Side B: it is a Steam DLC configuration slip, acknowledged within a day with a workaround. No forum thread link verified.",
+  "callback": "15 July 2021: Square Enix finally shipped the promised upgrade patch for the 2017 Steam version (HDR, 4K UI textures, 60fps cutscenes) (Gematsu).",
+  "best_questions": [
+   {
+    "q": "Do I actually have to download 366GB?",
+    "a": "No. The patch is about 108MB; 366GB is space Steam reserves. Unticking DLC avoids it.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "Is it fixed?",
+    "a": "No fix announced as of 7 Nov; some players reported it clearing on its own.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "A real but small bug with no stated cause; the only angle beyond the fix is Square Enix's patchy PC history.",
+  "sources": [
+   "https://www.dexerto.com/gaming/square-enix-responds-after-nier-automata-update-triggers-massive-366gb-storage-requirement-3425350/",
+   "https://tbreak.com/nier-automata-366gb-steam-update-bug/",
+   "https://pcgamer.com/games/rpg/nier-automata-developer-is-currently-investigating-a-bizarre-update-bug-that-drastically-inflated-the-games-file-size-from-50gb-to-366gb",
+   "https://www.gematsu.com/2021/07/nier-automata-steam-upgrade-patch-launches-july-15",
+   "https://www.digitalcitizen.life/nier-automata-steam-update-366-gb-install-bug-dlc-workaround/"
+  ],
+  "unverified": [
+   "'All eight DLC packs': eight is not stated by any source (8 x 40GB plus base fits the arithmetic).",
+   "'The download stacks them': wrong framing; the download was about 108MB, it is the install space that stacks.",
+   "'First patch since 2021': from a Digital Citizen headline only."
+  ],
+  "later": "Finalboss reported on 9 Nov 2026 that the inflated requirement was fixed; not confirmed elsewhere."
+ },
+ {
+  "code": "S07",
+  "what_happened": "In a Rock Paper Shotgun interview reported on 6 November 2026, former Rockstar North technical director Obbe Vermeij said someone could make an unofficial AI-assisted PC port of GTA 6 for 'tens of thousands of dollars in tokens'. He said he would not be surprised if Rockstar tried to bring console and PC releases closer, while admitting he does not know its plans.",
+  "the_why": "Vermeij's reasoning: generative AI has made porting and emulation far easier, and an unofficial port could hurt Rockstar's sales even if worse than its own. Rockstar has given no PC date; GamesBeat reported on 13 Oct, citing four sources, a Q1 2027 PC target.",
+  "quotes": [
+   {
+    "text": "It really has changed the world",
+    "speaker": "Obbe Vermeij",
+    "role": "former Rockstar North technical director",
+    "outlet": "Rock Paper Shotgun (via Wccftech)",
+    "url": "https://wccftech.com/gta-6-tens-of-thousands-dollars-tokens-unofficial-pc-port/"
+   },
+   {
+    "text": "I think I would be concerned",
+    "speaker": "Obbe Vermeij",
+    "role": "former Rockstar North technical director",
+    "outlet": "GamesRadar (headline quote)",
+    "url": "https://www.gamesradar.com/games/grand-theft-auto/rockstar-could-release-gta-6-on-pc-sooner-to-head-off-ai-ports-former-grand-theft-auto-lead-suggests-i-think-i-would-be-concerned/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "'tens of thousands of dollars' in AI tokens (his estimate)",
+    "source": "Wccftech",
+    "url": "https://wccftech.com/gta-6-tens-of-thousands-dollars-tokens-unofficial-pc-port/"
+   },
+   {
+    "figure": "GTA V took about a year and seven months to reach PC; GTA IV about seven months",
+    "source": "VGC",
+    "url": "https://www.videogameschronicle.com/news/the-pc-version-of-grand-theft-auto-6-is-reportedly-coming-before-the-end-of-march-2027/"
+   },
+   {
+    "figure": "reported PC target: by end of March 2027, at most about four months after console",
+    "source": "GamesBeat via VGC",
+    "url": "https://www.videogameschronicle.com/news/the-pc-version-of-grand-theft-auto-6-is-reportedly-coming-before-the-end-of-march-2027/"
+   },
+   {
+    "figure": "Vermeij left Rockstar North in 2009",
+    "source": "Exputer and other coverage",
+    "url": "https://exputer.com/?p=445714"
+   }
+  ],
+  "surprise": "If the reported Q1 2027 window holds, GTA 6 would be the fastest PC port of the 3D-era series: GTA V took about 19 months and GTA IV about 7 (VGC, IBTimes). The early-port report predates Vermeij's comments by three weeks, so the AI threat is not what set it.",
+  "stakes_for_player": "PC players probably wait months rather than years if GamesBeat is right. An unofficial AI port would face console protections and legal risk, and Vermeij says it would be worse than Rockstar's.",
+  "fan_argument": "Side A: Rockstar always sells console first and double-dips, PC waits regardless. Side B: early 2027 looks real this time, the AI angle is noise. No forum thread link verified.",
+  "callback": "April 2015: GTA V reached PC about 19 months after its 2013 console launch.",
+  "best_questions": [
+   {
+    "q": "When is GTA 6 on PC?",
+    "a": "Not announced. GamesBeat reports Q1 2027.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Is anyone actually making an AI port?",
+    "a": "No evidence of one; Vermeij framed it as a hypothetical.",
+    "solidity": "confirmed (no evidence)"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "A hypothetical from someone who left Rockstar in 2009; the only hard fact is the separate Q1 2027 report.",
+  "sources": [
+   "https://wccftech.com/gta-6-tens-of-thousands-dollars-tokens-unofficial-pc-port/",
+   "https://kotaku.com/former-rockstar-developer-says-they-should-hurry-up-on-gta-6s-pc-version-before-ai-gets-there-first-2000754810",
+   "https://www.gamesradar.com/games/grand-theft-auto/rockstar-could-release-gta-6-on-pc-sooner-to-head-off-ai-ports-former-grand-theft-auto-lead-suggests-i-think-i-would-be-concerned/",
+   "https://www.videogameschronicle.com/news/the-pc-version-of-grand-theft-auto-6-is-reportedly-coming-before-the-end-of-march-2027/",
+   "https://exputer.com/?p=445714"
+  ],
+  "unverified": [
+   "Attribution 'Ars Technica via Steam News': the interview was with Rock Paper Shotgun; no Ars Technica source found.",
+   "'A clone wouldn't match Rockstar's own port': matches his reported view that an AI port would not be as good.",
+   "RPS original not read directly; quotes come via Wccftech and GamesRadar."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S08",
+  "what_happened": "On 3 November 2026, at the end of a video celebrating Bethesda Game Studios' 40th anniversary, Todd Howard revealed the next Elder Scrolls is titled The Elder Scrolls VI: Sentinel. The teaser shows an Elder Scroll rising from desert sand and a lore note addressed to High Queen Iradne of Hammerfell, with no date, platforms or gameplay.",
+  "the_why": "Howard framed the anniversary as the right moment to give the name (paraphrased in coverage; no verbatim line found). No reason given for withholding a date; Jason Schreier posted on Bluesky the same day that it is still more than two years away.",
+  "quotes": [
+   {
+    "text": "more than two years away",
+    "speaker": "Jason Schreier",
+    "role": "Bloomberg reporter, Bluesky post",
+    "outlet": "via Power Up Gaming / Exputer",
+    "url": "https://powerupgaming.co.uk/2026/11/03/the-elder-scrolls-vi-is-still-more-than-two-years-away-says-jason-schreier/"
+   },
+   {
+    "text": "we're talking about a game that's five-plus years away",
+    "speaker": "Phil Spencer",
+    "role": "Xbox head, FTC trial testimony, June 2023",
+    "outlet": "via Shacknews",
+    "url": "https://shacknews.com/article/136058/elder-scrolls-6-release-window"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "first announced at E3 2018, about eight and a half years before getting a name",
+    "source": "KeenGamer",
+    "url": "https://www.keengamer.com/articles/news/the-elder-scrolls-vi-sentinel-title-and-logo-revealed-in-new-trailer/"
+   },
+   {
+    "figure": "lore note dated 4E 206, five years after Skyrim's 4E 201",
+    "source": "KeenGamer (date); Skyrim date is series lore",
+    "url": "https://www.keengamer.com/articles/news/the-elder-scrolls-vi-sentinel-title-and-logo-revealed-in-new-trailer/"
+   },
+   {
+    "figure": "a September 2023 Microsoft court filing listed it as 2026 or later",
+    "source": "Game Informer",
+    "url": "https://gameinformer.com/2023/09/18/the-elder-scrolls-6-launching-no-earlier-than-2026-according-to-microsoft-court-document"
+   }
+  ],
+  "surprise": "Phil Spencer testified in June 2023 that the game was 'five-plus years away', which points to 2028 or later; Schreier's 'more than two years' in November 2026 lands in the same place, so the timeline has barely moved in three years. The Verge also reported the Sentinel subtitle before Bethesda did (KeenGamer).",
+  "stakes_for_player": "Nothing to buy or preorder; the earliest realistic window is late 2028 or later, likely the next console generation, and exclusivity is unconfirmed (Howard said it is too early to comment).",
+  "fan_argument": "Side A: a name after eight years with no gameplay is a tease; expect 2029 or later. Side B: Hammerfell was the dream setting and Bethesda is finally talking. Link (fan reaction coverage): https://everythingedinburgh.com/?p=31730",
+  "callback": "June 2018, E3: the brief TES VI landscape teaser, the last official look at the game before this name reveal.",
+  "best_questions": [
+   {
+    "q": "Is it really Hammerfell?",
+    "a": "Strongly implied: Sentinel is a Hammerfell city and the lore note names Hammerfell's High Queen; Bethesda has not said 'set in Hammerfell' outright.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Is it Xbox exclusive?",
+    "a": "Not announced; Howard called it too early to say. The 2023 court filing listed Xbox and PC.",
+    "solidity": "confirmed unknown"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "A name and a setting hint; the only fresh angle is how little the timeline has moved since 2018 and 2023.",
+  "sources": [
+   "https://www.keengamer.com/articles/news/the-elder-scrolls-vi-sentinel-title-and-logo-revealed-in-new-trailer/",
+   "https://shacknews.com/article/151249/the-elder-scrolls-6-sentinel-reveal",
+   "https://powerupgaming.co.uk/2026/11/03/the-elder-scrolls-vi-is-still-more-than-two-years-away-says-jason-schreier/",
+   "https://exputer.com/?p=445639",
+   "https://shacknews.com/article/136058/elder-scrolls-6-release-window",
+   "https://gameinformer.com/2023/09/18/the-elder-scrolls-6-launching-no-earlier-than-2026-according-to-microsoft-court-document"
+  ],
+  "unverified": [
+   "'The trailer names Hammerfell outright': only via the lore attribution to Hammerfell's High Queen; the setting is not stated.",
+   "Xbox Wire post itself not fetched.",
+   "Schreier's claim was a Bluesky post, not a Bloomberg article."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S09",
+  "what_happened": "Blizzard announced World of Warcraft Classic at BlizzCon on 3 November 2017 and launched it in late August 2019, after years of refusing legacy servers. It won PC Game of the Year at the 2019 Golden Joystick Awards.",
+  "the_why": "Blizzard's account: the old objection was cost, effectively running two MMOs at once (Brack to PC Gamer, 2017). After the fan server Nostalrius was shut in April 2016, Blizzard said it had discussed legacy servers internally for years but technical problems had blocked them, and it met the Nostalrius team, who shared their code. Ion Hazzikostas said the team committed in late summer 2017.",
+  "quotes": [
+   {
+    "text": "You think you do, but you don't.",
+    "speaker": "J. Allen Brack",
+    "role": "WoW production director, BlizzCon 2013 Q&A",
+    "outlet": "Wikipedia (quote unsourced there; widely repeated)",
+    "url": "https://en.wikipedia.org/wiki/World_of_Warcraft_Classic"
+   },
+   {
+    "text": "The original problem was that we would have to run two MMOs",
+    "speaker": "J. Allen Brack",
+    "role": "Blizzard executive",
+    "outlet": "PC Gamer, Nov 2017 (seen in search excerpt; page body not loaded)",
+    "url": "https://www.pcgamer.com/this-is-how-blizzard-plans-to-finally-bring-back-vanilla-wow-servers/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "Nostalrius: 800,000 registered accounts and 150,000 active players; shut 10 April 2016",
+    "source": "Wikipedia, citing Nostalrius press release",
+    "url": "https://en.wikipedia.org/wiki/World_of_Warcraft_Classic"
+   },
+   {
+    "figure": "fan petition passed 200,000 signatures, delivered to Mike Morhaime by ex-WoW team lead Mark Kern",
+    "source": "PC Gamer via Wikipedia",
+    "url": "https://www.pcgamer.com/nostalrius-petition-passes-200k-signatures-mark-kern-to-deliver-it/"
+   },
+   {
+    "figure": "11 years from the 2008 refusal to the 2019 launch",
+    "source": "Wikipedia",
+    "url": "https://en.wikipedia.org/wiki/World_of_Warcraft_Classic"
+   }
+  ],
+  "surprise": "The man who told fans 'You think you do, but you don't' at BlizzCon 2013, J. Allen Brack, is the same man who announced WoW Classic on stage in 2017. In between, a fan-run unofficial server, Nostalrius, reached 150,000 active players and handed Blizzard its code.",
+  "stakes_for_player": "Classic brought back raids and zones later expansions removed, included with a normal WoW subscription at launch.",
+  "fan_argument": "Side A: Blizzard only moved after an unofficial server proved the demand and a petition reached Morhaime. Side B: Blizzard says technical problems, not stubbornness, were the blocker. No thread link verified.",
+  "callback": "10 April 2016: a Blizzard cease and desist shut Nostalrius, sparking the 200,000-signature petition.",
+  "best_questions": [
+   {
+    "q": "Why did Blizzard change its mind?",
+    "a": "Blizzard cites technical feasibility and the cost of running two games; the timing, after Nostalrius and the petition, points to proven demand. No Blizzard quote found saying 'we were wrong'.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Did Blizzard really meet the unofficial server team?",
+    "a": "Yes; Brack described meeting Nostalrius, who turned over their code (PC Gamer, BlizzardWatch).",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://en.wikipedia.org/wiki/World_of_Warcraft_Classic",
+   "https://www.pcgamer.com/this-is-how-blizzard-plans-to-finally-bring-back-vanilla-wow-servers/",
+   "https://blizzardwatch.com/2016/04/26/blizzards-j-allen-brack-responds-legacy-servers-nostalrius",
+   "https://www.pcgamer.com/nostalrius-petition-passes-200k-signatures-mark-kern-to-deliver-it/",
+   "https://arstechnica.com/gaming/2017/11/world-of-warcraft-classic-is-official-will-bring-vanilla-wow-back/",
+   "https://www.gamesradar.com/Golden-Joystick-awards-2019-winners/"
+  ],
+  "unverified": [
+   "Drysc quote 'two different games': the phrase appears in Wikipedia but its attribution to Drysc is unclear, and Wikipedia's Drysc quote is tagged citation needed; the 2008 forum post was not found.",
+   "Kazzak loot, old Naxxramas and Onyxia removals: not checked in this pass.",
+   "The original sourced everything to Wikipedia; this is an evergreen story, not news on 3 Nov 2026.",
+   "Launch date: Wikipedia says 26 Aug 2019, Blizzard's own post said 27 Aug (time zones)."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S10",
+  "what_happened": "Warhammer Survivors, by Auroch Digital (Warhammer 40,000: Boltgun) with poncle (the Vampire Survivors studio), launched on 10 November 2026 on PC, consoles and mobile, and day one on Game Pass. It costs $7.99, with 10% off ($7.19) in launch week.",
+  "the_why": "No stated reason needed; it is a licensed bullet-heaven game made with the genre's originator. The notable part is commercial: Games Workshop partnering directly with poncle rather than a copycat.",
+  "quotes": [
+   {
+    "text": "It's more than Vampire Survivors with Space Marines",
+    "speaker": "Fraser Brown",
+    "role": "reviewer",
+    "outlet": "PC Gamer (80/100)",
+    "url": "https://pcgamer.com/games/roguelike/warhammer-survivors-review"
+   },
+   {
+    "text": "It's got the heart, but not the spark.",
+    "speaker": "Pocket Gamer review headline",
+    "role": "review",
+    "outlet": "Pocket Gamer",
+    "url": "https://www.pocketgamer.com/warhammer-survivors/review/"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "$7.99 standard, $7.19 in launch week (10% off)",
+    "source": "Inven Global (press release)",
+    "url": "https://www.invenglobal.com/articles/28401/warhammer-survivors-launches-on-pc-consoles-and-mobile-with-day-one-game-pass"
+   },
+   {
+    "figure": "40-plus playable characters, 75-plus weapons",
+    "source": "Inven Global",
+    "url": "https://www.invenglobal.com/articles/28401/warhammer-survivors-launches-on-pc-consoles-and-mobile-with-day-one-game-pass"
+   },
+   {
+    "figure": "Metacritic PC about 79 from 12 reviews; PC Gamer 80; GamingOnLinux 2.5 out of 5",
+    "source": "search coverage / GamingOnLinux",
+    "url": "https://www.gamingonlinux.com/2026/11/warhammer-survivors-is-out-now-review/"
+   }
+  ],
+  "surprise": "One stage is a miniature-painting desk, a pot of Nuln Oil paint is hidden as an easter egg, and Boltgun's hero Malum Caedo is playable; and it is made with poncle itself, not a knock-off (Inven Global, Mixed News).",
+  "stakes_for_player": "Game Pass Ultimate and PC Game Pass members play at no extra cost; everyone else pays $7.19 in launch week, then $7.99. It launched together on PC (Steam, GOG), Switch, Switch 2, PS5, Xbox and mobile.",
+  "fan_argument": "Side A: it is Vampire Survivors reskinned. Side B: with poncle involved and 40-plus characters it is the best licensed take on the genre. Reviews split (PC Gamer 80 vs GamingOnLinux 2.5/5).",
+  "callback": "May 2023: Auroch Digital's Warhammer 40,000: Boltgun; its hero Malum Caedo returns here.",
+  "best_questions": [
+   {
+    "q": "Is it on Game Pass?",
+    "a": "Yes, day one on Game Pass Ultimate and PC Game Pass.",
+    "solidity": "confirmed"
+   },
+   {
+    "q": "Is it just Vampire Survivors?",
+    "a": "Mechanically close and made with poncle; reviewers say it adds a little on top.",
+    "solidity": "confirmed (reviews)"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "A cheap licensed game launching; the painting-desk stage and the poncle partnership are the only real hooks.",
+  "sources": [
+   "https://www.invenglobal.com/articles/28401/warhammer-survivors-launches-on-pc-consoles-and-mobile-with-day-one-game-pass",
+   "https://mixed-news.com/en/warhammer-survivors-game-pass-launch-40k-age-of-sigmar/",
+   "https://pcgamer.com/games/roguelike/warhammer-survivors-review",
+   "https://www.pocketgamer.com/warhammer-survivors/review/",
+   "https://www.gamingonlinux.com/2026/11/warhammer-survivors-is-out-now-review/"
+  ],
+  "unverified": [
+   "'$7.19' is only the launch-week discounted price; standard is $7.99.",
+   "PC Gamer's 'invulnerable tank follower that attacks from its own position': not found in the visible review text.",
+   "'Each setting with separate progression': not confirmed."
+  ],
+  "later": ""
+ },
+ {
+  "code": "S11",
+  "what_happened": "Rockstar confirmed on 3 November 2026 that GTA 6 digital pre-loads open on 10 November and need up to 212GB. Xbox pre-loads opened globally at 12am GMT, which is 7pm ET on 9 November, while PS5 pre-loads waited for local midnight.",
+  "the_why": "No stated reason for the two clocks; it follows how each store schedules (Xbox one global time, PlayStation by region). Rockstar's only advice was to clear space early.",
+  "quotes": [
+   {
+    "text": "make sure you've got ample space to begin pre-loading as soon as possible",
+    "speaker": "Rockstar Games",
+    "role": "publisher",
+    "outlet": "TechRadar",
+    "url": "https://techradar.com/gaming/gta-6-digital-pre-loads-for-ps5-and-xbox-will-begin-9-days-early-and-require-a-whopping-212gb-of-free-space"
+   },
+   {
+    "text": "up to 212 GB depending on your device",
+    "speaker": "Rockstar Games",
+    "role": "publisher",
+    "outlet": "TechRadar",
+    "url": "https://techradar.com/gaming/gta-6-digital-pre-loads-for-ps5-and-xbox-will-begin-9-days-early-and-require-a-whopping-212gb-of-free-space"
+   }
+  ],
+  "numbers": [
+   {
+    "figure": "up to 212GB; the Xbox store lists about 210GB",
+    "source": "TechRadar / search coverage",
+    "url": "https://techradar.com/gaming/gta-6-digital-pre-loads-for-ps5-and-xbox-will-begin-9-days-early-and-require-a-whopping-212gb-of-free-space"
+   },
+   {
+    "figure": "pre-load opened 9 days before launch, earlier than first announced (12 Nov)",
+    "source": "GamesRadar headline / TechRadar",
+    "url": "https://gamesradar.com/games/grand-theft-auto/rockstar-confirms-gta-6-is-212gb-pre-loading-opens-earlier-than-previously-announced-for-digital-orders"
+   },
+   {
+    "figure": "512GB Series S has about 364GB usable, so GTA 6 takes almost 60% (fan-site figure)",
+    "source": "Tech Insider / search coverage",
+    "url": "https://tech-insider.org/gta-6-preload-november-10-clear-212-gb-ps5-xbox-2026/"
+   },
+   {
+    "figure": "New Zealand unlocks about 18 hours before the US East Coast at launch",
+    "source": "MP1st, from PlayStation Store times",
+    "url": "https://mp1st.com/news/gta-6-unlock-times-revealed"
+   }
+  ],
+  "surprise": "At launch New Zealand gets GTA 6 roughly 18 hours before the US East Coast, and Xbox players can reportedly switch console region to New Zealand to play early, a trick PSN blocks because accounts are tied to their home country (MP1st).",
+  "stakes_for_player": "A Series S owner may have to delete most other games; US Xbox players got the download the evening before PS5 players; at launch the US is among the last regions to unlock.",
+  "fan_argument": "Side A: 212GB is absurd and punishes Series S owners. Side B: it is a 2026 open world and a nine-day pre-load makes it painless. No thread link verified.",
+  "callback": "September 2026: PlayStation Store listings revealed regional midnight unlocks, with New Zealand first and the Americas last.",
+  "best_questions": [
+   {
+    "q": "Can I play early?",
+    "a": "No early access; pre-load only. The Xbox region switch to New Zealand reportedly works.",
+    "solidity": "reported"
+   },
+   {
+    "q": "Is 212GB the final size?",
+    "a": "It is the pre-load requirement, 'up to 212 GB depending on your device'; final installed size not confirmed.",
+    "solidity": "confirmed"
+   }
+  ],
+  "thin": true,
+  "thin_reason": "Service information with a one-evening shelf life; the New Zealand head start is the only lasting hook.",
+  "sources": [
+   "https://techradar.com/gaming/gta-6-digital-pre-loads-for-ps5-and-xbox-will-begin-9-days-early-and-require-a-whopping-212gb-of-free-space",
+   "https://gamesradar.com/games/grand-theft-auto/rockstar-confirms-gta-6-is-212gb-pre-loading-opens-earlier-than-previously-announced-for-digital-orders",
+   "https://mp1st.com/news/gta-6-unlock-times-revealed",
+   "https://hothardware.com/news/gta-6-preload-guide-212gb-size-start-times-what-to-know",
+   "https://tech-insider.org/gta-6-preload-november-10-clear-212-gb-ps5-xbox-2026/"
+  ],
+  "unverified": [
+   "'Kotaku puts it near half a Series S': no Kotaku article found; fan-site maths gives nearer 60% of usable space.",
+   "Rockstar Newswire post not fetched directly; times come via TechRadar and others."
+  ],
+  "later": "GTA 6 launched 19 November 2026."
+ },
+ {
+  "code": "S12",
+  "what_happened": "Grand Theft Auto: San Andreas (26 October 2004) starred rapper Young Maylay as CJ after co-writer DJ Pooh put him on a speakerphone call with Rockstar staff without telling him. In a 2026 interview Maylay said Pooh kept the speakerphone secret on purpose so he would act naturally.",
+  "the_why": "Stated by Maylay (2026 interview with SanInPlay and Portal Viciados, via Wikipedia): Rockstar wanted to hear him talk naturally, not perform. Rockstar then had him audition and chose him from the tapes weeks later (older RiotSound interview, via Wikipedia).",
+  "quotes": [],
+  "numbers": [
+   {
+    "figure": "recording sessions sometimes lasted up to 14 hours",
+    "source": "Portal Viciados via Wikipedia",
+    "url": "https://en.wikipedia.org/wiki/Young_Maylay"
+   },
+   {
+    "figure": "hired about 15 minutes after the call, per one 2026 report (contradicts the 'weeks later' account)",
+    "source": "Critical Hits (Portuguese, translated)",
+    "url": "https://criticalhits.com.br/games/gta-san-andreas-voz-de-cj-explica-como-conseguiu-papel-no-classico-da-rockstar/"
+   },
+   {
+    "figure": "for contrast, Niko Bellic actor Michael Hollick reportedly got about $100,000 flat for 15 months on GTA IV",
+    "source": "OtakuKart",
+    "url": "https://otakukart.com/gta-san-andreas-cj-voice-actor-young-maylay-finally-addresses-rockstar-pay-controversy-says-rumors-are-bullsht/"
+   }
+  ],
+  "surprise": "CJ's 3D model was finished before Maylay was cast, so CJ does not have his face; and his cousin Shawn Fonteno, also steered to Rockstar by DJ Pooh, went on to voice Franklin in GTA V (Wikipedia, GTANet).",
+  "stakes_for_player": "None current; an evergreen story. Maylay has said he is not involved in GTA 6.",
+  "fan_argument": "Side A: Rockstar underpaid and sidelined its iconic leads (Maylay called it 'culture vultures' in 2020-21). Side B: in November 2026 Maylay himself called the underpaid story false and said Rockstar sent bonuses after launch. Link: https://otakukart.com/gta-san-andreas-cj-voice-actor-young-maylay-finally-addresses-rockstar-pay-controversy-says-rumors-are-bullsht/",
+  "callback": "November 2026: on Ned Luke's show The Final Mission, Maylay said claims he was unhappy with his pay were untrue.",
+  "best_questions": [
+   {
+    "q": "Was Maylay underpaid?",
+    "a": "He says no: he knew the terms when he signed, and Rockstar sent unexpected bonuses after launch.",
+    "solidity": "reported (his own account)"
+   },
+   {
+    "q": "Will CJ appear in GTA 6?",
+    "a": "Maylay has said he is not involved in GTA 6.",
+    "solidity": "reported"
+   }
+  ],
+  "thin": false,
+  "sources": [
+   "https://en.wikipedia.org/wiki/Young_Maylay",
+   "https://criticalhits.com.br/games/gta-san-andreas-voz-de-cj-explica-como-conseguiu-papel-no-classico-da-rockstar/",
+   "https://otakukart.com/gta-san-andreas-cj-voice-actor-young-maylay-finally-addresses-rockstar-pay-controversy-says-rumors-are-bullsht/",
+   "https://sportskeeda.com/gta/young-maylay-gta-san-andreas-the-actor-behind-cj-dispute-rockstar-games",
+   "https://rollingstone.com/culture/rs-gaming/grand-theft-auto-san-andreas-20-year-retrospective-1235143587"
+  ],
+  "unverified": [
+   "Rolling Stone: the only Rolling Stone piece found is the 2024 20th-anniversary retrospective that interviewed Maylay; it sits behind a paid access gateway and was not read, so its details are unconfirmed here. No verbatim Maylay quote could be sourced.",
+   "Menace II Society audition script: not found in any accessible source.",
+   "Recording lines differently for thin and overweight CJ: not found.",
+   "'First-time actor', 'GameSpot called it excellent' and 'call around 2002 or 2003': not verified.",
+   "Rockstar staff listening in on the call: confirmed (Wikipedia, Critical Hits); Wikipedia says Dan Houser was in the meeting."
+  ],
+  "later": ""
+ }
+]

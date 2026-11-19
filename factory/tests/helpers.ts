@@ -584,6 +584,8 @@ export function testConfig(
     ytdlpPath: "yt-dlp",
     // Tests never sign in to YouTube.
     ytdlpCookiesFile: "",
+    signedClips: false,
+    ytSignedClipShare: 0.5,
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.
     libraryPress: false,

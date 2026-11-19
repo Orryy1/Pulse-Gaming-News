@@ -1178,9 +1178,21 @@ export interface Config {
    * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
    * Pulse or Orryy channel accounts), exported on the Mac mini by mac/ytcookies.sh, so the game footage fetcher alone
    * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own budget,
-   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else ever uses the cookies.
+   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else uses the cookies except the
+   * opt-in switches below (each default off, together within YT_SIGNED_CLIP_SHARE), and never on Pulse's own videos.
    */
   ytdlpCookiesFile: string;
+  /**
+   * SIGNED_CLIPS (default off): a Short's or long video's YouTube clip pull that met an age gate (or the anonymous
+   * lane's bot-check pause) is tried once more signed in with YTDLP_COOKIES_FILE (src/lib/child.ts, src/lib/ytsignin.ts
+   * signedPull). Read from the environment by the asset modules; mirrored here for the doctor and the docs.
+   */
+  signedClips: boolean;
+  /**
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of YT_SIGNED_HOURLY that clips, the light index and the trend feed may
+   * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
+   */
+  ytSignedClipShare: number;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
@@ -2195,6 +2207,8 @@ export function loadConfig(): Config {
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
+    signedClips: bool("SIGNED_CLIPS", false),
+    ytSignedClipShare: ((n) => (Number.isFinite(n) && n >= 0 ? Math.min(1, n) : 0.5))(Number(str("YT_SIGNED_CLIP_SHARE", "0.5"))),
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
       .map((g) => g.trim())

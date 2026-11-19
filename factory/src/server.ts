@@ -2556,6 +2556,18 @@ async function main(): Promise<void> {
     setTimeout(() => void check(), 180_000);
     setInterval(() => void check(), 30 * 60_000);
   }
+  // Pulse's own uploads, kept for every process so the signed-in download account never touches them
+  // (src/lib/ytown.ts). Read from the episodes table only: no YouTube call, no quota.
+  if (cfg.ytdlpCookiesFile) {
+    const own = () =>
+      import("./lib/ytown.ts")
+        .then((m) => m.refreshOwnVideos(db))
+        .catch((err) =>
+          log("warn", "own video list not written", { error: errorMessage(err) }),
+        );
+    void own();
+    setInterval(() => void own(), 30 * 60_000);
+  }
   // What viewers ask us to rank next, read from the long videos' comments once a day.
   if (!cfg.dryRun) {
     const requests = () =>

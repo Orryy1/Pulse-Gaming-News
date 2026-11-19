@@ -94,7 +94,8 @@ async function fetcherRun(
   args: string[],
   o: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv } = {},
 ) {
-  const signed = s.cookiesFile ? await signedInArgs({ ytdlpCookiesFile: s.cookiesFile }) : [];
+  // The call's own arguments go with it: Pulse's own channel and videos are never fetched signed in (src/lib/ytown.ts).
+  const signed = s.cookiesFile ? await signedInArgs({ ytdlpCookiesFile: s.cookiesFile }, undefined, undefined, args) : [];
   if (!signed.length) return run(s.ytdlp, args, o);
   try {
     return await run(s.ytdlp, [...signed, ...args], o);

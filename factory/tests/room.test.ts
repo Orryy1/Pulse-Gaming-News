@@ -71,7 +71,8 @@ import {
   type RoomStepInput,
 } from "../src/roomstep.ts";
 import { clusterOf, describeRun } from "../src/tools/room-proof.ts";
-import { goodScript, item } from "./helpers.ts";
+import { goodScript, item, testConfig } from "./helpers.ts";
+import { CRAFT_RULE, shortRuleNote } from "../src/editorial/shortrules.ts";
 
 // ---------------------------------------------------------------- fixtures
 
@@ -1448,7 +1449,11 @@ test("on: the room's words go out, laid out, fact-checked, with every call recor
   // The writer's and the voice's briefs are the room's own, not the stacked one.
   for (const site of ["room.write", "room.voice"]) {
     const w = seen.find((x) => x.site === site)!;
-    assert.ok(w.system.includes(`at most ${ROOM.namesMax}`), site);
+    assert.equal(
+      `${w.system}\n${w.content}`.split(CRAFT_RULE).length - 1,
+      1,
+      `${site}: the craft rules once, from the shared text`,
+    );
     assert.ok(
       !w.system.includes("desk_question") && !w.system.includes("Pulse Check"),
       site,
@@ -1696,9 +1701,9 @@ test("prompts: no em dash, the critics' corrections and the tells in the briefs,
     assert.ok(!p.includes("—"));
   const w = writerPrompt(WORDS);
   assert.ok(w.includes("80 to 115 spoken words"));
-  assert.ok(w.includes(`at most ${ROOM.numbersSpokenMax} numbers`));
+  assert.ok(w.includes("At most two spoken names"));
   assert.ok(w.includes("after 70% of the words"));
-  assert.ok(w.includes("No echo of the first line"));
+  assert.ok(w.includes("No slogan, no echo of the first line"));
   assert.ok(w.includes('"X, not Y"'));
   assert.ok(w.includes('"which is why"') && w.includes('"You\'d assume"'));
   for (const stacked of [
@@ -1751,4 +1756,26 @@ test("the proof tool reads episodes or clusters and prints a run without a model
   assert.match(text, /PACK what happened/);
   assert.match(text, /ROUND 2 voiced: mean 7/);
   assert.match(text, /KEPT: voiced/);
+});
+
+test("the craft rules: in the room writer's and the voice pass's briefs exactly once, never also through shortRuleNote", () => {
+  const once = (t: string) => t.split(CRAFT_RULE).length - 1;
+  assert.equal(once(writerPrompt(WORDS)), 1);
+  assert.equal(once(voicePrompt(WORDS)), 1);
+  // Each rule line appears once too, so no second copy in other words sits beside the shared one.
+  for (const line of CRAFT_RULE.split("\n").slice(1)) {
+    assert.equal(writerPrompt(WORDS).split(line).length - 1, 1, line);
+    assert.equal(voicePrompt(WORDS).split(line).length - 1, 1, line);
+  }
+  // The normal writer still gets them through shortRuleNote; the room never reads shortRuleNote.
+  const note = shortRuleNote(
+    testConfig("x", { shortCraftRules: true } as never) as never,
+    {
+      id: "e",
+      lane: "news",
+    } as never,
+  );
+  assert.equal(once(note), 1);
+  for (const p of [writerPrompt(WORDS), voicePrompt(WORDS)])
+    assert.ok(!p.includes(note) || note === CRAFT_RULE);
 });

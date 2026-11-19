@@ -18,7 +18,8 @@ import type { Script } from "./schema.ts";
 import type { ArticleText } from "../discovery/article.ts";
 import type { StoryCluster } from "../discovery/cluster.ts";
 import { PULSE_FACT_RULES } from "./voice.ts";
-import { SOURCE_TRUTH_RULE } from "./shortrules.ts";
+// The normal writer's craft rules (SHORT_CRAFT_RULES) are the room's too: one shared text, read once in each brief.
+import { CRAFT_RULE, SOURCE_TRUTH_RULE } from "./shortrules.ts";
 import { CREDIT_RULE } from "./credits.ts";
 import { contentTokens, gameAliases, spokenSentences } from "./payoff.ts";
 import { deskChecks, deskLines } from "./desk.ts";
@@ -735,8 +736,8 @@ Craft rules for every draft:
 - Every sentence does one of five jobs: sharpen the question, rule out the obvious answer, add a concrete detail that makes the answer land harder, deliver the answer, deliver the verdict. No stall lines. One point and one thread: the middle is never a list of facts and never splits into a second story.
 - One turn at 40 to 55% that renews curiosity with new information.
 - The answer lands after ${Math.round(ROOM.answerAt * 100)}% of the words and is concrete, and it is as big as the first line promised: if it is smaller, resize the first line or change the angle. Use the real quote or the real number when the pack has one. Copy the sentence where it lands into answer_line.
-- After the answer: one verdict in the narrator's own voice ("I") that a viewer could disagree with, with its reason. Then stop on a plain last line: the verdict's reason or the concrete consequence for the player. No echo of the first line, no flip, no symmetry, no punchline of two short sentences. Never end on a question, an ask, a plug or a pointer to another video.
-- Names and numbers: at most ${ROOM.namesMax} spoken proper names besides the game and its maker, and at most ${ROOM.numbersSpokenMax} numbers in the whole narration. Sources are credited on screen, not read aloud: say "reportedly" or "one report says", unless the outlet or the person is the story (a rumor still names who reports it once). A quote keeps its speaker in three or four words.
+- After the answer: one verdict in the narrator's own voice ("I") that a viewer could disagree with, with its reason, then stop. No flip, no symmetry, no punchline of two short sentences, no ask, plug or pointer to another video.
+- Sources: say "reportedly" or "one report says" unless the outlet or the person is the story (a rumor still names who reports it once). A quote keeps its speaker in three or four words.
 - One point. If the point cannot be said in one plain sentence, re-angle.
 - Facts only from the pack; nothing from unverified. Reported or speculative things are flagged in a few natural words. Second-hand quotes are attributed to the outlet that carried them. Never imply the answer is bigger than it is.
 - Human: contractions, short and long sentences mixed, the game's full name once then the short form, no lists of three, no "it isn't just X, it's Y", no stiff connectives, no stock phrases, no forced "you", at most one joke and only if it follows from the line before.
@@ -744,6 +745,8 @@ Craft rules for every draft:
 - Never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
 - Title: 8 words or fewer, names the game, gives the premise and not the answer.
 - Name each draft's first_line_shape and ending (reveal, consequence, dry_line or verdict). Vary them from the room's recent Shorts when a VARIETY note is given, and end on "I think X because Y" only when the note allows it.
+
+${CRAFT_RULE}
 
 ${HOUSE_RULES}`;
 }
@@ -800,15 +803,16 @@ export type RoomVoiced = z.infer<typeof RoomVoiceSchema>;
 export function voicePrompt(words: { min: number; max: number }): string {
   return `You are the last writer in a writers' room for Pulse Gaming News, a YouTube Shorts channel. You get an edited Short and the fact pack it was written from. Rewrite it by ear, so it sounds like one sharp person talking, without losing what makes it work.
 
-- Choose the form from the story: in_order (told in order), tiny_story (a tiny story with a person in it), contradiction_hangs (one contradiction left to hang), read_again ("read that again" on one detail), blunt_then_proven (a blunt opinion, then proven), real_question (a question the narrator really asks and answers).
+- Name the form you choose: in_order (told in order), tiny_story (a tiny story with a person in it), contradiction_hangs (one contradiction left to hang), read_again ("read that again" on one detail), blunt_then_proven (a blunt opinion, then proven), real_question (a question the narrator really asks and answers).
 - Show the stance in word choice from the second sentence on, instead of a verdict bolted on at the end.
-- The answer stays in the last third and is never in the first sentence. Never add words to delay it: if it comes too early, cut what follows it instead. Copy the sentence where it lands into answer_line.
-- One twist, sayable in one sentence.
+- The answer stays in the last third and is never in the first sentence. Copy the sentence where it lands into answer_line.
 - ${words.min} to ${words.max} spoken words; when the story is small, stay near ${words.min}.
 - The game's full title once, then the short form fans use.
 - Every claim exactly as strong as the pack supports: nothing added, nothing upgraded, rumors stay labeled.
-- At most ${ROOM.namesMax} spoken names besides the game and its maker, at most ${ROOM.numbersSpokenMax} numbers, no em dashes, a plain last line that is not a question, an ask or a plug, and never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
+- No em dashes, no ask or plug, and never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
 - Name the form, the first_line_shape and the ending (reveal, consequence, dry_line or verdict). When a VARIETY note is given, repeat none it rules out.
+
+${CRAFT_RULE}
 
 ${HOUSE_RULES}`;
 }

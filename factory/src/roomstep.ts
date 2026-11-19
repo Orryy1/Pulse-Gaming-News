@@ -34,6 +34,10 @@ import {
   runLayout,
   runRoom,
   writeRoom,
+  voiceRoom,
+  type FactPack,
+  type RecentShape,
+  type RoomText,
   type PackInput,
   type RoomArm,
   type RoomCalls,
@@ -48,7 +52,11 @@ export interface RoomStepInput {
     scriptRoomRounds: number;
     scriptRoomMin: number;
     scriptRoomLinks: boolean;
+    /** SCRIPT_ROOM_VOICE: the voice pass after the edit (absent counts as on). */
+    scriptRoomVoice?: boolean;
   };
+  /** The last room Shorts' shapes, newest first (variety memory, from their records). */
+  recent?: readonly RecentShape[];
   cluster: StoryCluster;
   articles: ArticleText[];
   storeData?: string;
@@ -132,6 +140,7 @@ export async function roomRun(
           o.mustLabelRumour
             ? "This story is not confirmed by an official source or two independent outlets: label it as a report in the first two sentences and keep it labeled."
             : "",
+          o.recent,
         ),
       editor: (drafts) => readEditor(o.llm, drafts),
       ...(o.cfg.scriptRoomViewer
@@ -142,11 +151,21 @@ export async function roomRun(
         : {}),
       edit: (draft, instruction, pack) =>
         editRoom(o.llm, { draft, problems: [instruction], pack, words }),
+      ...(o.cfg.scriptRoomVoice !== false
+        ? {
+            voice: (draft: RoomText, pack: FactPack) =>
+              voiceRoom(o.llm, { draft, pack, words, recent: o.recent }),
+          }
+        : {}),
       accept: (before, after) => roomEditProblems(after, corpora, before),
-      check: (narration, answerLine) =>
+      game: () => game,
+      ...(o.recent ? { recent: o.recent } : {}),
+      check: (narration, answerLine, shape) =>
         roomChecks({
           narration,
           answerLine,
+          ...(shape ? { shape } : {}),
+          ...(o.recent ? { recent: o.recent } : {}),
           game,
           company,
           outlets: o.cluster.items.map((i) => i.source),
@@ -226,7 +245,7 @@ export async function roomWriteStep(
       run.stop === "killed"
         ? `killed: ${run.kill?.why ?? ""}`
         : run.stop === "dropped"
-          ? "both critics dropped the story"
+          ? `both critics dropped the story: ${run.drop?.why ?? ""}`
           : run.stop === "unread"
             ? "the critics' read failed"
             : `the room failed: ${run.error ?? "no draft"}`;
@@ -272,8 +291,7 @@ export async function roomWriteStep(
           };
       }
     }
-    const factsOk =
-      c.verdict === "pass" && !blockers.length;
+    const factsOk = c.verdict === "pass" && !blockers.length;
     return {
       script: out,
       check: c,
@@ -307,9 +325,7 @@ export async function roomWriteStep(
       repaired = undefined;
     }
     if (repaired) {
-      const b = await assess(
-        deps.scrub ? deps.scrub(repaired) : repaired,
-      );
+      const b = await assess(deps.scrub ? deps.scrub(repaired) : repaired);
       // The repair is kept when its facts pass; a repair that broke rumour labelling is never kept.
       if (b.factsOk && b.rumourOk) a = b;
     }
@@ -384,7 +400,26 @@ export function roomEvent(r: RoomRecord): Record<string, unknown> {
     ...(r.pack ? { pack: r.pack } : {}),
     ...(r.used ? { used: r.used } : {}),
     ...(r.kill ? { kill: r.kill.why } : {}),
+    ...(r.drop ? { drop: r.drop } : {}),
+    ...(r.won ? { won: r.won } : {}),
+    ...(r.form ? { form: r.form } : {}),
+    ...(r.ending ? { ending: r.ending } : {}),
     calls: r.calls,
     ...(r.model ? { model: r.model } : {}),
   };
+}
+
+/** The variety memory from stored records (pure): the room Shorts' kept shapes, newest first. */
+export function recentShapesFrom(
+  records: ReadonlyArray<RoomRecord | null | undefined>,
+): RecentShape[] {
+  return records
+    .filter((r): r is RoomRecord => !!r && r.wrote === true)
+    .slice(0, ROOM.recentSeen)
+    .map((r) => ({
+      ...(r.form ? { form: r.form } : {}),
+      ...(r.first_line ? { first_line: r.first_line } : {}),
+      ...(r.ending ? { ending: r.ending } : {}),
+      i_think: !!r.i_think,
+    }));
 }

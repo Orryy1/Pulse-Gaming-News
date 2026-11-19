@@ -688,16 +688,18 @@ export interface Config {
    * normal Script without changing a word ("room.layout"); the fact check, rumour labelling, monetisation and house
    * safety checks, air-time checks and attribution still run and can block; a block gets one edits-only repair
    * ("room.repair"), then the normal writer; a kill, a drop by both critics or a failed step falls back to the normal
-   * writer, recorded). CODEX_CALLS=room routes every step. Calls a Short at most: 1 pack, 1 write, 3 reads per critic,
-   * 2 edits, 2 layouts, 1 repair. */
+   * writer, recorded). After the edit a voice pass ("room.voice") rewrites by ear and both critics read the versions
+   * side by side; the better mean goes on, ties to the edited one. CODEX_CALLS=room routes every step. Calls a Short at
+   * most: 1 pack, 1 write, 1 edit, 1 voice, 3 reads per critic (2 in practice), 2 layouts, 1 repair. */
   scriptRoom: "off" | "check" | "on";
   /** SCRIPT_ROOM_SHARE (0-1, default 0.5): the share of covered Shorts in the room's arm, split by episode id. */
   scriptRoomShare: number;
   /** SCRIPT_ROOM_VIEWER (default true): the viewer critic reads beside the editor critic. */
   scriptRoomViewer: boolean;
-  /** SCRIPT_ROOM_ROUNDS (0-2, default 2): edit rounds at most; the room also stops when a read clears or a round does not
-   * improve the mean mark. */
+  /** SCRIPT_ROOM_ROUNDS (0-1, default 1): the edit round; 0 skips the edit (a pick that clears the bar is never edited). */
   scriptRoomRounds: number;
+  /** SCRIPT_ROOM_VOICE (default true): the voice pass after the edit, kept only when the critics prefer it side by side. */
+  scriptRoomVoice: boolean;
   /** SCRIPT_ROOM_MIN (1-10, default 8): the mean overall mark that clears the room (no editor mark under 7 either). */
   scriptRoomMin: number;
   /** SCRIPT_ROOM_LINKS (default false): the pack also reads up to three primary sources the articles link to (the
@@ -1921,7 +1923,8 @@ export function loadConfig(): Config {
     scriptRoom: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SCRIPT_ROOM", "off").trim().toLowerCase()),
     scriptRoomShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_ROOM_SHARE", "0.5"))))),
     scriptRoomViewer: str("SCRIPT_ROOM_VIEWER", "true").trim().toLowerCase() !== "false",
-    scriptRoomRounds: Math.min(2, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 2))),
+    scriptRoomRounds: Math.min(1, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 1))),
+    scriptRoomVoice: str("SCRIPT_ROOM_VOICE", "true").trim().toLowerCase() !== "false",
     scriptRoomMin: Math.min(10, Math.max(1, int("SCRIPT_ROOM_MIN", 8))),
     scriptRoomLinks: str("SCRIPT_ROOM_LINKS", "false").trim().toLowerCase() === "true",
     firstSecondPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("FIRST_SECOND_PANEL", "off").trim().toLowerCase()),

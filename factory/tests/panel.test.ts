@@ -14,7 +14,8 @@ import {
   type PanelEvent,
   type PanelVerdict,
 } from "../src/panel/panel.ts";
-import { pickDraft, ROOM_PICK_RULE } from "../src/editorial/room.ts";
+import * as room from "../src/editorial/room.ts";
+import { pickDraft, pickVersion, ROOM_PICK_RULE } from "../src/editorial/room.ts";
 import {
   roomCriticRequests,
   roomRunRequests,
@@ -277,7 +278,27 @@ test("the room's pick on the panel: best mean, then the editor's own pick, its h
   assert.equal(pickDraft([], undefined), -1);
 });
 
-test("the room's requests to room.critic and room.viewer are byte for byte what they were before the panel", async () => {
+test("the side-by-side pick on the panel: best mean, ties to the edited version, then the original, then the voiced", () => {
+  const m = (overall: number) => ({ overall });
+  assert.equal(
+    pickVersion([
+      { version: "voiced", editor: m(8), viewer: m(8) },
+      { version: "original", editor: m(8), viewer: m(8) },
+      { version: "edited", editor: m(7), viewer: m(9) },
+    ]),
+    "edited",
+  );
+  assert.equal(
+    pickVersion([
+      { version: "voiced", editor: m(9), viewer: m(8) },
+      { version: "original", editor: m(8), viewer: m(8) },
+    ]),
+    "voiced",
+  );
+  assert.equal(pickVersion([]), undefined);
+});
+
+test("the room's requests to room.critic and room.viewer are byte for byte what stage's room sent before the panel", async () => {
   const snapshot = JSON.parse(
     fs.readFileSync(
       path.join(import.meta.dirname, "fixtures", "room_critic_requests.json"),
@@ -285,14 +306,14 @@ test("the room's requests to room.critic and room.viewer are byte for byte what 
     ),
   );
   assert.deepEqual(
-    JSON.parse(JSON.stringify(await roomCriticRequests())),
+    JSON.parse(JSON.stringify(await roomCriticRequests(room))),
     snapshot.direct,
   );
-  const run = JSON.parse(JSON.stringify(await roomRunRequests()));
+  const run = JSON.parse(JSON.stringify(await roomRunRequests(room)));
   assert.equal(
     run.length,
-    6,
-    "three drafts read, then two edits each read by both critics",
+    4,
+    "three drafts read by both critics, then the original, the edit and the voiced version side by side",
   );
   assert.deepEqual(run, snapshot.run);
 });

@@ -18,7 +18,8 @@ import type { Script } from "./schema.ts";
 import type { ArticleText } from "../discovery/article.ts";
 import type { StoryCluster } from "../discovery/cluster.ts";
 import { PULSE_FACT_RULES } from "./voice.ts";
-import { SOURCE_TRUTH_RULE } from "./shortrules.ts";
+// The normal writer's craft rules (SHORT_CRAFT_RULES) are the room's too: one shared text, read once in each brief.
+import { CRAFT_RULE, SOURCE_TRUTH_RULE } from "./shortrules.ts";
 import { CREDIT_RULE } from "./credits.ts";
 import { contentTokens, gameAliases, spokenSentences } from "./payoff.ts";
 import { deskChecks, deskLines } from "./desk.ts";
@@ -59,16 +60,27 @@ export const ROOM = {
   floor: 7,
   /** promise_kept under this is the first thing the edit fixes. */
   promiseMin: 7,
-  /** Edit rounds (SCRIPT_ROOM_ROUNDS overrides, at most roundsMax). */
-  rounds: 2,
-  roundsMax: 2,
+  /**
+   * Edit rounds (SCRIPT_ROOM_ROUNDS overrides, at most roundsMax). The second hand-test round replaced a second edit
+   * with the voice pass and a read of both versions side by side.
+   */
+  rounds: 1,
+  roundsMax: 1,
+  /** Variety memory: the last room Shorts the writer and the voice pass see, and how many of them may not repeat. */
+  recentSeen: 8,
+  recentAvoid: 3,
+  /** An "I think X because Y" last sentence at most once in this many consecutive room Shorts. */
+  iThinkWindow: 4,
+  /** The voice pass: a first sentence that carries this share of the answer's words gives the answer away. */
+  answerInFirstShare: 0.6,
   /** Model calls a Short at most, whatever the settings say. */
   caps: {
     pack: 1,
     write: 1,
     critic: 3,
     viewer: 3,
-    edit: 2,
+    edit: 1,
+    voice: 1,
     layout: 2,
     repair: 1,
   },
@@ -82,6 +94,8 @@ export const ROOM_EDIT_SITE = "room.edit";
 export const ROOM_LAYOUT_SITE = "room.layout";
 /** The one edits-only repair after a fact check or a house safety check blocks the laid-out script. */
 export const ROOM_REPAIR_SITE = "room.repair";
+/** The voice pass after the edit: the script rewritten by ear (second hand-test round). */
+export const ROOM_VOICE_SITE = "room.voice";
 
 export type RoomMode = "off" | "check" | "on";
 export type RoomArm = "room" | "control";
@@ -98,14 +112,16 @@ export function roomArm(episodeId: string, share: number): RoomArm {
   return n / 65536 < share ? "room" : "control";
 }
 
-/** The room's call caps for one Short (pure): critic reads follow the rounds (one per draft set, one per round). */
-export function roomCaps(rounds: number): RoomCalls {
+/**
+ * The room's call caps for one Short (pure): the edit follows the rounds and the voice pass its setting; the critics
+ * read the drafts once and the candidates once (the cap of three is a ceiling, never a target).
+ */
+export function roomCaps(rounds: number, voice = true): RoomCalls {
   const r = Math.min(ROOM.roundsMax, Math.max(0, Math.round(rounds)));
   return {
     ...ROOM.caps,
-    critic: Math.min(ROOM.caps.critic, r + 1),
-    viewer: Math.min(ROOM.caps.viewer, r + 1),
     edit: Math.min(ROOM.caps.edit, r),
+    voice: voice ? ROOM.caps.voice : 0,
   };
 }
 
@@ -115,9 +131,111 @@ export const noCalls = (): RoomCalls => ({
   critic: 0,
   viewer: 0,
   edit: 0,
+  voice: 0,
   layout: 0,
   repair: 0,
 });
+
+/** The voice pass's forms, the first-line shapes and the ending kinds the variety memory tracks. */
+export const VOICE_FORMS = [
+  "in_order",
+  "tiny_story",
+  "contradiction_hangs",
+  "read_again",
+  "blunt_then_proven",
+  "real_question",
+] as const;
+export const FIRST_LINE_SHAPES = [
+  "plain_surprise",
+  "consequence",
+  "contradiction",
+  "number",
+  "quote",
+  "question",
+  "opinion",
+] as const;
+export const ENDING_KINDS = [
+  "reveal",
+  "consequence",
+  "dry_line",
+  "verdict",
+] as const;
+
+/** One earlier room Short's shape, newest first in a list (stored on script.room). */
+export interface RecentShape {
+  form?: string;
+  first_line?: string;
+  ending?: string;
+  /** Its last sentence was "I think X because Y". */
+  i_think?: boolean;
+}
+
+/** Set-up phrases the hand test found as tells. */
+export const TELL_PHRASES: Array<{ re: RegExp; what: string }> = [
+  { re: /\byou'?d assume\b/i, what: '"You\'d assume"' },
+  {
+    re: /\bit sounds like\b[^.?!]*[.?!]\s*the dates say otherwise\b/i,
+    what: '"It sounds like ... The dates say otherwise"',
+  },
+  {
+    re: /\bso is it\b[^?]*\?\s*check\b/i,
+    what: '"So is it ...? Check ..."',
+  },
+  {
+    re: /\bhere'?s how (?:he|she|they|it) put it\b/i,
+    what: '"Here\'s how he put it"',
+  },
+  { re: /\bwhich is why\b/i, what: '"which is why"' },
+  { re: /\bthat said\b/i, what: '"that said"' },
+  { re: /\bin other words\b/i, what: '"in other words"' },
+];
+
+/** An "I think X because Y" sentence (pure). */
+export function iThinkBecause(sentence: string): boolean {
+  return /^\W*I think\b[^.?!]*\bbecause\b/i.test(
+    stripVoiceTags(sentence).trim(),
+  );
+}
+
+/** What the writer and the voice pass are told about the last room Shorts (pure); empty with no history. */
+export function recentNote(recent: readonly RecentShape[] = []): string {
+  const seen = recent.slice(0, ROOM.recentSeen);
+  if (!seen.length) return "";
+  const avoid = seen.slice(0, ROOM.recentAvoid);
+  const list = (k: keyof Omit<RecentShape, "i_think">) =>
+    [...new Set(avoid.map((r) => r[k]).filter(Boolean))].join(", ") || "none";
+  const iThink = seen.slice(0, ROOM.iThinkWindow - 1).some((r) => r.i_think);
+  return `VARIETY: the last ${seen.length} room Shorts, newest first: ${seen
+    .map(
+      (r, i) =>
+        `${i + 1}. form ${r.form ?? "?"}, first line ${r.first_line ?? "?"}, ending ${r.ending ?? "?"}`,
+    )
+    .join(
+      "; ",
+    )}. Do not repeat the last ${ROOM.recentAvoid}: no form ${list("form")}, no first-line shape ${list("first_line")}, no ending ${list("ending")}.${iThink ? ' One of the last few already ended on "I think X because Y": do not end that way.' : ""}`;
+}
+
+/** How a version repeats the last room Shorts (pure): its form, first line or ending kind, or a second "I think". */
+export function varietyProblems(
+  shape: RecentShape,
+  recent: readonly RecentShape[] = [],
+): string[] {
+  const avoid = recent.slice(0, ROOM.recentAvoid);
+  const out: string[] = [];
+  for (const k of ["form", "first_line", "ending"] as const)
+    if (shape[k] && avoid.some((r) => r[k] === shape[k]))
+      out.push(
+        `Its ${k.replace("_", "-")} "${shape[k]}" repeats one of the last ${ROOM.recentAvoid} room Shorts; choose another.`,
+      );
+  if (
+    shape.i_think &&
+    recent.slice(0, ROOM.iThinkWindow - 1).some((r) => r.i_think)
+  )
+    out.push(
+      `It ends on "I think X because Y", as one of the last ${ROOM.iThinkWindow - 1} room Shorts did; once in ${ROOM.iThinkWindow} at most.`,
+    );
+  return out;
+}
 
 // ---------------------------------------------------------------- 1. the fact pack
 
@@ -580,6 +698,10 @@ export const RoomDraftSchema = z.object({
     .describe(
       "The sentence where the held-back answer lands, copied exactly from the narration",
     ),
+  first_line_shape: z
+    .enum(FIRST_LINE_SHAPES)
+    .describe("The shape of the first sentence"),
+  ending: z.enum(ENDING_KINDS).describe("The kind of last sentence"),
 });
 export type RoomDraft = z.infer<typeof RoomDraftSchema>;
 
@@ -622,20 +744,27 @@ Craft rules for every draft:
 - Every sentence does one of five jobs: sharpen the question, rule out the obvious answer, add a concrete detail that makes the answer land harder, deliver the answer, deliver the verdict. No stall lines. One point and one thread: the middle is never a list of facts and never splits into a second story.
 - One turn at 40 to 55% that renews curiosity with new information.
 - The answer lands after ${Math.round(ROOM.answerAt * 100)}% of the words and is concrete, and it is as big as the first line promised: if it is smaller, resize the first line or change the angle. Use the real quote or the real number when the pack has one. Copy the sentence where it lands into answer_line.
-- After the answer: one verdict in the narrator's own voice ("I") that a viewer could disagree with, with its reason. Then stop on a plain last line: the verdict's reason or the concrete consequence for the player. No echo of the first line, no flip, no symmetry, no punchline of two short sentences. Never end on a question, an ask, a plug or a pointer to another video.
-- Names and numbers: at most ${ROOM.namesMax} spoken proper names besides the game and its maker, and at most ${ROOM.numbersSpokenMax} numbers in the whole narration. Sources are credited on screen, not read aloud: say "reportedly" or "one report says", unless the outlet or the person is the story (a rumor still names who reports it once). A quote keeps its speaker in three or four words.
+- After the answer: one verdict in the narrator's own voice ("I") that a viewer could disagree with, with its reason, then stop. No flip, no symmetry, no punchline of two short sentences, no ask, plug or pointer to another video.
+- Sources: say "reportedly" or "one report says" unless the outlet or the person is the story (a rumor still names who reports it once). A quote keeps its speaker in three or four words.
 - One point. If the point cannot be said in one plain sentence, re-angle.
 - Facts only from the pack; nothing from unverified. Reported or speculative things are flagged in a few natural words. Second-hand quotes are attributed to the outlet that carried them. Never imply the answer is bigger than it is.
 - Human: contractions, short and long sentences mixed, the game's full name once then the short form, no lists of three, no "it isn't just X, it's Y", no stiff connectives, no stock phrases, no forced "you", at most one joke and only if it follows from the line before.
 - Numbers rounded as spoken, no em dashes, nothing advertiser-unfriendly.
+- Never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
 - Title: 8 words or fewer, names the game, gives the premise and not the answer.
+- Name each draft's first_line_shape and ending (reveal, consequence, dry_line or verdict). Vary them from the room's recent Shorts when a VARIETY note is given, and end on "I think X because Y" only when the note allows it.
 
-${PULSE_FACT_RULES}
+${CRAFT_RULE}
+
+${HOUSE_RULES}`;
+}
+
+/** The house safety rules every room step that writes words reads. */
+const HOUSE_RULES = `${PULSE_FACT_RULES}
 
 ${SOURCE_TRUTH_RULE}
 
 ${CREDIT_RULE}`;
-}
 
 /** The pack as the writer reads it (pure). */
 export function packText(pack: FactPack): string {
@@ -648,13 +777,101 @@ export async function writeRoom(
   pack: FactPack,
   words: { min: number; max: number },
   extra = "",
+  recent: readonly RecentShape[] = [],
 ): Promise<RoomWriting> {
+  const variety = recentNote(recent);
   return llm.structured({
     site: ROOM_WRITE_SITE,
     effort: "high",
     system: writerPrompt(words),
-    content: `${packText(pack)}${extra ? `\n\n${extra}` : ""}`,
+    content: `${packText(pack)}${extra ? `\n\n${extra}` : ""}${variety ? `\n\n${variety}` : ""}`,
     schema: RoomWriterSchema,
+  });
+}
+
+// ---------------------------------------------------------------- 4b. the voice pass
+
+export const RoomVoiceSchema = z.object({
+  form: z.enum(VOICE_FORMS),
+  title: z.string(),
+  narration: z
+    .string()
+    .describe("The whole spoken narration, rewritten by ear"),
+  answer_line: z
+    .string()
+    .describe(
+      "The sentence where the answer lands, copied exactly from the new narration",
+    ),
+  first_line_shape: z.enum(FIRST_LINE_SHAPES),
+  ending: z.enum(ENDING_KINDS),
+});
+export type RoomVoiced = z.infer<typeof RoomVoiceSchema>;
+
+/** The voice pass's brief (second hand-test round): the edited script rewritten by ear, the facts and the answer held. */
+export function voicePrompt(words: { min: number; max: number }): string {
+  return `You are the last writer in a writers' room for Pulse Gaming News, a YouTube Shorts channel. You get an edited Short and the fact pack it was written from. Rewrite it by ear, so it sounds like one sharp person talking, without losing what makes it work.
+
+- Name the form you choose: in_order (told in order), tiny_story (a tiny story with a person in it), contradiction_hangs (one contradiction left to hang), read_again ("read that again" on one detail), blunt_then_proven (a blunt opinion, then proven), real_question (a question the narrator really asks and answers).
+- Show the stance in word choice from the second sentence on, instead of a verdict bolted on at the end.
+- The answer stays in the last third and is never in the first sentence. Copy the sentence where it lands into answer_line.
+- ${words.min} to ${words.max} spoken words; when the story is small, stay near ${words.min}.
+- The game's full title once, then the short form fans use.
+- Every claim exactly as strong as the pack supports: nothing added, nothing upgraded, rumors stay labeled.
+- No em dashes, no ask or plug, and never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
+- Name the form, the first_line_shape and the ending (reveal, consequence, dry_line or verdict). When a VARIETY note is given, repeat none it rules out.
+
+${CRAFT_RULE}
+
+${HOUSE_RULES}`;
+}
+
+/** One voice call ("room.voice"). Throws when the call fails. */
+export async function voiceRoom(
+  llm: Llm,
+  o: {
+    draft: RoomText;
+    pack: FactPack;
+    words: { min: number; max: number };
+    recent?: readonly RecentShape[];
+  },
+): Promise<RoomVoiced> {
+  const variety = recentNote(o.recent);
+  return llm.structured({
+    site: ROOM_VOICE_SITE,
+    effort: "high",
+    system: voicePrompt(o.words),
+    content: `${packText(o.pack)}\n\nTHE EDITED SHORT\nTITLE: ${o.draft.title}\nNARRATION: ${o.draft.narration}${variety ? `\n\n${variety}` : ""}`,
+    schema: RoomVoiceSchema,
+  });
+}
+
+/**
+ * Whether a version gives the answer away in its first sentence (pure): its own answer line is the first sentence, or
+ * the first sentence carries most of the answer's words (the edited version's answer line, the game's name left out).
+ */
+export function answerInFirst(
+  narration: string,
+  answerLines: readonly string[],
+  game = "",
+): boolean {
+  const { sentences } = spokenSentences([narration]);
+  const first = sentences[0]?.text ?? "";
+  if (!first) return false;
+  const aliases = gameAliases(game);
+  const firstToks = new Set(contentTokens(first));
+  const firstKey = narrationKey(first);
+  return answerLines.some((line) => {
+    if (!line.trim()) return false;
+    const key = narrationKey(line);
+    if (key && (firstKey.includes(key) || key.includes(firstKey))) return true;
+    const toks = [...new Set(contentTokens(line))].filter(
+      (t) => !aliases.has(t),
+    );
+    if (toks.length < 2) return false;
+    return (
+      toks.filter((t) => firstToks.has(t)).length / toks.length >=
+      ROOM.answerInFirstShare
+    );
   });
 }
 
@@ -733,6 +950,9 @@ export const EditorReadSchema = z.object({
     .describe(
       "True when even the best version of this story should not be published",
     ),
+  drop_reason: z
+    .string()
+    .describe("Why, in one plain sentence, when drop is true; empty otherwise"),
 });
 export type EditorRead = z.infer<typeof EditorReadSchema>;
 
@@ -759,6 +979,9 @@ export const ViewerReadSchema = z.object({
     .describe(
       "True when nothing here is at stake for a general gamer and you would not want it at all",
     ),
+  drop_reason: z
+    .string()
+    .describe("Why, in one plain sentence, when drop is true; empty otherwise"),
 });
 export type ViewerRead = z.infer<typeof ViewerReadSchema>;
 
@@ -773,7 +996,7 @@ export function editorPrompt(): string {
 
 ${EDITOR_DIMENSIONS.map((d) => `- ${d}: ${EDITOR_RUBRIC[d]}.`).join("\n")}
 
-5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out). Pick the draft you would publish.`;
+5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out) with drop_reason. Pick the draft you would publish.`;
 }
 
 export function viewerPrompt(): string {
@@ -781,7 +1004,7 @@ export function viewerPrompt(): string {
 
 ${VIEWER_DIMENSIONS.map((d) => `- ${d}: ${VIEWER_RUBRIC[d]}.`).join("\n")}
 
-Be honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you).`;
+Be honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you) with drop_reason.`;
 }
 
 /** What the critics see (pure): titles and narration, never the pack, the angles or the plan. */
@@ -919,6 +1142,8 @@ export const ROOM_RULES = [
   "full_name",
   "repeated_fact",
   "formula_ending",
+  "tell_phrase",
+  "variety",
 ] as const;
 export type RoomRule = (typeof ROOM_RULES)[number];
 
@@ -1084,6 +1309,9 @@ export function roomChecks(o: {
   company?: string;
   outlets?: readonly string[];
   words: { min: number; max: number };
+  /** The version's declared shape, and the last room Shorts' (variety memory). */
+  shape?: RecentShape;
+  recent?: readonly RecentShape[];
 }): { findings: RoomFinding[]; counts: RoomCounts } {
   const out: RoomFinding[] = [];
   const text = stripVoiceTags(o.narration).replace(/\s+/g, " ").trim();
@@ -1172,6 +1400,15 @@ export function roomChecks(o: {
         problem: `The last line echoes the first ("${shared.join(", ")}"); end on the consequence for the player instead of a callback.`,
       });
   }
+  for (const t of TELL_PHRASES)
+    if (t.re.test(text))
+      out.push({
+        rule: "tell_phrase",
+        problem: `Cut the set-up phrase ${t.what}: it is a tell; say the thing itself.`,
+      });
+  if (o.shape)
+    for (const v of varietyProblems(o.shape, o.recent))
+      out.push({ rule: "variety", problem: v });
   for (const f of deskChecks({ lines: [text], game: o.game }))
     out.push({
       rule: f.rule === "last_line_ask" ? "last_line_ask" : (f.rule as RoomRule),
@@ -1263,11 +1500,20 @@ export async function editRoom(
 
 // ---------------------------------------------------------------- the room's loop
 
+/** A version in the room: O, the picked draft; E, its edit; V, the voice pass. */
+export type RoomVersion = "original" | "edited" | "voiced";
+const VERSION_LABEL: Record<RoomVersion, string> = {
+  original: "O",
+  edited: "E",
+  voiced: "V",
+};
+
 export interface RoomRoundMarks {
-  /** 0 is the drafts' read; 1 and on, each edit round. */
+  /** 0 is the drafts' read; 1 the edit; 2 the read of the candidates side by side. */
   round: number;
-  /** The label of the draft read in this round. */
+  /** The draft's label in round 0; the version in round 1. */
   label: string;
+  version?: RoomVersion;
   editor?: Record<EditorDimension, number>;
   viewer?: Record<ViewerDimension, number>;
   mean?: number;
@@ -1277,14 +1523,7 @@ export interface RoomRoundMarks {
 }
 
 export type RoomStop =
-  | "cleared"
-  | "no_gain"
-  | "rounds"
-  | "cap"
-  | "unread"
-  | "killed"
-  | "dropped"
-  | "failed";
+  "cleared" | "compared" | "unread" | "killed" | "dropped" | "failed";
 
 export interface RoomRun {
   pack?: FactPack;
@@ -1302,9 +1541,21 @@ export interface RoomRun {
   }>;
   pick?: string;
   rounds: RoomRoundMarks[];
-  final?: RoomText & { answer_line?: string; counts: RoomCounts };
+  /** Which version went on, and why the others did not when they were refused. */
+  won?: RoomVersion;
+  edit?: { refused?: string[] };
+  voice?: { refused?: string[] };
+  final?: RoomText & {
+    answer_line?: string;
+    counts: RoomCounts;
+    form?: string;
+    first_line?: string;
+    ending?: string;
+    i_think: boolean;
+  };
   kill?: { why: string };
-  drop?: { editor: boolean; viewer: boolean };
+  /** A drop by either critic on the pick, with the reason; both dropping sends the story back. */
+  drop?: { editor: boolean; viewer: boolean; why: string };
   stop: RoomStop;
   error?: string;
   calls: RoomCalls;
@@ -1321,19 +1572,69 @@ const viewerMarks = (r: ViewerRead) =>
     number
   >;
 
+/** The last sentence of a narration (pure). */
+function lastSentence(narration: string): string {
+  const { sentences } = spokenSentences([narration]);
+  return sentences[sentences.length - 1]?.text ?? "";
+}
+
+/**
+ * The better of the candidates read side by side (pure): the best mean of the two overall marks; a tie goes to the
+ * edited version, then the original, then the voiced one.
+ */
+export function pickVersion(
+  reads: ReadonlyArray<{
+    version: RoomVersion;
+    editor: Pick<EditorRead, "overall">;
+    viewer?: Pick<ViewerRead, "overall">;
+  }>,
+): RoomVersion | undefined {
+  // On the shared panel: the best mean overall, ties to the edited version, then the original, then the voiced one.
+  const order: RoomVersion[] = ["edited", "original", "voiced"];
+  const sorted = [...reads].sort(
+    (a, b) => order.indexOf(a.version) - order.indexOf(b.version),
+  );
+  const ids = sorted.map((_, i) => String(i));
+  const read = (id: string, overall: number) => ({ id, overall, marks: {}, fault: "" });
+  const p = panelPick(
+    ids,
+    [
+      {
+        critic: "editor",
+        required: true,
+        verdict: { reads: sorted.map((r, i) => read(ids[i]!, r.editor.overall)) },
+      },
+      {
+        critic: "viewer",
+        verdict: {
+          reads: sorted.flatMap((r, i) =>
+            r.viewer ? [read(ids[i]!, r.viewer.overall)] : [],
+          ),
+        },
+      },
+    ],
+    ROOM_VERSION_RULE,
+  );
+  return p.pick === undefined ? undefined : sorted[Number(p.pick)]!.version;
+}
+
+/** The side-by-side pick rule: the best mean overall, ties to the earlier version (edited, original, voiced). */
+export const ROOM_VERSION_RULE: PanelRule = {
+  name: "best mean of the two overall marks",
+  ties: [{ by: "order" }],
+};
+
 type ShownDraft = { label: string; title: string; narration: string };
 
 /**
- * The room's critics on the shared blind panel. Each draft is a candidate (its id the label, its view exactly what
- * criticContent shows of it); the injected critics still receive the drafts themselves, so their requests are byte for
- * byte what they were before the panel. `single`: a re-read of one edited version, whose read is the first one
- * returned whatever its label (and whose editor answer must carry reads, as before).
+ * The room's critics on the shared blind panel. Each draft (or side-by-side version) is a candidate, its id the label
+ * and its view exactly what criticContent shows of it; the injected critics still receive the drafts themselves, so
+ * their requests are byte for byte what they were before the panel.
  */
 async function roomPanel(o: {
   drafts: ShownDraft[];
   editor: (drafts: ShownDraft[]) => Promise<z.infer<typeof EditorPanelSchema>>;
   viewer?: (drafts: ShownDraft[]) => Promise<z.infer<typeof ViewerPanelSchema>>;
-  single?: boolean;
   viewerCalls?: number;
 }) {
   const byCandidate = new Map<PanelCandidate, ShownDraft>();
@@ -1342,25 +1643,23 @@ async function roomPanel(o: {
     byCandidate.set(c, d);
     return c;
   });
-  const critic = <A extends { reads?: unknown }>(
+  const critic = (
     name: string,
-    fn: (drafts: ShownDraft[]) => Promise<A>,
+    fn: (drafts: ShownDraft[]) => Promise<unknown>,
     toRead: (id: string, r: any) => PanelRead<unknown>,
     required: boolean,
   ): PanelCritic<unknown> => ({
     name,
     required,
     judge: async (cands) => {
-      const r = await fn(cands.map((c) => byCandidate.get(c)!));
-      if (o.single && required) void (r as any).reads[0];
-      const list: any[] = Array.isArray((r as any)?.reads) ? (r as any).reads : [];
-      const reads = o.single
-        ? list[0] && cands[0]
-          ? [toRead(cands[0].id, list[0])]
-          : []
-        : list.map((x) => toRead(String(x?.label), x));
-      const pick = (r as any)?.pick;
-      return { reads, raw: r, ...(typeof pick === "string" ? { pick } : {}) };
+      const r = (await fn(cands.map((c) => byCandidate.get(c)!))) as any;
+      const list: any[] = Array.isArray(r?.reads) ? r.reads : [];
+      const pick = r?.pick;
+      return {
+        reads: list.map((x) => toRead(String(x?.label), x)),
+        raw: r,
+        ...(typeof pick === "string" ? { pick } : {}),
+      };
     },
   });
   const editorRead = (id: string, x: any): PanelRead<unknown> => ({
@@ -1395,9 +1694,10 @@ async function roomPanel(o: {
 
 /**
  * Steps 1 to 4 (the steps are injected, so it is tested without a model). The pack, the writer, both critics on the
- * three drafts, the pick, then edit rounds on the pick while it misses the bar: one instruction, the edit, the caller's
- * accept (a fact guard), a fresh read by both critics. Stops when it clears, when a round does not improve the mean,
- * after `rounds` edits or at a cap. The kept version is the best-marked one that passed its accept. A killed story,
+ * three drafts and the pick. Under the bar, one edit (the biggest weakness first, through the caller's accept). Then
+ * the voice pass on the best text so far, refused by code when it puts the answer in the first sentence, repeats the
+ * room's recent shapes or fails the accept. When there is anything new, both critics read the candidates side by
+ * side (the pick, its edit, the voiced version) and the best mean goes on, ties to the edited version. A killed story,
  * or one both critics drop, comes back with no final text.
  */
 export async function runRoom(o: {
@@ -1415,16 +1715,23 @@ export async function runRoom(o: {
     instruction: string,
     pack: FactPack,
   ) => Promise<RoomText | undefined>;
-  /** Why an edited version may not be kept (numbers or quotes the sources lack); empty to keep it. */
+  /** Absent when SCRIPT_ROOM_VOICE is off. */
+  voice?: (draft: RoomText, pack: FactPack) => Promise<RoomVoiced>;
+  /** Why an edited or voiced version may not be kept (numbers or quotes the sources lack); empty to keep it. */
   accept?: (before: RoomText, after: RoomText) => string[];
   check: (
     narration: string,
     answerLine?: string,
+    shape?: RecentShape,
   ) => { findings: RoomFinding[]; counts: RoomCounts };
+  /** The game's name, so the answer-in-first check leaves it out. */
+  game?: () => string;
+  /** The last room Shorts' shapes, newest first (variety memory). */
+  recent?: readonly RecentShape[];
   rounds?: number;
   min?: number;
 }): Promise<RoomRun> {
-  const caps = roomCaps(o.rounds ?? ROOM.rounds);
+  const caps = roomCaps(o.rounds ?? ROOM.rounds, !!o.voice);
   const min = o.min ?? ROOM.passMark;
   const calls = noCalls();
   const run: RoomRun = { drafts: [], rounds: [], stop: "failed", calls };
@@ -1441,9 +1748,15 @@ export async function runRoom(o: {
       run.error = "the writer returned no drafts";
       return run;
     }
+    const shapeOf = (d: RoomDraft): RecentShape => ({
+      form: d.structure,
+      first_line: d.first_line_shape,
+      ending: d.ending,
+      i_think: iThinkBecause(lastSentence(d.narration)),
+    });
     const checked = drafts.map((d) => ({
       d,
-      c: o.check(d.narration, d.answer_line),
+      c: o.check(d.narration, d.answer_line, shapeOf(d)),
     }));
     run.drafts = checked.map(({ d, c }) => ({
       label: d.label,
@@ -1497,13 +1810,21 @@ export async function runRoom(o: {
       run.stop = "unread";
       return run;
     }
-    const pi = pickDraft(reads, vw?.reads, ed.pick);
-    const pickedRead = reads[pi]!;
+    const pickedRead = reads[pickDraft(reads, vw?.reads, ed.pick)]!;
     const picked = drafts.find((d) => d.label === pickedRead.label)!;
     run.pick = picked.label;
     const pickedView = viewOf(picked.label);
+    if (pickedRead.drop || pickedView?.drop)
+      run.drop = {
+        editor: !!pickedRead.drop,
+        viewer: !!pickedView?.drop,
+        why:
+          [pickedRead.drop_reason, pickedView?.drop_reason]
+            .map((x) => x?.trim())
+            .filter(Boolean)
+            .join(" / ") || "dropped without a reason",
+      };
     if (bothDrop(pickedRead, pickedView)) {
-      run.drop = { editor: true, viewer: true };
       run.stop = "dropped";
       return run;
     }
@@ -1516,109 +1837,175 @@ export async function runRoom(o: {
       mean: meanOverall(pickedRead, pickedView),
       findings: firstCheck.findings.map((f) => f.rule),
     });
-    let best = {
-      text: { title: picked.title, narration: picked.narration } as RoomText,
-      e: pickedRead,
-      v: pickedView,
+    type Candidate = {
+      version: RoomVersion;
+      text: RoomText;
+      answer_line?: string;
+      shape: RecentShape;
+      check: { findings: RoomFinding[]; counts: RoomCounts };
+    };
+    const original: Candidate = {
+      version: "original",
+      text: { title: picked.title, narration: picked.narration },
+      answer_line: picked.answer_line,
+      shape: shapeOf(picked),
       check: firstCheck,
     };
-    const done = (stop: RoomStop): RoomRun => {
-      run.final = {
-        ...best.text,
-        answer_line: picked.answer_line,
-        counts: best.check.counts,
-      };
-      run.stop = stop;
-      return run;
-    };
-    if (clearsRoom(best.e, best.v, min)) return done("cleared");
-    for (let r = 1; r <= caps.edit; r++) {
-      if (calls.edit >= caps.edit || calls.critic >= caps.critic)
-        return done("cap");
+    const candidates: Candidate[] = [original];
+    const cleared = clearsRoom(pickedRead, pickedView, min);
+    // One edit, when the pick misses the bar.
+    let edited: Candidate | undefined;
+    if (!cleared && calls.edit < caps.edit) {
       const instruction = roomInstruction({
-        editor: best.e,
-        viewer: best.v,
-        findings: best.check.findings,
+        editor: pickedRead,
+        viewer: pickedView,
+        findings: firstCheck.findings,
         point: w.point,
       });
       calls.edit++;
       const after = await o
-        .edit(best.text, instruction, p.pack)
+        .edit(original.text, instruction, p.pack)
         .catch(() => undefined);
-      if (!after) {
-        run.rounds.push({
-          round: r,
-          label: picked.label,
-          findings: [],
-          instruction,
-          refused: ["The edits did not apply."],
-        });
-        continue;
+      const refused = after
+        ? (o.accept?.(original.text, after) ?? [])
+        : ["The edits did not apply."];
+      if (after && !refused.length) {
+        const shape = {
+          ...original.shape,
+          i_think: iThinkBecause(lastSentence(after.narration)),
+        };
+        edited = {
+          version: "edited",
+          text: after,
+          answer_line: picked.answer_line,
+          shape,
+          check: o.check(after.narration, picked.answer_line, shape),
+        };
+        candidates.push(edited);
+      } else run.edit = { refused: refused.slice(0, 6) };
+      run.rounds.push({
+        round: 1,
+        label: picked.label,
+        version: "edited",
+        findings: edited?.check.findings.map((f) => f.rule) ?? [],
+        instruction,
+        ...(edited ? {} : { refused: refused.slice(0, 6) }),
+      });
+    }
+    // The voice pass on the best text so far.
+    if (o.voice && calls.voice < caps.voice) {
+      const base = edited ?? original;
+      calls.voice++;
+      let refused: string[] = [];
+      let voiced: Candidate | undefined;
+      try {
+        const v = await o.voice(base.text, p.pack);
+        const text = { title: v.title, narration: v.narration };
+        const shape: RecentShape = {
+          form: v.form,
+          first_line: v.first_line_shape,
+          ending: v.ending,
+          i_think: iThinkBecause(lastSentence(v.narration)),
+        };
+        refused = [
+          ...(answerInFirst(
+            v.narration,
+            [
+              v.answer_line,
+              base.answer_line ?? "",
+              // The writer's own held-back answer for the angle, short enough that its words tell.
+              w.angles[picked.angle]?.answer ?? "",
+            ],
+            o.game?.() ?? "",
+          )
+            ? [
+                "The voiced version gives the answer away in its first sentence.",
+              ]
+            : []),
+          ...varietyProblems(shape, o.recent),
+          ...(o.accept?.(base.text, text) ?? []),
+        ];
+        if (!refused.length)
+          voiced = {
+            version: "voiced",
+            text,
+            answer_line: v.answer_line,
+            shape,
+            check: o.check(v.narration, v.answer_line, shape),
+          };
+      } catch (err) {
+        refused = [
+          `The voice pass failed: ${err instanceof Error ? err.message : String(err)}`,
+        ];
       }
-      const refused = o.accept?.(best.text, after) ?? [];
-      const c = o.check(after.narration, picked.answer_line);
-      if (refused.length) {
-        run.rounds.push({
-          round: r,
-          label: picked.label,
-          findings: c.findings.map((f) => f.rule),
-          instruction,
-          refused: refused.slice(0, 6),
-        });
-        continue;
-      }
-      // A fresh read of the edited version alone, on the same panel (the viewer within its cap).
+      if (voiced) candidates.push(voiced);
+      else run.voice = { refused: refused.slice(0, 6) };
+    }
+    const done = (c: Candidate, stop: RoomStop): RoomRun => {
+      run.won = c.version;
+      run.final = {
+        ...c.text,
+        ...(c.answer_line ? { answer_line: c.answer_line } : {}),
+        counts: c.check.counts,
+        ...(c.shape.form ? { form: c.shape.form } : {}),
+        ...(c.shape.first_line ? { first_line: c.shape.first_line } : {}),
+        ...(c.shape.ending ? { ending: c.shape.ending } : {}),
+        i_think: !!c.shape.i_think,
+      };
+      run.stop = stop;
+      return run;
+    };
+    if (candidates.length === 1)
+      return done(original, cleared ? "cleared" : "compared");
+    // Both critics read the candidates side by side, so their marks compare.
+    const side = candidates.map((c) => ({
+      label: VERSION_LABEL[c.version],
+      ...c.text,
+    }));
+    let e2: z.infer<typeof EditorPanelSchema> | undefined;
+    let v2: z.infer<typeof ViewerPanelSchema> | undefined;
+    if (calls.critic < caps.critic) {
+      // The same panel, the candidates side by side (the viewer within its cap).
       const again = await roomPanel({
-        drafts: [{ label: picked.label, ...after }],
+        drafts: side,
         editor: o.editor,
         viewer: o.viewer,
-        single: true,
         viewerCalls: o.viewer && calls.viewer < caps.viewer ? 1 : 0,
       });
       calls.critic += again.callsBy.editor ?? 0;
       calls.viewer += again.callsBy.viewer ?? 0;
-      let e2: EditorRead | undefined =
-        again.failed.editor === undefined
-          ? (again.verdicts.editor?.raw as z.infer<typeof EditorPanelSchema>)
-              .reads[0]
-          : undefined;
-      let v2: ViewerRead | undefined;
-      try {
-        v2 = (
-          again.verdicts.viewer?.raw as
-            | z.infer<typeof ViewerPanelSchema>
-            | undefined
-        )?.reads[0];
-      } catch {
-        // a viewer answer with no reads counts as a failed read, as it always did
-        e2 = undefined;
+      if (again.failed.editor === undefined) {
+        e2 = again.verdicts.editor?.raw as z.infer<typeof EditorPanelSchema>;
+        v2 = again.verdicts.viewer?.raw as
+          | z.infer<typeof ViewerPanelSchema>
+          | undefined;
       }
-      if (!e2) {
-        run.rounds.push({
-          round: r,
-          label: picked.label,
-          findings: c.findings.map((f) => f.rule),
-          instruction,
-          refused: ["The critic's read failed."],
-        });
-        return done("unread");
-      }
-      const mean = meanOverall(e2, v2);
-      run.rounds.push({
-        round: r,
-        label: picked.label,
-        editor: editorMarks(e2),
-        ...(v2 ? { viewer: viewerMarks(v2) } : {}),
-        mean,
-        findings: c.findings.map((f) => f.rule),
-        instruction,
-      });
-      const improved = mean > meanOverall(best.e, best.v);
-      if (improved) best = { text: after, e: e2, v: v2, check: c };
-      if (clearsRoom(best.e, best.v, min)) return done("cleared");
-      if (!improved) return done("no_gain");
     }
-    return done("rounds");
+    // Unread, the guided edit is kept over the untested voice; without an edit, the pick.
+    if (!e2) return done(edited ?? original, "unread");
+    const marks = candidates
+      .map((c) => {
+        const er = e2!.reads.find((r) => r.label === VERSION_LABEL[c.version]);
+        const vr = v2?.reads.find((r) => r.label === VERSION_LABEL[c.version]);
+        return er ? { c, er, vr } : undefined;
+      })
+      .filter((x): x is NonNullable<typeof x> => !!x);
+    for (const m of marks)
+      run.rounds.push({
+        round: 2,
+        label: picked.label,
+        version: m.c.version,
+        editor: editorMarks(m.er),
+        ...(m.vr ? { viewer: viewerMarks(m.vr) } : {}),
+        mean: meanOverall(m.er, m.vr),
+        findings: m.c.check.findings.map((f) => f.rule),
+      });
+    const won = pickVersion(
+      marks.map((m) => ({ version: m.c.version, editor: m.er, viewer: m.vr })),
+    );
+    const keep =
+      candidates.find((c) => c.version === won) ?? edited ?? original;
+    return done(keep, "compared");
   } catch (err) {
     run.error = err instanceof Error ? err.message : String(err);
     run.stop = "failed";
@@ -1753,8 +2140,18 @@ export interface RoomRecord {
   mean?: number;
   counts?: RoomCounts;
   kill?: { why: string };
-  drop?: { editor: boolean; viewer: boolean };
+  /** A drop by either critic on the pick, with the reason (both: the story went back; the report counts them). */
+  drop?: { editor: boolean; viewer: boolean; why: string };
   stop?: RoomStop;
+  /** Which version went on (the pick, its edit or the voice pass), and why a refused one was refused. */
+  won?: RoomVersion;
+  edit_refused?: string[];
+  voice_refused?: string[];
+  /** The kept version's shape, the variety memory the next room Shorts read. */
+  form?: string;
+  first_line?: string;
+  ending?: string;
+  i_think?: boolean;
   /** Why the normal writer wrote the Short instead: a kill, a drop, a failed step, the layout or the fact check. */
   fallback?: string;
   /** True when the published words are the room's. */
@@ -1783,11 +2180,11 @@ export function roomRecord(o: {
   const pack =
     o.pack ??
     (run?.pack && run.drops ? { pack: run.pack, drops: run.drops } : undefined);
-  const last = run?.rounds
-    .filter((r) => r.editor)
-    .reduce<
-      RoomRoundMarks | undefined
-    >((b, r) => (!b || (r.mean ?? 0) > (b.mean ?? 0) ? r : b), undefined);
+  // The kept version's own marks: its side-by-side read, else the drafts' read of the pick.
+  const last =
+    run?.rounds.find(
+      (r) => r.round === 2 && r.version === run.won && r.editor,
+    ) ?? run?.rounds.find((r) => r.round === 0 && r.editor);
   return {
     arm: o.arm,
     mode: o.mode,
@@ -1815,6 +2212,15 @@ export function roomRecord(o: {
     ...(run?.kill ? { kill: run.kill } : {}),
     ...(run?.drop ? { drop: run.drop } : {}),
     ...(run ? { stop: run.stop } : {}),
+    ...(run?.won ? { won: run.won } : {}),
+    ...(run?.edit?.refused?.length ? { edit_refused: run.edit.refused } : {}),
+    ...(run?.voice?.refused?.length
+      ? { voice_refused: run.voice.refused }
+      : {}),
+    ...(run?.final?.form ? { form: run.final.form } : {}),
+    ...(run?.final?.first_line ? { first_line: run.final.first_line } : {}),
+    ...(run?.final?.ending ? { ending: run.final.ending } : {}),
+    ...(run?.final ? { i_think: run.final.i_think } : {}),
     ...(o.fallback ? { fallback: o.fallback } : {}),
     ...(o.wrote !== undefined ? { wrote: o.wrote } : {}),
     ...(o.skipped?.length ? { skipped: o.skipped } : {}),
@@ -1843,6 +2249,10 @@ export function roomLinesForReport(
     views?: number | null;
     viewed_pct?: number;
     comments?: number;
+    /** The room killed the story, or a critic dropped it (both: it went back to the normal writer). */
+    killed?: boolean;
+    drop?: { editor: boolean; viewer: boolean };
+    won?: RoomVersion;
   }>,
   corr: (xs: number[], ys: number[]) => number | undefined,
 ): string[] {
@@ -1889,9 +2299,17 @@ export function roomLinesForReport(
     );
     return `${label}: rank correlation ${rho === undefined ? "n/a" : rho.toFixed(2)} over ${paired.length} Shorts`;
   };
+  const arm = all.filter((r) => r.arm === "room");
+  const killed = arm.filter((r) => r.killed).length;
+  const both = arm.filter((r) => r.drop?.editor && r.drop.viewer).length;
+  const one = arm.filter(
+    (r) => r.drop && !(r.drop.editor && r.drop.viewer),
+  ).length;
+  const won = (v: RoomVersion) => wrote.filter((r) => r.won === v).length;
   return [
     `Writers' room (SCRIPT_ROOM), by side: ${sides.join("; ")}.`,
     verdict,
     `Writers' room marks against average viewed: ${marks("editor", "editor critic")}; ${marks("viewer", "viewer critic")}.`,
+    `Writers' room, stories it could not use: ${killed + both} of ${arm.length} in its arm went back to the normal writer (${killed} killed by the writer, ${both} dropped by both critics); ${one} more were dropped by one critic and written anyway. Kept version: ${won("original")} the pick, ${won("edited")} its edit, ${won("voiced")} the voice pass.`,
   ];
 }

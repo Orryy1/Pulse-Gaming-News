@@ -56,7 +56,7 @@ import {
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
-import { roomLinesForReport, type RoomArm } from "./editorial/room.ts";
+import { roomLinesForReport, type RoomArm, type RoomVersion } from "./editorial/room.ts";
 import { firstSecondLinesForReport, type FirstSecondArm } from "./panel/firstsecond.ts";
 import { packagingPanelLinesForReport } from "./panel/packagingpanel.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
@@ -225,7 +225,15 @@ export interface EpisodeInfo {
   /** The editor's desk's arm and the kept version's overall score (SCRIPT_DESK, src/editorial/desk.ts). */
   desk?: { arm: DeskArm; overall?: number };
   /** The writers' room's arm, whether its words went out and each critic's mark (SCRIPT_ROOM, src/editorial/room.ts). */
-  room?: { arm: RoomArm; wrote?: boolean; editor?: number; viewer?: number };
+  room?: {
+    arm: RoomArm;
+    wrote?: boolean;
+    editor?: number;
+    viewer?: number;
+    killed?: boolean;
+    drop?: { editor: boolean; viewer: boolean };
+    won?: RoomVersion;
+  };
   /** The first-second panel's arm, whether the opening changed and the audience critic's marks (FIRST_SECOND_PANEL). */
   first_second?: { arm: FirstSecondArm; changed: boolean; stop?: number; gives_away?: boolean };
   /** A long video's packaging panel: whether its first choice was the factory's title and the tap mark of the title used. */
@@ -1460,6 +1468,9 @@ export async function runAnalyticsLoop(
               wrote: sc.room.wrote,
               editor: sc.room.editor_overall,
               viewer: sc.room.viewer_overall,
+              killed: !!sc.room.kill,
+              ...(sc.room.drop ? { drop: { editor: sc.room.drop.editor, viewer: sc.room.drop.viewer } } : {}),
+              ...(sc.room.won ? { won: sc.room.won } : {}),
             },
           }
         : {}),
@@ -2023,6 +2034,9 @@ export async function runAnalyticsLoop(
             wrote: e.room!.wrote,
             editor: e.room!.editor,
             viewer: e.room!.viewer,
+            killed: e.room!.killed,
+            drop: e.room!.drop,
+            won: e.room!.won,
             views: y?.views,
             viewed_pct: y?.viewed_pct,
             comments: y?.comments,

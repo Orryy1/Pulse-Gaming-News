@@ -386,7 +386,7 @@ Martin, 19 Nov, after the writers' room result: make this permanent across writi
 | First second and long-video packaging | `FIRST_SECOND_PANEL`, `PACKAGING_PANEL`, branch `claude/gap-panel`                        | Being built, off                                                                                                                                                                                  |
 | Pictures for each line                | `SHOT_PLAN_PANEL`, branch `claude/gap-shotpanel`                                          | Being built, off                                                                                                                                                                                  |
 
-**What the factory already has for each craft, and what is missing.** From a read of the code on 19 Nov. Much of it exists but is switched off.
+**What the factory already has for each craft, and what is missing.** From a read of the code on 19 Nov, with the live settings on the Mac mini as the Pulse Gaming News chat reported them that day (the code's own defaults are mostly off; the Mac has most of these on).
 
 | Craft                 | Already there                                                                   | Off today                                                          | Missing for the loop                                        |
 | --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
@@ -403,9 +403,9 @@ Martin, 19 Nov, after the writers' room result: make this permanent across writi
 
 **Order of work.**
 
-1. Writers' room: confirm the full tests, then the Pulse Gaming News chat sizes it on Claude (about 25 to 35 US cents for each Short it writes on an Opus-class model, about 1.50 US dollars a day at half of ten Shorts) and starts it in `check`, then `on` for half.
+1. Writers' room: live for half since 19 Nov 10:40 on Claude (estimated 25 to 35 US cents for each Short it writes on an Opus-class model, about 1.50 US dollars a day at half of ten Shorts). Read the first room-written Shorts, their real cost and how often it falls back; judge at 20 Shorts a side.
 2. First-second and picture-plan panels: finish, test, hand over; both start in `check` so their marks can be set against stayed-versus-swiped before they change anything.
-3. Switch-ons that are the Pulse Gaming News chat's call: `LEARN_JUDGES` (so every critic is checked against real viewers), then `RETENTION_DIRECTOR` and `PACKAGING_LAB` in their record-only modes.
+3. Decisions that are the Pulse Gaming News chat's call once the data is in: moving `LEARN_HOOKS` from shadow to choosing, `RETENTION_DIRECTOR` from advise to fix and `PACKAGING_LAB` from score to pick.
 4. After the 21 Nov documentary: `claude/gap-longform`, then two drafts per chapter with the critics.
 5. After the like-for-like render: `claude/gap-untemplate` (sound and layout variety).
 6. Every Wednesday the frontier check re-ranks the gaps, so this order changes with the evidence.

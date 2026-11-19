@@ -36,6 +36,7 @@ import { parseOcrOutput, type OcrPage } from "../assets/ocr.ts";
 import {
   buildStep,
   chooseSource,
+  fetcherCookiesFile,
   describeShots,
   hearInto,
   indexStretch,
@@ -100,6 +101,8 @@ function settings(): BuildSettings {
     ocrFps: num(env.SCENE_INDEX_OCR_FPS, 2),
     chunkSeconds: num(env.SCENE_INDEX_CHUNK_MINUTES, 10) * 60,
     maxHours: num(env.SCENE_INDEX_MAX_HOURS, 12),
+    // The game fetcher's own turns (build --complete) alone may sign in with YTDLP_COOKIES_FILE.
+    cookiesFile: fetcherCookiesFile(command, Boolean(flag("complete")), env),
   };
 }
 

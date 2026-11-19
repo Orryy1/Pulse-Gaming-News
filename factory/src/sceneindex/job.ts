@@ -311,7 +311,7 @@ type JobConfig = Pick<
   | "whisperPython"
   | "macMinFreeGb"
 > &
-  Partial<Pick<Config, "archiveProxy" | "archiveBacklog" | "archiveComments">>;
+  Partial<Pick<Config, "archiveProxy" | "archiveBacklog" | "archiveComments" | "ytdlpCookiesFile">>;
 
 const queueFile = (dataDir: string) =>
   path.join(dataDir, "sceneindex", "queue.json");
@@ -458,7 +458,7 @@ export async function sceneIndexTick(
         `--comments=${cfg.archiveComments ?? 300}`,
         ...(job.recentRelease ? ["--recent"] : []),
       ]);
-      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background" });
+      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background", YTDLP_COOKIES_FILE: "" });
       const lightOut = lr.code === 75 ? "waiting" : turnOutcome(lr.stdout) || "waiting";
       await writeQueue(cfg.dataDir, afterTurn(await readQueue(cfg.dataDir), job.game, lightOut, now()));
       log("info", "scene index: light turn finished", { game: job.game, outcome: lightOut });
@@ -492,6 +492,9 @@ export async function sceneIndexTick(
       MACRUN_WAIT_MIN: "20",
       // Library work: the YouTube guard gives it the background share and pauses it first (src/lib/ytguard.ts).
       YT_CLASS: "background",
+      // The download account's cookies go to the game fetcher's own turns only (a launch plan, built with
+      // --complete); every other build stays anonymous (src/lib/ytsignin.ts).
+      YTDLP_COOKIES_FILE: job.fetch ? (cfg.ytdlpCookiesFile ?? "") : "",
       // ARCHIVE_PROXY=delete: the build removes the proxy once every stretch is indexed.
       ...(cfg.archiveProxy === "delete" ? { SCENE_INDEX_RELEASE_PROXY: "delete" } : {}),
     };

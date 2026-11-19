@@ -1,7 +1,8 @@
 // The YouTube guard (14 Nov 2026). From the afternoon of 13 Nov YouTube answered yt-dlp on the PC and the Mac mini
 // (one home IP) with "Sign in to confirm you're not a bot": the factory, the scene index, the archive and a day of
-// helper tests had made far too many requests. Nothing here gets around that check (no cookies, no tokens, no
-// spoofed clients, no proxies). It makes the factory a polite, low-volume client and copes while a block lasts:
+// helper tests had made far too many requests. Nothing here gets around that check (no tokens, no spoofed clients,
+// no proxies, and no cookies except the one exception below). It makes the factory a polite, low-volume client and
+// copes while a block lasts:
 //
 // - One budget for every process (the factory and its scene-index and archive children share a state file in
 //   DATA_DIR/ytguard): YT_HOURLY_BUDGET yt-dlp calls to YouTube in any hour (default 60), background work (the scene
@@ -14,6 +15,22 @@
 // - Answers are kept: search and detail listings for hours, downloaded files on disk, so a retry or the next video
 //   about the same game asks YouTube nothing.
 // - One Discord line when a block starts and one when it lifts, sent by the factory process, never repeated.
+//
+// The one exception, approved by the owner on 19 Nov 2026 (age-restricted GTA VI uploads cannot be fetched
+// anonymously): the game footage fetcher alone (GAME_FETCH's `build --complete` turns: its searches, the details
+// of its candidates and the download of the chosen full movie or no-commentary playthrough proxy) may sign in
+// with YTDLP_COOKIES_FILE, the cookies of a separate, disposable 18+ Google account made only for this, never the
+// Pulse or Orryy channel accounts (src/lib/ytsignin.ts signedInArgs; mac/ytcookies.sh exports them on the Mac
+// mini). Nothing else in the factory ever sends those cookies: Shorts clip pulls, scene search, the light index and
+// the archive stay anonymous. A call carrying --cookies is a signed-in call and has its own lane here:
+// - its own budget, YT_SIGNED_HOURLY calls in any hour (default 20), not counted in the anonymous budget;
+// - its own pause: a bot answer on the signed-in lane pauses only that lane (6 hours, doubling, 48 at most), and the
+//   anonymous lane's pause does not stop it. While it is paused the fetcher's calls go anonymous instead;
+// - "Sign in to confirm your age" on the anonymous lane is not a bot strike: that one video is marked as needing
+//   sign-in (the fetcher skips it while it cannot sign in, and fetches it signed in when it can) and work moves on;
+// - a missing cookies file, or YouTube saying the cookies are invalid or signed out, logs a warning once a day,
+//   queues one Discord line (the download account needs signing in again on the Mac mini) and the fetcher goes
+//   anonymous until the file is exported again (a newer file) or a day has passed.
 //
 // The rules (decide, afterCall) are pure and tested; the rest is file locking and caching around them.
 
@@ -43,6 +60,8 @@ export interface GuardSettings {
   urgentMaxWaitMs: number;
   /** Background calls may wait longer: nothing is waiting on them. */
   backgroundMaxWaitMs: number;
+  /** The signed-in lane's own budget (YT_SIGNED_HOURLY): the game fetcher's calls with the download account's cookies. */
+  signedHourlyBudget: number;
 }
 
 const num = (v: string | undefined, d: number): number => {
@@ -66,6 +85,7 @@ export function guardSettings(
     backgroundJitterMs: 45_000,
     urgentMaxWaitMs: 3 * 60_000,
     backgroundMaxWaitMs: 15 * 60_000,
+    signedHourlyBudget: Math.floor(num(env.YT_SIGNED_HOURLY, 20)),
   };
 }
 
@@ -92,6 +112,36 @@ export function isBotCheck(text: string): boolean {
   );
 }
 
+/** YouTube's age gate, in yt-dlp's words (pure): the video needs a signed-in 18+ account, nothing to do with bots. */
+export function isAgeGate(text: string): boolean {
+  return /sign in to confirm your age|age[- ]restricted|inappropriate for some users/i.test(text);
+}
+
+/** yt-dlp saying the cookies it was given are no good: rotated, signed out, unreadable or gone (pure). */
+export function isCookieTrouble(text: string): boolean {
+  return /cookies are no longer valid|cookies? (?:has|have) expired|does not look like a Netscape format cookies file|invalid (?:Netscape|cookies?) file|(?:no such file|not found|cannot open|could not (?:open|load)).{0,80}cookie|cookie.{0,80}(?:no such file|not found|cannot open|could not (?:open|load))/i.test(
+    text,
+  );
+}
+
+/** Which lane a call takes: one carrying --cookies (only the game fetcher's, src/lib/ytsignin.ts) is signed in (pure). */
+export type Lane = "anon" | "signed";
+export function laneOfCall(args: readonly string[]): Lane {
+  return args.some((a) => a === "--cookies" || a.startsWith("--cookies=")) ? "signed" : "anon";
+}
+
+/** The YouTube video id a call is about, from its watch or short link (pure); undefined for searches. */
+export function videoIdOf(args: readonly string[]): string | undefined {
+  for (const a of args) {
+    const m =
+      /[?&]v=([\w-]{11})/.exec(String(a)) ??
+      /youtu\.be\/([\w-]{11})/.exec(String(a)) ??
+      /youtube\.com\/(?:shorts|embed|live)\/([\w-]{11})/.exec(String(a));
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
 export type CallClass = "urgent" | "background";
 
 /** A child started with YT_CLASS=background (the scene index, the archive) is background; anything else is a video's own fetch. */
@@ -103,7 +153,8 @@ export function callClass(env: NodeJS.ProcessEnv = process.env): CallClass {
 
 // ---------------------------------------------------------------- the rules (pure)
 
-export interface GuardState {
+/** One lane's budget and pause: the anonymous lane is the state's own fields, the signed-in lane is `signed`. */
+export interface LaneState {
   /** When each recent call started (ms), the last hour's only. */
   calls: number[];
   /** Background calls among them. */
@@ -122,16 +173,41 @@ export interface GuardState {
   liftedAt?: number;
   /** Strikes of the last block, carried into the next one when it comes within a day. */
   lastStrikes?: number;
-  /** Discord lines waiting for the factory to send them (each queued once). */
-  alerts: string[];
 }
 
-export const emptyState = (): GuardState => ({
+export interface GuardState extends LaneState {
+  /** Discord lines waiting for the factory to send them (each queued once). */
+  alerts: string[];
+  /** The signed-in lane (the game fetcher with the download account's cookies): its own budget and pause. */
+  signed?: LaneState;
+  /** Videos YouTube age-gated on the anonymous lane (id: when), for the signed-in lane to fetch. */
+  needsSignIn?: Record<string, number>;
+  /** The cookies file missing or refused, until a signed-in call works again. */
+  cookieTrouble?: {
+    reason: "missing" | "signed-out";
+    since: number;
+    /** When the last warning was logged (once a day). */
+    warnedAt: number;
+  };
+}
+
+export const emptyLane = (): LaneState => ({
   calls: [],
   backgroundCalls: [],
   nextAt: 0,
+});
+
+export const emptyState = (): GuardState => ({
+  ...emptyLane(),
   alerts: [],
 });
+
+/** The lane's own state inside the shared state (the signed-in one made on first use). */
+export function laneState(state: GuardState, lane: Lane): LaneState {
+  if (lane === "anon") return state;
+  state.signed ??= emptyLane();
+  return state.signed;
+}
 
 const HOUR = 3_600_000;
 const PROBE_MS = 10 * 60_000;
@@ -149,12 +225,17 @@ export type Decision =
  * counted and books its start, so the next call is spaced after it.
  */
 export function decide(
-  state: GuardState,
+  root: GuardState,
   now: number,
   cls: CallClass,
   s: GuardSettings,
   rand: number,
+  lane: Lane = "anon",
 ): Decision {
+  // Each lane keeps its own count, spacing and pause: the anonymous pause never stops a signed-in call, nor the
+  // reverse. The signed-in lane has its own small budget and no background share (only the fetcher uses it).
+  const state = laneState(root, lane);
+  const budget = lane === "signed" ? s.signedHourlyBudget : s.hourlyBudget;
   state.calls = state.calls.filter((t) => now - t < HOUR);
   state.backgroundCalls = state.backgroundCalls.filter((t) => now - t < HOUR);
   let probe = false;
@@ -165,11 +246,11 @@ export function decide(
       return { go: false, reason: "probing", until: state.probeAt + PROBE_MS };
     probe = true;
   }
-  if (s.hourlyBudget > 0) {
-    if (state.calls.length >= s.hourlyBudget)
+  if (budget > 0) {
+    if (state.calls.length >= budget)
       return { go: false, reason: "budget", until: state.calls[0]! + HOUR };
-    const bgCap = Math.max(1, Math.floor(s.hourlyBudget * s.backgroundShare));
-    if (cls === "background" && state.backgroundCalls.length >= bgCap)
+    const bgCap = Math.max(1, Math.floor(budget * s.backgroundShare));
+    if (lane === "anon" && cls === "background" && state.backgroundCalls.length >= bgCap)
       return {
         go: false,
         reason: "budget",
@@ -219,20 +300,53 @@ export function liftAlert(budget: number): string {
     : `▶️ YouTube is answering the factory normally again. Footage fetching has restarted.`;
 }
 
-export type Outcome = "ok" | "bot" | "other";
+/** The owner's line when the signed-in lane meets a bot check (pure). */
+export function signedStartAlert(until: number, now: number): string {
+  const hours = Math.max(1, Math.round((until - now) / HOUR));
+  return (
+    `⏸️ YouTube asked the signed-in download account to prove it is not a bot, so the game footage fetcher has stopped ` +
+    `signing in for about ${hours} hours (until about ${clock(until)} UTC). It keeps searching anonymously meanwhile; ` +
+    `age-restricted uploads wait. Nothing for you to do. I will say once when it lifts.`
+  );
+}
+
+/** The owner's line when the signed-in lane's pause lifts (pure). */
+export function signedLiftAlert(budget: number): string {
+  return budget > 0
+    ? `▶️ The signed-in download account is answering normally again. The game footage fetcher signs in again (at most ${budget} requests an hour).`
+    : `▶️ The signed-in download account is answering normally again. The game footage fetcher signs in again.`;
+}
+
+/** The owner's one line when the download account's cookies are missing or refused (pure). */
+export function cookieAlert(reason: "missing" | "signed-out"): string {
+  return (
+    `🔑 The download account needs signing in again on the Mac mini: ` +
+    (reason === "missing"
+      ? `the cookies file (YTDLP_COOKIES_FILE) is not there. `
+      : `YouTube says its cookies are no longer valid or signed out. `) +
+    `The game footage fetcher carries on anonymously, so age-restricted uploads wait. To fix it, sign the download ` +
+    `account in again in its Brave profile on the Mac mini, then run mac/ytcookies.sh in Terminal.`
+  );
+}
+
+export type Outcome = "ok" | "bot" | "age" | "cookies" | "other";
 
 /**
- * Records a call's outcome (pure; changes the state in place). A bot answer starts a block, or lengthens it when a
- * probe after the pause meets the wall again; a call that works after the pause lifts it. Each block queues one
- * start line and one lift line. Returns what changed, for the log.
+ * Records a call's outcome on its lane (pure; changes the state in place). A bot answer starts a block, or
+ * lengthens it when a probe after the pause meets the wall again; a call that works after the pause lifts it. Each
+ * block queues one start line and one lift line. An age gate or refused cookies is never a strike (the guard marks
+ * the video or the cookies instead). Returns what changed, for the log.
  */
 export function afterCall(
-  state: GuardState,
+  root: GuardState,
   now: number,
   outcome: Outcome,
   probe: boolean,
   s: GuardSettings,
+  lane: Lane = "anon",
 ): "started" | "extended" | "lifted" | undefined {
+  const state = laneState(root, lane);
+  const signed = lane === "signed";
   if (outcome === "bot") {
     if (s.cooldownHours <= 0) return undefined;
     if (state.block) {
@@ -253,7 +367,7 @@ export function afterCall(
     const until = now + cooldownMs(strikes, s);
     state.block = { since: now, until, strikes };
     state.probeAt = undefined;
-    state.alerts.push(startAlert(until, now));
+    root.alerts.push(signed ? signedStartAlert(until, now) : startAlert(until, now));
     return "started";
   }
   if (!probe) return undefined;
@@ -262,12 +376,57 @@ export function afterCall(
     state.liftedAt = now;
     state.block = undefined;
     state.probeAt = undefined;
-    state.alerts.push(liftAlert(s.hourlyBudget));
+    root.alerts.push(signed ? signedLiftAlert(s.signedHourlyBudget) : liftAlert(s.hourlyBudget));
     return "lifted";
   }
   // Another failure (a removed video, a 403 on one stream) says nothing about the wall: let the next call try.
   state.probeAt = undefined;
   return undefined;
+}
+
+const SIGN_IN_KEEP_MS = 30 * 24 * HOUR;
+const SIGN_IN_KEEP_COUNT = 500;
+
+/** Marks a video YouTube age-gated on the anonymous lane (pure; in place): the newest 500 of the last 30 days kept. */
+export function markNeedsSignIn(state: GuardState, videoId: string, now: number): void {
+  const kept = Object.entries({ ...(state.needsSignIn ?? {}), [videoId]: now })
+    .filter(([, at]) => now - at < SIGN_IN_KEEP_MS)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, SIGN_IN_KEEP_COUNT);
+  state.needsSignIn = Object.fromEntries(kept);
+}
+
+/** True when the video was age-gated on the anonymous lane within the last 30 days (pure). */
+export function needsSignInNow(state: GuardState, videoId: string, now: number): boolean {
+  const at = state.needsSignIn?.[videoId];
+  return at !== undefined && now - at < SIGN_IN_KEEP_MS;
+}
+
+/**
+ * Records trouble with the download account's cookies (pure; in place). The first time in an episode queues the one
+ * Discord line; returns true when the warning is due in the log (once a day).
+ */
+export function noteCookieTrouble(state: GuardState, now: number, reason: "missing" | "signed-out"): boolean {
+  const had = state.cookieTrouble;
+  if (!had) state.alerts.push(cookieAlert(reason));
+  const due = !had || now - had.warnedAt >= 24 * HOUR;
+  state.cookieTrouble = {
+    reason,
+    // A refusal restarts the day's wait before the next signed-in try; a missing file keeps its first moment.
+    since: had && reason === "missing" && had.reason === "missing" ? had.since : now,
+    warnedAt: due ? now : had!.warnedAt,
+  };
+  return due;
+}
+
+/**
+ * Whether the cookies file may be used now (pure): yes unless YouTube refused it, and then only once the owner has
+ * exported a newer file or a day has passed since the refusal (one signed-in try a day).
+ */
+export function cookiesUsable(state: GuardState, fileMtimeMs: number, now: number): boolean {
+  const t = state.cookieTrouble;
+  if (!t || t.reason === "missing") return true;
+  return fileMtimeMs > t.since || now - t.since >= 24 * HOUR;
 }
 
 // ---------------------------------------------------------------- the refusal callers see
@@ -277,14 +436,18 @@ export class YtPausedError extends Error {
   constructor(
     readonly reason: "blocked" | "probing" | "budget" | "busy",
     until?: number,
+    readonly lane: Lane = "anon",
   ) {
+    const signed = lane === "signed";
     const why =
       reason === "blocked"
-        ? `YouTube asked for a bot check, so fetching is paused${until ? ` until ${clock(until)} UTC` : ""}`
+        ? `YouTube asked for a bot check, so ${signed ? "signed-in " : ""}fetching is paused${until ? ` until ${clock(until)} UTC` : ""}`
         : reason === "probing"
-          ? "YouTube fetching is paused while one call checks whether the bot check has lifted"
+          ? `${signed ? "signed-in " : ""}YouTube fetching is paused while one call checks whether the bot check has lifted`
           : reason === "budget"
-            ? "the hourly YouTube budget (YT_HOURLY_BUDGET) is used up"
+            ? signed
+              ? "the hourly signed-in YouTube budget (YT_SIGNED_HOURLY) is used up"
+              : "the hourly YouTube budget (YT_HOURLY_BUDGET) is used up"
             : "too many YouTube calls are queued ahead of this one";
     super(`YouTube fetch skipped: ${why}`);
     this.name = "YtPausedError";
@@ -370,6 +533,15 @@ function readState(file: string): GuardState {
         ? j.backgroundCalls
         : [],
       alerts: Array.isArray(j.alerts) ? j.alerts : [],
+      signed:
+        j.signed && typeof j.signed === "object"
+          ? {
+              ...emptyLane(),
+              ...j.signed,
+              calls: Array.isArray(j.signed.calls) ? j.signed.calls : [],
+              backgroundCalls: Array.isArray(j.signed.backgroundCalls) ? j.signed.backgroundCalls : [],
+            }
+          : undefined,
     };
   } catch {
     return emptyState();
@@ -427,6 +599,12 @@ export interface YtGuard {
   flushAlerts(send: (text: string) => unknown): Promise<number>;
   /** The state now (for the doctor and tests). */
   state(): Promise<GuardState>;
+  /** True when YouTube age-gated the video on the anonymous lane (read without the lock). */
+  needsSignIn(videoId: string): boolean;
+  /** Whether the cookies file (last changed at `mtimeMs`) may be used now (read without the lock). */
+  cookiesUsable(mtimeMs: number): boolean;
+  /** The cookies file is set but not there: warn once a day, one Discord line per episode. */
+  cookiesMissing(file: string): Promise<void>;
 }
 
 const errText = (err: unknown): string => {
@@ -533,6 +711,38 @@ export function createYtGuard(io: GuardIo): YtGuard {
     }
   };
 
+  const stateFile = () => path.join(io.dir, "state.json");
+
+  // What an answer means for signing in: an age gate on the anonymous lane marks that one video (never a strike);
+  // refused cookies on the signed-in lane warn once a day and queue the one Discord line; a signed-in call that
+  // works ends any cookie trouble, so the next episode is reported again.
+  const afterSignIn = async (lane: Lane, outcome: Outcome, args: readonly string[]) => {
+    try {
+      if (lane === "anon" && outcome === "age") {
+        const id = videoIdOf(args);
+        if (!id) return;
+        await withState(io, (st) => markNeedsSignIn(st, id, io.now()));
+        log("info", "youtube age gate: video marked as needing sign-in", { videoId: id });
+      } else if (lane === "signed" && outcome === "cookies") {
+        const due = await withState(io, (st) => noteCookieTrouble(st, io.now(), "signed-out"));
+        if (due) {
+          log(
+            "warn",
+            "YouTube refused the download account's cookies (invalid or signed out): the game fetcher goes anonymous until mac/ytcookies.sh is run again on the Mac mini",
+          );
+          void flushNow();
+        }
+      } else if (lane === "signed" && outcome === "ok" && readState(stateFile()).cookieTrouble) {
+        await withState(io, (st) => {
+          st.cookieTrouble = undefined;
+        });
+        log("info", "the download account is signed in again");
+      }
+    } catch {
+      // bookkeeping that cannot be written never stops the work
+    }
+  };
+
   return {
     async run(cmd, args, fn, o = {}) {
       if (!isYouTubeCall(cmd, args)) return fn();
@@ -541,45 +751,77 @@ export function createYtGuard(io: GuardIo): YtGuard {
       if (hit) return hit;
       const s = io.settings();
       const cls = o.cls ?? io.cls();
+      const lane = laneOfCall(args);
       const d = await withState(io, (st) =>
-        decide(st, io.now(), cls, s, io.rand()),
+        decide(st, io.now(), cls, s, io.rand(), lane),
       );
       if (!d.go) {
         if (d.reason !== "blocked")
           log("info", "youtube call held back", {
             reason: d.reason,
             class: cls,
+            lane,
           });
-        throw new YtPausedError(d.reason, d.until);
+        throw new YtPausedError(d.reason, d.until, lane);
       }
       const wait = d.at - io.now();
       if (wait > 0) await io.sleep(wait);
       let outcome: Outcome = "other";
+      // A signed-in call can still work while yt-dlp warns the cookies were refused (it carries on anonymously):
+      // the pause counts it as working, the sign-in bookkeeping as refused cookies.
+      let staleCookies = false;
       try {
         const r = await fn();
         outcome = "ok";
+        staleCookies = lane === "signed" && isCookieTrouble(String(r.stderr ?? ""));
         keep(args, r, cache);
         return r;
       } catch (err) {
-        outcome = isBotCheck(errText(err)) ? "bot" : "other";
+        const text = errText(err);
+        outcome = isBotCheck(text)
+          ? "bot"
+          : lane === "signed" && (isCookieTrouble(text) || isAgeGate(text))
+            ? "cookies" // an age gate while signed in means the cookies did not sign in (signed out or rotated)
+            : lane === "anon" && isAgeGate(text)
+              ? "age"
+              : "other";
         throw err;
       } finally {
-        // Only a bot answer or a probe's outcome changes anything; an ordinary call skips the second lock.
+        // Only a bot answer or a probe's outcome changes the pause; an ordinary call skips the second lock.
         const change =
           outcome !== "bot" && !d.probe
             ? undefined
             : await withState(io, (st) =>
-                afterCall(st, io.now(), outcome, d.probe, s),
+                afterCall(st, io.now(), outcome, d.probe, s, lane),
               ).catch(() => undefined);
+        const what = lane === "signed" ? "signed-in fetching" : "fetching";
         if (change === "started" || change === "extended") {
-          const st = await withState(io, (x) => x.block).catch(() => undefined);
-          log("warn", `youtube bot check: fetching paused (${change})`, {
+          const st = await withState(io, (x) => laneState(x, lane).block).catch(() => undefined);
+          log("warn", `youtube bot check: ${what} paused (${change})`, {
             until: st ? new Date(st.until).toISOString() : undefined,
             strikes: st?.strikes,
           });
         } else if (change === "lifted")
-          log("info", "youtube bot check lifted; fetching again");
+          log("info", `youtube bot check lifted; ${what} again`);
         if (change === "started" || change === "lifted") void flushNow();
+        await afterSignIn(lane, staleCookies ? "cookies" : outcome, args);
+      }
+    },
+    needsSignIn(videoId) {
+      return needsSignInNow(readState(stateFile()), videoId, io.now());
+    },
+    cookiesUsable(mtimeMs) {
+      return cookiesUsable(readState(stateFile()), mtimeMs, io.now());
+    },
+    async cookiesMissing(file) {
+      const due = await withState(io, (st) => noteCookieTrouble(st, io.now(), "missing")).catch(() => false);
+      if (due) {
+        log(
+          "warn",
+          "the download account's cookies file is missing: the game fetcher goes anonymous (run mac/ytcookies.sh on the Mac mini)",
+          { file },
+        );
+        void flushNow();
       }
     },
     async flushAlerts(send) {

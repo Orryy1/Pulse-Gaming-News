@@ -9,7 +9,8 @@
 // Steps 3 and 4 are separate on purpose: reading and listening need only this machine, looking needs the PC's GPU.
 
 import { execFile } from "node:child_process";
-import { guardedYt } from "../lib/ytguard.ts";
+import { guardActive, guardedYt, isAgeGate, isCookieTrouble, isYtPaused, videoIdOf, ytGuard } from "../lib/ytguard.ts";
+import { signedInArgs } from "../lib/ytsignin.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -73,6 +74,50 @@ const run = (
     }),
   );
 
+/**
+ * The cookies file a scene-index tool run may sign in with (pure): only the game footage fetcher's own runs,
+ * `build --complete` (the turns GAME_FETCH starts), get YTDLP_COOKIES_FILE. Every other run is anonymous ("").
+ */
+export function fetcherCookiesFile(command: string | undefined, complete: boolean, env: NodeJS.ProcessEnv): string {
+  return command === "build" && complete ? String(env.YTDLP_COOKIES_FILE ?? "").trim() : "";
+}
+
+/**
+ * The game fetcher's own yt-dlp calls (its searches, its candidates' details and the chosen upload's proxy): signed
+ * in with the download account's cookies when this build has them (s.cookiesFile, set only for the fetcher's
+ * `build --complete` turns; src/lib/ytsignin.ts), else anonymous. A signed-in call refused by its own lane (paused,
+ * budget used) or meeting refused cookies is made again anonymously; the guard has already noted why. Never made
+ * again anonymously: an age gate (it would only meet the same gate) or an upload already known to need sign-in.
+ */
+async function fetcherRun(
+  s: { ytdlp: string; cookiesFile?: string },
+  args: string[],
+  o: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv } = {},
+) {
+  const signed = s.cookiesFile ? await signedInArgs({ ytdlpCookiesFile: s.cookiesFile }) : [];
+  if (!signed.length) return run(s.ytdlp, args, o);
+  try {
+    return await run(s.ytdlp, [...signed, ...args], o);
+  } catch (err) {
+    const text = `${errorMessage(err)} ${String((err as { stderr?: unknown } | undefined)?.stderr ?? "")}`;
+    const id = videoIdOf(args);
+    const gated = isAgeGate(text) || (!!id && guardActive() && ytGuard.needsSignIn(id));
+    if (!gated && (isYtPaused(err) || isCookieTrouble(text))) {
+      log("info", "game fetch: signed-in call not possible, trying anonymously", {
+        why: isYtPaused(err) ? errorMessage(err) : "cookies refused",
+      });
+      return run(s.ytdlp, args, o);
+    }
+    throw err;
+  }
+}
+
+/** False for an upload YouTube age-gated anonymously while the fetcher cannot sign in: no call is wasted on it. */
+async function usableUpload(videoId: string, s: { cookiesFile?: string }): Promise<boolean> {
+  if (!guardActive() || !ytGuard.needsSignIn(videoId)) return true;
+  return !!s.cookiesFile && (await signedInArgs({ ytdlpCookiesFile: s.cookiesFile })).length > 0;
+}
+
 /** Frames a second the cut scan looks at: enough to place a cut within a tenth of a second, a third of the decoding. */
 export const SCAN_FPS = 10;
 
@@ -89,6 +134,11 @@ export interface BuildSettings {
   chunkSeconds: number;
   /** No source longer than this many hours (a 19-hour playthrough is 6 GB of proxy and days of the GPU). */
   maxHours: number;
+  /**
+   * YTDLP_COOKIES_FILE for the game fetcher's `build --complete` turns only (fetcherCookiesFile): its searches,
+   * details and proxy download sign in with the download account. Empty or unset: anonymous.
+   */
+  cookiesFile?: string;
 }
 
 export interface BuildDeps {
@@ -388,9 +438,10 @@ export function launchSearch(query: string, ytdlp: string): Promise<CutsceneUplo
 async function searchUploads(
   query: string,
   ytdlp: string,
+  cookiesFile?: string,
 ): Promise<CutsceneUpload[]> {
-  const { stdout } = await run(
-    ytdlp,
+  const { stdout } = await fetcherRun(
+    { ytdlp, cookiesFile },
     [
       ...YTDLP_TEXT.args,
       "--no-warnings",
@@ -424,9 +475,10 @@ async function searchUploads(
 async function uploadDetails(
   upload: CutsceneUpload,
   ytdlp: string,
+  cookiesFile?: string,
 ): Promise<CutsceneUpload | undefined> {
-  const { stdout } = await run(
-    ytdlp,
+  const { stdout } = await fetcherRun(
+    { ytdlp, cookiesFile },
     [
       ...YTDLP_TEXT.args,
       "--no-warnings",
@@ -465,7 +517,7 @@ async function uploadDetails(
 /** Searches, confirms the best few uploads' details and picks one. Undefined when nothing clean is found. */
 export async function chooseSource(
   game: string,
-  s: Pick<BuildSettings, "ytdlp" | "maxHours">,
+  s: Pick<BuildSettings, "ytdlp" | "maxHours" | "cookiesFile">,
   o: { recentRelease?: boolean; complete?: boolean; releasedOn?: string; siblings?: string[] } = {},
   deps: BuildDeps = {},
 ): Promise<SceneSource | undefined> {
@@ -479,7 +531,7 @@ export async function chooseSource(
   for (const query of gameplay ? playthroughQueries(game) : o.complete ? launchQueries(game) : sourceQueries(game)) {
     try {
       hits.push(
-        ...(await (deps.search?.(query) ?? searchUploads(query, s.ytdlp))),
+        ...(await (deps.search?.(query) ?? searchUploads(query, s.ytdlp, s.cookiesFile))),
       );
     } catch (err) {
       log("warn", "scene index: source search failed", {
@@ -488,7 +540,9 @@ export async function chooseSource(
       });
     }
   }
-  const pending = [...new Map(hits.map((h) => [h.videoId, h])).values()];
+  const pending: CutsceneUpload[] = [];
+  for (const h of new Map(hits.map((x) => [x.videoId, x])).values())
+    if (await usableUpload(h.videoId, s)) pending.push(h);
   const detailed: CutsceneUpload[] = [];
   for (let i = 0; i < 5; i++) {
     const hit = pickSource(pending, game, { ...o, maxHours: s.maxHours });
@@ -498,7 +552,7 @@ export async function chooseSource(
       1,
     );
     try {
-      const item = await (deps.details?.(hit) ?? uploadDetails(hit, s.ytdlp));
+      const item = await (deps.details?.(hit) ?? uploadDetails(hit, s.ytdlp, s.cookiesFile));
       if (item) detailed.push(item);
     } catch (err) {
       log("warn", "scene index: source details failed", {
@@ -565,7 +619,7 @@ async function ensureProxy(
     game: index.game,
     videoId: index.source.videoId,
   });
-  await run(s.ytdlp, proxyArgs(index.source.videoId, s.proxyHeight, file), {
+  await fetcherRun(s, proxyArgs(index.source.videoId, s.proxyHeight, file), {
     timeout: 6 * 3_600_000,
   });
   const size = (await fs.stat(file)).size;

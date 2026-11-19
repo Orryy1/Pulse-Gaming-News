@@ -581,6 +581,8 @@ export function testConfig(
     gameAudioTrailers: false,
     gameAudioMusicDip: 0.6,
     ytdlpPath: "yt-dlp",
+    // Tests never sign in to YouTube.
+    ytdlpCookiesFile: "",
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.
     libraryPress: false,

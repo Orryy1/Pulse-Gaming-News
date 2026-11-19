@@ -6,3 +6,6 @@ out/
 
 # Epidemic Sound beds: too large for git, listed in src/assets/epidemic_beds.json (src/tools/sfxlab/pickepidemic.py)
 public/music/es/
+
+# The download account's YouTube cookies (mac/ytcookies.sh): never committed, wherever they are kept
+yt_cookies*.txt

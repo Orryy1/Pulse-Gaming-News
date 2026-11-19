@@ -117,6 +117,8 @@ export interface EpisodeAssets {
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
   /** SHOT_PLAN_PANEL: the panel's arm, its candidate plans with their measurements and marks, the pick and the fix. */
   plan_panel?: import("./render/planpanel.ts").PlanPanelRecord;
+  /** FRAME_FOCUS: the arm, and for the check arm each spoken line's focus verdict and the summary. */
+  frame_focus?: import("./qa/framefocus.ts").FrameFocusRecord;
   images?: Array<{
     file: string;
     kind: string;

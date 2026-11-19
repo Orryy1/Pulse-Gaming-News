@@ -195,6 +195,8 @@ export function testConfig(
     shotPlanPanel: "off",
     shotPlanPanelShare: 0.5,
     shotPlanCandidates: 3,
+    frameFocus: "off",
+    frameFocusShare: 0.5,
     sequelWinners: false,
     cutdownSlot: "15:30",
     elevenLabsLowCredits: 0,

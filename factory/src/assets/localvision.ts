@@ -1167,6 +1167,64 @@ export async function subjectFrames(
   return out;
 }
 
+/**
+ * FRAME_FOCUS (src/qa/framefocus.ts): may the local model be asked now? False while it is resting after failures,
+ * switched off (LOCAL_VISION=off), under test or missing from the relay. Never a paid API, never Claude.
+ */
+export async function focusReady(): Promise<boolean> {
+  if (
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
+  )
+    return false;
+  return (await relayNotReady()) === undefined;
+}
+
+/**
+ * FRAME_FOCUS: one rendered frame and its question to the local model; the raw JSON answer for parseFocusVerdict.
+ * Throws on a failed call; the caller records the failure on the line and carries on.
+ */
+export async function focusAsk(
+  file: string,
+  prompt: string,
+  schema: object,
+  timeoutMs = 45_000,
+): Promise<unknown> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const where = await visionTarget();
+  const res = await fetchWithTimeout(
+    `${where.url}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: where.model,
+        stream: false,
+        think: false,
+        format: schema,
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
+        options: {
+          temperature: 0,
+          num_predict: 160 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
+        messages: [{ role: "user", content: prompt, images: [image] }],
+      }),
+    },
+    timeoutMs,
+  );
+  if (!res.ok) {
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  visionRelay.report(true);
+  return visionAnswer(
+    (await res.json()) as { message?: { content?: string; thinking?: string } },
+  );
+}
+
 // ---------------------------------------------------------------- FOOTAGE_LOOK_CODEX
 // 13 Nov 2026: with the PC relay down, footage first kept nothing (69 segments "not looked at" in the San Andreas
 // proof). FOOTAGE_LOOK_CODEX: Codex (the ChatGPT plan, CODEX_VISION) looks at the segments the local model could not,

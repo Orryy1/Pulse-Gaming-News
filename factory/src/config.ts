@@ -36,6 +36,7 @@ import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { streamWeeklySettings, streamWeeklySummary, type StreamWeeklySettings } from "./streamweekly/settings.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
+import { parseFocusMode, parseFocusShare } from "./qa/framefocus.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -715,6 +716,14 @@ export interface Config {
   shotPlanPanelShare: number;
   /** SHOT_PLAN_CANDIDATES (1-3, default 3): plans built and read at most under "on". */
   shotPlanCandidates: number;
+  /** FRAME_FOCUS (src/qa/framefocus.ts, 19 Nov 2026): after a Short passes render QA, one frame from the middle of each
+   * spoken line goes to the free local vision model, which says whether the line's subject is visible, large, centred
+   * and clear of text, with a mark from 0 to 3. "off" (default: nothing runs), "check" (the arm's marks are recorded on
+   * assets.frame_focus and a "frame_focus" event; the video never changes) or "fix" (scaffolding: also records the lines
+   * a fix would act on, otherwise the same as "check"). Time-boxed; a model failure never fails or holds the episode. */
+  frameFocus: "off" | "check" | "fix";
+  /** FRAME_FOCUS_SHARE (0-1, default 0.5): the share of Shorts in the check arm; the rest record only their arm. */
+  frameFocusShare: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1923,6 +1932,8 @@ export function loadConfig(): Config {
     shotPlanPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SHOT_PLAN_PANEL", "off").trim().toLowerCase()),
     shotPlanPanelShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHOT_PLAN_PANEL_SHARE", "0.5"))))),
     shotPlanCandidates: Math.min(3, Math.max(1, int("SHOT_PLAN_CANDIDATES", 3))),
+    frameFocus: parseFocusMode(process.env.FRAME_FOCUS),
+    frameFocusShare: parseFocusShare(process.env.FRAME_FOCUS_SHARE),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

@@ -58,6 +58,7 @@ import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
 import { roomLinesForReport, type RoomArm, type RoomVersion } from "./editorial/room.ts";
 import { panelLinesForReport, panelSummary, type PlanPanelRecord } from "./render/planpanel.ts";
+import { focusLinesForReport, focusReportRow, type FrameFocusRecord } from "./qa/framefocus.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -235,6 +236,8 @@ export interface EpisodeInfo {
   };
   /** The shot plan panel's arm, the kept plan's critic mark and measurements (SHOT_PLAN_PANEL, src/render/planpanel.ts). */
   plan_panel?: ReturnType<typeof panelSummary>;
+  /** FRAME_FOCUS's arm and, for the check arm, the mean focus score and weak-line share (src/qa/framefocus.ts). */
+  frame_focus?: ReturnType<typeof focusReportRow>;
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1379,11 +1382,12 @@ export async function runAnalyticsLoop(
     has_why: boolean | null;
     has_run: boolean | null;
     plan_panel: unknown;
+    frame_focus: unknown;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
             e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
             e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run,
-            e.assets_json->'plan_panel' AS plan_panel
+            e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1442,6 +1446,11 @@ export async function runAnalyticsLoop(
       ...((pp) => (pp ? { plan_panel: pp } : {}))(
         panelSummary(
           (typeof r.plan_panel === "string" ? JSON.parse(r.plan_panel) : r.plan_panel) as PlanPanelRecord | undefined,
+        ),
+      ),
+      ...((ff) => (ff ? { frame_focus: ff } : {}))(
+        focusReportRow(
+          (typeof r.frame_focus === "string" ? JSON.parse(r.frame_focus) : r.frame_focus) as FrameFocusRecord | undefined,
         ),
       ),
       ...(sc?.room
@@ -2035,6 +2044,16 @@ export async function runAnalyticsLoop(
       [...eps.values()]
         .filter((e) => !e.long && e.live_at >= periodStart && e.plan_panel)
         .map((e) => ({ ...e.plan_panel!, viewed_pct: yt.get(e.id)?.viewed_pct })),
+      spearman,
+    ),
+  );
+  // FRAME_FOCUS: the check arm's mean focus score and weak-line share, and each arm's average viewed, with no verdict
+  // before 20 Shorts a side.
+  signalLines.push(
+    ...focusLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.frame_focus)
+        .map((e) => ({ ...e.frame_focus!, viewed_pct: yt.get(e.id)?.viewed_pct })),
       spearman,
     ),
   );

@@ -361,6 +361,7 @@ import {
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { planPanelStep } from "./planpanelstep.ts";
+import { frameFocusStep } from "./framefocusstep.ts";
 import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
 import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
@@ -14536,6 +14537,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
+  // FRAME_FOCUS (src/framefocusstep.ts, off by default): one frame per spoken line to the free local vision model, asking
+  // whether the line's subject is visible, large and centred. Recorded on assets.frame_focus; the video never changes and
+  // a failure or a slow model never fails or holds the episode (time-boxed inside the step).
+  if (s.cfg.frameFocus !== "off")
+    await frameFocusStep(s, ep, {
+      assets,
+      game: script.game_title,
+      segments,
+      duration,
+      video: final,
+      dir,
+    });
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,

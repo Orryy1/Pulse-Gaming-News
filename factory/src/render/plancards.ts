@@ -322,7 +322,7 @@ const secs = (frames: number, fps: number) =>
 function cardText(seg: Segment | undefined): string | undefined {
   const v = seg?.visual;
   if (!v || v.kind === "none") return undefined;
-  const words = [v.primary, v.secondary]
+  const words = [v.primary, v.secondary, ...(v.items ?? [])]
     .filter((x) => x && String(x).trim())
     .join(" / ");
   return `${v.kind}${words ? `: ${words}` : ""}`;

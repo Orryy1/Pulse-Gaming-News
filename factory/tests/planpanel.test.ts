@@ -356,6 +356,12 @@ test("the plan card reads one row per line with the media, its length, repeats a
   );
 });
 
+test("a card's rows are part of the card text", () => {
+  const { plan, ctx } = handPlan();
+  const segs = ctx.segments.map((g, i) => (i === 2 ? { ...g, visual: { kind: "versus" as const, primary: "", secondary: "", items: ["*Starfield:2023", "Elden Ring:2022"] } } : g));
+  assert.match(planCard(plan, { ...ctx, segments: segs }), /card on screen: versus: \*Starfield:2023 \/ Elden Ring:2022/);
+});
+
 test("tokens, game names and the media description", () => {
   assert.deepEqual(tokens("The Ship's interior, at 4K!"), ["ship", "interior"]);
   assert.ok(namesGame("Starfield against Elden Ring", "Elden Ring"));

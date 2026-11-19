@@ -514,7 +514,7 @@ export function primaryLinks(
     const key = `${u.hostname}${u.pathname}`;
     if (seen.has(l) || seen.has(key)) continue;
     if (
-      /(?:twitter|x|facebook|instagram|tiktok|youtube|reddit|discord)\.com$|t\.co$|bsky\.app$/i.test(
+      /(?:^|\.)(?:twitter|x|facebook|instagram|tiktok|youtube|reddit|discord)\.com$|(?:^|\.)t\.co$|(?:^|\.)bsky\.app$/i.test(
         u.hostname,
       )
     )
@@ -1015,14 +1015,14 @@ function withoutGame(text: string, game = ""): string {
 /** Distinct spoken numbers (pure): figures and number words, the game's own numeral left out. */
 export function spokenNumbers(narration: string, game = ""): string[] {
   const t = withoutGame(stripVoiceTags(narration), game);
-  const figs = (
-    t
-      .replace(/(\d),(?=\d{3}\b)/g, "$1")
-      .match(/[$£€]?\d+(?:\.\d+)?(?:%|\s*(?:million|billion|thousand))?/gi) ??
-    []
-  ).map((x) => x.toLowerCase().replace(/\s+/g, " "));
-  const words = (t.match(NUMBER_WORDS) ?? []).map((x) =>
+  const FIGURE = /[$£€]?\d+(?:\.\d+)?(?:%|\s*(?:million|billion|thousand))?/gi;
+  const plain = t.replace(/(\d),(?=\d{3}\b)/g, "$1");
+  const figs = (plain.match(FIGURE) ?? []).map((x) =>
     x.toLowerCase().replace(/\s+/g, " "),
+  );
+  // Number words only where no figure stands ("2 million" is one number, not two).
+  const words = (plain.replace(FIGURE, " ").match(NUMBER_WORDS) ?? []).map(
+    (x) => x.toLowerCase().replace(/\s+/g, " "),
   );
   return [...new Set([...figs, ...words])];
 }

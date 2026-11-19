@@ -59,6 +59,7 @@ import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
 import { roomLinesForReport, type RoomArm, type RoomVersion } from "./editorial/room.ts";
 import { firstSecondLinesForReport, type FirstSecondArm } from "./panel/firstsecond.ts";
 import { packagingPanelLinesForReport } from "./panel/packagingpanel.ts";
+import { panelLinesForReport, panelSummary, type PlanPanelRecord } from "./render/planpanel.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -238,6 +239,8 @@ export interface EpisodeInfo {
   first_second?: { arm: FirstSecondArm; changed: boolean; stop?: number; gives_away?: boolean };
   /** A long video's packaging panel: whether its first choice was the factory's title and the tap mark of the title used. */
   packaging_panel?: { mode: string; agreed: boolean; tap?: number };
+  /** The shot plan panel's arm, the kept plan's critic mark and measurements (SHOT_PLAN_PANEL, src/render/planpanel.ts). */
+  plan_panel?: ReturnType<typeof panelSummary>;
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1381,10 +1384,12 @@ export async function runAnalyticsLoop(
     story_series: string | null;
     has_why: boolean | null;
     has_run: boolean | null;
+    plan_panel: unknown;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
             e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
-            e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run
+            e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run,
+            e.assets_json->'plan_panel' AS plan_panel
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1461,6 +1466,11 @@ export async function runAnalyticsLoop(
             },
           }
         : {}),
+      ...((pp) => (pp ? { plan_panel: pp } : {}))(
+        panelSummary(
+          (typeof r.plan_panel === "string" ? JSON.parse(r.plan_panel) : r.plan_panel) as PlanPanelRecord | undefined,
+        ),
+      ),
       ...(sc?.room
         ? {
             room: {
@@ -2069,6 +2079,16 @@ export async function runAnalyticsLoop(
       [...eps.values()]
         .filter((e) => e.long && e.live_at >= periodStart && e.packaging_panel)
         .map((e) => ({ ...e.packaging_panel!, ctr: ctrOf(e.id) })),
+      spearman,
+    ),
+  );
+  // SHOT_PLAN_PANEL: the panel's arm against the control arm, and the critic's mark and each plan measurement against
+  // average viewed, with no verdict before 20 Shorts a side.
+  signalLines.push(
+    ...panelLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.plan_panel)
+        .map((e) => ({ ...e.plan_panel!, viewed_pct: yt.get(e.id)?.viewed_pct })),
       spearman,
     ),
   );

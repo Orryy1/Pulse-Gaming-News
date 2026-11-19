@@ -115,6 +115,8 @@ export interface EpisodeAssets {
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
   heroCut?: { fg: string; x?: number };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
+  /** SHOT_PLAN_PANEL: the panel's arm, its candidate plans with their measurements and marks, the pick and the fix. */
+  plan_panel?: import("./render/planpanel.ts").PlanPanelRecord;
   images?: Array<{
     file: string;
     kind: string;

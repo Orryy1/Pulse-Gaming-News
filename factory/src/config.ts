@@ -722,6 +722,16 @@ export interface Config {
    * "check" (the panel's order is recorded beside what the factory chose) or "on" (its first choice among the factory's
    * own candidates is used, never a reference title). */
   packagingPanel: "off" | "check" | "on";
+  /** The shot plan panel (src/render/planpanel.ts, creator gap plan, 19 Nov 2026): blind critics read a Short's picture
+   * plan as plain text before the render, for news, breaking and Why Shorts, split by episode id. SHOT_PLAN_PANEL=off
+   * (default: nothing runs, nothing changes), "check" (the arm's plan as built gets one read by the picture editor critic,
+   * "plan.critic", recorded with the plan's measurements; nothing changes) or "on" (up to SHOT_PLAN_CANDIDATES plans
+   * from the same media, red ones dropped, one read each, the best kept, one weakest-line swap). */
+  shotPlanPanel: "off" | "check" | "on";
+  /** SHOT_PLAN_PANEL_SHARE (0-1, default 0.5): the share of covered Shorts in the panel's arm. */
+  shotPlanPanelShare: number;
+  /** SHOT_PLAN_CANDIDATES (1-3, default 3): plans built and read at most under "on". */
+  shotPlanCandidates: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1930,6 +1940,9 @@ export function loadConfig(): Config {
     firstSecondPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("FIRST_SECOND_PANEL", "off").trim().toLowerCase()),
     firstSecondShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("FIRST_SECOND_PANEL_SHARE", "0.5"))))),
     packagingPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("PACKAGING_PANEL", "off").trim().toLowerCase()),
+    shotPlanPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SHOT_PLAN_PANEL", "off").trim().toLowerCase()),
+    shotPlanPanelShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHOT_PLAN_PANEL_SHARE", "0.5"))))),
+    shotPlanCandidates: Math.min(3, Math.max(1, int("SHOT_PLAN_CANDIDATES", 3))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

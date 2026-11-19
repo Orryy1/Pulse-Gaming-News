@@ -136,6 +136,7 @@ export function testConfig(
     codexLlm: false,
     codexCalls: [],
     codexVision: false,
+    codexGrammarFallback: true,
     visionPaidFallback: false,
     codexTimeoutMinutes: 20,
     codexPython: "python",

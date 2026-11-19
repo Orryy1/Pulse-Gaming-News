@@ -7,7 +7,7 @@ invents a story to fit the plan. Dates and claims in an angle are checked agains
 
 ## Weekly long videos (from 19 November 2026)
 
-Every week: the round-up or the week's biggest story explained on Friday at 20:00, a long ranking or guide on Saturday at 17:00 and a documentary on Wednesday at 19:00 (UK). One subject a documentary: a turning point, a comeback or a failure, never a franchise survey. GTA 6 story spoilers stay out until 18 December, and GTA is at most one long video a week while its Shorts are saturated.
+Every week: long rankings or guides on Monday, Thursday and Saturday at 17:00, a documentary on Wednesday at 19:00 and the round-up or the week's biggest story explained on Friday at 20:00 (UK). Vary the long formats week to week (ranking, guide, versus, every-game list) so a breakout shows which shape works; pick games people search for. One subject a documentary: a turning point, a comeback or a failure, never a franchise survey. GTA 6 story spoilers stay out until 18 December, and GTA is at most one long video a week while its Shorts are saturated.
 
 2026-11-25 doc: The Wii at 20 (US launch 19 November 2006): how a cheaper, less powerful console outsold its rivals, told from Nintendo's sales figures and statements on record. [https://en.wikipedia.org/wiki/Wii]
 2026-12-02 doc: Halo and the first Xbox at 25 (15 November 2001): how Microsoft built a console around one launch game, from Microsoft's and Bungie's statements on record. [https://en.wikipedia.org/wiki/Halo:_Combat_Evolved]
@@ -16,6 +16,18 @@ Every week: the round-up or the week's biggest story explained on Friday at 20:0
 2026-12-16 doc: Cyberpunk 2077's comeback: the December 2020 launch, Sony pulling it from the PlayStation Store on 17 December 2020, and the road to update 2.0, from CD Projekt's statements and reports. [https://en.wikipedia.org/wiki/Cyberpunk_2077]
 2026-12-19 long: Every mainline Final Fantasy game ranked, timed to Final Fantasy X's 25th US anniversary (18 December), using review aggregates. [https://en.wikipedia.org/wiki/Final_Fantasy]
 2026-12-23 doc: How Minecraft became the best-selling game ever: from Markus Persson's 2009 test build to Microsoft's purchase and beyond, from Mojang's and Microsoft's figures on record. [https://en.wikipedia.org/wiki/Minecraft]
+2026-11-23 long: Every main series Pokemon game ranked, timed to Sun and Moon's 10th anniversary (18 November), using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Pok%C3%A9mon_(video_game_series)]
+2026-11-26 long: Every Nintendo home and handheld console ranked by lifetime sales, from Nintendo's own figures, with what each one changed. [https://www.nintendo.co.jp/ir/en/finance/hard_soft/index.html]
+2026-11-30 long: Every mainline Legend of Zelda game ranked, ahead of the Ocarina of Time remake, using review aggregates. [https://en.wikipedia.org/wiki/The_Legend_of_Zelda]
+2026-12-03 long: Every Super Smash Bros. game ranked, timed to Melee's 25th US anniversary, using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Super_Smash_Bros.]
+2026-12-07 long: The longest development gaps in gaming ranked, from The Last Guardian to Duke Nukem Forever, using announcement and release dates on record; GTA 6 counted only by its official dates. [https://en.wikipedia.org/wiki/The_Last_Guardian]
+2026-12-10 long: Every Game of the Year winner at The Game Awards ranked, 2014 to 2025, on the night of the 2026 show, using review aggregates. [https://thegameawards.com/history]
+2026-12-14 long: Every PlayStation console ranked by lifetime sales, from Sony's own figures, with the games that sold each one. [https://en.wikipedia.org/wiki/PlayStation]
+2026-12-17 long: The best well-reviewed games in the Steam Winter Sale ranked by discount, prices in dollars first, checked on the day. [https://partner.steamgames.com/doc/marketing/upcoming_events]
+2026-12-21 long: Every Mario Kart game ranked, using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Mario_Kart]
+2026-12-24 long: The best-selling game of every year in the US since 2000, from Circana and NPD charts on record. [https://en.wikipedia.org/wiki/Circana]
+2026-12-28 long: Every main Elder Scrolls game ranked, from Arena to Skyrim, using review aggregates. [https://en.wikipedia.org/wiki/The_Elder_Scrolls]
+2026-12-31 long: Every Xbox console ranked, from the original Xbox to Series X and S, from Microsoft's figures and reporting of record. [https://en.wikipedia.org/wiki/Xbox]
 2027-01-09 long: Every mainline Resident Evil game ranked, using review aggregates, a run-up to the 27 January documentary. [https://en.wikipedia.org/wiki/Resident_Evil]
 
 ## GTA 6 launch (19 November 2026)

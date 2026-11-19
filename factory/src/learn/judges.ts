@@ -46,6 +46,9 @@ export const JUDGE_EVENTS = [
   "graphics_audit",
   "factcheck",
   "friend_pass",
+  // The blind panel's critics (src/panel): the first-second stop mark and the packaging panel's tap mark.
+  "first_second",
+  "packaging_panel",
 ];
 
 const GRADE: Record<string, number> = { green: 2, amber: 1, red: 0 };
@@ -172,6 +175,34 @@ export function scoresFromEvent(e: EventRow): JudgeScore[] {
       }
       break;
     }
+    case "first_second": {
+      // The audience critic's stop mark on the opening that went out (FIRST_SECOND_PANEL).
+      const stop = num(d.stop);
+      if (stop !== undefined)
+        out.push({
+          ...base,
+          judge: "first_second",
+          stage: "final",
+          score: stop,
+          scaleMax: 10,
+          detail: { arm: d.arm, mode: d.mode, changed: d.changed === true },
+        });
+      break;
+    }
+    case "packaging_panel": {
+      // The audience critic's tap mark on the long video's title that went out (PACKAGING_PANEL).
+      const tap = num(d.tap);
+      if (tap !== undefined)
+        out.push({
+          ...base,
+          judge: "packaging_panel",
+          stage: "final",
+          score: tap,
+          scaleMax: 10,
+          detail: { mode: d.mode, rank: d.rank, changed: d.changed === true },
+        });
+      break;
+    }
     case "friend_pass":
       if (typeof d.kept === "boolean")
         out.push({
@@ -192,6 +223,8 @@ const JUDGE_SITES: Record<string, RegExp> = {
   clarity_doc: /clarity\.judge/,
   fact_check: /fact|check/i,
   release_gate: /release|gate|vision/i,
+  first_second: /^first\.viewer$/,
+  packaging_panel: /^packaging\.viewer$/,
 };
 
 const CURSOR = "learn:judge_cursor";
@@ -464,6 +497,8 @@ const JUDGE_NAME: Record<string, string> = {
   gfx_audit: "the graphics audit",
   fact_check: "the fact check",
   friend_pass: "the friend pass",
+  first_second: "the first-second panel's stop mark",
+  packaging_panel: "the packaging panel's tap mark",
 };
 export const judgeName = (j: string): string => JUDGE_NAME[j] ?? j;
 

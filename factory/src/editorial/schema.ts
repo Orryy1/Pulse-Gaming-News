@@ -336,6 +336,12 @@ export type Script = z.infer<typeof ScriptSchema> & {
   desk?: import("./desk.ts").DeskRecord;
   /** SCRIPT_ROOM: the writers' room's arm, its pack, angles, each critic's marks, a kill or fallback and its calls. */
   room?: import("./room.ts").RoomRecord;
+  /** FIRST_SECOND_PANEL: the first second as a viewer meets it, the audience critic's stop mark and, under "on", the
+   * openings marked blind and the one kept (src/panel/firstsecond.ts). */
+  first_second?: import("../panel/firstsecond.ts").FirstSecondRecord;
+  /** PACKAGING_PANEL (long videos): the audience critic's order of the factory's own title and thumbnail-text
+   * candidates, what the factory chose and, under "on", what was used (src/panel/packagingpanel.ts). */
+  packaging_panel?: import("../panel/packagingpanel.ts").PackagingPanelRecord;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

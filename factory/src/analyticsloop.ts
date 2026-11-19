@@ -57,6 +57,8 @@ import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
 import { roomLinesForReport, type RoomArm } from "./editorial/room.ts";
+import { firstSecondLinesForReport, type FirstSecondArm } from "./panel/firstsecond.ts";
+import { packagingPanelLinesForReport } from "./panel/packagingpanel.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -224,6 +226,10 @@ export interface EpisodeInfo {
   desk?: { arm: DeskArm; overall?: number };
   /** The writers' room's arm, whether its words went out and each critic's mark (SCRIPT_ROOM, src/editorial/room.ts). */
   room?: { arm: RoomArm; wrote?: boolean; editor?: number; viewer?: number };
+  /** The first-second panel's arm, whether the opening changed and the audience critic's marks (FIRST_SECOND_PANEL). */
+  first_second?: { arm: FirstSecondArm; changed: boolean; stop?: number; gives_away?: boolean };
+  /** A long video's packaging panel: whether its first choice was the factory's title and the tap mark of the title used. */
+  packaging_panel?: { mode: string; agreed: boolean; tap?: number };
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1426,6 +1432,27 @@ export async function runAnalyticsLoop(
       ...(sc?.desk
         ? { desk: { arm: sc.desk.arm, overall: sc.desk.scores?.overall } }
         : {}),
+      ...(sc?.first_second
+        ? {
+            first_second: {
+              arm: sc.first_second.arm,
+              changed: sc.first_second.changed,
+              stop: sc.first_second.stop,
+              gives_away: sc.first_second.gives_away,
+            },
+          }
+        : {}),
+      ...(sc?.packaging_panel
+        ? {
+            packaging_panel: {
+              mode: sc.packaging_panel.mode,
+              agreed:
+                !!sc.packaging_panel.panel.title &&
+                sc.packaging_panel.panel.title === sc.packaging_panel.factory.title,
+              tap: sc.packaging_panel.used_tap,
+            },
+          }
+        : {}),
       ...(sc?.room
         ? {
             room: {
@@ -2001,6 +2028,33 @@ export async function runAnalyticsLoop(
             comments: y?.comments,
           };
         }),
+      spearman,
+    ),
+  );
+  // FIRST_SECOND_PANEL: the audience critic's stop mark against stayed to watch (engaged views over views, from the
+  // stored retention row), by arm, with no correlation before 20 Shorts. PACKAGING_PANEL: long videos, the panel's
+  // agreement with the factory's title and its tap mark against impressions click-through (the stored ctr row, 100
+  // impressions or more). Both marks are also in the judge ledger (src/learn/judges.ts) against every outcome it has.
+  const stayedOf = (id: string): number | undefined => {
+    const r = snaps.get(id)?.get("retention")?.raw;
+    const v = Number(r?.views);
+    return r?.engagedViews !== undefined && v > 0 ? (100 * Number(r.engagedViews)) / v : undefined;
+  };
+  const ctrOf = (id: string): number | undefined => {
+    const r = snaps.get(id)?.get("ctr")?.raw;
+    return r && Number(r.impressions) >= 100 && Number.isFinite(Number(r.ctr)) ? Number(r.ctr) : undefined;
+  };
+  signalLines.push(
+    ...firstSecondLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.first_second)
+        .map((e) => ({ ...e.first_second!, stayed: stayedOf(e.id) })),
+      spearman,
+    ),
+    ...packagingPanelLinesForReport(
+      [...eps.values()]
+        .filter((e) => e.long && e.live_at >= periodStart && e.packaging_panel)
+        .map((e) => ({ ...e.packaging_panel!, ctr: ctrOf(e.id) })),
       spearman,
     ),
   );

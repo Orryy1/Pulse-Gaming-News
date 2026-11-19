@@ -3,7 +3,9 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
-import { packBeforeUpload, pickHookWords } from "./packaging/lab.ts";
+import { packBeforeUpload, pickHookWords, rankTitles } from "./packaging/lab.ts";
+import { loadModel } from "./packaging/score.ts";
+import { strandThumbWords, strandTitleProblems } from "./strandframe.ts";
 import { runSecondChance } from "./packaging/secondchance.ts";
 import { packagingAtLeast } from "./packaging/settings.ts";
 import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
@@ -727,6 +729,23 @@ import {
   roomWriteStep,
   type RoomStepInput,
 } from "./roomstep.ts";
+import {
+  firstSecondArmFor,
+  firstSecondEvent,
+  readFirstEditor,
+  readFirstViewer,
+  runFirstSecond,
+  writeFirst,
+  type FirstSecondArm,
+} from "./panel/firstsecond.ts";
+import {
+  loadReferenceTitles,
+  packagingCandidates,
+  packagingPanelEvent,
+  packagingPanelRuns,
+  readPackaging,
+  runPackagingPanel,
+} from "./panel/packagingpanel.ts";
 import { FEEDS } from "./discovery/feeds.ts";
 import { fetchOutboundLinks } from "./discovery/article.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
@@ -8543,6 +8562,53 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ...(nextPart ? { part: nextPart.part, day: nextPart.day } : {}),
       },
     };
+  // FIRST_SECOND_PANEL (src/panel/firstsecond.ts): the same Shorts the desk covers, split by episode. What a viewer
+  // meets in the first second (the first sentence, the first-frame text, the opening picture as planned) read blind:
+  // "check" and the control arm, one audience read recorded and nothing changed; "on" for the panel's arm, alternative
+  // first-frame texts (and first sentences, never on a room script) from one call, marked blind by the audience and the
+  // editor critic, the best kept and the current version winning ties. A new first sentence must pass the house rules
+  // and the air-time check unchanged; a failure anywhere leaves the script as it was.
+  const firstArm: FirstSecondArm | undefined = firstSecondArmFor(
+    s.cfg.firstSecondPanel,
+    s.cfg.firstSecondShare,
+    ep.id,
+    s.cfg.firstSecondPanel !== "off" &&
+      payoffApplies({
+        lane: ep.lane,
+        why: !!cluster.why,
+        reply: !!cluster.reply,
+        search: !!cluster.search,
+        gtaFile: !!cluster.gtaFile,
+      }),
+  );
+  if (firstArm) {
+    const before = script;
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const first = await runFirstSecond({
+      script,
+      narration: narrationOf(script),
+      episodeId: ep.id,
+      arm: firstArm,
+      mode: s.cfg.firstSecondPanel === "on" ? "on" : "check",
+      roomWrote,
+      deps: {
+        viewer: (content) => readFirstViewer(s.llm, content),
+        editor: (content) => readFirstEditor(s.llm, content),
+        write: (sentences) => writeFirst(s.llm, before, narrationOf(before), sentences),
+        accept: (after) => [
+          ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+          ...(airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : []),
+        ],
+      },
+    }).catch((err) => {
+      log("warn", "first-second panel failed; the opening stands", { episode: ep.id, error: errorMessage(err) });
+      return undefined;
+    });
+    if (first) {
+      script = { ...first.script, first_second: first.record };
+      await logEvent(s.db, ep.id, "first_second", firstSecondEvent(first.record)).catch(() => undefined);
+    }
+  }
   await guardScript(s, ep, script, "after writing");
   // SHORT_PAYOFF_GATE: the finished script measured against the held-answer rules, recorded on it with its arm (the
   // weekly report compares the arms). The gate's arm gets the cold read of title, first frame and hook too; the control
@@ -12577,6 +12643,48 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   );
   if (strand)
     await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+  // PACKAGING_PANEL (src/panel/packagingpanel.ts), long videos: the factory's own title candidates (the Packaging Lab's
+  // top five when it is on, else the current title and its variants) and thumbnail words, read blind by the audience
+  // critic among reference titles when data/frontier/reference_titles.json exists. "check" records its order beside the
+  // factory's choice; "on" uses its first choice among our own (never a reference), held to the strand's frame. Before
+  // the designs, so the thumbnails carry the words it chose. A failure leaves the packaging as it was.
+  const packagingMode = s.cfg.packagingPanel;
+  if (packagingPanelRuns(packagingMode, { long: true, script })) {
+    const model = packagingAtLeast(s.cfg.packaging, "score") ? loadModel(s.cfg.dataDir) : undefined;
+    const lab = model
+      ? rankTitles(model, script, s.cfg.packaging.candidates)
+          .filter((r) => r.clarity.ok)
+          .slice(0, 5)
+          .map((r) => ({ text: r.text, origin: r.origin }))
+      : undefined;
+    const game = script.why_died?.game ?? script.game_title;
+    const panel = await runPackagingPanel({
+      script,
+      mode: packagingMode,
+      episodeId: ep.id,
+      candidates: packagingCandidates(script, lab),
+      references: loadReferenceTitles(s.cfg.dataDir),
+      read: (content) => readPackaging(s.llm, content),
+      ...(strand
+        ? {
+            eligible: {
+              // The guide's plan fixes its title: only its thumbnail words may move.
+              title: (t: string) => strand !== "guide" && !strandTitleProblems(strand, t, game).length,
+              thumb: (t: string) => strandThumbWords(strand, t) === t,
+            },
+          }
+        : {}),
+    }).catch((err) => {
+      log("warn", "packaging panel failed; the packaging stands", { episode: ep.id, error: errorMessage(err) });
+      return undefined;
+    });
+    if (panel) {
+      script.youtube = panel.script.youtube;
+      script.packaging_panel = panel.record;
+      await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+      await logEvent(s.db, ep.id, "packaging_panel", packagingPanelEvent(panel.record)).catch(() => undefined);
+    }
+  }
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";

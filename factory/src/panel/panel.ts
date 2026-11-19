@@ -14,7 +14,7 @@ export const PANEL = {
   /** Model calls one panel run makes at most, whatever the caller asks. */
   callsMax: 8,
   /** Candidates one run shows at most. */
-  candidatesMax: 12,
+  candidatesMax: 24,
   /** A fault line is cut to this many characters in the record. */
   faultChars: 240,
 } as const;

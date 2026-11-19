@@ -703,6 +703,23 @@ export interface Config {
   /** SCRIPT_ROOM_LINKS (default false): the pack also reads up to three primary sources the articles link to (the
    * publisher's own post, a filing, an interview), only on hosts the factory already reads. */
   scriptRoomLinks: boolean;
+  /** The first-second panel (src/panel/firstsecond.ts, 19 Nov 2026): what a viewer meets in the first second of a news,
+   * breaking or Why Short (the first spoken sentence, the text on the first frame and the opening picture as the plan
+   * describes it), read blind. Split by episode id like the desk. FIRST_SECOND_PANEL=off (default: nothing runs),
+   * "check" (one audience read, "first.viewer": a stop mark 1 to 10, the reason and whether the first-frame text gives
+   * the answer away; nothing changes) or "on" (the panel's arm: up to three alternative first-frame texts and, for a Short
+   * the writers' room did not write, up to two alternative first sentences from one call, "first.write"; the audience
+   * critic and the editor critic ("first.editor") mark every combination blind and the best is kept, the current
+   * version winning ties; the control arm gets the one read). Calls a Short at most: 1 write and 2 reads. */
+  firstSecondPanel: "off" | "check" | "on";
+  /** FIRST_SECOND_PANEL_SHARE (0-1, default 0.5): the share of covered Shorts in the panel's arm, split by episode id. */
+  firstSecondShare: number;
+  /** The packaging panel (src/panel/packagingpanel.ts, 19 Nov 2026), long videos only: the audience critic is asked which
+   * of the factory's own title and thumbnail-text candidates it would tap, blind, mixed among reference titles when
+   * data/frontier/reference_titles.json exists ("packaging.viewer", one call a video). PACKAGING_PANEL=off (default),
+   * "check" (the panel's order is recorded beside what the factory chose) or "on" (its first choice among the factory's
+   * own candidates is used, never a reference title). */
+  packagingPanel: "off" | "check" | "on";
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1907,6 +1924,9 @@ export function loadConfig(): Config {
     scriptRoomRounds: Math.min(2, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 2))),
     scriptRoomMin: Math.min(10, Math.max(1, int("SCRIPT_ROOM_MIN", 8))),
     scriptRoomLinks: str("SCRIPT_ROOM_LINKS", "false").trim().toLowerCase() === "true",
+    firstSecondPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("FIRST_SECOND_PANEL", "off").trim().toLowerCase()),
+    firstSecondShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("FIRST_SECOND_PANEL_SHARE", "0.5"))))),
+    packagingPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("PACKAGING_PANEL", "off").trim().toLowerCase()),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

@@ -152,7 +152,10 @@ export async function packBeforeUpload(
     );
     const pick = pickBest(ranked, script.youtube.title, st.minLift);
     if (!pick) return false;
-    const apply = packagingAtLeast(st, "pick") && pick.changed;
+    // PACKAGING_PANEL=on chose this long video's title among the lab's own candidates (src/panel/packagingpanel.ts):
+    // the lab scores and records it, and leaves the title as the panel set it.
+    const panelChose = script.packaging_panel?.mode === "on";
+    const apply = packagingAtLeast(st, "pick") && pick.changed && !panelChose;
     const assets: EpisodeAssets = (ep.assets_json ??= {} as EpisodeAssets);
     const record: PackagingRecord = {
       scoredAt: s.now().toISOString(),

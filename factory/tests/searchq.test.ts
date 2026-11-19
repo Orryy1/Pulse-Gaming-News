@@ -724,3 +724,14 @@ test("the owner's page and the growth report line", async () => {
     /none with traffic sources in yet/,
   );
 });
+
+test("launch questions die once the game has been out 36 hours (19 Nov 2026: a New Zealand unlock Short after launch)", () => {
+  const observations = [obs("gta 6 how to change to new zealand", 0), obs("gta 6 pre order", 1), obs("is gta 6 worth it", 2)];
+  const at = (iso: string) => rankQueries(observations, { now: new Date(iso), facts: { [GTA]: facts }, notes: {}, releases: { [GTA]: "2026-11-18T11:00:00Z" }, covered: [] });
+  const before = at("2026-11-17T12:00:00Z");
+  assert.notEqual(before.find((r) => r.query.includes("zealand"))!.dropped, "a launch question, and the game is out everywhere now");
+  const after = at("2026-11-19T23:30:00Z");
+  assert.equal(after.find((r) => r.query.includes("zealand"))!.dropped, "a launch question, and the game is out everywhere now");
+  assert.equal(after.find((r) => r.query.includes("pre order"))!.dropped, "a launch question, and the game is out everywhere now");
+  assert.notEqual(after.find((r) => r.query.includes("worth"))?.dropped, "a launch question, and the game is out everywhere now");
+});

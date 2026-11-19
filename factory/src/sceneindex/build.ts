@@ -141,8 +141,24 @@ export async function launchCandidates(
   search?: (query: string) => Promise<CutsceneUpload[]>,
 ): Promise<CutsceneUpload[]> {
   const hits: CutsceneUpload[] = [];
+  // 19 Nov 2026: while the YouTube guard paused fetching, every search failed quietly and GTA VI was filed as
+  // "no source" for a day. When every search was skipped by the guard, say so instead of finding nothing.
+  let skipped: unknown;
+  let answered = 0;
   for (const query of launchQueries(game))
-    hits.push(...(await (search?.(query) ?? searchUploads(query, ytdlp)).catch(() => [] as CutsceneUpload[])));
+    hits.push(
+      ...(await (search?.(query) ?? searchUploads(query, ytdlp)).then(
+        (r) => {
+          answered++;
+          return r;
+        },
+        (err) => {
+          if (/YouTube fetch skipped/i.test(String(err instanceof Error ? err.message : err))) skipped = err;
+          return [] as CutsceneUpload[];
+        },
+      )),
+    );
+  if (!answered && skipped) throw skipped;
   return [...new Map(hits.map((h) => [h.videoId, h])).values()];
 }
 

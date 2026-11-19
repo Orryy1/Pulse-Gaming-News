@@ -78,7 +78,7 @@ Each frame shows one card (a figure, a quote, a list, a ranked entry, a verdict)
 Fail a frame only for a fault in the card a viewer would notice: its text cut off at a frame edge or by another element, its text overlapping
 the captions or other text, text too small or too faint to read on a phone, garbled or misspelt words, or a card that is clearly half drawn
 or empty. The captions, the small PULSE mark, a footage credit and words in the game footage itself are not the card.
-A news ticker band that crawls words past its ends is intended: words entering or leaving at the band's edges are never a fault (19 Nov 2026: the GTA VI day Short failed on it twice).
+The verdict card of a news Short starts with one of the channel's four reading words and a colon (STRONG:, STEADY:, WEAK: or FAINT:, meaning how confirmed the news is) before the verdict: that is the channel's own Pulse Check rating, intended, never a leaked internal label (19 Nov 2026: a PSN outage Short failed on FAINT:). A news ticker band that crawls words past its ends is intended: words entering or leaving at the band's edges are never a fault (19 Nov 2026: the GTA VI day Short failed on it twice).
 Write every problem as "Frame N: what is wrong", one per frame, using the frame numbers given. Pass when nothing is wrong.`;
 
 /** The thumbnail check: the designs that will go to YouTube. */

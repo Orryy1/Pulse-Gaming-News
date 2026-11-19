@@ -8,22 +8,28 @@ import {
   ROOM_PACK_SITE,
   ROOM_REPAIR_SITE,
   ROOM_VIEWER_SITE,
+  ROOM_VOICE_SITE,
   ROOM_WRITE_SITE,
   EditorPanelSchema,
   FactPackSchema,
+  RoomVoiceSchema,
   RoomWriterSchema,
+  answerInFirst,
   answerShare,
   bothDrop,
   clearsRoom,
   factoryHosts,
+  iThinkBecause,
   layoutDiff,
   layoutKeeps,
   narrationKey,
   numberFound,
   packUsed,
   pickDraft,
+  pickVersion,
   primaryLinks,
   quoteFound,
+  recentNote,
   roomArm,
   roomCaps,
   roomChecks,
@@ -35,13 +41,17 @@ import {
   runRoom,
   spokenNames,
   spokenNumbers,
+  varietyProblems,
   verifyPack,
+  voicePrompt,
   writerPrompt,
   editorPrompt,
   viewerPrompt,
   packPrompt,
   type EditorRead,
   type FactPack,
+  type RecentShape,
+  type RoomVoiced,
   type RoomWriting,
   type ViewerRead,
 } from "../src/editorial/room.ts";
@@ -53,6 +63,7 @@ import { loadConfig } from "../src/config.ts";
 import type { Llm } from "../src/editorial/llm.ts";
 import type { FactCheck, Script } from "../src/editorial/schema.ts";
 import {
+  recentShapesFrom,
   roomCheckStep,
   roomControlRecord,
   roomEvent,
@@ -60,7 +71,8 @@ import {
   type RoomStepInput,
 } from "../src/roomstep.ts";
 import { clusterOf, describeRun } from "../src/tools/room-proof.ts";
-import { goodScript, item } from "./helpers.ts";
+import { goodScript, item, testConfig } from "./helpers.ts";
+import { CRAFT_RULE, shortRuleNote } from "../src/editorial/shortrules.ts";
 
 // ---------------------------------------------------------------- fixtures
 
@@ -79,6 +91,17 @@ const NARRATION = S.join(" ");
 const ANSWER = S[7]!;
 const WORDS = { min: 80, max: 115 };
 const CHECK = { game: "Starfield", company: "Bethesda", words: WORDS };
+/** The voice pass's version: the same facts, told in order, the answer still late, a plain consequence last. */
+const VOICED = [
+  S[0],
+  "Eight weeks ago the studio put a December date on its own roadmap, firm and public.",
+  S[3],
+  S[4],
+  S[5],
+  S[6],
+  S[7],
+  "So Series S owners wait a little longer and get an expansion that actually runs on their console.",
+].join(" ");
 
 const ARTICLE =
   'Bethesda said the extra time will go to performance on Xbox Series S. "We would rather ship it right than ship it early," said Todd Howard, director. The expansion was due in December. Players were promised the date eight weeks ago and 2 million people own the game. The story missions are done.';
@@ -185,7 +208,21 @@ function writing(over: Partial<RoomWriting> = {}): RoomWriting {
       title: `Starfield's expansion slipped, draft ${label}`,
       narration: NARRATION,
       answer_line: ANSWER,
+      first_line_shape: "plain_surprise" as const,
+      ending: "verdict" as const,
     })),
+    ...over,
+  };
+}
+
+function voiced(over: Partial<RoomVoiced> = {}): RoomVoiced {
+  return {
+    form: "in_order",
+    title: "Starfield's expansion slipped for one console",
+    narration: VOICED,
+    answer_line: ANSWER,
+    first_line_shape: "consequence",
+    ending: "consequence",
     ...over,
   };
 }
@@ -209,6 +246,7 @@ function ed(
     fix: "Cut the roadmap line.",
     second_thread: "",
     drop: false,
+    drop_reason: "",
     ...over,
   };
 }
@@ -230,6 +268,7 @@ function vw(
     lost_me: "",
     fix: "",
     drop: false,
+    drop_reason: "",
     ...over,
   };
 }
@@ -303,15 +342,18 @@ function fakeLlm(
   } as unknown as Llm;
 }
 
+const CFG = {
+  scriptRoomViewer: true,
+  scriptRoomRounds: 1,
+  scriptRoomMin: 8,
+  scriptRoomLinks: false,
+  scriptRoomVoice: true,
+};
+
 function input(llm: Llm, over: Partial<RoomStepInput> = {}): RoomStepInput {
   return {
     llm,
-    cfg: {
-      scriptRoomViewer: true,
-      scriptRoomRounds: 2,
-      scriptRoomMin: 8,
-      scriptRoomLinks: false,
-    },
+    cfg: CFG,
     cluster,
     articles,
     length: {
@@ -333,7 +375,7 @@ const deps = (checks: FactCheck[] = [pass]) => ({
 
 // ---------------------------------------------------------------- settings and arms
 
-test("settings default off: no room, half share, viewer on, two rounds, pass mark 8, no links", () => {
+test("settings default off: no room, half share, viewer and voice on, one edit, pass mark 8, no links", () => {
   const keys = [
     "SCRIPT_ROOM",
     "SCRIPT_ROOM_SHARE",
@@ -341,6 +383,7 @@ test("settings default off: no room, half share, viewer on, two rounds, pass mar
     "SCRIPT_ROOM_ROUNDS",
     "SCRIPT_ROOM_MIN",
     "SCRIPT_ROOM_LINKS",
+    "SCRIPT_ROOM_VOICE",
   ];
   const saved = keys.map((k) => process.env[k]);
   for (const k of keys) delete process.env[k];
@@ -349,7 +392,8 @@ test("settings default off: no room, half share, viewer on, two rounds, pass mar
     assert.equal(cfg.scriptRoom, "off");
     assert.equal(cfg.scriptRoomShare, 0.5);
     assert.equal(cfg.scriptRoomViewer, true);
-    assert.equal(cfg.scriptRoomRounds, 2);
+    assert.equal(cfg.scriptRoomVoice, true);
+    assert.equal(cfg.scriptRoomRounds, 1);
     assert.equal(cfg.scriptRoomMin, 8);
     assert.equal(cfg.scriptRoomLinks, false);
     process.env.SCRIPT_ROOM = "bogus";
@@ -359,9 +403,15 @@ test("settings default off: no room, half share, viewer on, two rounds, pass mar
       "off",
       "anything but check or on is off",
     );
-    assert.equal(loadConfig().scriptRoomRounds, 2, "the rounds are capped");
+    assert.equal(
+      loadConfig().scriptRoomRounds,
+      1,
+      "the edit rounds are capped",
+    );
     process.env.SCRIPT_ROOM = "on";
+    process.env.SCRIPT_ROOM_VOICE = "false";
     assert.equal(loadConfig().scriptRoom, "on");
+    assert.equal(loadConfig().scriptRoomVoice, false);
   } finally {
     keys.forEach((k, i) => {
       if (saved[i] === undefined) delete process.env[k];
@@ -370,7 +420,7 @@ test("settings default off: no room, half share, viewer on, two rounds, pass mar
   }
 });
 
-test("the arm is stable per episode, follows the share and is independent of the desk's split", () => {
+test("the arm is stable per episode and follows the share", () => {
   assert.equal(roomArm("ep1", 0), "control");
   assert.equal(roomArm("ep1", 1), "room");
   const ids = Array.from({ length: 400 }, (_, i) => `ep-${i}`);
@@ -380,20 +430,20 @@ test("the arm is stable per episode, follows the share and is independent of the
     assert.equal(roomArm(id, 0.5), roomArm(id, 0.5));
 });
 
-test("caps: one pack, one write, three reads per critic, two edits, two layouts and one repair at most", () => {
-  assert.deepEqual(roomCaps(2), {
+test("caps: one pack, one write, one edit, one voice, three reads per critic, two layouts and one repair at most", () => {
+  assert.deepEqual(roomCaps(1), {
     pack: 1,
     write: 1,
     critic: 3,
     viewer: 3,
-    edit: 2,
+    edit: 1,
+    voice: 1,
     layout: 2,
     repair: 1,
   });
-  assert.deepEqual(roomCaps(9), roomCaps(2), "the settings can't lift the cap");
+  assert.deepEqual(roomCaps(9), roomCaps(1), "the settings can't lift the cap");
   assert.equal(roomCaps(0).edit, 0);
-  assert.equal(roomCaps(0).critic, 1);
-  assert.equal(roomCaps(1).critic, 2);
+  assert.equal(roomCaps(1, false).voice, 0);
 });
 
 test("every step's site starts with room. so CODEX_CALLS can route each one or the family", () => {
@@ -403,6 +453,7 @@ test("every step's site starts with room. so CODEX_CALLS can route each one or t
     ROOM_CRITIC_SITE,
     ROOM_VIEWER_SITE,
     ROOM_EDIT_SITE,
+    ROOM_VOICE_SITE,
     ROOM_LAYOUT_SITE,
     ROOM_REPAIR_SITE,
   ]) {
@@ -415,9 +466,14 @@ test("every step's site starts with room. so CODEX_CALLS can route each one or t
 
 // ---------------------------------------------------------------- schemas
 
-test("schemas: the pack, the writer and the critics parse their fixtures and refuse out-of-range marks", () => {
+test("schemas: the pack, the writer, the voice and the critics parse their fixtures and refuse out-of-range marks", () => {
   assert.ok(FactPackSchema.safeParse(pack()).success);
   assert.ok(RoomWriterSchema.safeParse(writing()).success);
+  assert.ok(RoomVoiceSchema.safeParse(voiced()).success);
+  assert.ok(
+    !RoomVoiceSchema.safeParse(voiced({ ending: "punchline" as never }))
+      .success,
+  );
   assert.ok(
     EditorPanelSchema.safeParse({ reads: [ed("A", 7)], pick: "A" }).success,
   );
@@ -442,8 +498,7 @@ test("a quote is kept only when a source says it word for word, after case, quot
     quoteFound('"we\'d rather ship it right - than ship it early"', texts),
   );
   assert.ok(
-    quoteFound("We'd rather ship it right -- than ship it early.", texts) ===
-      false,
+    !quoteFound("We'd rather ship it right -- than ship it early.", texts),
     "a double hyphen is not a dash",
   );
   assert.ok(
@@ -621,6 +676,122 @@ test("each check fires on its own fault", () => {
     "So the second expansion slipped because Bethesda already knew why it had to.",
   );
   assert.ok(rules(echo).includes("closer_echo"));
+  for (const tell of [
+    "You'd assume the missions were the problem.",
+    "That said, the missions are done.",
+    "Which is why nobody saw it coming.",
+    "In other words, the console is the problem.",
+    "Here's how he put it on the blog.",
+  ])
+    assert.ok(
+      rules(NARRATION.replace(S[3]!, tell)).includes("tell_phrase"),
+      tell,
+    );
+});
+
+test("variety: no form, first line or ending of the last three room Shorts, and one 'I think ... because' in four", () => {
+  const recent: RecentShape[] = [
+    {
+      form: "in_order",
+      first_line: "number",
+      ending: "reveal",
+      i_think: false,
+    },
+    {
+      form: "tiny_story",
+      first_line: "quote",
+      ending: "dry_line",
+      i_think: true,
+    },
+    { form: "read_again", first_line: "question", ending: "consequence" },
+    {
+      form: "contradiction_hangs",
+      first_line: "consequence",
+      ending: "verdict",
+    },
+  ];
+  assert.deepEqual(
+    varietyProblems(
+      {
+        form: "blunt_then_proven",
+        first_line: "plain_surprise",
+        ending: "verdict",
+      },
+      recent,
+    ),
+    [],
+  );
+  assert.equal(
+    varietyProblems(
+      { form: "in_order", first_line: "plain_surprise", ending: "verdict" },
+      recent,
+    ).length,
+    1,
+  );
+  assert.equal(
+    varietyProblems(
+      { form: "real_question", first_line: "quote", ending: "dry_line" },
+      recent,
+    ).length,
+    2,
+  );
+  assert.match(
+    varietyProblems(
+      {
+        form: "real_question",
+        first_line: "plain_surprise",
+        ending: "verdict",
+        i_think: true,
+      },
+      recent,
+    ).join(" "),
+    /once in 4/,
+  );
+  // The fourth Short back is outside the window: an "I think" ending there doesn't count.
+  const older = [{}, {}, {}, { i_think: true }] as RecentShape[];
+  assert.deepEqual(varietyProblems({ i_think: true }, older), []);
+  assert.ok(iThinkBecause("I think that's right, because it runs."));
+  assert.ok(!iThinkBecause("That's right, because it runs."));
+  const note = recentNote(recent);
+  assert.match(
+    note,
+    /Do not repeat the last 3: no form in_order, tiny_story, read_again/,
+  );
+  assert.match(note, /do not end that way/);
+  assert.equal(recentNote([]), "");
+  assert.ok(
+    roomChecks({
+      narration: NARRATION,
+      answerLine: ANSWER,
+      ...CHECK,
+      shape: { ending: "reveal" },
+      recent,
+    }).findings.some((f) => f.rule === "variety"),
+  );
+});
+
+test("the stored records feed the variety memory, newest first, room-written ones only", () => {
+  const rec = (form: string, wrote: boolean) => ({
+    ...roomRecord({ arm: "room", mode: "on", wrote }),
+    form,
+    ending: "reveal",
+    i_think: true,
+  });
+  const shapes = recentShapesFrom([
+    rec("in_order", true),
+    rec("tiny_story", false),
+    null,
+    rec("read_again", true),
+  ]);
+  assert.deepEqual(
+    shapes.map((s) => s.form),
+    ["in_order", "read_again"],
+  );
+  assert.equal(shapes[0]!.i_think, true);
+  assert.equal(
+    recentShapesFrom(Array.from({ length: 12 }, () => rec("x", true))).length,
+    ROOM.recentSeen,
+  );
 });
 
 test("names and numbers are counted without the game, its maker or the game's own numeral", () => {
@@ -656,6 +827,21 @@ test("answerShare finds the answer line's start as a share of the words", () => 
   assert.equal(answerShare(NARRATION, "too short"), undefined);
 });
 
+test("answerInFirst: the answer line as the first sentence, or most of its words there, gives it away", () => {
+  assert.ok(!answerInFirst(NARRATION, [ANSWER], "Starfield"));
+  assert.ok(
+    answerInFirst(`${ANSWER} ${S.slice(1).join(" ")}`, [ANSWER], "Starfield"),
+  );
+  assert.ok(
+    answerInFirst(
+      `Starfield slipped so Bethesda can fix performance on the Series S console. ${S.slice(1).join(" ")}`,
+      ["Series S performance"],
+      "Starfield",
+    ),
+  );
+  assert.ok(!answerInFirst(NARRATION, [""], "Starfield"));
+});
+
 // ---------------------------------------------------------------- pick, clear, drop
 
 test("the pick is the best mean of the two overall marks; a tie goes to the editor critic", () => {
@@ -679,6 +865,31 @@ test("the pick is the best mean of the two overall marks; a tie goes to the edit
     0,
     "without a viewer, the editor alone; then the earlier draft",
   );
+});
+
+test("the version kept: the best mean, a tie to the edited version, then the original, then the voiced one", () => {
+  const r = (
+    version: "original" | "edited" | "voiced",
+    e: number,
+    v?: number,
+  ) => ({
+    version,
+    editor: { overall: e },
+    ...(v !== undefined ? { viewer: { overall: v } } : {}),
+  });
+  assert.equal(
+    pickVersion([r("original", 6, 6), r("edited", 7, 7), r("voiced", 8, 7)]),
+    "voiced",
+  );
+  assert.equal(
+    pickVersion([r("voiced", 7, 7), r("edited", 8, 6), r("original", 7, 7)]),
+    "edited",
+  );
+  assert.equal(
+    pickVersion([r("voiced", 7, 7), r("original", 7, 7)]),
+    "original",
+  );
+  assert.equal(pickVersion([]), undefined);
 });
 
 test("clearing needs the mean at the pass mark and no editor mark under the floor; drop needs both critics", () => {
@@ -718,26 +929,32 @@ test("the instruction puts a broken promise first, then the weakness, a second t
   );
 });
 
-// ---------------------------------------------------------------- the loop and its stop rule
+// ---------------------------------------------------------------- the loop
 
+type Panel = { reads: EditorRead[]; pick: string };
 function loopSteps(o: {
-  editor: Array<{ reads: EditorRead[]; pick: string }>;
+  editor: Panel[];
   viewer?: Array<{ reads: ViewerRead[] }>;
   edits?: Array<{ title: string; narration: string } | undefined>;
+  voice?: Array<RoomVoiced | Error>;
   w?: RoomWriting;
   accept?: (a: { narration: string }, b: { narration: string }) => string[];
+  recent?: RecentShape[];
 }) {
-  const calls = { editor: 0, viewer: 0, edit: 0 };
+  const calls = { editor: 0, viewer: 0, edit: 0, voice: 0 };
+  const shown: string[][] = [];
   return {
     calls,
+    shown,
     steps: {
       pack: async () => ({
         pack: pack(),
         drops: { quotes: 0, numbers: 0, dropped: [] },
       }),
       write: async () => o.w ?? writing(),
-      editor: async () => {
+      editor: async (d: Array<{ label: string }>) => {
         calls.editor++;
+        shown.push(d.map((x) => x.label));
         const r = o.editor.shift();
         if (!r) throw new Error("no read");
         return r;
@@ -754,14 +971,39 @@ function loopSteps(o: {
         calls.edit++;
         return o.edits?.shift();
       },
+      ...(o.voice
+        ? {
+            voice: async () => {
+              calls.voice++;
+              const v = o.voice!.shift();
+              if (!v || v instanceof Error) throw v ?? new Error("no voice");
+              return v;
+            },
+          }
+        : {}),
       ...(o.accept ? { accept: o.accept } : {}),
-      check: (n: string, a?: string) =>
-        roomChecks({ narration: n, answerLine: a, ...CHECK }),
+      ...(o.recent ? { recent: o.recent } : {}),
+      game: () => "Starfield",
+      check: (n: string, a?: string, shape?: RecentShape) =>
+        roomChecks({
+          narration: n,
+          answerLine: a,
+          ...CHECK,
+          ...(shape ? { shape } : {}),
+        }),
     },
   };
 }
 
-test("stop rule: a first read that clears costs no edit", async () => {
+const EDITED = {
+  title: "Starfield's expansion slipped",
+  narration: NARRATION.replace(
+    S[2]!,
+    "That date sat on the official roadmap for weeks.",
+  ),
+};
+
+test("a pick that clears with the voice pass off costs no edit and no second read", async () => {
   const { steps, calls } = loopSteps({
     editor: [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
     viewer: [{ reads: [vw("A", 8), vw("B", 7), vw("C", 6)] }],
@@ -769,6 +1011,7 @@ test("stop rule: a first read that clears costs no edit", async () => {
   const run = await runRoom(steps);
   assert.equal(run.stop, "cleared");
   assert.equal(run.pick, "A");
+  assert.equal(run.won, "original");
   assert.equal(calls.edit, 0);
   assert.deepEqual(run.calls, {
     pack: 1,
@@ -776,103 +1019,160 @@ test("stop rule: a first read that clears costs no edit", async () => {
     critic: 1,
     viewer: 1,
     edit: 0,
+    voice: 0,
     layout: 0,
     repair: 0,
   });
   assert.equal(run.final?.narration, NARRATION);
+  assert.equal(run.final?.ending, "verdict");
 });
 
-test("stop rule: edits until it clears, each read fresh by both critics", async () => {
-  const better = {
-    title: "Starfield's expansion slipped",
-    narration: NARRATION.replace(
-      S[2]!,
-      "That date sat on the official roadmap for weeks.",
-    ),
-  };
-  const { steps, calls } = loopSteps({
+test("under the bar: one edit, the voice pass on the edit, both read side by side and the better kept", async () => {
+  const { steps, calls, shown } = loopSteps({
     editor: [
       { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
-      { reads: [ed("A", 8)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 7), ed("V", 8)], pick: "V" },
     ],
     viewer: [
       { reads: [vw("A", 6), vw("B", 5), vw("C", 5)] },
-      { reads: [vw("A", 8)] },
+      { reads: [vw("O", 6), vw("E", 7), vw("V", 8)] },
     ],
-    edits: [better],
+    edits: [EDITED],
+    voice: [voiced()],
   });
   const run = await runRoom(steps);
-  assert.equal(run.stop, "cleared");
-  assert.equal(calls.edit, 1);
-  assert.equal(run.final?.narration, better.narration);
+  assert.equal(run.stop, "compared");
+  assert.equal(run.won, "voiced");
+  assert.equal(run.final?.narration, VOICED);
+  assert.equal(run.final?.form, "in_order");
+  assert.equal(run.final?.ending, "consequence");
   assert.deepEqual(
-    run.rounds.map((r) => r.mean),
-    [6, 8],
+    shown[1],
+    ["O", "E", "V"],
+    "the critics read the versions side by side",
+  );
+  assert.deepEqual(
+    [calls.edit, calls.voice, calls.editor, calls.viewer],
+    [1, 1, 2, 2],
+  );
+  assert.deepEqual(
+    run.rounds.filter((r) => r.round === 2).map((r) => [r.version, r.mean]),
+    [
+      ["original", 6],
+      ["edited", 7],
+      ["voiced", 8],
+    ],
   );
 });
 
-test("stop rule: a round that does not improve stops the loop and keeps the better version", async () => {
-  const worse = {
-    title: "t",
-    narration: NARRATION.replace(
-      S[2]!,
-      "That date was on the roadmap, plain as day, for anyone.",
-    ),
-  };
-  const { steps, calls } = loopSteps({
+test("a tie between the edited and the voiced versions goes to the edited one", async () => {
+  const { steps } = loopSteps({
     editor: [
       { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
-      { reads: [ed("A", 5)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 8), ed("V", 8)], pick: "V" },
     ],
-    edits: [worse],
+    edits: [EDITED],
+    voice: [voiced()],
   });
   const run = await runRoom(steps);
-  assert.equal(run.stop, "no_gain");
-  assert.equal(calls.edit, 1);
-  assert.equal(run.final?.narration, NARRATION, "never a later worse version");
+  assert.equal(run.won, "edited");
+  assert.equal(run.final?.narration, EDITED.narration);
 });
 
-test("stop rule: two edit rounds at most, whatever the setting, and a refused edit costs no read", async () => {
-  const e1 = {
-    title: "t",
-    narration: NARRATION.replace(
-      S[2]!,
-      "That date sat right there on the roadmap, firm as anything.",
-    ),
-  };
-  const e2 = {
-    title: "t",
-    narration: NARRATION.replace(
-      S[2]!,
-      "That date sat on the roadmap, and nobody hedged it at all.",
-    ),
-  };
+test("a pick that clears still meets the voice pass; the critics choose", async () => {
   const { steps, calls } = loopSteps({
     editor: [
-      { reads: [ed("A", 5), ed("B", 5), ed("C", 5)], pick: "A" },
-      { reads: [ed("A", 6)], pick: "A" },
-      { reads: [ed("A", 7)], pick: "A" },
-      { reads: [ed("A", 9)], pick: "A" },
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 8), ed("V", 7)], pick: "O" },
     ],
-    edits: [e1, e2, e1],
+    voice: [voiced()],
   });
-  const run = await runRoom({ ...steps, rounds: 9 });
-  assert.equal(calls.edit, 2);
-  assert.equal(run.stop, "rounds");
-  assert.ok(run.calls.critic <= 3);
-
-  const refused = loopSteps({
-    editor: [{ reads: [ed("A", 5), ed("B", 5), ed("C", 5)], pick: "A" }],
-    edits: [e1, e2],
-    accept: () => ["The edit adds the figure 9, which no source gives."],
-  });
-  const r2 = await runRoom(refused.steps);
-  assert.equal(refused.calls.editor, 1, "a refused edit is never read");
-  assert.equal(r2.final?.narration, NARRATION);
-  assert.ok(r2.rounds.slice(1).every((r) => r.refused?.length));
+  const run = await runRoom(steps);
+  assert.equal(calls.edit, 0, "a pick that clears is never edited");
+  assert.equal(calls.voice, 1);
+  assert.equal(run.won, "original");
 });
 
-test("a killed story and a story both critics drop come back with no final words", async () => {
+test("the voice pass is refused by code when it puts the answer first or repeats the room's recent shapes", async () => {
+  const first = loopSteps({
+    editor: [
+      { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 7)], pick: "E" },
+    ],
+    edits: [EDITED],
+    voice: [
+      voiced({ narration: `${ANSWER} ${S.slice(1, 7).join(" ")} ${S[8]}` }),
+    ],
+  });
+  const r1 = await runRoom(first.steps);
+  assert.match(
+    r1.voice!.refused!.join(" "),
+    /answer away in its first sentence/,
+  );
+  assert.deepEqual(first.shown[1], ["O", "E"], "a refused voice is never read");
+  assert.equal(r1.won, "edited");
+
+  const repeat = loopSteps({
+    editor: [
+      { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 7)], pick: "E" },
+    ],
+    edits: [EDITED],
+    voice: [voiced()],
+    recent: [{ form: "tiny_story", ending: "consequence" }],
+  });
+  const r2 = await runRoom(repeat.steps);
+  assert.match(r2.voice!.refused!.join(" "), /ending "consequence" repeats/);
+
+  const failed = loopSteps({
+    editor: [
+      { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 7)], pick: "E" },
+    ],
+    edits: [EDITED],
+    voice: [new Error("timeout")],
+  });
+  const r3 = await runRoom(failed.steps);
+  assert.match(r3.voice!.refused!.join(" "), /voice pass failed: timeout/);
+  assert.equal(r3.won, "edited");
+});
+
+test("a refused edit leaves the pick; the voice pass then works on the pick; the fact guard covers both", async () => {
+  const refused = loopSteps({
+    editor: [{ reads: [ed("A", 5), ed("B", 5), ed("C", 5)], pick: "A" }],
+    edits: [EDITED],
+    voice: [voiced()],
+    accept: () => ["The edit adds the figure 9, which no source gives."],
+  });
+  const run = await runRoom(refused.steps);
+  assert.equal(refused.calls.editor, 1, "nothing new to read: no second read");
+  assert.equal(run.won, "original");
+  assert.equal(run.final?.narration, NARRATION);
+  assert.ok(run.edit?.refused?.length);
+  assert.ok(run.voice?.refused?.length);
+});
+
+test("the caps hold whatever the settings say, and an unread comparison keeps the edit", async () => {
+  const { steps, calls } = loopSteps({
+    editor: [{ reads: [ed("A", 5), ed("B", 5), ed("C", 5)], pick: "A" }],
+    edits: [EDITED, EDITED, EDITED],
+    voice: [voiced(), voiced()],
+  });
+  const run = await runRoom({ ...steps, rounds: 9 });
+  assert.equal(calls.edit, 1);
+  assert.equal(calls.voice, 1);
+  assert.ok(run.calls.critic <= ROOM.caps.critic);
+  assert.equal(run.stop, "unread");
+  assert.equal(run.won, "edited");
+  const none = loopSteps({
+    editor: [{ reads: [ed("A", 5), ed("B", 5), ed("C", 5)], pick: "A" }],
+    edits: [EDITED],
+  });
+  await runRoom({ ...none.steps, rounds: 0 });
+  assert.equal(none.calls.edit, 0, "SCRIPT_ROOM_ROUNDS=0 skips the edit");
+});
+
+test("a killed story and a story both critics drop come back with no final words; a drop keeps its reason", async () => {
   const k = loopSteps({
     editor: [{ reads: [ed("A", 8)], pick: "A" }],
     w: writing({ kill: true, kill_reason: "Nothing at stake." }),
@@ -886,29 +1186,55 @@ test("a killed story and a story both critics drop come back with no final words
   const d = loopSteps({
     editor: [
       {
-        reads: [ed("A", 4, { drop: true }), ed("B", 3), ed("C", 3)],
+        reads: [
+          ed("A", 4, {
+            drop: true,
+            drop_reason: "Nobody outside the game cares.",
+          }),
+          ed("B", 3),
+          ed("C", 3),
+        ],
         pick: "A",
       },
     ],
-    viewer: [{ reads: [vw("A", 3, { drop: true }), vw("B", 3), vw("C", 3)] }],
+    viewer: [
+      {
+        reads: [
+          vw("A", 3, { drop: true, drop_reason: "Nothing for me." }),
+          vw("B", 3),
+          vw("C", 3),
+        ],
+      },
+    ],
   });
   const dropped = await runRoom(d.steps);
   assert.equal(dropped.stop, "dropped");
   assert.equal(dropped.final, undefined);
+  assert.deepEqual(dropped.drop, {
+    editor: true,
+    viewer: true,
+    why: "Nobody outside the game cares. / Nothing for me.",
+  });
 
   const one = loopSteps({
     editor: [
       {
-        reads: [ed("A", 8, { drop: true }), ed("B", 3), ed("C", 3)],
+        reads: [
+          ed("A", 8, { drop: true, drop_reason: "Small." }),
+          ed("B", 3),
+          ed("C", 3),
+        ],
         pick: "A",
       },
     ],
     viewer: [{ reads: [vw("A", 8), vw("B", 3), vw("C", 3)] }],
   });
-  assert.equal(
-    (await runRoom(one.steps)).stop,
-    "cleared",
-    "one critic's drop is not enough",
+  const r = await runRoom(one.steps);
+  assert.equal(r.stop, "cleared", "one critic's drop is not enough");
+  assert.deepEqual(
+    r.drop,
+    { editor: true, viewer: false, why: "Small." },
+    "but it is recorded",
   );
 });
 
@@ -1063,8 +1389,15 @@ function roomQueues(over: Partial<Record<string, unknown[]>> = {}) {
   return {
     "room.pack": [pack()],
     "room.write": [writing()],
-    "room.critic": [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
-    "room.viewer": [{ reads: [vw("A", 8), vw("B", 7), vw("C", 6)] }],
+    "room.critic": [
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 8), ed("V", 7)], pick: "O" },
+    ],
+    "room.viewer": [
+      { reads: [vw("A", 8), vw("B", 7), vw("C", 6)] },
+      { reads: [vw("O", 8), vw("V", 7)] },
+    ],
+    "room.voice": [voiced()],
     "room.layout": [laidOut()],
     ...over,
   };
@@ -1082,14 +1415,23 @@ test("on: the room's words go out, laid out, fact-checked, with every call recor
   assert.equal(out.record.arm, "room");
   assert.equal(out.record.mode, "on");
   assert.equal(out.record.pick, "A");
-  assert.equal(out.record.editor_overall, 8);
+  assert.equal(out.record.won, "original");
+  assert.equal(
+    out.record.editor_overall,
+    8,
+    "the kept version's side-by-side marks",
+  );
   assert.equal(out.record.viewer_overall, 8);
+  assert.equal(out.record.form, "contradiction");
+  assert.equal(out.record.ending, "verdict");
+  assert.equal(out.record.i_think, true);
   assert.deepEqual(out.record.calls, {
     pack: 1,
     write: 1,
-    critic: 1,
-    viewer: 1,
+    critic: 2,
+    viewer: 2,
     edit: 0,
+    voice: 1,
     layout: 1,
     repair: 0,
   });
@@ -1104,14 +1446,38 @@ test("on: the room's words go out, laid out, fact-checked, with every call recor
     assert.ok(!r.content.includes("Why slip it?"));
     assert.ok(!r.content.includes(pack().surprise.detail));
   }
-  // The writer's brief is the room's own, not the stacked one.
-  const w = seen.find((x) => x.site === "room.write")!;
-  assert.ok(w.system.includes(`at most ${ROOM.namesMax} spoken proper names`));
-  assert.ok(
-    !w.system.includes("desk_question") && !w.system.includes("Pulse Check"),
-  );
+  // The writer's and the voice's briefs are the room's own, not the stacked one.
+  for (const site of ["room.write", "room.voice"]) {
+    const w = seen.find((x) => x.site === site)!;
+    assert.equal(
+      `${w.system}\n${w.content}`.split(CRAFT_RULE).length - 1,
+      1,
+      `${site}: the craft rules once, from the shared text`,
+    );
+    assert.ok(
+      !w.system.includes("desk_question") && !w.system.includes("Pulse Check"),
+      site,
+    );
+  }
   const ev = roomEvent(out.record);
   assert.equal(ev.wrote, true);
+  assert.equal(ev.won, "original");
+});
+
+test("on: the variety memory reaches the writer and the voice pass", async () => {
+  const seen: Seen[] = [];
+  await roomWriteStep(
+    input(fakeLlm(roomQueues(), seen), {
+      recent: [{ form: "read_again", first_line: "number", ending: "reveal" }],
+    }),
+    deps(),
+  );
+  for (const site of ["room.write", "room.voice"])
+    assert.match(
+      seen.find((x) => x.site === site)!.content,
+      /VARIETY: the last 1 room Shorts/,
+      site,
+    );
 });
 
 test("on: a fact check that blocks gets one repair; still blocked, the normal writer writes it", async () => {
@@ -1137,7 +1503,7 @@ test("on: a fact check that blocks gets one repair; still blocked, the normal wr
   assert.equal(fixed.record.calls.repair, 1);
 });
 
-test("on: a kill, a drop by both critics or a layout that changes the words falls back, recorded", async () => {
+test("on: a kill, a drop by both critics or a layout that changes the words falls back, recorded with why", async () => {
   const seen: Seen[] = [];
   const killed = await roomWriteStep(
     input(
@@ -1160,20 +1526,37 @@ test("on: a kill, a drop by both critics or a layout that changes the words fall
         roomQueues({
           "room.critic": [
             {
-              reads: [ed("A", 3, { drop: true }), ed("B", 3), ed("C", 3)],
+              reads: [
+                ed("A", 3, { drop: true, drop_reason: "Niche." }),
+                ed("B", 3),
+                ed("C", 3),
+              ],
               pick: "A",
             },
           ],
           "room.viewer": [
-            { reads: [vw("A", 3, { drop: true }), vw("B", 3), vw("C", 3)] },
+            {
+              reads: [
+                vw("A", 3, { drop: true, drop_reason: "Not for me." }),
+                vw("B", 3),
+                vw("C", 3),
+              ],
+            },
           ],
         }),
       ),
     ),
     deps(),
   );
-  assert.equal(dropped.record.fallback, "both critics dropped the story");
-  assert.deepEqual(dropped.record.drop, { editor: true, viewer: true });
+  assert.equal(
+    dropped.record.fallback,
+    "both critics dropped the story: Niche. / Not for me.",
+  );
+  assert.deepEqual(dropped.record.drop, {
+    editor: true,
+    viewer: true,
+    why: "Niche. / Not for me.",
+  });
 
   const changed = await roomWriteStep(
     input(
@@ -1194,21 +1577,19 @@ test("on: a kill, a drop by both critics or a layout that changes the words fall
   assert.equal(rumour.record.fallback, "rumour labelling");
 });
 
-test("on: the viewer critic stays out under SCRIPT_ROOM_VIEWER=false", async () => {
+test("on: the viewer critic and the voice pass stay out when switched off", async () => {
   const seen: Seen[] = [];
   const out = await roomWriteStep(
     input(fakeLlm(roomQueues(), seen), {
-      cfg: {
-        scriptRoomViewer: false,
-        scriptRoomRounds: 2,
-        scriptRoomMin: 8,
-        scriptRoomLinks: false,
-      },
+      cfg: { ...CFG, scriptRoomViewer: false, scriptRoomVoice: false },
     }),
     deps(),
   );
-  assert.ok(!seen.some((s) => s.site === "room.viewer"));
+  assert.ok(
+    !seen.some((s) => s.site === "room.viewer" || s.site === "room.voice"),
+  );
   assert.equal(out.record.calls.viewer, 0);
+  assert.equal(out.record.calls.voice, 0);
   assert.equal(out.record.viewer_overall, undefined);
 });
 
@@ -1229,10 +1610,10 @@ test("check: one pack call, recorded with what the published script used; the co
   assert.deepEqual(rec.used, { quotes: 0, numbers: 0, surprise: false });
   const ctl = roomControlRecord("on");
   assert.equal(ctl.arm, "control");
-  assert.deepEqual(Object.values(ctl.calls), [0, 0, 0, 0, 0, 0, 0]);
+  assert.ok(Object.values(ctl.calls).every((n) => n === 0));
 });
 
-test("the record keeps each critic's mark separately and the kept round's counts", () => {
+test("the record starts with no calls and no marks", () => {
   const rec = roomRecord({ arm: "room", mode: "on", wrote: true });
   assert.equal(rec.editor_overall, undefined);
   assert.deepEqual(rec.calls, {
@@ -1241,6 +1622,7 @@ test("the record keeps each critic's mark separately and the kept round's counts
     critic: 0,
     viewer: 0,
     edit: 0,
+    voice: 0,
     layout: 0,
     repair: 0,
   });
@@ -1248,7 +1630,7 @@ test("the record keeps each critic's mark separately and the kept round's counts
 
 // ---------------------------------------------------------------- the weekly report
 
-test("the weekly lines: room against control, no verdict before 20 a side, each critic against retention", () => {
+test("the weekly lines: room against control, no verdict before 20 a side, each critic, and the stories it could not use", () => {
   const rows = (
     arm: "room" | "control",
     n: number,
@@ -1263,6 +1645,7 @@ test("the weekly lines: room against control, no verdict before 20 a side, each 
       views: 1000,
       viewed_pct: viewed + (i % 4),
       comments: 2,
+      won: (i % 2 ? "voiced" : "edited") as "voiced" | "edited",
     }));
   const few = roomLinesForReport(
     [...rows("room", 5, 60), ...rows("control", 30, 50)],
@@ -1270,27 +1653,47 @@ test("the weekly lines: room against control, no verdict before 20 a side, each 
   );
   assert.match(few.join("\n"), /no verdict before 20 a side/);
   assert.match(few.join("\n"), /editor critic: 5 of 20/);
+  const back = [
+    { arm: "room" as const, wrote: false, killed: true },
+    {
+      arm: "room" as const,
+      wrote: false,
+      drop: { editor: true, viewer: true },
+    },
+    {
+      arm: "room" as const,
+      wrote: true,
+      drop: { editor: true, viewer: false },
+    },
+  ];
   const many = roomLinesForReport(
     [
       ...rows("room", 20, 60),
       ...rows("control", 20, 50),
       ...rows("room", 3, 40, false),
+      ...back,
     ],
     spearman,
   );
-  assert.match(many[0]!, /room wrote 20 Shorts/);
-  assert.match(many[0]!, /room arm, normal writer 3 Shorts/);
-  assert.match(many[1]!, /10\.0 points/);
+  assert.match(many[0]!, /room wrote 21 Shorts/);
+  assert.match(many[0]!, /room arm, normal writer 5 Shorts/);
+  assert.match(many[1]!, /average viewed/);
   assert.match(many[2]!, /editor critic: rank correlation/);
   assert.match(many[2]!, /viewer critic: rank correlation/);
+  assert.match(
+    many[3]!,
+    /2 of 26 in its arm went back to the normal writer \(1 killed by the writer, 1 dropped by both critics\); 1 more were dropped by one critic/,
+  );
+  assert.match(many[3]!, /10 its edit, 10 the voice pass/);
   assert.deepEqual(roomLinesForReport([], spearman), []);
 });
 
 // ---------------------------------------------------------------- prompts and the proof tool
 
-test("prompts: no em dash, the critics' corrections in the writer's brief, no stacked rules", () => {
+test("prompts: no em dash, the critics' corrections and the tells in the briefs, no stacked rules", () => {
   for (const p of [
     writerPrompt(WORDS),
+    voicePrompt(WORDS),
     editorPrompt(),
     viewerPrompt(),
     packPrompt(),
@@ -1298,10 +1701,11 @@ test("prompts: no em dash, the critics' corrections in the writer's brief, no st
     assert.ok(!p.includes("—"));
   const w = writerPrompt(WORDS);
   assert.ok(w.includes("80 to 115 spoken words"));
-  assert.ok(w.includes(`at most ${ROOM.numbersSpokenMax} numbers`));
+  assert.ok(w.includes("At most two spoken names"));
   assert.ok(w.includes("after 70% of the words"));
-  assert.ok(w.includes("No echo of the first line"));
+  assert.ok(w.includes("No slogan, no echo of the first line"));
   assert.ok(w.includes('"X, not Y"'));
+  assert.ok(w.includes('"which is why"') && w.includes('"You\'d assume"'));
   for (const stacked of [
     "desk_question",
     "skeleton",
@@ -1310,9 +1714,14 @@ test("prompts: no em dash, the critics' corrections in the writer's brief, no st
     "loop_line",
   ])
     assert.ok(!w.includes(stacked), stacked);
+  const v = voicePrompt(WORDS);
+  assert.ok(v.includes("never in the first sentence"));
+  assert.ok(v.includes("stay near 80"));
+  assert.ok(v.includes("full title once"));
   assert.ok(editorPrompt().includes("promise_kept"));
   assert.ok(editorPrompt().includes("second_thread"));
-  assert.ok(viewerPrompt().includes("drop"));
+  assert.ok(editorPrompt().includes("drop_reason"));
+  assert.ok(viewerPrompt().includes("drop_reason"));
 });
 
 test("the proof tool reads episodes or clusters and prints a run without a model", () => {
@@ -1327,19 +1736,46 @@ test("the proof tool reads episodes or clusters and prints a run without a model
   assert.equal(clusterOf({ id: "x" }), undefined);
   const text = describeRun("e1", {
     drafts: [],
-    rounds: [{ round: 0, label: "A", mean: 7, findings: [] }],
-    stop: "rounds",
+    rounds: [
+      { round: 2, label: "A", version: "voiced", mean: 7, findings: [] },
+    ],
+    stop: "compared",
+    won: "voiced",
     calls: {
       pack: 1,
       write: 1,
-      critic: 1,
-      viewer: 1,
-      edit: 0,
+      critic: 2,
+      viewer: 2,
+      edit: 1,
+      voice: 1,
       layout: 0,
       repair: 0,
     },
     pack: pack(),
   });
   assert.match(text, /PACK what happened/);
-  assert.match(text, /ROUND 0: mean 7/);
+  assert.match(text, /ROUND 2 voiced: mean 7/);
+  assert.match(text, /KEPT: voiced/);
+});
+
+test("the craft rules: in the room writer's and the voice pass's briefs exactly once, never also through shortRuleNote", () => {
+  const once = (t: string) => t.split(CRAFT_RULE).length - 1;
+  assert.equal(once(writerPrompt(WORDS)), 1);
+  assert.equal(once(voicePrompt(WORDS)), 1);
+  // Each rule line appears once too, so no second copy in other words sits beside the shared one.
+  for (const line of CRAFT_RULE.split("\n").slice(1)) {
+    assert.equal(writerPrompt(WORDS).split(line).length - 1, 1, line);
+    assert.equal(voicePrompt(WORDS).split(line).length - 1, 1, line);
+  }
+  // The normal writer still gets them through shortRuleNote; the room never reads shortRuleNote.
+  const note = shortRuleNote(
+    testConfig("x", { shortCraftRules: true } as never) as never,
+    {
+      id: "e",
+      lane: "news",
+    } as never,
+  );
+  assert.equal(once(note), 1);
+  for (const p of [writerPrompt(WORDS), voicePrompt(WORDS)])
+    assert.ok(!p.includes(note) || note === CRAFT_RULE);
 });

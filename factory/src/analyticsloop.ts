@@ -56,7 +56,7 @@ import {
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
-import { roomLinesForReport, type RoomArm } from "./editorial/room.ts";
+import { roomLinesForReport, type RoomArm, type RoomVersion } from "./editorial/room.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
 import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
@@ -223,7 +223,15 @@ export interface EpisodeInfo {
   /** The editor's desk's arm and the kept version's overall score (SCRIPT_DESK, src/editorial/desk.ts). */
   desk?: { arm: DeskArm; overall?: number };
   /** The writers' room's arm, whether its words went out and each critic's mark (SCRIPT_ROOM, src/editorial/room.ts). */
-  room?: { arm: RoomArm; wrote?: boolean; editor?: number; viewer?: number };
+  room?: {
+    arm: RoomArm;
+    wrote?: boolean;
+    editor?: number;
+    viewer?: number;
+    killed?: boolean;
+    drop?: { editor: boolean; viewer: boolean };
+    won?: RoomVersion;
+  };
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1433,6 +1441,9 @@ export async function runAnalyticsLoop(
               wrote: sc.room.wrote,
               editor: sc.room.editor_overall,
               viewer: sc.room.viewer_overall,
+              killed: !!sc.room.kill,
+              ...(sc.room.drop ? { drop: { editor: sc.room.drop.editor, viewer: sc.room.drop.viewer } } : {}),
+              ...(sc.room.won ? { won: sc.room.won } : {}),
             },
           }
         : {}),
@@ -1996,6 +2007,9 @@ export async function runAnalyticsLoop(
             wrote: e.room!.wrote,
             editor: e.room!.editor,
             viewer: e.room!.viewer,
+            killed: e.room!.killed,
+            drop: e.room!.drop,
+            won: e.room!.won,
             views: y?.views,
             viewed_pct: y?.viewed_pct,
             comments: y?.comments,

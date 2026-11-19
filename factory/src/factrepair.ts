@@ -44,9 +44,11 @@ const NUMBER_WORD =
 /** A figure that can be rounded: "$30", "$1.99", "30 dollars", "thirty dollars", "forty percent", "12%". */
 const FIGURE = new RegExp(
   [
-    String.raw`[$£€]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:million|billion|thousand|k|m|bn))?`,
+    String.raw`[$£€]\s?\d[\d,]*(?:\.\d+)?(?:\s?(?:million|billion|thousand|k|m|bn)\b)?`,
     String.raw`\b\d[\d,]*(?:\.\d+)?\s?(?:%|percent\b|dollars?\b|euros?\b|pounds?\b|bucks\b)`,
     String.raw`\b(?:${NUMBER_WORD})(?:[\s-](?:${NUMBER_WORD}|and|point))*\s+(?:dollars?|euros?|pounds?|percent|bucks)\b`,
+    // Counts: "350,000 copies", "1.2 million players".
+    String.raw`\b\d{1,3}(?:,\d{3})+\b|\b\d+(?:\.\d+)?\s?(?:million|billion|thousand)\b`,
   ].join("|"),
   "gi",
 );
@@ -57,16 +59,30 @@ const HEDGED_BEFORE =
 
 /** The fact-check's own words for a figure said without its rounding. */
 const ROUNDING_PROBLEM = /\bround(?:ing|ed|s)?\b/i;
+/** "this is not a rounding difference": a wrong figure, which must never just get "about". */
+const NOT_ROUNDING =
+  /\bnot\s+(?:a\s+|just\s+|simply\s+|merely\s+)?(?:a\s+)?round/i;
 
 /** A line that announces a rank: cutting it would leave a hole in the countdown. */
-const RANK_LINE =
-  /\bnumber\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b|\b(?:first|top|last)\s+(?:place|spot)\b|#\s?\d|\bat\s+(?:one|two|three|four|five|six|seven|eight|nine|ten)\b/i;
+const ORDINAL =
+  "first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|last|\\d+(?:st|nd|rd|th)";
+const RANK_LINE = new RegExp(
+  [
+    String.raw`\bnumber\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\b`,
+    String.raw`\bno\.\s?\d`,
+    String.raw`#\s?\d`,
+    String.raw`\b(?:${ORDINAL}|top)\s+(?:place|spot|position|pick)\b`,
+    String.raw`\bcom(?:ing|es)\s+in\s+(?:at\s+)?(?:${ORDINAL}|number|\d)`,
+    String.raw`\bat\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b`,
+    String.raw`\b(?:in|takes?|grabs?|claims?)\s+(?:${ORDINAL})\b`,
+  ].join("|"),
+  "i",
+);
 
 /** "but I put Vice City first": what is left after the cut clause must still be a sentence of its own. */
-const LEADING_JOIN =
-  /^\s*[,;:]?\s*(?:but|yet|though|although|and|so|still)\b[\s,]*/i;
+const LEADING_JOIN = /^\s*[,;:]\s*(?:but|yet|though|although|still)\b[\s,]*/i;
 const TRAILING_JOIN =
-  /\s*[,;:]\s*(?:but|yet|and|so|though|although|while|which)?\s*$/i;
+  /\s*[,;:]\s*(?:but|yet|and|so|though|although|while)\s*$/i;
 
 const SENTENCE_SPLIT = /(?<=[.?!])\s+/;
 const TRAILING_PUNCT = /[\s.,;:!?"'“”‘’]+$/;
@@ -106,15 +122,17 @@ function locate(
 ): Located | undefined {
   const q = lower(core(quote));
   if (!q) return undefined;
+  const hits: Located[] = [];
   for (let f = 0; f < fields.length; f++) {
     const sentences = fields[f]!.split(SENTENCE_SPLIT).filter((x) => x.trim());
     for (let i = 0; i < sentences.length; i++) {
       const s = sentences[i]!;
       if (lower(s).includes(q) || lower(speak(s)).includes(q))
-        return { field: fields[f]!, sentence: s, index: i, fieldIndex: f };
+        hits.push({ field: fields[f]!, sentence: s, index: i, fieldIndex: f });
     }
   }
-  return undefined;
+  // A quote found in two different sentences is ambiguous: never guess which one the checker meant.
+  return new Set(hits.map((h) => h.sentence)).size === 1 ? hits[0] : undefined;
 }
 
 /** "about" before the rounded figure the quote says; undefined when the figure can't be pinned down. */
@@ -129,16 +147,26 @@ function hedgeFigure(
   const quoted = figures.filter(
     (m) => q.includes(lower(m[0])) || q.includes(lower(speak(m[0]))),
   );
-  const pick =
-    quoted.length === 1
-      ? quoted[0]
-      : figures.length === 1
-        ? figures[0]
-        : undefined;
+  // Only the figure the checker quoted, never a neighbour that happens to be the sentence's only figure.
+  const pick = quoted.length === 1 ? quoted[0] : undefined;
   if (!pick || pick.index === undefined) return undefined;
-  const before = sentence.slice(0, pick.index);
+  let at = pick.index;
+  // "US$30", "C$30": the currency prefix belongs to the figure.
+  while (at > 0 && /[A-Za-z]/.test(sentence[at - 1]!)) at--;
+  let before = sentence.slice(0, at);
+  if (at > 0 && /\S/.test(sentence[at - 1]!)) return undefined; // glued to a word: can't place "about"
   if (HEDGED_BEFORE.test(before)) return undefined;
-  return `${before}about ${sentence.slice(pick.index)}`;
+  // "costs a hundred dollars" -> "costs about a hundred dollars" would read oddly: "costs about one hundred dollars".
+  let rest = sentence.slice(at);
+  if (
+    /\ba\s+$/i.test(before) &&
+    /^(?:hundred|thousand|million|billion)\b/i.test(rest)
+  ) {
+    before = before.replace(/\ba\s+$/i, "");
+    rest = `one ${rest}`;
+  }
+  const word = at === 0 || /^\s*["'“‘]?$/.test(before) ? "About" : "about";
+  return `${before}${word} ${rest}`;
 }
 
 const capitalise = (t: string) =>
@@ -156,7 +184,8 @@ function cutClause(sentence: string, quote: string): string | undefined {
   const after = sentence.slice(at + q.length);
   const end = (sentence.match(/[.?!]["'”’]?\s*$/)?.[0] ?? ".").trim();
   // Opening clause: "Most lists rank GTA 5 higher, but I put Vice City first."
-  if (!before.trim() && LEADING_JOIN.test(after)) {
+  // The cut opening clause must be a whole subject and claim (3+ words), not just "Most critics".
+  if (!before.trim() && words(q) >= 3 && LEADING_JOIN.test(after)) {
     const rest = after.replace(LEADING_JOIN, "").trim();
     if (words(rest) >= 3) return capitalise(rest);
   }
@@ -196,6 +225,13 @@ export function repairBlockers(
       continue;
     }
     // A rounded figure: hedge it, never cut it.
+    if (
+      ROUNDING_PROBLEM.test(parsed.problem) &&
+      NOT_ROUNDING.test(parsed.problem)
+    ) {
+      out.unrepaired.push(blocker);
+      continue;
+    }
     if (ROUNDING_PROBLEM.test(parsed.problem)) {
       const to = hedgeFigure(at.sentence, parsed.quote, speak);
       if (!to) {
@@ -223,8 +259,12 @@ export function repairBlockers(
     if (qWords >= 0.7 * sWords) {
       const field = at.field;
       let from: string | undefined;
-      if (field.includes(`${at.sentence} `)) from = `${at.sentence} `;
-      else if (field.includes(` ${at.sentence}`)) from = ` ${at.sentence}`;
+      // Take the space before a later sentence (it may end its field, as a long video's outro does), or the
+      // space after an opening one; either way the cut text must occur only once in its field.
+      const once = (x: string) => field.split(x).length === 2;
+      if (at.index > 0 && once(` ${at.sentence}`)) from = ` ${at.sentence}`;
+      else if (at.index === 0 && once(`${at.sentence} `))
+        from = `${at.sentence} `;
       if (!from || cut + sWords > maxCutShare * total) {
         out.unrepaired.push(blocker);
         continue;

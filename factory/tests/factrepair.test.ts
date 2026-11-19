@@ -177,3 +177,61 @@ test("a quote that is not in the script is not repairable", () => {
   );
   assert.deepEqual(r.unrepaired, [USUAL_ORDER]);
 });
+
+// Review cases (19 Nov): each of these once produced a wrong or damaging mend.
+const fc = (quote: string, problem: string) => `Fact-check: "${quote}" - ${problem}`;
+const ROUND = "The source says otherwise; this rounding is unqualified.";
+const CONSENSUS = "This asserts an unsupported consensus.";
+
+test("hedges only the quoted figure, never a neighbour", () => {
+  const fields = [HOOK, "It sold 350,000 copies in a week at $30. That is a lot.", PAD];
+  const r = repairBlockers(fields, [fc("sold 350,000 copies", "The source says 346,258; this is rounded without a qualifier.")], speak);
+  assert.equal(r.fixes[0]!.to, "It sold about 350,000 copies in a week at $30.");
+  const none = repairBlockers([HOOK, "It sold a lot of copies at $30. Fine.", PAD], [fc("sold a lot of copies", ROUND)], speak);
+  assert.equal(none.fixes.length, 0);
+});
+
+test("a wrong figure ('not a rounding difference') is never just hedged", () => {
+  const fields = [HOOK, "It now costs $30 on Steam. Fine.", PAD];
+  const r = repairBlockers(fields, [fc("costs $30", "This is not a rounding difference; the price is $19.99.")], speak);
+  assert.equal(r.fixes.length, 0);
+});
+
+test("hedge wording: 'a hundred', US$, and a sentence that opens on the figure", () => {
+  const a = repairBlockers([HOOK, "The bundle costs a hundred dollars now. Fine.", PAD], [fc("costs a hundred dollars", ROUND)], speak);
+  assert.equal(a.fixes[0]!.to, "The bundle costs about one hundred dollars now.");
+  const b = repairBlockers([HOOK, "It costs US$30 in the store. Fine.", PAD], [fc("US$30", ROUND)], speak);
+  assert.equal(b.fixes[0]!.to, "It costs about US$30 in the store.");
+  const c = repairBlockers([HOOK, "Fine so far. $30 buys the whole map.", PAD], [fc("$30 buys the whole map", ROUND)], speak);
+  assert.equal(c.fixes[0]!.to, "About $30 buys the whole map.");
+});
+
+test("never cuts an ordinal rank line", () => {
+  for (const line of ["In third place, the most loved map of all, Vice City.", "Coming in fourth is the fan favourite."]) {
+    const r = repairBlockers([HOOK, `Fine so far. ${line} Next.`, PAD], [fc(line, CONSENSUS)], speak);
+    assert.equal(r.fixes.length, 0, line);
+  }
+});
+
+test("a bare 'and' is no clause boundary: the claim is not kept under a new subject", () => {
+  const r = repairBlockers([HOOK, "Fine so far. Most critics and fans agree it is the best. Next.", PAD], [fc("Most critics", CONSENSUS)], speak);
+  assert.equal(r.fixes.length, 0);
+});
+
+test("a plain comma is no clause boundary: no fragment is left", () => {
+  const r = repairBlockers([HOOK, "Fine so far. Released in 2004, it was the best-selling game ever. Next.", PAD], [fc("it was the best-selling game ever", CONSENSUS)], speak);
+  assert.equal(r.fixes.length, 0);
+});
+
+test("a quote in two sentences is ambiguous and left alone", () => {
+  const r = repairBlockers([HOOK, "The usual order is odd. Fine. One pick goes against the usual order. Next.", PAD], [fc("the usual order", CONSENSUS)], speak);
+  assert.equal(r.fixes.length, 0);
+});
+
+test("the last sentence of a field is cut with the space before it", () => {
+  const fields = [HOOK, PAD, "That is my list. Most lists rank Grand Theft Auto 5 higher than I do."];
+  const r = repairBlockers(fields, [MOST_LISTS], speak);
+  assert.deepEqual(r.unrepaired, []);
+  const out = applyFixes(fields, r.fixes.map((f) => ({ ...f, factId: 0, why: "" })));
+  assert.equal(out.value[2], "That is my list.");
+});

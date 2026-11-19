@@ -7007,8 +7007,10 @@ async function adjudicateRanking(
     const settled = await vault.settle(script, blockers, ep.id, `ranking attempt ${attempt}`);
     const fixedOnes = settled.resolutions.filter((r) => r.status === "fixed");
     if (fixedOnes.length && fix) {
-      fix(settled.fixes);
-      vaultFixes = settled.fixes;
+      for (const vf of settled.fixes) {
+        const took = fix([vf]);
+        if (typeof took !== "number" || took >= 1) vaultFixes.push(vf);
+      }
     }
     const unfixable = fix ? [] : fixedOnes.map((r) => `Fact-check: "${r.blocker.quote}" - ${r.blocker.problem}`);
     const before = blockers.length;
@@ -7572,6 +7574,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
         },
       ]
     : [];
+  let factRepaired = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     const factual = await adjudicateRanking(
       s,
@@ -7581,6 +7584,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       attempt,
       dataFacts,
       (fx) => {
+        if (fx.some((x) => x.why === "fact repair")) factRepaired = true;
         const r = applyVaultFixes(draft!, fx);
         draft = r.value;
         return r.applied;
@@ -7591,6 +7595,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   }
   // The fact-check's rewrite and a stubborn writer both get a last look: one more rewrite, then the plain wording.
   let left = mustFix(draft);
+  // FACT_REPAIR mended this draft after its last check: a fresh rewrite would ship unchecked, so run the step again.
+  if (left.length && factRepaired) throw new Error(`ranking script not fit to voice after fact repair: ${left[0]}`);
   if (left.length) {
     await logEvent(s.db, ep.id, "style_warnings", { problems: left });
     draft = await writeEvergreen(s.llm, topic, facts, left, brief);

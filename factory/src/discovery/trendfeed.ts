@@ -168,10 +168,115 @@ export function readTrendItems(
     .map((l) => leadItem(l, t));
 }
 
+// ---------------------------------------------------------------- channel feeds (no account, no yt-dlp)
+// 19 Nov 2026: subscribing needs clicks on the Mac mini's screen. YouTube's public channel feeds
+// (feeds/videos.xml) give the same thing for TREND_CHANNELS without any account, subscription or yt-dlp call, so they
+// are read first; the download account's subscriptions page is only an extra when its cookies are set.
+
+export const CHANNEL_FEED = (channelId: string): string =>
+  `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+
+const unxml = (t: string): string =>
+  t
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
+
+/** One channel feed's uploads (pure): id, title, channel, views and upload time from each <entry>. */
+export function parseChannelFeed(xml: string): TrendUpload[] {
+  const out: TrendUpload[] = [];
+  for (const m of String(xml).matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+    const e = m[1]!;
+    const get = (re: RegExp) => unxml(e.match(re)?.[1] ?? "");
+    const videoId = get(/<yt:videoId>([^<]+)<\/yt:videoId>/);
+    const title = get(/<title>([\s\S]*?)<\/title>/);
+    if (!/^[\w-]{11}$/.test(videoId) || !title) continue;
+    const published = Date.parse(get(/<published>([^<]+)<\/published>/));
+    out.push({
+      videoId,
+      title,
+      channel: get(/<author>\s*<name>([\s\S]*?)<\/name>/),
+      channelId: get(/<yt:channelId>([^<]+)<\/yt:channelId>/),
+      views: Number(e.match(/<media:statistics views="(\d+)"/)?.[1] ?? 0) || 0,
+      ...(Number.isFinite(published) ? { uploadedAt: published } : {}),
+    });
+  }
+  return out;
+}
+
+/** The channel ID a channel page names as its canonical address (pure), or "". */
+export function channelIdFromPage(html: string): string {
+  return (
+    String(html).match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})"/)?.[1] ??
+    String(html).match(/"externalId":"(UC[\w-]{22})"/)?.[1] ??
+    ""
+  );
+}
+
+function channelCacheFile(dataDir: string): string {
+  return path.join(dataDir, "trendfeed", "channels.json");
+}
+
+async function httpText(url: string): Promise<string> {
+  const r = await fetch(url, {
+    headers: { "accept-language": "en-GB,en;q=0.8" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`);
+  return r.text();
+}
+
+/**
+ * Reads every TREND_CHANNELS feed (handles resolved to channel IDs once, then cached). One plain web request per
+ * channel, one at a time; a channel that fails is skipped.
+ */
+export async function readChannelFeeds(
+  dataDir: string,
+  handles: string[],
+  get: (url: string) => Promise<string> = httpText,
+): Promise<TrendUpload[]> {
+  const file = channelCacheFile(dataDir);
+  let ids: Record<string, string> = {};
+  try {
+    ids = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, string>;
+  } catch {
+    ids = {};
+  }
+  let changed = false;
+  const found: TrendUpload[] = [];
+  for (const raw of handles) {
+    const h = raw.trim().replace(/^@/, "");
+    if (!h) continue;
+    try {
+      let id = /^UC[\w-]{22}$/.test(h) ? h : ids[h.toLowerCase()];
+      if (!id) {
+        id = channelIdFromPage(await get(`https://www.youtube.com/@${h}`));
+        if (!id) throw new Error("no channel ID on the page");
+        ids[h.toLowerCase()] = id;
+        changed = true;
+      }
+      found.push(...parseChannelFeed(await get(CHANNEL_FEED(id))));
+    } catch (err) {
+      log("warn", "trend feed: channel skipped", { channel: h, error: errorMessage(err).split("\n")[0] });
+    }
+  }
+  if (changed) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(ids, null, 2));
+  }
+  return found;
+}
+
 export interface TrendFeedSettings {
   dataDir: string;
   ytdlp: string;
   cookiesFile: string;
+  /** TREND_CHANNELS: handles whose public feeds are read every run. */
+  channels?: string[];
 }
 
 export interface TrendFeedDeps {
@@ -181,6 +286,8 @@ export interface TrendFeedDeps {
   read?: (args: string[]) => Promise<string>;
   own?: () => OwnChannel;
   now?: () => number;
+  /** The channel feeds' uploads (readChannelFeeds). */
+  feeds?: () => Promise<TrendUpload[]>;
 }
 
 /**
@@ -200,9 +307,11 @@ export async function trendFeedRun(
         TREND_FEED_URL,
       ]))
   )();
-  if (!cookies.length) {
-    log("info", "trend feed: no usable download-account cookies, nothing read");
-    return 0;
+  const found: TrendUpload[] = [];
+  try {
+    found.push(...(await (deps.feeds ?? (() => readChannelFeeds(s.dataDir, s.channels ?? [])))()));
+  } catch (err) {
+    log("warn", "trend feed: channel feeds failed", { error: errorMessage(err).split("\n")[0] });
   }
   const read =
     deps.read ??
@@ -222,8 +331,8 @@ export async function trendFeedRun(
           { cache: false, purpose: "trend" },
         ),
       ).then((r) => String(r.stdout)));
-  const urls = [TREND_FEED_URL].slice(0, TREND_MAX_CALLS);
-  const found: TrendUpload[] = [];
+  // The download account's subscriptions page, only when its cookies are usable (an extra, not needed).
+  const urls = cookies.length ? [TREND_FEED_URL].slice(0, TREND_MAX_CALLS) : [];
   for (const url of urls) {
     try {
       found.push(

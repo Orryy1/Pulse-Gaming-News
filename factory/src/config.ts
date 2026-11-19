@@ -99,7 +99,7 @@ export const DEFAULT_TREND_CHANNELS = [
   "TheGameAwards",
   "Ubisoft",
   "DigitalFoundry",
-  "gameranx",
+  "gameranxTV",
   "SkillUp",
   "NoclipDocs",
   "DidYouKnowGaming",

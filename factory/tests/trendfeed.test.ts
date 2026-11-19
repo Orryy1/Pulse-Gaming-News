@@ -12,6 +12,9 @@ import {
   readTrendItems,
   trendArgs,
   trendFeedRun,
+  parseChannelFeed,
+  channelIdFromPage,
+  readChannelFeeds,
   trendLeadsFile,
 } from "../src/discovery/trendfeed.ts";
 import { clusterItems, scoreCluster } from "../src/discovery/cluster.ts";
@@ -153,6 +156,7 @@ test("trend feed: a run reads once signed in with the trend purpose, keeps leads
     { dataDir: dir, ytdlp: "yt-dlp", cookiesFile: "/data/yt_cookies.txt" },
     {
       cookies: async () => COOKIES,
+      feeds: async () => [],
       read: async (a) => {
         reads.push(a);
         return [
@@ -181,13 +185,14 @@ test("trend feed: a run reads once signed in with the trend purpose, keeps leads
   assert.equal(path.basename(trendLeadsFile(dir)), "leads.json");
 });
 
-test("trend feed: no usable cookies, nothing is read", async () => {
+test("trend feed: no usable cookies, no signed-in read", async () => {
   const dir = await tmpDir();
   let reads = 0;
   const n = await trendFeedRun(
     { dataDir: dir, ytdlp: "yt-dlp", cookiesFile: "" },
     {
       cookies: async () => [],
+      feeds: async () => [],
       read: async () => (reads++, ""),
       own: () => own,
       now: () => NOW,
@@ -212,4 +217,56 @@ test("trend channels: the default list, the owner's own list, and the checklist 
   assert.match(guide, /Mac mini/);
   assert.match(guide, /never the Pulse/);
   assert.ok(!/—/.test(guide), "no em dashes");
+});
+
+const FEED = `<feed><entry><id>yt:video:bbbbbbbbbbb</id><yt:videoId>bbbbbbbbbbb</yt:videoId><yt:channelId>UCKy1dAqELo0zrOtPkf0eTMw</yt:channelId><title>GTA 6 &amp; the PS5 Pro</title><author><name>IGN</name></author><published>2026-11-19T10:00:00+00:00</published><media:group><media:community><media:statistics views="8475"/></media:community></media:group></entry><entry><yt:videoId>pulseVideo1</yt:videoId><title>Ours</title><published>2026-11-19T10:00:00+00:00</published></entry></feed>`;
+
+test("channel feeds: entries read, the canonical channel ID found", () => {
+  const u = parseChannelFeed(FEED);
+  assert.equal(u.length, 2);
+  assert.deepEqual(u[0], {
+    videoId: "bbbbbbbbbbb",
+    title: "GTA 6 & the PS5 Pro",
+    channel: "IGN",
+    channelId: "UCKy1dAqELo0zrOtPkf0eTMw",
+    views: 8475,
+    uploadedAt: Date.parse("2026-11-19T10:00:00Z"),
+  });
+  assert.equal(
+    channelIdFromPage('<link rel="canonical" href="https://www.youtube.com/channel/UCKy1dAqELo0zrOtPkf0eTMw">'),
+    "UCKy1dAqELo0zrOtPkf0eTMw",
+  );
+  assert.equal(channelIdFromPage("<html></html>"), "");
+});
+
+test("channel feeds: handles resolved once and cached, a failing channel skipped", async () => {
+  const dir = await tmpDir();
+  const asked: string[] = [];
+  const get = async (url: string) => {
+    asked.push(url);
+    if (url.endsWith("@IGN")) return '<link rel="canonical" href="https://www.youtube.com/channel/UCKy1dAqELo0zrOtPkf0eTMw">';
+    if (url.includes("channel_id=")) return FEED;
+    throw new Error("HTTP 404");
+  };
+  assert.equal((await readChannelFeeds(dir, ["@IGN", "Gone"], get)).length, 2);
+  asked.length = 0;
+  await readChannelFeeds(dir, ["IGN"], get);
+  assert.deepEqual(asked, ["https://www.youtube.com/feeds/videos.xml?channel_id=UCKy1dAqELo0zrOtPkf0eTMw"]);
+});
+
+test("trend feed: without cookies the channel feeds still give leads, never Pulse's own", async () => {
+  const dir = await tmpDir();
+  let reads = 0;
+  const n = await trendFeedRun(
+    { dataDir: dir, ytdlp: "yt-dlp", cookiesFile: "" },
+    {
+      cookies: async () => [],
+      feeds: async () => parseChannelFeed(FEED),
+      read: async () => (reads++, ""),
+      own: () => own,
+      now: () => Date.parse("2026-11-19T12:00:00Z"),
+    },
+  );
+  assert.equal(n, 1);
+  assert.equal(reads, 0);
 });

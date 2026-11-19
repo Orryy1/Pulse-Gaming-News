@@ -2576,7 +2576,7 @@ async function main(): Promise<void> {
   }
   // The trend feed (TREND_FEED): the download account's subscriptions read every 3 hours as story leads, signed in,
   // metadata only, within the clips' share of the signed-in budget (src/discovery/trendfeed.ts).
-  if (cfg.trendFeed && cfg.ytdlpCookiesFile) {
+  if (cfg.trendFeed) {
     const trends = () =>
       withLease(db, "trend-feed", 20 * 60, () =>
         import("./discovery/trendfeed.ts").then((m) =>
@@ -2584,6 +2584,7 @@ async function main(): Promise<void> {
             dataDir: cfg.dataDir,
             ytdlp: cfg.ytdlpPath,
             cookiesFile: cfg.ytdlpCookiesFile,
+            channels: cfg.trendChannels,
           }),
         ),
       ).catch((err) =>

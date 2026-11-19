@@ -703,6 +703,16 @@ export interface Config {
   /** SCRIPT_ROOM_LINKS (default false): the pack also reads up to three primary sources the articles link to (the
    * publisher's own post, a filing, an interview), only on hosts the factory already reads. */
   scriptRoomLinks: boolean;
+  /** The shot plan panel (src/render/planpanel.ts, creator gap plan, 19 Nov 2026): blind critics read a Short's picture
+   * plan as plain text before the render, for news, breaking and Why Shorts, split by episode id. SHOT_PLAN_PANEL=off
+   * (default: nothing runs, nothing changes), "check" (the arm's plan as built gets one read by the picture editor critic,
+   * "plan.critic", recorded with the plan's measurements; nothing changes) or "on" (up to SHOT_PLAN_CANDIDATES plans
+   * from the same media, red ones dropped, one read each, the best kept, one weakest-line swap). */
+  shotPlanPanel: "off" | "check" | "on";
+  /** SHOT_PLAN_PANEL_SHARE (0-1, default 0.5): the share of covered Shorts in the panel's arm. */
+  shotPlanPanelShare: number;
+  /** SHOT_PLAN_CANDIDATES (1-3, default 3): plans built and read at most under "on". */
+  shotPlanCandidates: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -1907,6 +1917,9 @@ export function loadConfig(): Config {
     scriptRoomRounds: Math.min(2, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 2))),
     scriptRoomMin: Math.min(10, Math.max(1, int("SCRIPT_ROOM_MIN", 8))),
     scriptRoomLinks: str("SCRIPT_ROOM_LINKS", "false").trim().toLowerCase() === "true",
+    shotPlanPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SHOT_PLAN_PANEL", "off").trim().toLowerCase()),
+    shotPlanPanelShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHOT_PLAN_PANEL_SHARE", "0.5"))))),
+    shotPlanCandidates: Math.min(3, Math.max(1, int("SHOT_PLAN_CANDIDATES", 3))),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),

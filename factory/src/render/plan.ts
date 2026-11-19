@@ -111,6 +111,12 @@ export interface PlanInput {
   codeScenes?: { ctx: SceneContext; stampsAt: number[] };
   /** Frames a beat's shot aims for instead of TARGET_BY_KIND.beat (an every-game Short cuts about every 1.8 s). */
   beatTarget?: number;
+  /**
+   * The shot plan panel's alternative picks (SHOT_PLAN_PANEL, src/render/planpanel.ts): the order of the free footage
+   * (clips tagged for no line) and the last tie-break among equally ranked free stills turn by this many places, so
+   * another plan comes from the same media under the same rules. Absent or 0, the plan is as it always was.
+   */
+  rotate?: number;
 }
 
 export type PlanMedia = {
@@ -516,7 +522,7 @@ const artPenalty = (img: PlanImage) =>
 /** How many times a still may show when the alternative is the bare plate. */
 export const RESCUE_STILL_USES = 3;
 
-const isFramedStill = (img: PlanImage) =>
+export const isFramedStill = (img: PlanImage) =>
   img.aspect > 2.1 || (img.aspect >= 0.9 && img.aspect < 1.2);
 
 /**
@@ -549,6 +555,18 @@ export function planShots(
     .map((c, i) => i)
     .sort((a, b) => Number(Boolean(clips[b]!.cutsceneMatch?.targetKey)) - Number(Boolean(clips[a]!.cutsceneMatch?.targetKey)) ||
       heardScore(clips[b]!) - heardScore(clips[a]!));
+  // SHOT_PLAN_PANEL: the free footage takes its turn in another order; clips tagged for a line keep their places.
+  const rot = Math.max(0, Math.floor(input.rotate ?? 0));
+  if (rot) {
+    const isFree = (i: number) =>
+      clips[i]!.beatIndex === undefined && clips[i]!.role === undefined && !clips[i]!.cutsceneMatch?.targetKey;
+    const slots = clipOrder.map((_, k) => k).filter((k) => isFree(clipOrder[k]!));
+    const vals = slots.map((k) => clipOrder[k]!);
+    slots.forEach((k, j) => {
+      clipOrder[k] = vals[(j + rot) % vals.length]!;
+    });
+  }
+  const tieRank = (i: number) => (rot ? (((i - rot) % images.length) + images.length) % images.length : i);
   const matchesTarget = (i: number, target: number | undefined | "hook" | "take" | "loop") => {
     const key = clips[i]!.cutsceneMatch?.targetKey;
     if (!key) return target === "hook" ? clips[i]!.role === "hook" :
@@ -623,7 +641,7 @@ export function planShots(
           (input.preferBright
             ? (images[b]!.luma ?? 0) - (images[a]!.luma ?? 0)
             : 0) ||
-          a - b,
+          tieRank(a) - tieRank(b),
       );
     const pick =
       order.find(

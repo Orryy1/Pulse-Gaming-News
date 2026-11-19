@@ -7,7 +7,7 @@
 // media does not carry the line's subject, comparison lines showing one game, and sameness with recent Shorts' plans.
 // Everything here is pure and deterministic.
 
-import type { RenderPlan, Shot } from "./plan.ts";
+import { STING_FRAMES, type RenderPlan, type Shot } from "./plan.ts";
 import type { Segment } from "./timeline.ts";
 import { shortMediaRichness } from "../qa/mediarich.ts";
 
@@ -274,10 +274,15 @@ export function beatOf(
   return segments.map((s) => (s.kind === "beat" ? n++ : undefined));
 }
 
-/** The words a line is about (pure): its footage keywords, or the game when the writer named none. */
+/**
+ * The words a line is about (pure): its footage keywords, or, when the writer named none, the games the line names
+ * (the Short's game when it names none).
+ */
 export function subjectOf(ctx: PanelContext, segment: number): string[] {
   const kw = tokens((ctx.lineKeywords[segment] ?? []).join(" "));
-  return kw.length ? kw : tokens(ctx.game);
+  if (kw.length) return kw;
+  const named = gamesNamed(ctx, segment);
+  return tokens((named.length ? named : [ctx.game]).join(" "));
 }
 
 /** Whether one shot's media carries its line (pure): chosen for the line, or sharing a subject word with it. */
@@ -445,7 +450,7 @@ export interface PlanMeasures {
   longestRun: number;
   /** Shots of the most used media. */
   maxUses: number;
-  /** The first shot's length in seconds. */
+  /** The first shot's length in seconds; behind the brand sting (its own 12-frame shot), the first full shot's. */
   firstShot: number;
   /** Spoken lines with shots. */
   lines: number;
@@ -521,7 +526,9 @@ export function measurePlan(
     distinct: r2(distinct),
     longestRun: secs(longest, plan.fps),
     maxUses: Math.max(0, ...uses.values()),
-    firstShot: shots[0] ? secs(shots[0].end - shots[0].start, plan.fps) : 0,
+    firstShot: ((f) => (f ? secs(f.end - f.start, plan.fps) : 0))(
+      shots[0] && shots[0].end - shots[0].start === STING_FRAMES && shots[1] ? shots[1] : shots[0],
+    ),
     lines,
     offSubject,
     comparisons,

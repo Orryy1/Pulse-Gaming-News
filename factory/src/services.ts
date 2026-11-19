@@ -219,6 +219,15 @@ export function createServices(db: Db, cfg: Config): Services {
               text: `Claude hit its usage limit, so ${site} is being written by Codex for now. Worth checking those videos.`,
             }).catch(() => undefined);
           })(new Set<string>()),
+          // CODEX_GRAMMAR_FALLBACK: a format too big for Claude goes to Codex instead of failing the step; noted once a step.
+          grammarFallback: cfg.codexGrammarFallback,
+          onGrammarRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `${site}'s answer format is too big for Claude, so Codex answered it instead of the step failing. Its schema wants slimming.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
         })
       : claude;
   // SCENE_MATCH_CODEX: while the local vision model is down, Codex makes the named-moment picture check. Its client

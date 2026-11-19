@@ -59,6 +59,13 @@ export interface CodexOptions {
   run?: (req: CodexRequest) => Promise<string>;
   /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
   onLimitRouted?: (site: string) => void;
+  /**
+   * CODEX_GRAMMAR_FALLBACK: a call Claude rejects because its answer format is too big to compile ("The compiled
+   * grammar is too large") goes to Codex, which has no such limit, instead of failing the step. Off: the error stands.
+   */
+  grammarFallback?: boolean;
+  /** A call went to Codex because its format was too big for Claude: say which step, for fixing its schema. */
+  onGrammarRouted?: (site: string) => void;
 }
 
 /**
@@ -73,6 +80,16 @@ export const LIMIT_TIMEOUT_MS = 12 * 60 * 1000;
 /** Claude's own refusal for being out of allowance, not a passing overload. */
 export function isUsageLimit(err: unknown): boolean {
   return /usage limit|credit balance|exceeded your .*(limit|quota)/i.test(
+    (err as Error)?.message ?? String(err),
+  );
+}
+
+/**
+ * Claude's refusal of an answer format too big for its constrained decoding (a 400, never billed): the same call
+ * will fail every time, so retrying it on Claude is pointless. Seen 19 Nov 2026 on the writers' room layout.
+ */
+export function isGrammarTooLarge(err: unknown): boolean {
+  return /compiled grammar is too large|reduce the number of strict tools/i.test(
     (err as Error)?.message ?? String(err),
   );
 }
@@ -335,10 +352,17 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     o: StructuredOptions<S>,
     site: string,
     hasImages: boolean,
+    afterCodex = false,
   ): Promise<z.infer<S>> => {
     try {
       return await fallback.structured(o);
     } catch (err) {
+      // A format too big for Claude: Codex takes the call (never back here again after Codex itself failed).
+      if (opts.grammarFallback && !afterCodex && isGrammarTooLarge(err) && (!hasImages || opts.vision)) {
+        log("warn", "answer format too big for Claude, Codex answers", { site });
+        opts.onGrammarRouted?.(site);
+        return viaCodex(o, site, imagesOf(o.content), true);
+      }
       if (!isUsageLimit(err)) throw err;
       limitUntil = Date.now() + LIMIT_HOLD_MS;
       if (hasImages && !opts.vision) throw err;
@@ -351,6 +375,7 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     o: StructuredOptions<S>,
     site: string,
     images: ReturnType<typeof imagesOf>,
+    fromClaude = false,
   ): Promise<z.infer<S>> => {
       const callTimeout = siteListed(site, opts.sites)
         ? timeoutMs
@@ -435,7 +460,9 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
         });
         // Claude is out of allowance too: fail the step so it retries, rather than asking it again.
         if (claudeOut()) throw err;
-        const result = await claude(o, site, images.length > 0);
+        // Claude already turned this call down as too big: nothing more to ask it.
+        if (fromClaude) throw err;
+        const result = await claude(o, site, images.length > 0, true);
         log("info", "claude answered after codex", {
           site,
           ms: Date.now() - started,

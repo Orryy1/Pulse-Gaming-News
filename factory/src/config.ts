@@ -167,6 +167,8 @@ export interface Config {
   codexCalls: string[];
   /** Listed steps that carry images (vision checks) go to Codex too; off until each check has its side-by-side. */
   codexVision: boolean;
+  /** CODEX_GRAMMAR_FALLBACK (default on): a call whose answer format is too big for Claude goes to Codex instead of failing. */
+  codexGrammarFallback: boolean;
   /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
@@ -1482,6 +1484,7 @@ export function loadConfig(): Config {
       .map((s) => s.trim())
       .filter(Boolean),
     codexVision: bool("CODEX_VISION", false),
+    codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
@@ -2402,6 +2405,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexLlm: c.codexLlm,
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
+    codexGrammarFallback: c.codexGrammarFallback,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,

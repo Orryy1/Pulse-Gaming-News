@@ -468,6 +468,31 @@ const PRIMARY_HINT =
   /(?:^|\.)(?:sec\.gov|courtlistener\.com|investors?\.|ir\.|news\.xbox\.com|blog\.playstation\.com|nintendo\.(?:com|co\.jp)|rockstargames\.com|ea\.com|ubisoft\.com|bethesda\.net|store\.steampowered\.com)|\/(?:press|newsroom|news|blog|investors?|filings?)\b|interview/i;
 
 /**
+ * Whether the factory already reads a host (pure): the host, or a domain it sits under, is one of the given URLs'
+ * (the feeds and the story's own items). A primary source on any other host is never fetched.
+ */
+export function factoryHosts(
+  urls: readonly string[],
+): (host: string) => boolean {
+  const domains = new Set<string>();
+  for (const u of urls) {
+    try {
+      const h = new URL(u).hostname.toLowerCase().replace(/^www\./, "");
+      domains.add(h);
+      // The domain a feed's subdomain sits under (feeds.feedburner.com reads as feedburner.com too).
+      const parts = h.split(".");
+      if (parts.length > 2) domains.add(parts.slice(-2).join("."));
+    } catch {
+      // not a URL
+    }
+  }
+  return (host: string) => {
+    const h = host.toLowerCase().replace(/^www\./, "");
+    return [...domains].some((d) => h === d || h.endsWith(`.${d}`));
+  };
+}
+
+/**
  * Up to ROOM.linksMax of the articles' own outbound links that look like a primary source (pure), only on a host the
  * factory already reads (`allowedHost`), never a link back to the article's own outlet or a social site.
  */

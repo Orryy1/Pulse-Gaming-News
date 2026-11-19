@@ -1193,6 +1193,12 @@ export interface Config {
    * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
    */
   ytSignedClipShare: number;
+  /**
+   * AGE_ALARM (default off): every hour one videos.list call (1 quota unit) checks Pulse's uploads from the last 14 days
+   * for YouTube's age restriction and sends one Discord line per newly restricted video (src/agealarm.ts). Uses the
+   * channel's own API login, never the download account.
+   */
+  ageAlarm: boolean;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
@@ -2208,6 +2214,7 @@ export function loadConfig(): Config {
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
     signedClips: bool("SIGNED_CLIPS", false),
+    ageAlarm: bool("AGE_ALARM", false),
     ytSignedClipShare: ((n) => (Number.isFinite(n) && n >= 0 ? Math.min(1, n) : 0.5))(Number(str("YT_SIGNED_CLIP_SHARE", "0.5"))),
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")

@@ -586,6 +586,7 @@ export function testConfig(
     ytdlpCookiesFile: "",
     signedClips: false,
     ytSignedClipShare: 0.5,
+    ageAlarm: false,
     pexelsApiKey: "",
     // Tests never reach the outside picture libraries.
     libraryPress: false,

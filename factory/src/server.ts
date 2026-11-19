@@ -2556,6 +2556,24 @@ async function main(): Promise<void> {
     setTimeout(() => void check(), 180_000);
     setInterval(() => void check(), 30 * 60_000);
   }
+  // Whether YouTube has age-restricted any of Pulse's recent uploads (AGE_ALARM): one batched videos.list call an hour.
+  if (cfg.ageAlarm && !cfg.dryRun) {
+    const ages = () =>
+      withLease(db, "age-alarm", 20 * 60, () =>
+        import("./agealarm.ts").then((m) =>
+          m.ageAlarmTick({
+            db,
+            youtube: () => services.youtube(),
+            notify: (msg) => services.notify(msg),
+            now: () => new Date(),
+          }),
+        ),
+      ).catch((err) =>
+        log("warn", "age alarm pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void ages(), 6 * 60_000);
+    setInterval(() => void ages(), 60 * 60_000);
+  }
   // Pulse's own uploads, kept for every process so the signed-in download account never touches them
   // (src/lib/ytown.ts). Read from the episodes table only: no YouTube call, no quota.
   if (cfg.ytdlpCookiesFile) {

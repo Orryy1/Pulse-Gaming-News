@@ -369,3 +369,51 @@ Martin asked on 19 Nov to get the scripts as close to 10 as possible. Full write
 - The test writers were Opus. Codex wrote the 3.4 originals, so the room on Codex will score lower than these figures until that is measured.
 - The factory cannot search the web. Its fact packs come from the articles it already fetches, links inside them and the Fact Vault, so they will be thinner than the test packs, which used open web research.
 - A high mark on paper is not a view count. Human hits score 4.7 on this sheet and still get millions, on topic, footage and delivery.
+## Frontier programme, 19 Nov
+
+Martin, 19 Nov, after the writers' room result: make this permanent across writing, production, editing, visuals, footage and branding, so Pulse stays at the front. "Yes set it all up."
+
+**The loop, the same for every craft.** Better raw material; several versions; blind critics, one of them standing in for the audience; fix the biggest fault; keep the best; drop what is weak; check the marks against real retention. Two warnings from the test: rules harden into a template within one round, and marks only compare inside one sitting.
+
+**What is set up.**
+
+| Piece                                 | Where                                                                                     | State on 19 Nov                                                                                                                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Weekly frontier check                 | Scheduled task `pulse-frontier-check` on the PC, Wednesdays about 11:50, first run 25 Nov | Created. Marks Pulse's week blind beside that week's breakout videos from top creators, checks the marks against retention, and puts the three biggest gaps into `reports/Pulse upgrade queue.md` |
+| Fixed marking kit                     | `C:\Claude\analytics\pulse\frontier\kit\` on the PC                                       | Made: the three marker briefs, 30 anchor scripts with known marks, the first retention check                                                                                                      |
+| Five no-cost writing rules            | `SHORT_CRAFT_RULES`, live on the Mac mini since 10:32                                     | On (deployed by the Pulse Gaming News chat, bc7075293)                                                                                                                                            |
+| Script: writers' room                 | `SCRIPT_ROOM`, branch `claude/gap-room`, merged into stage db40a82d0                      | Built, off. Full test run on the PC in progress                                                                                                                                                   |
+| First second and long-video packaging | `FIRST_SECOND_PANEL`, `PACKAGING_PANEL`, branch `claude/gap-panel`                        | Being built, off                                                                                                                                                                                  |
+| Pictures for each line                | `SHOT_PLAN_PANEL`, branch `claude/gap-shotpanel`                                          | Being built, off                                                                                                                                                                                  |
+
+**What the factory already has for each craft, and what is missing.** From a read of the code on 19 Nov. Much of it exists but is switched off.
+
+| Craft                 | Already there                                                                   | Off today                                                          | Missing for the loop                                        |
+| --------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------------- |
+| Script                | Editor's desk, payoff gate, clarity check                                       | Desk and payoff are record-only                                    | Several drafts and an audience critic: the writers' room    |
+| Story choice          | Thin-source gate, story size score                                              |                                                                    | A "can this carry a Short" drop before writing: in the room |
+| First second          | Up to 6 opening clips tried in order, up to 5 hook voice takes, 5 hook texts    | `SHORT_OPEN_FOOTAGE`, `HOOK_TAKES`, `LEARN_HOOKS`                  | Candidates compared with each other by an audience critic   |
+| Pictures per line     | One vision call picks a moment per line; plan rubric; vision check after render | `SCENE_MATCH`                                                      | Two or three plans compared before the render               |
+| Edit and pace         | Retention director with a model that predicts the curve                         | `RETENTION_DIRECTOR`                                               | Comparing alternative edits                                 |
+| Sound                 | Bed rotation, loudness check                                                    | Sparse sound plan held on `claude/gap-untemplate`                  | Any judge of sound sameness: on that held branch            |
+| Titles and thumbnails | Packaging Lab: 24 titles scored by a model                                      | `PACKAGING_LAB`                                                    | An audience pick among the top five                         |
+| Branding and repeats  | Recent shapes memory, bed and look memory                                       | `SHORT_SKELETONS`                                                  | A sameness score fed to the critics                         |
+| Long videos           | Release gate after render, clarity and friend passes                            | Opening contract and argued rankings held on `claude/gap-longform` | Two drafts per chapter and a critic before the render       |
+| Checking the judges   | `learn/judges.ts` links each judge to real outcomes                             | `LEARN_JUDGES`                                                     | Nothing: it needs switching on                              |
+
+**Order of work.**
+
+1. Writers' room: confirm the full tests, then the Pulse Gaming News chat sizes it on Claude (about 25 to 35 US cents for each Short it writes on an Opus-class model, about 1.50 US dollars a day at half of ten Shorts) and starts it in `check`, then `on` for half.
+2. First-second and picture-plan panels: finish, test, hand over; both start in `check` so their marks can be set against stayed-versus-swiped before they change anything.
+3. Switch-ons that are the Pulse Gaming News chat's call: `LEARN_JUDGES` (so every critic is checked against real viewers), then `RETENTION_DIRECTOR` and `PACKAGING_LAB` in their record-only modes.
+4. After the 21 Nov documentary: `claude/gap-longform`, then two drafts per chapter with the critics.
+5. After the like-for-like render: `claude/gap-untemplate` (sound and layout variety).
+6. Every Wednesday the frontier check re-ranks the gaps, so this order changes with the evidence.
+
+**Pass marks.** Each panel is kept only if, on 20 Shorts a side, its arm beats the control on average viewed and on stayed-versus-swiped, and its critic's mark links to those at 0.2 or more. A panel whose mark does not track real viewers is re-weighted or removed, not tuned by adding rules.
+
+**Limits.**
+
+- Marks on paper are not views. Human hits score 4.7 on the script sheet and get millions on topic, footage and delivery.
+- Every panel costs model calls. Claude is writing again within a budget of about 6 US dollars a day for the whole factory, so panels go on one at a time.
+- The picture and first-second panels are built from the same method but have not had a hand test like the script. Their `check` mode is that test.

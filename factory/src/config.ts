@@ -848,6 +848,10 @@ export interface Config {
    * strong-identity fandom pattern while its evidence is strong, inside the same 0.85 to 1.15; applied to the news slot's
    * candidates only with ANALYTICS_LOOP_SCORING too: LOOP_FANDOM_WEIGHT, default off. */
   loopFandomWeight: boolean;
+  /** The loop judges by median views (19 Nov audit, upgrade 2): the fit test, the TikTok fit boost and the capped platforms'
+   * favours on middle views with 15 or more a side, series Shorts counted in the fit test, a test ended "inconclusive" after
+   * 2 extensions, and a retention lesson only from 15 or more Shorts: LOOP_MEDIAN_JUDGE, default off. */
+  loopMedianJudge: boolean;
   /** Retention curve learning (src/retentionlearn.ts): every Short and long video's audience retention curve read once it
    * is 48 hours old, each drop lined up with what was on screen and in the narration, and the patterns across videos
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
@@ -2045,6 +2049,7 @@ export function loadConfig(): Config {
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
     loopFandomWeight: bool("LOOP_FANDOM_WEIGHT", false),
+    loopMedianJudge: bool("LOOP_MEDIAN_JUDGE", false),
     retentionLearn: bool("RETENTION_LEARN", false),
     retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),

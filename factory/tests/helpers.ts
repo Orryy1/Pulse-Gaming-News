@@ -150,6 +150,7 @@ export function testConfig(
     analyticsLoopPosting: false,
     analyticsLoopScoring: false,
     loopFandomWeight: false,
+    loopMedianJudge: false,
     retentionLearn: false,
     retentionDirector: "off",
     commentReplyShorts: false,

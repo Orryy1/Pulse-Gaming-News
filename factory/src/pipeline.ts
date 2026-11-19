@@ -10,6 +10,7 @@ import { runSecondChance } from "./packaging/secondchance.ts";
 import { packagingAtLeast } from "./packaging/settings.ts";
 import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
 import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
+import { repairBlockers } from "./factrepair.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -2523,7 +2524,9 @@ async function stepScriptEveryGame(
       attempt,
       facts,
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!factual.length) break;
@@ -6973,7 +6976,7 @@ async function adjudicateRanking(
   attempt: number,
   extra: Array<{ title: string; facts: string }> = [],
   /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
-  fix?: (fixes: VaultFix[]) => void,
+  fix?: (fixes: VaultFix[]) => void | number,
 ): Promise<string[]> {
   // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
   const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
@@ -6983,11 +6986,13 @@ async function adjudicateRanking(
     ...(vault?.brief && !facts.some((f) => f.facts.vault) ? [{ title: "Pulse Fact Vault", facts: vault.brief }] : []),
     ...(verified ? [{ title: "Pulse Fact Vault pre-check", facts: verified }] : []),
   ];
-  const check = await factCheckRanking(s.llm, script, [
+  const factList = [
     ...facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
     ...extra,
     ...vaultFacts,
-  ]);
+  ];
+  const check = await factCheckRanking(s.llm, script, factList);
+  let vaultFixes: VaultFix[] = [];
   let blockers = check.issues
     .filter((i) => i.severity === "blocker")
     .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
@@ -7001,7 +7006,10 @@ async function adjudicateRanking(
   if (vault && blockers.length) {
     const settled = await vault.settle(script, blockers, ep.id, `ranking attempt ${attempt}`);
     const fixedOnes = settled.resolutions.filter((r) => r.status === "fixed");
-    if (fixedOnes.length && fix) fix(settled.fixes);
+    if (fixedOnes.length && fix) {
+      fix(settled.fixes);
+      vaultFixes = settled.fixes;
+    }
     const unfixable = fix ? [] : fixedOnes.map((r) => `Fact-check: "${r.blocker.quote}" - ${r.blocker.problem}`);
     const before = blockers.length;
     blockers = [...settled.remaining, ...unfixable];
@@ -7010,9 +7018,71 @@ async function adjudicateRanking(
   if (check.verdict !== "fail" && !blockers.length) return [];
   if (attempt === 0)
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
+  // FACT_REPAIR (src/factrepair.ts): one or two lines still wrong after the rewrite are mended without a model
+  // and the mended script is checked again; only a clean second check saves the episode.
+  if (s.cfg.factRepair && fix && blockers.length) {
+    const base = vaultFixes.length ? applyVaultFixes(script, vaultFixes).value : script;
+    if (await repairRanking(s, ep, base, blockers, factList, fix)) return [];
+  }
   throw new FatalError(
     `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
   );
+}
+
+/** FACT_REPAIR: mends the surviving blockers, re-checks, and hands the fixes to the caller's draft on a pass. */
+async function repairRanking(
+  s: Services,
+  ep: Episode,
+  script: Script,
+  blockers: string[],
+  factList: Array<{ title: string; facts: string }>,
+  fix: (fixes: VaultFix[]) => void | number,
+): Promise<boolean> {
+  const ctx = speakContext(script.say_as);
+  const fields = [script.hook, ...script.beats.map((b) => b.narration), script.pulse_take.narration, script.loop_line];
+  const mended = repairBlockers(fields, blockers, (t) => speakable(t, ctx));
+  if (mended.unrepaired.length || !mended.fixes.length) {
+    await logEvent(s.db, ep.id, "fact_repair", { outcome: "not_repairable", blockers, unrepaired: mended.unrepaired });
+    return false;
+  }
+  const fixes: VaultFix[] = mended.fixes.map((f) => ({ ...f, factId: 0, why: "fact repair" }));
+  // Every fix must land at least once in the script that gets re-checked.
+  let mendedScript = script;
+  let missed = false;
+  for (const f of fixes) {
+    const r = applyVaultFixes(mendedScript, [f]);
+    if (r.applied < 1) missed = true;
+    mendedScript = r.value;
+  }
+  if (missed) {
+    await logEvent(s.db, ep.id, "fact_repair", { outcome: "not_applied", repairs: mended.repairs });
+    return false;
+  }
+  const recheck = await factCheckRanking(s.llm, mendedScript, factList);
+  const left = recheck.issues
+    .filter((i) => i.severity === "blocker")
+    .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+  const passed = recheck.verdict !== "fail" && !left.length;
+  await logEvent(s.db, ep.id, "fact_repair", {
+    outcome: passed ? "repaired" : "recheck_failed",
+    repairs: mended.repairs,
+    left,
+    summary: recheck.summary,
+  });
+  log(passed ? "info" : "warn", passed ? "fact-check blockers repaired" : "fact repair did not pass the re-check", {
+    id: ep.id,
+    repairs: mended.repairs.map((r) => `${r.kind}: ${r.quote}`),
+  });
+  if (!passed) return false;
+  // The draft must take every fix, or the line the checker rejected would still go out.
+  for (const f of fixes) {
+    const took = fix([f]);
+    if (typeof took === "number" && took < 1) {
+      await logEvent(s.db, ep.id, "fact_repair", { outcome: "draft_mismatch", from: f.from });
+      return false;
+    }
+  }
+  return true;
 }
 
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
@@ -7089,7 +7159,9 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       attempt,
       [],
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!problems.length && !factual.length) break;
@@ -7509,7 +7581,9 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       attempt,
       dataFacts,
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!factual.length) break;

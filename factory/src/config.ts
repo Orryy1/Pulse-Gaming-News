@@ -202,6 +202,9 @@ export interface Config {
   codexVision: boolean;
   /** CODEX_GRAMMAR_FALLBACK (default on): a call whose answer format is too big for Claude goes to Codex instead of failing. */
   codexGrammarFallback: boolean;
+  /** FACT_REPAIR (default on): a ranking whose fact-check still fails on one or two lines after the rewrite gets
+   * those lines mended (a rounded figure hedged, an unsupported side line cut) and checked again, instead of failing. */
+  factRepair: boolean;
   /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
@@ -1571,6 +1574,7 @@ export function loadConfig(): Config {
       .filter(Boolean),
     codexVision: bool("CODEX_VISION", false),
     codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
+    factRepair: bool("FACT_REPAIR", true),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
@@ -2503,6 +2507,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
     codexGrammarFallback: c.codexGrammarFallback,
+    factRepair: c.factRepair,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,

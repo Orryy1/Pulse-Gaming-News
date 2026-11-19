@@ -24,6 +24,14 @@ import { contentTokens, gameAliases, spokenSentences } from "./payoff.ts";
 import { deskChecks, deskLines } from "./desk.ts";
 import { reviseByEdits } from "./revise.ts";
 import { stripVoiceTags } from "../voice/tags.ts";
+import {
+  panelPick,
+  runPanel,
+  type PanelCandidate,
+  type PanelCritic,
+  type PanelRead,
+  type PanelRule,
+} from "../panel/panel.ts";
 
 // ---------------------------------------------------------------- the numbers, in one place
 
@@ -824,36 +832,53 @@ export function meanOverall(
   return v ? (e.overall + v.overall) / 2 : e.overall;
 }
 
+/** The room's pick rule on the shared blind panel: the best mean overall, ties to the editor critic. */
+export const ROOM_PICK_RULE: PanelRule = {
+  name: "best mean of the two overall marks",
+  ties: [
+    { by: "criticPick", critic: "editor" },
+    { by: "critic", critic: "editor" },
+    { by: "order" },
+  ],
+};
+
 /**
  * The pick (pure): the best mean of the two overall marks; a tie goes to the editor critic (its own pick, then its
- * higher overall, then the earlier draft). Returns the index into `editor`.
+ * higher overall, then the earlier draft). Returns the index into `editor`. The rule is the shared panel's
+ * (src/panel/panel.ts) with ROOM_PICK_RULE.
  */
 export function pickDraft(
   editor: ReadonlyArray<Pick<EditorRead, "label" | "overall">>,
   viewer: ReadonlyArray<Pick<ViewerRead, "label" | "overall">> | undefined,
   editorPick?: string,
 ): number {
-  let best = -1;
-  let key: number[] = [];
-  editor.forEach((e, i) => {
-    const v = viewer?.find((x) => x.label === e.label);
-    const k = [
-      meanOverall(e, v),
-      e.label === editorPick ? 1 : 0,
-      e.overall,
-      -i,
-    ];
-    if (best < 0 || compare(k, key) > 0) {
-      best = i;
-      key = k;
-    }
-  });
-  return best;
-}
-
-function compare(a: number[], b: number[]): number {
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
-  return 0;
+  const ids = editor.map((_, i) => String(i));
+  const read = (id: string, overall: number) => ({ id, overall, marks: {}, fault: "" });
+  const verdicts = [
+    {
+      critic: "editor",
+      required: true,
+      verdict: {
+        reads: editor.map((e, i) => read(ids[i]!, e.overall)),
+        pick: ids.filter((_, i) => editor[i]!.label === editorPick),
+      },
+    },
+    ...(viewer
+      ? [
+          {
+            critic: "viewer",
+            verdict: {
+              reads: editor.flatMap((e, i) => {
+                const v = viewer.find((x) => x.label === e.label);
+                return v ? [read(ids[i]!, v.overall)] : [];
+              }),
+            },
+          },
+        ]
+      : []),
+  ];
+  const p = panelPick(ids, verdicts, ROOM_PICK_RULE);
+  return p.pick === undefined ? -1 : Number(p.pick);
 }
 
 /** Whether a read clears the room (pure): mean overall at the pass mark and no editor dimension under the floor. */
@@ -1296,6 +1321,78 @@ const viewerMarks = (r: ViewerRead) =>
     number
   >;
 
+type ShownDraft = { label: string; title: string; narration: string };
+
+/**
+ * The room's critics on the shared blind panel. Each draft is a candidate (its id the label, its view exactly what
+ * criticContent shows of it); the injected critics still receive the drafts themselves, so their requests are byte for
+ * byte what they were before the panel. `single`: a re-read of one edited version, whose read is the first one
+ * returned whatever its label (and whose editor answer must carry reads, as before).
+ */
+async function roomPanel(o: {
+  drafts: ShownDraft[];
+  editor: (drafts: ShownDraft[]) => Promise<z.infer<typeof EditorPanelSchema>>;
+  viewer?: (drafts: ShownDraft[]) => Promise<z.infer<typeof ViewerPanelSchema>>;
+  single?: boolean;
+  viewerCalls?: number;
+}) {
+  const byCandidate = new Map<PanelCandidate, ShownDraft>();
+  const candidates = o.drafts.map((d) => {
+    const c: PanelCandidate = { id: d.label, view: criticContent([d]) };
+    byCandidate.set(c, d);
+    return c;
+  });
+  const critic = <A extends { reads?: unknown }>(
+    name: string,
+    fn: (drafts: ShownDraft[]) => Promise<A>,
+    toRead: (id: string, r: any) => PanelRead<unknown>,
+    required: boolean,
+  ): PanelCritic<unknown> => ({
+    name,
+    required,
+    judge: async (cands) => {
+      const r = await fn(cands.map((c) => byCandidate.get(c)!));
+      if (o.single && required) void (r as any).reads[0];
+      const list: any[] = Array.isArray((r as any)?.reads) ? (r as any).reads : [];
+      const reads = o.single
+        ? list[0] && cands[0]
+          ? [toRead(cands[0].id, list[0])]
+          : []
+        : list.map((x) => toRead(String(x?.label), x));
+      const pick = (r as any)?.pick;
+      return { reads, raw: r, ...(typeof pick === "string" ? { pick } : {}) };
+    },
+  });
+  const editorRead = (id: string, x: any): PanelRead<unknown> => ({
+    id,
+    marks: Object.fromEntries(EDITOR_DIMENSIONS.map((d) => [d, x?.[d]])),
+    overall: x?.overall,
+    fault: String(x?.weakness ?? ""),
+    drop: x?.drop === true,
+    raw: x,
+  });
+  const viewerRead = (id: string, x: any): PanelRead<unknown> => ({
+    id,
+    marks: Object.fromEntries(VIEWER_DIMENSIONS.map((d) => [d, x?.[d]])),
+    overall: x?.overall,
+    fault: String(x?.lost_me || x?.fix || ""),
+    drop: x?.drop === true,
+    raw: x,
+  });
+  return runPanel({
+    candidates,
+    critics: [
+      critic("editor", o.editor, editorRead, true),
+      ...(o.viewer ? [critic("viewer", o.viewer, viewerRead, false)] : []),
+    ],
+    rule: ROOM_PICK_RULE,
+    caps: {
+      perCritic: { editor: 1, viewer: o.viewerCalls ?? 1 },
+      candidates: candidates.length,
+    },
+  });
+}
+
 /**
  * Steps 1 to 4 (the steps are injected, so it is tested without a model). The pack, the writer, both critics on the
  * three drafts, the pick, then edit rounds on the pick while it misses the bar: one instruction, the edit, the caller's
@@ -1369,19 +1466,19 @@ export async function runRoom(o: {
       title: d.title,
       narration: d.narration,
     }));
-    let ed: z.infer<typeof EditorPanelSchema>;
-    let vw: z.infer<typeof ViewerPanelSchema> | undefined;
-    try {
-      calls.critic++;
-      ed = await o.editor(shown);
-      if (o.viewer) {
-        calls.viewer++;
-        vw = await o.viewer(shown).catch(() => undefined);
-      }
-    } catch {
+    // Both critics read the drafts blind on the shared panel (src/panel/panel.ts): the editor first and required (no
+    // editor read, no pick), the viewer beside it when it is on (its failure only leaves its marks out).
+    const first = await roomPanel({ drafts: shown, editor: o.editor, viewer: o.viewer });
+    calls.critic += first.callsBy.editor ?? 0;
+    calls.viewer += first.callsBy.viewer ?? 0;
+    if (first.failed.editor !== undefined) {
       run.stop = "unread";
       return run;
     }
+    const ed = first.verdicts.editor!.raw as z.infer<typeof EditorPanelSchema>;
+    const vw = first.verdicts.viewer?.raw as
+      | z.infer<typeof ViewerPanelSchema>
+      | undefined;
     const readOf = (label: string) => ed.reads.find((r) => r.label === label);
     const viewOf = (label: string) => vw?.reads.find((r) => r.label === label);
     run.drafts = run.drafts.map((d) => {
@@ -1470,17 +1567,30 @@ export async function runRoom(o: {
         });
         continue;
       }
-      let e2: EditorRead | undefined;
+      // A fresh read of the edited version alone, on the same panel (the viewer within its cap).
+      const again = await roomPanel({
+        drafts: [{ label: picked.label, ...after }],
+        editor: o.editor,
+        viewer: o.viewer,
+        single: true,
+        viewerCalls: o.viewer && calls.viewer < caps.viewer ? 1 : 0,
+      });
+      calls.critic += again.callsBy.editor ?? 0;
+      calls.viewer += again.callsBy.viewer ?? 0;
+      let e2: EditorRead | undefined =
+        again.failed.editor === undefined
+          ? (again.verdicts.editor?.raw as z.infer<typeof EditorPanelSchema>)
+              .reads[0]
+          : undefined;
       let v2: ViewerRead | undefined;
       try {
-        calls.critic++;
-        const one = [{ label: picked.label, ...after }];
-        e2 = (await o.editor(one)).reads[0];
-        if (o.viewer && calls.viewer < caps.viewer) {
-          calls.viewer++;
-          v2 = (await o.viewer(one).catch(() => undefined))?.reads[0];
-        }
+        v2 = (
+          again.verdicts.viewer?.raw as
+            | z.infer<typeof ViewerPanelSchema>
+            | undefined
+        )?.reads[0];
       } catch {
+        // a viewer answer with no reads counts as a failed read, as it always did
         e2 = undefined;
       }
       if (!e2) {

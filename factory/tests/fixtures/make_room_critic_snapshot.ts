@@ -17,7 +17,7 @@ import { ROOM_SNAPSHOT_DRAFTS } from "./room_critic_drafts.ts";
 
 export async function roomCriticRequests(): Promise<unknown[]> {
   const seen: unknown[] = [];
-  const llm: Llm = {
+  const llm = {
     structured: async (req: any) => {
       seen.push({
         site: req.site,
@@ -31,7 +31,7 @@ export async function roomCriticRequests(): Promise<unknown[]> {
       });
       return { reads: [], pick: "" };
     },
-  };
+  } as unknown as Llm;
   for (const drafts of ROOM_SNAPSHOT_DRAFTS) {
     await readEditor(llm, drafts);
     await readViewer(llm, drafts);
@@ -77,7 +77,7 @@ const marks = (label: string, overall: number) => ({
  */
 export async function roomRunRequests(): Promise<unknown[]> {
   const seen: unknown[] = [];
-  const llm: Llm = {
+  const llm = {
     structured: async (req: any) => {
       seen.push({
         site: req.site,
@@ -101,7 +101,7 @@ export async function roomRunRequests(): Promise<unknown[]> {
         };
       return { reads: labels.map((l) => marks(l, overall(l)).viewer) };
     },
-  };
+  } as unknown as Llm;
   const [three] = ROOM_SNAPSHOT_DRAFTS;
   let edits = 0;
   await runRoom({

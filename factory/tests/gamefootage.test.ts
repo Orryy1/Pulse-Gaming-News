@@ -965,7 +965,10 @@ test("the pass files every game, plans the queue and registers the spoiler windo
       q.games.map((g) => [g.game, g.fetch?.priority]),
       [
         [GTA, 50],
+        // Out on 18 Nov: its gameplay index is planned beside the movie (20 Nov 2026).
+        [`${GTA} (gameplay)`, 45],
         ["Another Big One", 40],
+        ["Another Big One (gameplay)", 35],
       ],
     );
     assert.equal((await readFiled(dir)).games.length, 2);

@@ -36,6 +36,8 @@ import {
 } from "./job.ts";
 import {
   coveredSeconds,
+  gameplayIndexName,
+  isGameplayIndex,
   loadSceneIndex,
   sceneSlug,
   type SceneIndex,
@@ -861,6 +863,26 @@ async function writeFiled(dataDir: string, book: FiledBook): Promise<void> {
   await fsp.rename(tmp, file);
 }
 
+/** Days after launch before a big release's gameplay index is searched for (no-commentary playthroughs take a day or two). */
+export const GAMEPLAY_AFTER_LAUNCH_DAYS = 1;
+
+/**
+ * A launched big release's gameplay index plan (pure), or undefined: the owner's titles and the launch calendar's games,
+ * once out, get a second index from a no-commentary playthrough beside the cutscene movie (src/sceneindex/schema.ts
+ * gameplayIndexName). 20 Nov 2026: GTA VI was out a day and its only index was a cutscene movie, so "Scooter Bros" and
+ * every other ordinary-play line had nothing of its own to show. Same budget (the background lane), same spoiler
+ * window, a little behind the cutscene index in the queue.
+ */
+export function gameplayPlan(rec: FiledGame, plan: FetchPlan, now: Date): FetchPlan | undefined {
+  if (isGameplayIndex(rec.game) || !rec.release) return undefined;
+  if (!rec.signals.some((sig) => sig === "owner" || sig === "calendar")) return undefined;
+  const out = Date.parse(rec.release.length === 10 ? `${rec.release}T00:00:00Z` : rec.release);
+  if (!Number.isFinite(out)) return undefined;
+  const from = out + GAMEPLAY_AFTER_LAUNCH_DAYS * 86_400_000;
+  if (now.getTime() < out) return undefined;
+  return { ...plan, notBefore: new Date(from).toISOString(), priority: Math.max(0, plan.priority - 5) };
+}
+
 /** The queue with every live record's plan in it (pure). */
 export function plannedQueue(
   queue: SceneQueue,
@@ -879,6 +901,8 @@ export function plannedQueue(
         `footage: ${rec.why[0] ?? rec.signals[0]}`,
         now,
       );
+    const play = plan ? gameplayPlan(rec, plan, now) : undefined;
+    if (play) q = planGame(q, gameplayIndexName(rec.game), play, `gameplay footage: ${rec.game} is out`, now);
   }
   return q;
 }

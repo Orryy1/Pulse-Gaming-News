@@ -256,3 +256,72 @@ test("the switches: PREMAKE_REFRESH and SHORT_FOOTAGE_WAIT default on", () => {
   else process.env.PREMAKE_REFRESH = before[0];
   if (before[1] !== undefined) process.env.SHORT_FOOTAGE_WAIT = before[1];
 });
+
+test("a launched big release gets a gameplay index planned beside its cutscene movie, a day after launch", async () => {
+  const { gameplayPlan, plannedQueue } = await import("../src/sceneindex/gamefetch.ts");
+  const rec = {
+    game: "Grand Theft Auto VI",
+    slug: "grand-theft-auto-vi",
+    release: "2026-11-19",
+    signals: ["owner" as const],
+    why: ["GAME_FETCH_TITLES"],
+    firstSeen: "2026-11-12T04:43:55.782Z",
+    status: "indexed" as never,
+    updatedAt: "2026-11-20T00:00:00Z",
+  };
+  const plan = { notBefore: "2026-11-18T11:00:00.000Z", searchEveryHours: 3, recheckEveryHours: 24, recheckUntil: "2026-12-18T00:00:00.000Z", priority: 50 };
+  const p = gameplayPlan(rec, plan, new Date("2026-11-20T10:00:00Z"))!;
+  assert.equal(p.notBefore, "2026-11-20T00:00:00.000Z");
+  assert.equal(p.priority, 45);
+  assert.equal(gameplayPlan(rec, plan, new Date("2026-11-18T10:00:00Z")), undefined, "not before the launch");
+  assert.equal(gameplayPlan({ ...rec, signals: ["videos" as never] }, plan, new Date("2026-11-20T10:00:00Z")), undefined, "big releases only");
+  assert.equal(gameplayPlan({ ...rec, game: "Grand Theft Auto VI (gameplay)" }, plan, new Date("2026-11-20T10:00:00Z")), undefined);
+  const q = plannedQueue({ games: [] }, { games: [rec] }, new Date("2026-11-20T10:00:00Z"), {
+    hours: 3,
+    recheckHours: 24,
+    recheckDays: 28,
+    days: 28,
+    openingShare: 0.1,
+  });
+  assert.deepEqual(
+    q.games.map((g) => g.game),
+    ["Grand Theft Auto VI", "Grand Theft Auto VI (gameplay)"],
+  );
+});
+
+test("launch timing: media gathered the day before launch in the UK still predates the launch for most viewers", () => {
+  const d = premakeRefreshDecision({
+    now: new Date("2026-11-20T09:00:00Z"),
+    slotAt: "2026-11-20T12:00:00Z",
+    gatheredAt: "2026-11-18T15:00:00Z",
+    launches: GTA,
+    game: "Grand Theft Auto VI",
+  });
+  assert.equal(d.refresh, true);
+  // Gathered once the launch day had started everywhere: nothing new.
+  assert.equal(
+    premakeRefreshDecision({ now: new Date("2026-11-20T09:00:00Z"), slotAt: "2026-11-20T12:00:00Z", gatheredAt: "2026-11-19T13:00:00Z", launches: GTA, game: "Grand Theft Auto VI" }).refresh,
+    false,
+  );
+});
+
+test("the made video's thumbnails come back with it; one only the remake made is removed", async () => {
+  const fs = await import("node:fs/promises");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const { keepMadeFiles, putMadeFilesBack } = await import("../src/premakerefresh.ts");
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "premade-"));
+  await fs.writeFile(path.join(dir, "short.mp4"), "made");
+  await fs.writeFile(path.join(dir, "poster.jpg"), "made poster");
+  await fs.writeFile(path.join(dir, "thumb_short.jpg"), "made thumb");
+  assert.deepEqual(await keepMadeFiles(dir), { video: true, poster: true });
+  // The remake writes over everything, and adds a search thumbnail the made one never had.
+  await fs.writeFile(path.join(dir, "short.mp4"), "remake");
+  await fs.writeFile(path.join(dir, "thumb_short.jpg"), "remake thumb");
+  await fs.writeFile(path.join(dir, "thumb_search.jpg"), "remake search");
+  assert.equal(await putMadeFilesBack(dir), true);
+  assert.equal(await fs.readFile(path.join(dir, "short.mp4"), "utf8"), "made");
+  assert.equal(await fs.readFile(path.join(dir, "thumb_short.jpg"), "utf8"), "made thumb");
+  await assert.rejects(fs.stat(path.join(dir, "thumb_search.jpg")));
+  await fs.rm(dir, { recursive: true, force: true });
+});

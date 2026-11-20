@@ -10988,7 +10988,7 @@ async function gatherPeople(
 }
 
 /** MENTION_*: the mention kinds switched on (src/render/mentions.ts), in a fixed order. */
-export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts">): MentionKind[] {
+export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts" | "mentionOutlets" | "mentionInworld">): MentionKind[] {
   const on: Array<[MentionKind, boolean]> = [
     ["game", cfg.mentionGames],
     ["logo", cfg.mentionLogos],
@@ -10996,6 +10996,8 @@ export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" |
     ["realplace", cfg.mentionRealPlaces],
     ["platform", cfg.mentionPlatforms],
     ["receipt", cfg.mentionReceipts],
+    ["outlet", cfg.mentionOutlets],
+    ["inworld", cfg.mentionInworld],
   ];
   return on.filter(([, v]) => v).map(([k]) => k);
 }
@@ -15605,6 +15607,8 @@ async function restorePremade(s: Services, ep: Episode, why: string): Promise<bo
  * Short and it becomes a spare for the next empty one. True when it was set to wait (src/premakerefresh.ts).
  */
 async function waitForYouTube(s: Services, ep: Episode, assets: EpisodeAssets): Promise<boolean> {
+  // A pre-made Short being made again fails as before, so the made video goes back and keeps its slot.
+  if (assets.premadeRefresh?.state === "remaking") return false;
   const pause = await s.youtubePause?.().catch(() => undefined);
   const now = s.now().getTime();
   const plan = footageWaitPlan({
@@ -15615,6 +15619,10 @@ async function waitForYouTube(s: Services, ep: Episode, assets: EpisodeAssets): 
     waitedBefore: Boolean(assets.footageWait),
   });
   if (!plan.wait) return false;
+  // A slot it would miss can only be made up as a spare, and spares go out only for Why and launch run Shorts with a
+  // run file (fillSpareGaps); anything else is held as before.
+  const loses = Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < plan.at.getTime() + 45 * 60_000);
+  if (loses && !canBeSpare(s, ep)) return false;
   await requeueForFootage(s, ep, assets as Record<string, unknown>, plan.at, "YouTube downloads were paused while its footage was gathered");
   await s
     .notify({
@@ -15625,9 +15633,16 @@ async function waitForYouTube(s: Services, ep: Episode, assets: EpisodeAssets): 
   return true;
 }
 
-/** Back to "voiced" with the gathered media dropped, gathering at `at`; a slot it cannot make goes and it waits as a spare. */
-async function requeueForFootage(s: Services, ep: Episode, assets: Record<string, unknown>, at: Date, why: string): Promise<void> {
-  const loseSlot = Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < at.getTime() + 45 * 60_000);
+/** Whether a Short may wait as a spare: a Why or launch run Short while a run file fills empty slots (fillSpareGaps). */
+const canBeSpare = (s: Services, ep: Episode): boolean =>
+  Boolean(s.cfg.shortRunFile) && (Boolean(ep.story_json.why) || Boolean(ep.story_json.run));
+
+/**
+ * Back to "voiced" with the gathered media dropped, gathering at `at`; a slot it cannot make (or, with `spare`, any
+ * slot: a held Short's slot may have gone to another Short since) goes and it waits as a spare.
+ */
+async function requeueForFootage(s: Services, ep: Episode, assets: Record<string, unknown>, at: Date, why: string, spare = false): Promise<void> {
+  const loseSlot = spare || Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < at.getTime() + 45 * 60_000);
   const story = loseSlot ? { ...ep.story_json, spare: ep.story_json.spare ?? {} } : ep.story_json;
   await s.db.query(
     `UPDATE episodes SET status = 'voiced', attempts = 0, last_error = NULL, next_attempt_at = $2, updated_at = now(),
@@ -15653,11 +15668,10 @@ export async function retryFootageHolds(s: Services): Promise<string | undefined
       ORDER BY updated_at DESC`,
     [now, FOOTAGE_RETRY_DAYS],
   );
-  const ep = rows.find(
-    (e) => isFootageHold(e.last_error) && (e.lane === "evergreen" || Boolean(e.story_json.why) || Boolean(e.story_json.run)),
-  );
+  // Only Shorts that can wait as a spare: a failed Short's slot is free for others, so it never takes it back.
+  const ep = rows.find((e) => isFootageHold(e.last_error) && canBeSpare(s, e));
   if (!ep) return undefined;
-  await requeueForFootage(s, ep, (ep.assets_json ?? {}) as Record<string, unknown>, now, "held for no moving footage while YouTube downloads were paused; tried once more");
+  await requeueForFootage(s, ep, (ep.assets_json ?? {}) as Record<string, unknown>, now, "held for no moving footage while YouTube downloads were paused; tried once more", true);
   await s
     .notify({
       level: "info",

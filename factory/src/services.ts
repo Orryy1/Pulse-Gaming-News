@@ -1,6 +1,10 @@
 // Production wiring for the pipeline's service seam.
 
-import { libraryRoot, libraryTrailers } from "./assets/gamelib.ts";
+import { libraryRoot, libraryTrailers, readLibrary } from "./assets/gamelib.ts";
+import { sourceOf, storeSettings } from "./assets/gamelibstore.ts";
+import { readText, textBox } from "./assets/ocr.ts";
+import { gameplayIndexName, loadSceneIndex, sceneIndexDir } from "./sceneindex/schema.ts";
+import { footageAllowed, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
@@ -347,18 +351,55 @@ export function createServices(db: Db, cfg: Config): Services {
     // Vision's face finder on the Mac mini).
     personPortrait: (c, dir, slot) =>
       personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
-    // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
-    // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    // SHORT_FOOTAGE_WAIT: the anonymous YouTube lane's bot-check pause, as the guard's state file has it.
     youtubePause: async () => {
       if (!guardActive()) return undefined;
       const st = await ytGuard.state();
       return st.block ? { since: st.block.since, until: st.block.until } : undefined;
     },
+    // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
+    // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    // Outlet logos and in-world pictures are cached between videos under <data>/mentioncache; in-world pictures come
+    // from our scene index frames (spoiler rule) and game library first, then official stills, then a game wiki.
     findMentions: (input) =>
       findMentions(input, {
         findSteamApp,
         siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
         faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [],
+        cacheDir: path.join(cfg.dataDir, "mentioncache"),
+        inworld: {
+          siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
+          // The cutscene index and the gameplay index, each with its local proxy (never a YouTube pull here).
+          sceneIndex: async (game) => {
+            const out: Array<{ index: import("./sceneindex/schema.ts").SceneIndex; proxy?: string }> = [];
+            for (const name of [game, gameplayIndexName(game)]) {
+              const index = await loadSceneIndex(cfg.dataDir, name).catch(() => undefined);
+              if (!index) continue;
+              const proxy = path.join(sceneIndexDir(cfg.dataDir, name), index.proxy?.file || "proxy.mp4");
+              out.push({ index, proxy: (await fs.stat(proxy).catch(() => undefined)) ? proxy : undefined });
+            }
+            return out;
+          },
+          frameAllowed: (index, at) =>
+            footageAllowed(windowFor(spoilerWindows(), index.game, new Date()), index, at, "short", new Date()).ok,
+          library: async (game) => {
+            const root = libraryRoot(cfg.dataDir);
+            const lib = await readLibrary(root, game);
+            if (!lib) return undefined;
+            const st = storeSettings();
+            return {
+              items: lib.items,
+              file: async (item) => {
+                const src = await sourceOf(root, game, item.file, st);
+                return src?.local ?? src?.url;
+              },
+            };
+          },
+          textBox: async (file, phrase) => {
+            const page = (await readText([file])).get(file);
+            return page ? textBox(page, phrase) : undefined;
+          },
+        },
       }),
     gameplayClips: async (
       game,

@@ -38,6 +38,9 @@ export const PREMAKE_RECHECK_HOURS = 6;
 /** The made video is kept beside the remake under these names. */
 export const PREMADE_VIDEO = "short.premade.mp4";
 export const PREMADE_POSTER = "poster.premade.jpg";
+/** The Short's own thumbnails, written by the render under fixed names: kept beside the remake too. */
+export const MADE_THUMBS = ["thumb_short.jpg", "thumb_search.jpg"] as const;
+const premadeName = (f: string) => f.replace(/\.jpg$/, ".premade.jpg");
 
 /** The media a gather made: dropped so the render gathers again (images missing is what makes it gather). */
 export const GATHERED_KEYS: ReadonlyArray<keyof EpisodeAssets> = [
@@ -114,9 +117,12 @@ export function launchOf(
   return undefined;
 }
 
-/** The moment a YYYY-MM-DD day starts, earliest time zone first (UTC+14: a launch reaches New Zealand first). */
+/** The moment a YYYY-MM-DD day starts in the earliest time zone (UTC+14: a launch reaches New Zealand first). */
 const dayStart = (day: string): number =>
   Date.parse(`${day}T00:00:00Z`) - 14 * 3_600_000;
+/** The moment the day has started everywhere (UTC-12): media gathered before this predates the launch for someone. */
+const dayEverywhere = (day: string): number =>
+  Date.parse(`${day}T00:00:00Z`) + 12 * 3_600_000;
 
 /**
  * Whether a held pre-made Short should be made again now (pure). `gatheredAt` is when its media was gathered (the
@@ -145,14 +151,14 @@ export function premakeRefreshDecision(o: {
   const launch = launchOf(o.launches, o.game, o.headline);
   if (launch) {
     const out = dayStart(launch.launch);
-    if (Number.isFinite(gathered) && gathered < out && o.now.getTime() >= out)
+    if (Number.isFinite(gathered) && gathered < dayEverywhere(launch.launch) && o.now.getTime() >= out)
       reasons.push(
         `${launch.game} came out on ${launch.launch}, after its media was gathered`,
       );
   }
   if (o.keyDate && /^\d{4}-\d{2}-\d{2}$/.test(o.keyDate)) {
     const key = dayStart(o.keyDate);
-    if (Number.isFinite(gathered) && gathered < key && o.now.getTime() >= key)
+    if (Number.isFinite(gathered) && gathered < dayEverywhere(o.keyDate) && o.now.getTime() >= key)
       reasons.push(
         `its story's date (${o.keyDate}) passed after its media was gathered`,
       );
@@ -277,6 +283,8 @@ export async function keepMadeFiles(
       () => true,
       () => false,
     );
+  // The thumbnails go too: after a restore the made video must go up with its own, not the remake's.
+  for (const t of MADE_THUMBS) await copy(t, premadeName(t));
   return {
     video: await copy("short.mp4", PREMADE_VIDEO),
     poster: await copy("poster.jpg", PREMADE_POSTER),
@@ -296,6 +304,11 @@ export async function putMadeFilesBack(dir: string): Promise<boolean> {
   await fs
     .copyFile(path.join(dir, PREMADE_POSTER), path.join(dir, "poster.jpg"))
     .catch(() => undefined);
+  for (const t of MADE_THUMBS) {
+    // A thumbnail the made video had comes back; one only the remake made is removed.
+    const kept = await fs.copyFile(path.join(dir, premadeName(t)), path.join(dir, t)).then(() => true, () => false);
+    if (!kept) await fs.rm(path.join(dir, t), { force: true }).catch(() => undefined);
+  }
   return true;
 }
 

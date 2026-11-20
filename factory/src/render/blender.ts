@@ -33,6 +33,14 @@ export type BlenderRole =
 export const KIT_VERSION = 1;
 
 /**
+ * A look version for one scene in one layout, bumped when only that look changes, so the other scenes' cached clips
+ * keep their keys (pure). 2: the vertical podium reads from 0.5 s, clear of a Short's captions (20 Nov 2026).
+ */
+export function lookVersion(scene: BlenderScene, params: Record<string, unknown>): number | undefined {
+  return scene === "podium" && params.vertical === true ? 2 : undefined;
+}
+
+/**
  * Minutes of PC time one clip takes, render and encode, measured on the RTX 4090 (19-20 Nov 2026 proof run) with
  * some headroom: what the per-video cap counts and what the orchestrator lease asks for.
  */
@@ -132,6 +140,8 @@ export function blenderKey(
         scene,
         Number(seconds.toFixed(2)),
         canon(params),
+        // Only a scene with its own look version adds it, so every other key stays as it was.
+        ...(lookVersion(scene, params) === undefined ? [] : [lookVersion(scene, params)]),
       ]),
     )
     .digest("hex")

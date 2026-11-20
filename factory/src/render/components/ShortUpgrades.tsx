@@ -18,19 +18,17 @@ import { displayText } from "../timeline.ts";
 
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-/** SHORT_BLENDER: a vertical 3D clip over its beat, in and out over a few frames, its own sound off. */
+/**
+ * SHORT_BLENDER: a vertical 3D clip over its beat, its own sound off. It cuts in (the clip is lit from its first frame;
+ * a fade in would show the dark frame under it, as the line before has already gone) and fades out into the card.
+ */
 export const ShortBlenderClip: React.FC<{ src: string; len: number }> = ({
   src,
   len,
 }) => {
   const frame = useCurrentFrame();
   const edge = Math.max(1, Math.min(5, Math.floor(len / 4)));
-  const opacity = interpolate(
-    frame,
-    [0, edge, len - edge, len],
-    [0, 1, 1, 0],
-    clamp,
-  );
+  const opacity = interpolate(frame, [len - edge, len], [1, 0], clamp);
   return (
     <AbsoluteFill style={{ opacity, backgroundColor: COLOUR.ink }}>
       <OffthreadVideo

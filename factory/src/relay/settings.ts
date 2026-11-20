@@ -18,6 +18,11 @@ export interface RelaySettings {
   quality: string;
   /** STREAM_RELAY_OFFLINE_MINUTES: how long Twitch must say offline before the relay stops (an Xbox reconnect is not an end). */
   offlineMinutes: number;
+  /**
+   * STREAM_RELAY_MIN_LIVE_MINUTES (default 3): Twitch must have been live, and streamlink delivering data steadily, this
+   * long before the public broadcast is made, so a session that drops within minutes never leaves a public stub. 0: at once.
+   */
+  minLiveMinutes: number;
   /** STREAM_RELAY_HEALTH_MINUTES: YouTube showing no data this long while Twitch is live restarts the relay once, then alerts. */
   healthMinutes: number;
   /** STREAM_RELAY_MAX_RESTARTS: fresh broadcasts after YouTube ends one mid-stream (a Content ID stop), per stream. */
@@ -81,6 +86,7 @@ export function relaySettings(
       privacy === "private" || privacy === "unlisted" ? privacy : "public",
     quality: env.STREAM_RELAY_QUALITY || "best",
     offlineMinutes: num(env, "STREAM_RELAY_OFFLINE_MINUTES", 3, 1, 30),
+    minLiveMinutes: num(env, "STREAM_RELAY_MIN_LIVE_MINUTES", 3, 0, 30),
     healthMinutes: num(env, "STREAM_RELAY_HEALTH_MINUTES", 3, 1, 30),
     maxRestarts: Math.round(num(env, "STREAM_RELAY_MAX_RESTARTS", 3, 0, 10)),
     archiveWaitHours: num(env, "STREAM_RELAY_ARCHIVE_WAIT_HOURS", 6, 1, 72),

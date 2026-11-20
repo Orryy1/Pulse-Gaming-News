@@ -10,6 +10,7 @@ import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
 import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
+import { blenderSettings, type BlenderSettings } from "./render/blender.ts";
 import {
   defaultBackupDir,
   defaultCodexPython,
@@ -1315,6 +1316,9 @@ export interface Config {
   hookTargetWpm: number;
   /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
   parallax: boolean;
+  /** BLENDER_SCENES (default off), BLENDER_SHARE, BLENDER_CAP_MINUTES, BLENDER_URL, BLENDER_WAIT_MINUTES: original 3D
+   * clips from the PC's Blender in place of a long video's flat graphics (src/render/blender.ts). */
+  blender: BlenderSettings;
   /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
   shortParallaxShare: number;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
@@ -2327,6 +2331,7 @@ export function loadConfig(): Config {
     hookTakes: Math.min(5, Math.max(0, int("HOOK_TAKES", 0))),
     hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
+    blender: blenderSettings(process.env),
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),

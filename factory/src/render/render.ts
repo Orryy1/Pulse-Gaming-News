@@ -694,8 +694,11 @@ export interface LongRenderInput {
     | "pocketBeds"
     | "quotes"
     | "mentions"
+    | "blender"
   > & {
     audioFile: string | null;
+    /** BLENDER_SCENES: the 3D clips (src/render/blender.ts), each file relative to the episode folder. */
+    blenderFiles?: import("./blender.ts").BlenderClip[];
     /** MENTION_*: the mention insets on their words, each picture's src relative to the episode folder. */
     mentionFiles?: import("./mentions.ts").MentionInset[];
     /** The narration's texture slices (src/render/voicefx.ts makeVoiceFx), relative to the episode folder. */
@@ -783,10 +786,14 @@ export function longProps(
     voiceFxFiles,
     quoteFiles,
     mentionFiles,
+    blenderFiles,
     ...rest
   } = p;
   return {
     ...rest,
+    ...(blenderFiles?.length
+      ? { blender: blenderFiles.map(({ file, ...c }) => ({ ...c, src: `${filesUrl}/${webPath(file)}` })) }
+      : {}),
     ...(mentionFiles?.length ? { mentions: mentionUrls(mentionFiles, filesUrl) } : {}),
     ...(quoteFiles?.length
       ? {

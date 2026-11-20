@@ -971,6 +971,8 @@ export const DocMomentSchema = z.object({
 /** A moment as stored: the writer's fields, plus the filler visual chosen later (src/assets/fillers.ts). */
 export type DocMoment = z.infer<typeof DocMomentSchema> & {
   filler?: import("../render/fillerplan.ts").MomentFiller;
+  /** EXPLAINERS (src/explainerstep.ts): the sentence's animated explainer; the filler chooser gives it the shot. */
+  explainer?: import("../render/components/explainers/types.ts").Explainer;
 };
 
 export function docMomentsSchema(count: number) {

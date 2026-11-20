@@ -48,6 +48,8 @@ import {
 } from "./components/Accents.tsx";
 import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
+import { ExplainerShot } from "./components/explainers/index.tsx";
+import { shortExplainer } from "./components/explainers/ground.ts";
 import { keyTime } from "./longplan.ts";
 import { HookPoster } from "./components/HookPoster.tsx";
 import { CommentCard, commentCardFrames } from "./components/CommentCard.tsx";
@@ -245,6 +247,12 @@ export const Short: React.FC<ShortProps> = (props) => {
   // The shelf also steps back under a full-width card or a filler, which draw over its band.
   const overShelf = (f: number) =>
     (plan.craft?.fillers ?? []).some((x) => f >= x.from - 4 && f < x.from + x.len + 4) ||
+    // EXPLAINERS: an explainer fills the frame.
+    props.segments.some((sg, i) => {
+      if (!explainerShown(i)) return false;
+      const w = cardAt(i);
+      return !!w && f >= w.from - 4 && f < w.from + w.len + 4;
+    }) ||
     (plan.craft?.photos ?? []).some((p) => {
       const s = plan.shots[p.shot];
       return !!s && f >= s.start - 4 && f < s.end + 4;
@@ -284,12 +292,18 @@ export const Short: React.FC<ShortProps> = (props) => {
   );
   // A graphic lands on the word it is about and stays a beat or two, not for the whole sentence (owner,
   // 29 Oct 2026: cards sat for 4-10 s and covered the footage). Its words: the figure or name it shows.
+  // EXPLAINERS: a line's explainer is drawn when it clears the hook and has time to be read; otherwise its card.
+  const explainerShown = (i: number) =>
+    !!shortExplainer(props.segments[i]!.explainer, words, { start: segmentStarts[i]!, end: segmentEnds[i]! }, fps);
   const graphicWindow = (i: number): { from: number; len: number } => {
     const s = props.segments[i]!;
     const start = segmentStarts[i]!;
     const end = segmentEnds[i]!;
     // A rank card stays up for its whole entry (src/render/rankcard.ts); word-level timing is for the small graphics.
     if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
+    // EXPLAINERS: an explainer explains the whole line (shortcraft.ts cardWindow does the same for the clean frame).
+    const shown = shortExplainer(s.explainer, words, { start, end }, fps);
+    if (shown) return shown;
     const v = s.visual;
     // GRAPHICS_AUDIT moved or held the card (src/qa/gfxaudit.ts): drawn exactly there.
     if (v?.span) return spanWindow(v.span, fps, durationInFrames);
@@ -749,7 +763,19 @@ export const Short: React.FC<ShortProps> = (props) => {
             durationInFrames={cardAt(i)!.len}
             layout="none"
           >
-            {vstyleOf.get(i) ? (
+            {s.explainer && explainerShown(i) ? (
+              <ExplainerShot
+                e={s.explainer}
+                len={cardAt(i)!.len}
+                fps={fps}
+                accent={accent}
+                backdrop={resolveSrc(props.images.find((im) => im.aspect >= 1.2)?.src ?? null) ?? undefined}
+                seed={props.variant + i}
+                words={words
+                  .filter((w) => w.start >= cardAt(i)!.from / fps - 0.05 && w.start < (cardAt(i)!.from + cardAt(i)!.len) / fps)
+                  .map((w) => ({ text: w.text, start: w.start - cardAt(i)!.from / fps, end: w.end - cardAt(i)!.from / fps }))}
+              />
+            ) : vstyleOf.get(i) ? (
               <div
                 style={
                   vstyleOf.get(i)!.frame === "full"

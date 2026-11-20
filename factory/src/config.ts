@@ -680,6 +680,11 @@ export interface Config {
    * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
    * is "humanise.rewrite" (CODEX_CALLS can route it). */
   humanise: "off" | "check" | "fix";
+  /** The explainers (src/editorial/explainers.ts, src/render/components/explainers, 20 Nov 2026): a line that explains HOW
+   * something works gets a code-drawn animated explainer (steps, versus, cause and effect, a timeline with a playhead,
+   * a price build, a cycle, a labelled screenshot or a 3D object) instead of a random still, every word from the script
+   * and its sources. EXPLAINERS=off (default), "short" (Shorts only), "long" (documentary chapters only) or "all". */
+  explainers: "off" | "short" | "long" | "all";
   /** The held-answer gate (src/editorial/payoff.ts, top creator gap plan gap 1, 18 Nov 2026: Pulse Shorts lose about 4
    * points a second through the facts, the take lands at 65% with 38% left and the title or first frame often states
    * the answer; all 27 breakout Shorts studied plant a question and pay it late). On news, breaking and Why Shorts in the
@@ -2102,6 +2107,7 @@ export function loadConfig(): Config {
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
+    explainers: ((v) => (v === "short" || v === "long" || v === "all" ? v : "off"))(str("EXPLAINERS", "off").trim().toLowerCase()),
     shortPayoffGate: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SHORT_PAYOFF_GATE", "off").trim().toLowerCase()),
     shortPayoffShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHORT_PAYOFF_SHARE", "0.5"))))),
     scriptDesk: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SCRIPT_DESK", "off").trim().toLowerCase()),

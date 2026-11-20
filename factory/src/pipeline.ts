@@ -319,6 +319,7 @@ import {
   humaniseDrift,
 } from "./editorial/humanise/humanise.ts";
 import { humaniseStep } from "./humanisestep.ts";
+import { anatomyPictures, explainersOn, explainerTexts, longExplainersStep, shortExplainersStep } from "./explainerstep.ts";
 import {
   clarityGate,
   clarityLog,
@@ -12008,16 +12009,23 @@ export async function steamAppForEntry(
   return app;
 }
 
+/** EXPLAINERS: a beat's or the take's explainer, as a segment field (none: nothing added, so old scripts render as before). */
+function explainerOf(script: Script, part: "beat" | "take", index: number) {
+  const x = script.explainers?.find((e) => e.part === part && e.index === index);
+  return x ? { explainer: x.explainer } : {};
+}
+
 export function segmentInputs(script: Script, desk = false): SegmentInput[] {
   // One context in spoken order, as the voice was given it (narrationOf and the desk parts do the same).
   const ctx = speakContext(script.say_as);
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
     { kind: "hook", text: speakable(script.hook, ctx) },
-    ...script.beats.map((b) => ({
+    ...script.beats.map((b, i) => ({
       kind: "beat" as const,
       text: speakable(b.narration, ctx),
       visual: b.visual,
+      ...explainerOf(script, "beat", i),
     })),
     // The desk partner's question sits between the facts and the take when the Short has one.
     ...(desk && script.desk_question
@@ -12032,6 +12040,7 @@ export function segmentInputs(script: Script, desk = false): SegmentInput[] {
         primary: script.pulse_take.on_screen,
         secondary: "",
       },
+      ...explainerOf(script, "take", 0),
     },
     // The same tidied last line the voice was given, so timings line up.
     { kind: "loop", text: speakable(tidyLoopLine(script.loop_line), ctx) },
@@ -12418,7 +12427,38 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.images &&
     script.entries?.some((e) => e.moments?.length)
   ) {
+    // EXPLAINERS (src/explainerstep.ts): the chapters' "how it works" lines are marked first, so the chooser gives
+    // them explainer shots. The guard checks every word against the documentary's own narration and graphics.
+    const asked = assets as { explainersAsked?: boolean };
+    if (explainersOn(s.cfg.explainers, "long") && !asked.explainersAsked) {
+      const ordered = [...script.entries].sort((a, b) => b.rank - a.rank);
+      await longExplainersStep(
+        s,
+        ep,
+        ordered.map((e, i) => ({
+          game: e.game_title,
+          sentences: chapterSentences(script, i),
+          // Each chapter is checked against its own narration and graphics only.
+          source: ((e.moments ?? []) as Array<{ graphic?: { primary?: string; secondary?: string; items?: string[] } }>)
+            .flatMap((m) => (m.graphic ? [m.graphic.primary ?? "", m.graphic.secondary ?? "", ...(m.graphic.items ?? [])] : []))
+            .join(" "),
+          moments: (e.moments ?? []) as never,
+          // The chapter's own pictures, so a callout never lands on another game.
+          pictures: anatomyPictures(
+            (assets.images ?? []).filter((x) => (x as { beatIndex?: number }).beatIndex === i) as never,
+            dir,
+          ),
+        })),
+      );
+      asked.explainersAsked = true;
+      await s.db.query(`UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+        JSON.stringify(script),
+      ]);
+    }
     const done = await chooseEpisodeFillers({
+      explainers: explainersOn(s.cfg.explainers, "long"),
       cardShare: s.cfg.longCardShare,
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
@@ -14106,10 +14146,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       throw new Error(`every-game pictures not fit to render: ${era.problems[0]}`);
   }
   if (await belowMediaFloor(s, ep, assets)) return;
+  // EXPLAINERS (src/explainerstep.ts): lines that explain how something works get an animated explainer, once.
+  await shortExplainersStep(s, ep, script, assets, dir);
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
   const segments = buildSegments(
-    segmentInputs(script, Boolean(assets.desk)),
+    // Switched off, explainers kept from an earlier render are not drawn.
+    segmentInputs(explainersOn(s.cfg.explainers, "short") ? script : { ...script, explainers: undefined }, Boolean(assets.desk)),
     words,
     duration,
   );
@@ -14982,7 +15025,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     // building up reads as a fault (ep_20261105_d8d0e098 at 0:05.3).
     times = shortSampleTimes(
       segments.map((g, i) =>
-        g.visual && g.visual.kind !== "none"
+        g.explainer || (g.visual && g.visual.kind !== "none")
           ? Math.max(
               g.start,
               cardWindow(segments, words, i, plan.fps, plan.totalFrames).from /
@@ -14999,13 +15042,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       headline: script.headline,
       gameTitle: script.game_title,
       narration: narrationOf(script),
-      cardTexts: segments.flatMap((g) =>
-        g.visual && g.visual.kind !== "none"
+      cardTexts: segments.flatMap((g) => [
+        ...(g.visual && g.visual.kind !== "none"
           ? [g.visual.primary, g.visual.secondary, ...(g.visual.items ?? [])].filter(
               (t): t is string => !!t,
             )
-          : [],
-      ),
+          : []),
+        // EXPLAINERS: the explainer's own words and its kicker are graphics, not burned-in text.
+        ...(g.explainer ? explainerTexts(g.explainer) : []),
+      ]),
     });
   }
   // GRAPHICS_FRAME_CHECK: each card at its settled frame, for text cut off, overlapping or unreadable. A faulted card

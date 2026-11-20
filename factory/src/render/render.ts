@@ -1203,6 +1203,12 @@ export async function renderShort(input: RenderInput): Promise<void> {
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      // EXPLAINERS: an anatomy explainer's picture is an episode file, served like the others.
+      segments: rest.segments.map((g) =>
+        g.explainer?.picture && !/^https?:/.test(g.explainer.picture)
+          ? { ...g, explainer: { ...g.explainer, picture: `${files.url}/${webPath(g.explainer.picture)}` } }
+          : g,
+      ),
       ...(mentionFiles?.length
         ? { mentions: mentionUrls(mentionFiles, files.url) }
         : {}),

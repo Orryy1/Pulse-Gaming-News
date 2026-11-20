@@ -450,8 +450,10 @@ export async function quoteScriptStep(
 }
 
 /**
- * The chapters of a long script (pure): each beat's chapter (a documentary's chapter card opens one) and the game
- * that chapter is about (its entry, in on-screen order). A script with no chapter cards is one chapter about its game.
+ * The chapters of a long script (pure): each beat's chapter (a documentary's chapter card or a ranking's rank card
+ * opens one) and the game that chapter is about (its entry, in on-screen order). A script with neither is one chapter
+ * about its game. 20 Nov 2026: a long ranking's beats open on "rank" cards, so all eleven GTA games read as one
+ * chapter about "Grand Theft Auto", which has no index: no ranking ever took a quote.
  */
 export function quoteChapters(
   script: Pick<Script, "beats" | "entries" | "game_title">,
@@ -461,7 +463,7 @@ export function quoteChapters(
     .map((e) => e.game_title);
   const out: Array<{ game: string; beats: number[] }> = [];
   script.beats.forEach((b, i) => {
-    if (!out.length || b.visual?.kind === "chapter")
+    if (!out.length || b.visual?.kind === "chapter" || b.visual?.kind === "rank")
       out.push({ game: games[out.length] ?? script.game_title, beats: [] });
     out.at(-1)!.beats.push(i);
   });

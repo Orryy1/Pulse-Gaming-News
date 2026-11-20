@@ -478,7 +478,40 @@ test("in dialogue mode a line read with slips off the subtitles is never quoted:
   // A name Whisper mishears is fine.
   const name = line(10, 600, "Franklin, you got the car back.", "Lamar", {
     words: timed("Frankie you got the car back", 600),
+    speakerFrom: "context",
   });
   index.lines.push(name);
   assert.equal(unquotable(index, name, { verbatim: true }), undefined);
+});
+
+test("a long ranking's rank cards open its chapters, each about its entry's game", async () => {
+  const { quoteChapters } = await import("../src/charquotestep.ts");
+  const rank = (n: string) => ({ narration: n, visual: { kind: "rank" as const, primary: "R", secondary: "" } });
+  const script = {
+    game_title: "Grand Theft Auto",
+    beats: [rank("a"), rank("b"), rank("c")],
+    entries: [
+      { rank: 3, game_title: "Grand Theft Auto III" },
+      { rank: 1, game_title: "Grand Theft Auto V" },
+      { rank: 2, game_title: "Grand Theft Auto: San Andreas" },
+    ],
+  } as any;
+  assert.deepEqual(quoteChapters(script), [
+    { game: "Grand Theft Auto III", beats: [0] },
+    { game: "Grand Theft Auto: San Andreas", beats: [1] },
+    { game: "Grand Theft Auto V", beats: [2] },
+  ]);
+});
+
+test("in dialogue mode a caption names characters, never a screen label or a place the text reader took for one", async () => {
+  const { speakerProblem } = await import("../src/sceneindex/quotepick.ts");
+  const index = {
+    cast: ["Michael", "Trevor", "Ryder", "Cesar Vialpando", "CONNECTED", "APPROACH", "La Mesa", "Grand Senora Desert", "OUGRideR"],
+    places: ["Blaine County"],
+  };
+  assert.equal(speakerProblem(index, "Michael"), undefined);
+  assert.equal(speakerProblem(index, "RydeR"), undefined, "the reader's odd capitals still name Ryder");
+  assert.equal(speakerProblem(index, "Cesar vialPando"), undefined);
+  for (const bad of ["APPROACH", "CONNECTED", "La Mesa", "Grand Senora Desert", "OUGRideR", "Blaine County", "San Andreas", "Final Chapter"])
+    assert.ok(speakerProblem(index, bad), bad);
 });

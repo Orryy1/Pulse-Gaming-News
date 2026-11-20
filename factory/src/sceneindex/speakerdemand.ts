@@ -116,7 +116,9 @@ export function quotableOnceNamed(
 ): boolean {
   if (!needsSpeaker(l) || !l.words?.length) return false;
   const { speakerGuessed: _g, ...rest } = l;
-  return unquotable(index, { ...rest, speaker: "Someone" }, { verbatim }) === undefined;
+  return (
+    unquotable(index, { ...rest, speaker: "Someone" }, { verbatim, anySpeaker: true }) === undefined
+  );
 }
 
 /**
@@ -149,6 +151,7 @@ export function demandLines(
   const fits = quoteCandidates(probe, storyText, {
     ...o,
     max: o.max ?? DEMAND_LINES,
+    anySpeaker: true,
     general: 0,
   });
   const want = new Set(fits.filter((c) => ids.has(c.line)).map((c) => c.line));

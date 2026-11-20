@@ -16069,6 +16069,44 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
       return;
     }
   }
+  // A time word checked again at upload, against the moment it goes public, for every Short (scheduled or going
+  // out now): one written days earlier, or from a day-old article, can still say "before launch" after launch (two
+  // did on 19 Nov 2026). Only the owner's approval of a draft this check already held lets it through unchanged.
+  {
+    const now = s.now();
+    const airs =
+      ep.publish_at && new Date(ep.publish_at).getTime() > now.getTime()
+        ? new Date(ep.publish_at)
+        : now;
+    const late = airTimeProblems(publicText(ep.script_json!), airs);
+    const ownerPassed =
+      late.length > 0 &&
+      ep.approved_by === "human" &&
+      (
+        await s.db.query(
+          `SELECT 1 FROM events WHERE episode_id = $1 AND kind = 'stale_review' AND detail ? 'reason' LIMIT 1`,
+          [ep.id],
+        )
+      ).length > 0;
+    if (late.length && !ownerPassed) {
+      await transition(s.db, ep.id, "uploading", "awaiting_approval", {
+        approval_mode: "manual",
+        approval_requested_at: now,
+        publish_at: null,
+        upload_session_uri: null,
+      });
+      const links = approvalLinks(s.cfg, ep.id);
+      await logEvent(s.db, ep.id, "stale_review", {
+        planned: ep.publish_at ?? null,
+        reason: late[0],
+      });
+      await s.notify({
+        content: `⏳ "${ep.script_json!.youtube.title}" was held before upload: ${late[0]} It stays unpublished unless you approve it.
+▶️ [Watch](${links.preview}) · ✅ [Approve](${links.approve}) · ❌ [Reject](${links.reject})`,
+      });
+      return;
+    }
+  }
   // A delayed Short: news or deals past their moment go back to the owner; anything else whose planned
   // time has passed gets a fresh slot spaced from the last publish. A scheduled time in the past makes
   // YouTube publish at once, so a backlog would otherwise all go live together.

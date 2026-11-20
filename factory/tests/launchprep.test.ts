@@ -234,3 +234,38 @@ test("the shipped launch run: spares are GTA VI, 15 to 21 Nov Whys are pre-made,
     assert.doesNotMatch(JSON.stringify(e), /\u2014/, "no em dashes");
   }
 });
+
+test("air time: after launch, the 19 Nov wording that slipped through is held; post-launch facts pass", () => {
+  const after = new Date("2026-11-19T21:19:00Z");
+  for (const line of [
+    "GTA 6's album has 34 songs. You can hear the music before launch.",
+    "GTA 6 unlocks at midnight in New Zealand. The US has to wait longer.",
+    "GTA 6 unlocks in New Zealand first. It'll still be November 18 in the US.",
+    "GTA 6 PSN reports. The American launch could put PSN under more pressure.",
+    "Build your GTA 6 playlist before launch.",
+  ])
+    assert.equal(airTimeProblems(line, after).length, 1, line);
+  for (const line of [
+    "Buy GTA 6 on or after November 20 and you miss the bonus offer.",
+    "GTA 6 has been out for one day, and the reviews are rolling in.",
+    "Rockstar's GTA 6 map arrived on November 19.",
+    "Ahead of launch, Rockstar said the GTA 6 map would be free.",
+    "Rockstar kept the GTA 6 map secret until release.",
+    "GTA 6 reviews dropped the day before release.",
+    "GTA 6 preorders before release topped 10 million.",
+    "GTA 6 sold 20 million before release day ended.",
+    "PC players have to wait until 2027 for GTA 6.",
+    "GTA 6 fans on PC will have to wait until next year.",
+    "Change these five GTA 6 settings before you start playing.",
+    "GTA 6 is coming to PC, but you'll wait until it launches there.",
+  ])
+    assert.deepEqual(airTimeProblems(line, after), [], line);
+  // The same pre-launch line was fine while the launch was still to come.
+  assert.deepEqual(
+    airTimeProblems(
+      "GTA 6's album has 34 songs. You can hear the music before launch.",
+      new Date("2026-11-17T12:00:00Z"),
+    ),
+    [],
+  );
+});

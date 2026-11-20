@@ -9,3 +9,4 @@ public/music/es/
 
 # The download account's YouTube cookies (mac/ytcookies.sh): never committed, wherever they are kept
 yt_cookies*.txt
+__pycache__/

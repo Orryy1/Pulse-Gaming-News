@@ -873,7 +873,13 @@ export function longProps(
       })),
       logoSrc: "logo.png",
       musicSrc: musicFile,
-      extraBeds: extraBeds(serveUrl),
+    // The Epidemic beds this bundle carries, then any the pipeline adds (ACE_BEDS, src/render/acebeds.ts) that it carries.
+    extraBeds: [
+      ...extraBeds(serveUrl),
+      ...(p.extraBeds ?? []).filter((b) =>
+        fs.existsSync(path.join(serveUrl, "public", b.file)),
+      ),
+    ],
     };
 }
 

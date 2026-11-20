@@ -1212,6 +1212,14 @@ export interface Config {
   gameAudioGapLufs: number; // GAME_AUDIO_GAP_LUFS: the bed's loudness in the gaps between sentences (default -24)
   gameAudioTrailers: boolean; // GAME_AUDIO_TRAILERS: trailer clips' sound too, 8 dB lower (default off: trailer music)
   gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
+  /** GAME_SFX_STEMS (off by default until a listening check and a private test upload; built 20 Nov 2026): with GAME_AUDIO_BED,
+   * trailers and picture-only library clips are heard through their game-sound stems, score and voices taken out by
+   * Demucs on the PC (src/assets/gamesfx.ts, made by src/tools/gamesfx.ts). */
+  gameSfxStems: boolean;
+  /** ACE_BEDS (off by default; built 20 Nov 2026): Pulse's own ACE-Step music (src/render/acebeds.ts): era and genre beds
+   * the music plan picks from (chiptune for old games, synthwave, orchestral fantasy, documentary tension, upbeat
+   * rankings) and the Pulse ident on a Short's opening sting. */
+  aceBeds: boolean;
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
   docDropRefusedChapter: boolean; // DOC_DROP_REFUSED_CHAPTER: a chapter the writer still refuses after widening its sources is dropped and the documentary goes on, while DOC_MIN_CHAPTERS can still be met and it is not the first (src/editorial/longrescue.ts); on by default
@@ -2325,6 +2333,8 @@ export function loadConfig(): Config {
     gameAudioGapLufs: Math.min(-16, Math.max(-50, Number(str("GAME_AUDIO_GAP_LUFS", "-24")) || -24)),
     gameAudioTrailers: bool("GAME_AUDIO_TRAILERS", false),
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
+    gameSfxStems: bool("GAME_SFX_STEMS", false),
+    aceBeds: bool("ACE_BEDS", false),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   peopleInsets: bool("PEOPLE_INSETS", true),
   mentionGames: bool("MENTION_GAMES", false),

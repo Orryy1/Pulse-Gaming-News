@@ -63,7 +63,7 @@ import { MentionInsetView } from "./components/MentionInsets.tsx";
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
-import { QuoteMoment, inQuote } from "./components/QuoteMoment.tsx";
+import { QuoteMoment, inQuote, quoteBedFactor } from "./components/QuoteMoment.tsx";
 import { musicDipAt } from "./gamebed.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
@@ -620,7 +620,7 @@ export const Short: React.FC<ShortProps> = (props) => {
     return (
       fadeIn *
       (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) *
-      (inQuote(quoteSpans, f) ? 0.45 : 1) *
+      quoteBedFactor(quoteSpans, f) *
       // GAME_AUDIO_BED: the music steps back where the game itself is heard.
       (props.gameBed ? musicDipAt(props.gameBed.spans, f, fps, props.gameBed.dip) : 1)
     );

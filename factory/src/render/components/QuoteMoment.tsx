@@ -195,6 +195,21 @@ export const QuoteMoment: React.FC<QuoteMomentProps> = ({
 };
 
 /** True while any quote is playing at `frame` (spans in frames, end exclusive). */
+/** The music bed's level under a character quote, as a share of its level, when no quote says otherwise. */
+export const QUOTE_BED_UNDER = 0.45;
+
+/**
+ * The music bed's factor at a frame (pure): 1 outside every quote, the quote's own bedUnder inside one
+ * (GAME_SPEECH_DIALOGUE ducks the bed further under the character), QUOTE_BED_UNDER otherwise.
+ */
+export function quoteBedFactor(
+  spans: ReadonlyArray<{ from: number; frames: number; q?: { bedUnder?: number } }>,
+  frame: number,
+): number {
+  const s = spans.find((x) => frame >= x.from && frame < x.from + x.frames);
+  return s ? (s.q?.bedUnder ?? QUOTE_BED_UNDER) : 1;
+}
+
 export function inQuote(
   spans: ReadonlyArray<{ from: number; frames: number }>,
   frame: number,

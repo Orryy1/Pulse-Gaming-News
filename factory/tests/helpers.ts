@@ -580,6 +580,7 @@ export function testConfig(
     characterQuotesLong: 3,
     characterQuotesShort: 1,
     trailerQuotes: true,
+    gameSpeechDialogue: false,
     gameAudioBed: false,
     gameAudioShare: 0.5,
     gameAudioUnderLufs: -30,

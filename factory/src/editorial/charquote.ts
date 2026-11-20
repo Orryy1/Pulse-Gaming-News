@@ -89,6 +89,22 @@ A real line from the game's own cutscene can play inside this video, in the char
 - Full sentences with a verb, contractions, no delivery tags in square brackets, no stage directions.
 - A line marked as a voice in the official trailer comes from the game's own marketing, not a cutscene: the trailer never says who speaks, so never name or guess the speaker; set it up as something the trailer says ("Even the trailer seems to agree:"), and treat its words as public, never as a story reveal.`;
 
+/**
+ * GAME_SPEECH_DIALOGUE (owner, 20 Nov 2026: the game's characters "talking with" the narrator): the same exchange,
+ * with the three ways a line can talk back named, and a short verdict allowed as the reaction when the line answers
+ * or contradicts the setup head on.
+ */
+export const DIALOGUE_RULES = `The exchange as a conversation
+This video talks with the game's own characters: the narrator says something and a real line from the game answers it. Plan the exchange around what the line actually says. Three shapes work:
+- The answer: the setup asks or wonders, and the line answers ("So is anyone in Leonida actually worried?" then the line).
+- The completion: the setup ends on a colon or an open thought, and the line finishes it ("And the plan, as always, is simple:" then the line).
+- The contradiction: the setup claims something and the line says otherwise, so the narrator has to concede ("Surely the heist goes to plan." then a line that says it will not).
+The reaction may then be a short verdict on what the character said, two to five words, when the line answers or contradicts the setup head on: "He's not wrong.", "Fair point, Lucia.", "Can't argue with that." Otherwise it talks back at the line's own words as below. Never use the same verdict twice in one video.`;
+
+/** A short verdict on the line (GAME_SPEECH_DIALOGUE): "He's not wrong.", "Fair point, Lucia.", "Can't argue with that." */
+export const VERDICT_REACTION =
+  /^(?:(?:he|she|they|it|that)(?:['’]s| is| are|['’]re)\s+(?:not\s+|never\s+)?(?:wrong|right|kidding|joking|lying|exaggerating)|(?:he|she|they)\s+(?:has|have)\s+a\s+point|fair\s+point|(?:can['’]t|cannot|couldn['’]t)\s+argue(?:\s+with\s+(?:that|him|her|them))?|no\s+argument\s+(?:here|from\s+me)|point\s+taken|exactly|told\s+you|so\s+much\s+for\s+that|well,?\s+(?:that|there)\s+goes\s+that)\b/i;
+
 const plain = (text: string): string[] =>
   stripVoiceTags(text)
     .toLowerCase()
@@ -153,7 +169,13 @@ export function exchangeProblems(
   setup: string,
   reaction: string,
   q: Pick<QuoteCandidate, "text" | "speaker">,
-  o: { beat: string; names?: readonly string[]; answers?: string },
+  o: {
+    beat: string;
+    names?: readonly string[];
+    answers?: string;
+    /** GAME_SPEECH_DIALOGUE: a short verdict may answer a line the setup leads straight into. */
+    dialogue?: boolean;
+  },
 ): string[] {
   const p: string[] = [];
   const speaker = new Set(tokens(q.speaker));
@@ -179,7 +201,17 @@ export function exchangeProblems(
   const asks = /\?["'”’]?\s*$/.test(q.text.trim());
   const answered = asks && ANSWER_WORDS.test(reaction.trim());
   const echoed = [...said].some((w) => lineContent.has(w));
-  if (!echoed && !answered)
+  // A verdict ("He's not wrong.") talks back only when the setup led straight into the line: it asked, it left a
+  // thought open, or it shares a word with what the character says.
+  const led =
+    /[?:]["'”’]?\s*$/.test(setup.trim()) ||
+    [...contentWords(setup, speaker)].some((w) => contentWords(q.text, speaker).has(w));
+  const verdict =
+    Boolean(o.dialogue) &&
+    led &&
+    plain(reaction).length <= 6 &&
+    VERDICT_REACTION.test(reaction.trim());
+  if (!echoed && !answered && !verdict)
     p.push(
       `The reaction ("${reaction}") does not answer the line and would fit any quote. Talk back at ${q.speaker}'s actual words (${[...lineContent].slice(0, 4).join(", ") || q.text}) with a take or a joke tied to the story.`,
     );
@@ -238,6 +270,8 @@ export interface QuoteMomentChecks {
   /** The script's own house rules: only the problems the quote adds count. */
   house?: (s: Script) => string[];
   now?: Date;
+  /** GAME_SPEECH_DIALOGUE: the conversation rules and the short verdict reaction. */
+  dialogue?: boolean;
 }
 
 /** The script with the quote written in (pure): the beat's narration becomes before + after. */
@@ -334,8 +368,15 @@ export function quoteMomentProblems(
       beat: [script.hook, original, script.headline].filter(Boolean).join(" "),
       names: o.names,
       answers: m.answers,
+      dialogue: o.dialogue,
     }),
   );
+  // One video, one of each verdict: "He's not wrong." twice reads as a template.
+  if (o.dialogue && VERDICT_REACTION.test(reaction.trim())) {
+    const said = plain(reaction).join(" ");
+    if ((script.character_quotes ?? []).some((c) => plain(sentencesIn(c.after)[0] ?? c.after).join(" ") === said))
+      p.push(`The reaction ("${reaction}") is already used for another line in this video; answer this one differently.`);
+  }
   // The beat's facts hold; the speaker, the game's cast and places may be named, and a word of the line taken up
   // by the reaction ("Quickly? ...") is an echo, not a new name.
   const ok = new Set(
@@ -394,7 +435,7 @@ export async function writeQuoteMoment(
   },
 ): Promise<QuoteMomentResult> {
   if (!candidates.length) return { script, why: ["no quotable lines"] };
-  const system = `${voiceFor(o.format ?? "news")}\n\n${QUOTE_MOMENT_RULES}`;
+  const system = `${voiceFor(o.format ?? "news")}\n\n${QUOTE_MOMENT_RULES}${o.dialogue ? `\n\n${DIALOGUE_RULES}` : ""}`;
   const brief = quoteMomentBrief(script, candidates, o);
   const why: string[] = [];
   let problems: string[] = [];

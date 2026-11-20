@@ -354,6 +354,124 @@ async function stills(
   return files;
 }
 
+/** The section fetched from YouTube with yt-dlp (the default download). */
+export function youtubeSection(
+  ytdlp: string,
+): NonNullable<QuoteClipDeps["download"]> {
+  return (id, a, b, f) =>
+    runCapped(
+      ytdlp,
+      quoteDownloadArgs(id, a, b, f, path.dirname(FFMPEG) || undefined),
+      { timeout: 300_000, maxBuffer: 16 * 1024 * 1024 },
+    ).then(() => undefined);
+}
+
+/** ffmpeg arguments for a section of the scene index's own proxy, with its sound, as section.mkv (pure). */
+export function proxySectionArgs(
+  proxy: string,
+  from: number,
+  to: number,
+  out: string,
+): string[] {
+  return [
+    "-v",
+    "error",
+    "-y",
+    "-ss",
+    from.toFixed(3),
+    "-i",
+    proxy,
+    "-t",
+    Math.max(0.5, to - from).toFixed(3),
+    "-map",
+    "0:v:0",
+    "-map",
+    "0:a:0",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "14",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "pcm_s16le",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    out,
+  ];
+}
+
+/**
+ * GAME_SPEECH_DIALOGUE: the section from YouTube, and when YouTube will not serve it (a bot check, a pause, an age
+ * gate the signed lane could not pass) from the scene index's own proxy of the same upload (480p, same timeline),
+ * so a quote is not lost to a fetch (15 Nov 2026: the only quote placed in a week was dropped that way).
+ */
+export function sectionWithProxyFallback(
+  primary: NonNullable<QuoteClipDeps["download"]>,
+  proxy: string | undefined,
+  onFallback?: (err: unknown) => void,
+): NonNullable<QuoteClipDeps["download"]> {
+  return async (id, a, b, f) => {
+    try {
+      await primary(id, a, b, f);
+    } catch (err) {
+      if (!proxy) throw err;
+      onFallback?.(err);
+      await fs.rm(f, { force: true }).catch(() => undefined);
+      await runCapped(FFMPEG, proxySectionArgs(proxy, a, b, f), {
+        timeout: 180_000,
+        maxBuffer: 8 * 1024 * 1024,
+      });
+    }
+  };
+}
+
+const heardWords = (text: string): string[] =>
+  text
+    .toLowerCase()
+    .replace(/['’]/g, "")
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+
+/**
+ * Whether what Whisper heard in a quote's clip is the line (pure): most of the line's words heard, and not much more
+ * than the line (another voice running into the cut). The words played and captioned stay the index's own.
+ */
+export function heardMatchesLine(
+  line: string,
+  heard: readonly string[],
+): { ok: boolean; agree: number; extra: number; reason: string } {
+  const said = heardWords(line);
+  const got = heard.flatMap(heardWords);
+  const pool = new Map<string, number>();
+  for (const w of got) pool.set(w, (pool.get(w) ?? 0) + 1);
+  let hit = 0;
+  for (const w of said) {
+    const n = pool.get(w) ?? 0;
+    if (n > 0) {
+      hit++;
+      pool.set(w, n - 1);
+    }
+  }
+  const agree = said.length ? Math.round((hit / said.length) * 100) / 100 : 0;
+  const extra = Math.max(0, got.length - hit);
+  const ok = agree >= 0.7 && extra <= Math.max(3, Math.ceil(said.length * 0.5));
+  return {
+    ok,
+    agree,
+    extra,
+    reason: ok
+      ? "heard"
+      : agree < 0.7
+        ? `heard ${Math.round(agree * 100)}% of the line ("${got.join(" ").slice(0, 80)}")`
+        : `${extra} more words than the line are heard (another voice in the cut)`,
+  };
+}
+
 /** Fetches, cuts, frames and loudness-matches one quote's clip into `<episodeDir>/quote_<id>.mp4`. Throws on any fault. */
 export async function prepareQuoteClip(
   o: QuoteClipOptions,
@@ -378,17 +496,7 @@ export async function prepareQuoteClip(
         () => false,
       ))
     ) {
-      const download =
-        o.deps?.download ??
-        ((id: string, a: number, b: number, f: string) =>
-          runCapped(
-            o.ytdlp,
-            quoteDownloadArgs(id, a, b, f, path.dirname(FFMPEG) || undefined),
-            {
-              timeout: 300_000,
-              maxBuffer: 16 * 1024 * 1024,
-            },
-          ).then(() => undefined));
+      const download = o.deps?.download ?? youtubeSection(o.ytdlp);
       await download(q.videoId, from, to, section);
     }
     const size = await probeSize(section);

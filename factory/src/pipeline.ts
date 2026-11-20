@@ -945,6 +945,7 @@ import {
   prepareQuotes,
   quoteLongStep,
   quoteRenderFiles,
+  dialogueOn,
   quoteScriptStep,
 } from "./charquotestep.ts";
 import {
@@ -8695,14 +8696,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     return;
   }
   // CHARACTER_QUOTES (src/charquotestep.ts): one real line from the game's cutscene, set up and answered by the narrator.
-  // A room script keeps its words: no cutscene line is woven into it.
-  if (!roomWrote)
+  // A room script keeps its words: no cutscene line is woven into it, unless GAME_SPEECH_DIALOGUE is on (the quote
+  // writer keeps every fact and house rule of the beat it touches, and the owner asked for the exchange everywhere).
+  if (!roomWrote || s.cfg.gameSpeechDialogue)
     script = await quoteScriptStep(s, ep, script, {
       house: (sc) => houseProblems(sc).problems,
       wordsMax: length?.wordsMax ?? WORDS_MAX,
       capSeconds: length?.capSeconds ?? SHORT_NARRATION_CAP_SECONDS,
       story: cluster.headline,
     });
+  else if (s.cfg.characterQuotes)
+    await logEvent(s.db, ep.id, "character_quote", { used: false, why: "a room-written script keeps its words" }).catch(
+      () => undefined,
+    );
   // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
   const tag = seriesTagFor(ep, script);
   if (tag) script = { ...script, series: tag };
@@ -13233,7 +13239,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         clipFiles: clips,
         plan,
         renderDate: s.now().toISOString().slice(0, 10),
-        quoteFiles: quoteRenderFiles(assets),
+        quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
         ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
@@ -14586,7 +14592,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(ep.story_json.reply
         ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
         : {}),
-      quoteFiles: quoteRenderFiles(assets),
+      quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
       ...(mentions.length ? { mentionFiles: mentions } : {}),

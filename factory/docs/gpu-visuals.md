@@ -19,8 +19,9 @@ vision model, and the match wipe. Every feature is behind a switch that is off b
   the episode gives up at once and keeps its usual pictures.
 - From the Mac the service is reached over the cable. **Not done yet:** port 8797 must be added to `PORTS` in
   `C:\Claude\orchestrator\lan_relay.py` (the Master orchestrator's area), and `GPUVIS_URL` set on the Mac.
-- ComfyUI is `C:\Users\MORR\ComfyUI` (0.18.1) run with the desktop app's Python
-  (`C:\Users\MORR\Documents\ComfyUI\.venv`), models in `D:\AI\ComfyUI-models`. Real-ESRGAN's weights are hard-linked
+- ComfyUI is `C:\Users\MORR\ComfyUI` (0.18.1) run with the PC's Python 3.14
+  (`C:\Python314\python.exe`, torch 2.11 with CUDA 12.8; the desktop app's venv lacks the frontend package and exits
+  at start), models in `D:\AI\ComfyUI-models`. Real-ESRGAN's weights are hard-linked
   into `upscale_models` from `D:\pulse-tools\models\realesrgan`. Outputs are ComfyUI temp previews and uploads are
   deleted after each job, so nothing collects on C:.
 

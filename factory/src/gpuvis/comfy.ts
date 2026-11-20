@@ -6,15 +6,21 @@
 // and a job past its timeout is dropped from the queue, so nobody else's work is touched.
 
 import { spawn, type ChildProcess } from "node:child_process";
+import { openSync } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fetchWithTimeout, log } from "../lib/util.ts";
 
 export const DEFAULT_COMFY_URL = "http://127.0.0.1:8188";
 export const COMFY_DIR = process.env.COMFY_DIR || "C:/Users/MORR/ComfyUI";
+// The PC's Python 3.14 has torch 2.11 (CUDA 12.8) and ComfyUI's frontend package; the desktop app's own venv
+// (Documents\ComfyUI\.venv) lacks the frontend package this ComfyUI 0.18.1 checkout needs and exits at start
+// (20 Nov 2026). Other projects on the PC run it the same way (ai-babe).
 export const COMFY_PYTHON =
-  process.env.COMFY_PYTHON ||
-  "C:/Users/MORR/Documents/ComfyUI/.venv/Scripts/python.exe";
+  process.env.COMFY_PYTHON || "C:/Python314/python.exe";
+/** ComfyUI's own output when this module starts it, for diagnosis. */
+export const COMFY_LOG = path.join(os.tmpdir(), "pulse-gpuvis-comfyui.log");
 
 export type Workflow = Record<
   string,
@@ -51,6 +57,7 @@ export async function ensureComfy(
     dir: COMFY_DIR,
     port,
   });
+  const logFd = openSync(COMFY_LOG, "a");
   started = spawn(
     COMFY_PYTHON,
     [
@@ -63,21 +70,27 @@ export async function ensureComfy(
     ],
     {
       cwd: COMFY_DIR,
-      stdio: "ignore",
+      stdio: ["ignore", logFd, logFd],
       windowsHide: true,
       detached: false,
     },
   );
-  started.on("error", (err) =>
+  const child = started;
+  child.on("error", (err) =>
     log("warn", "ComfyUI did not start", { error: String(err) }),
   );
   const until = Date.now() + waitMs;
   while (Date.now() < until) {
     await new Promise((r) => setTimeout(r, 3000));
     if (await comfyUp(url)) return;
+    // Gone already (a missing package, a bad Python): say so now rather than wait out the clock.
+    if (child.exitCode !== null)
+      throw new Error(
+        `ComfyUI exited with code ${child.exitCode} before answering; its log is ${COMFY_LOG}`,
+      );
   }
   throw new Error(
-    `ComfyUI did not answer at ${url} within ${Math.round(waitMs / 1000)}s`,
+    `ComfyUI did not answer at ${url} within ${Math.round(waitMs / 1000)}s; its log is ${COMFY_LOG}`,
   );
 }
 

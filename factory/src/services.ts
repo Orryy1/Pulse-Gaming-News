@@ -80,7 +80,7 @@ import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
-import { onYtGuardAlert } from "./lib/ytguard.ts";
+import { guardActive, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { personPortrait } from "./assets/people.ts";
@@ -349,6 +349,11 @@ export function createServices(db: Db, cfg: Config): Services {
       personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
     // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
     // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    youtubePause: async () => {
+      if (!guardActive()) return undefined;
+      const st = await ytGuard.state();
+      return st.block ? { since: st.block.since, until: st.block.until } : undefined;
+    },
     findMentions: (input) =>
       findMentions(input, {
         findSteamApp,

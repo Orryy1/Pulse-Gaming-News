@@ -618,6 +618,7 @@ export function testConfig(
     hookTakes: 0,
     hookTargetWpm: 175,
     parallax: false,
+    blender: { on: false, share: 1, capMinutes: 15, url: "http://127.0.0.1:8797", waitMinutes: 25 },
     shortParallaxShare: 0,
     // The depth and upscaling craft (src/depthstep.ts): off in tests unless a test turns it on with fakes.
     depthOrbit: false,

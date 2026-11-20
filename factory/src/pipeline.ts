@@ -114,6 +114,7 @@ import {
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
 import { makeMeshes, makeParallax, LAYERED_KINDS, SHORT_DEPTH_MAX, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { planBlender, fetchBlenderClips, type BlenderClip } from "./render/blender.ts";
 import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
 import { frameTarget } from "./render/smartcrop.ts";
 import {
@@ -13278,6 +13279,40 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     }
   }
   const longMentions = mentionPlacement(s.cfg, assets.mentions, words, { fps: 30, totalFrames: Math.round(renderSeconds * 30) }, "long");
+  // BLENDER_SCENES (src/render/blender.ts): the PC renders original 3D for the reveals, breathers, charts, maps and
+  // the ending; whatever is not back in time keeps its flat graphic. Never stops the video.
+  let blenderFiles: BlenderClip[] = [];
+  if (s.cfg.blender.on) {
+    try {
+      const plan3d = planBlender({
+        episodeId: ep.id,
+        documentary: doc,
+        segments,
+        windows: hasMoments
+          ? momentWindows(segments, words, moments.map((m) => m.length), moments.map((e) => e.map(momentKeys)))
+          : [],
+        graphicOf: (e, m) =>
+          (assets.quietMoments ?? []).includes(`${e}:${m}`) ? undefined : moments[e]?.[m]?.graphic,
+        breaks: assets.breaks,
+        images: images.map((i) => ({ file: i.file, kind: i.kind, beatIndex: i.beatIndex })),
+        entryOf: (i) => entryOf(segments, i),
+        durationSeconds: renderSeconds,
+        narrationEnd: words.length ? words[words.length - 1]!.end : duration,
+        settings: s.cfg.blender,
+        titleDrop: craft.titleDrop,
+      });
+      if (plan3d.length) {
+        blenderFiles = await fetchBlenderClips(plan3d, s.cfg.blender, dir);
+        await logEvent(s.db, ep.id, "blender_clips", {
+          planned: plan3d.map((r) => ({ scene: r.scene, at: Math.round(r.at), key: r.key })),
+          made: blenderFiles.length,
+        }).catch(() => undefined);
+      }
+    } catch (err) {
+      log("warn", "3D clips skipped", { episode: ep.id, error: errorMessage(err) });
+      blenderFiles = [];
+    }
+  }
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -13322,6 +13357,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         segments,
         words,
         durationSeconds: renderSeconds,
+        ...(blenderFiles.length ? { blenderFiles } : {}),
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         // A weekly guide opens on its subject: no cold open with the mark (upgrade queue item 18).
         coldOpenLine: craft.coldOpen && !isWeeklyGuide(ep.factcheck_json) ? coldOpenLine(script.hook) : undefined,

@@ -293,7 +293,20 @@ export interface LongClipProp {
   label?: string;
 }
 
+/** A Blender 3D clip (src/render/blender.ts): full frame over the picture at its time, in place of the flat graphic. */
+export interface LongBlenderProp {
+  src: string;
+  at: number; // seconds
+  seconds: number;
+  role: "rank" | "chapter" | "desk" | "data" | "globe" | "sting";
+  segment?: number;
+  entry?: number;
+  moment?: number;
+}
+
 export type LongProps = {
+  /** BLENDER_SCENES: the 3D clips, each replacing the graphic of its beat; absent or empty, the usual graphics. */
+  blender?: LongBlenderProp[];
   /** Code scenes join the graphic rotation (src/render/codescene.ts, CODE_SCENES). */
   codeScenes?: boolean;
   title: string; // on-screen title
@@ -2490,6 +2503,23 @@ const Credit: React.FC<{ text: string }> = ({ text }) =>
     </div>
   ) : null;
 
+/** A Blender 3D clip full frame (BLENDER_SCENES), easing in and out over a few frames unless it fills a breather. */
+const Blender3D: React.FC<{ src: string; len: number; fadeIn: boolean }> = ({ src, len, fadeIn }) => {
+  const frame = useCurrentFrame();
+  // Strictly rising stops for any length (blenderPlaced keeps only clips of 12 frames or more).
+  const ease = Math.max(1, Math.min(fadeIn ? 6 : 1, Math.floor(len / 3)));
+  const out = Math.max(1, Math.min(6, Math.floor(len / 3)));
+  const opacity = interpolate(frame, [0, ease, len - out, len], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill style={{ opacity, backgroundColor: COLOUR.ink }}>
+      <OffthreadVideo src={src} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </AbsoluteFill>
+  );
+};
+
 export const Long: React.FC<LongProps> = (props) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -2535,6 +2565,31 @@ export const Long: React.FC<LongProps> = (props) => {
           )
         : [],
     [props.moments, props.segments, words],
+  );
+  // BLENDER_SCENES (src/render/blender.ts): each 3D clip at its frames, the beats it stands in for.
+  const blenderPlaced = useMemo(
+    () =>
+      (props.blender ?? [])
+        .map((c) => ({
+          ...c,
+          from: Math.max(0, Math.round(c.at * fps)),
+          len: Math.max(1, Math.round(c.seconds * fps)),
+        }))
+        .filter((c) => c.from < durationInFrames)
+        .map((c) => ({ ...c, len: Math.min(c.len, durationInFrames - c.from) }))
+        .filter((c) => c.len >= 12),
+    [props.blender, fps, durationInFrames],
+  );
+  const clipFrames = (role: LongBlenderProp["role"], segment: number): number =>
+    blenderPlaced.find((c) => c.role === role && c.segment === segment)?.len ?? 0;
+  const blenderMoments = useMemo(
+    () =>
+      new Set(
+        blenderPlaced
+          .filter((c) => c.entry !== undefined && c.moment !== undefined)
+          .map((c) => `${c.entry}:${c.moment}`),
+      ),
+    [blenderPlaced],
   );
   // The sentences the plan gives a filler shot ("entry:moment" to the shot): those draw their filler and
   // nothing else of theirs (no caption, pop-in or name tag over a kinetic card or a document).
@@ -4530,6 +4585,8 @@ export const Long: React.FC<LongProps> = (props) => {
         }
         if (s.kind === "beat" && s.visual?.kind === "rank") {
           const b = entryOf(props.segments, i);
+          // A 3D podium reveal opens the entry: the lower third waits for it.
+          const lead = Math.min(len - 60, clipFrames("rank", i));
           const capsule =
             props.images.find(
               (im) => im.beatIndex === b && im.kind === "capsule",
@@ -4553,8 +4610,8 @@ export const Long: React.FC<LongProps> = (props) => {
           return (
             <Sequence
               key={i}
-              from={starts[i]!}
-              durationInFrames={len}
+              from={starts[i]! + Math.max(0, lead)}
+              durationInFrames={len - Math.max(0, lead)}
               layout="none"
             >
               <EntryCard
@@ -4565,7 +4622,7 @@ export const Long: React.FC<LongProps> = (props) => {
                 year={s.visual.items?.[0]}
                 platforms={s.visual.items?.[1]}
                 capsuleSrc={capsule?.src ?? null}
-                durationFrames={len}
+                durationFrames={len - Math.max(0, lead)}
                 box={boxArt}
               />
             </Sequence>
@@ -4652,6 +4709,9 @@ export const Long: React.FC<LongProps> = (props) => {
             console.log(
               `DEPTH ${JSON.stringify({ chapter: b, look, from: starts[i], pause, card: starts[i]! + pause })}`,
             );
+          // BLENDER_SCENES: the 3D chapter card fills the breather; the case-file desk opens the chapter's body.
+          const card3d = clipFrames("chapter", i) > 0;
+          const desk = Math.min(Math.max(0, span - 60), clipFrames("desk", i));
           const interlude = {
             number: s.visual.value_a ?? (b ?? 0) + 1,
             title: s.visual.primary,
@@ -4664,7 +4724,7 @@ export const Long: React.FC<LongProps> = (props) => {
           return (
             <React.Fragment key={i}>
               {/* The title drop fills the first chapter's breather instead of its interlude. */}
-              {drop?.breakSegment === i ? null : pause && board ? (
+              {drop?.breakSegment === i || card3d ? null : pause && board ? (
                 <Sequence
                   from={starts[i]!}
                   durationInFrames={pause}
@@ -4778,8 +4838,8 @@ export const Long: React.FC<LongProps> = (props) => {
                 </Sequence>
               ) : null}
               <Sequence
-                from={starts[i]! + pause}
-                durationInFrames={span}
+                from={starts[i]! + pause + desk}
+                durationInFrames={span - desk}
                 layout="none"
               >
                 <EntryCard
@@ -4791,7 +4851,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   year={s.visual.items?.[0]}
                   platforms={s.visual.items?.[1]}
                   capsuleSrc={capsule?.src ?? null}
-                  durationFrames={span}
+                  durationFrames={span - desk}
                 />
               </Sequence>
             </React.Fragment>
@@ -4851,6 +4911,8 @@ export const Long: React.FC<LongProps> = (props) => {
       {windows.map((w, k) => {
         const raw = props.moments?.[w.entry]?.[w.moment];
         if (!raw) return null;
+        // Its 3D version is on screen instead (BLENDER_SCENES).
+        if (blenderMoments.has(`${w.entry}:${w.moment}`)) return null;
         // The sentence's filler shot is its whole picture: nothing of its own is drawn over it.
         if (fillerShots.has(`${w.entry}:${w.moment}`)) return null;
         // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
@@ -5241,6 +5303,15 @@ export const Long: React.FC<LongProps> = (props) => {
           <Sfx name={SFX.air[k % SFX.air.length]!} volume={LEVEL.airLong} />
         </Sequence>
       ))}
+      {/* BLENDER_SCENES: the 3D clips, full frame over the picture and its callouts, cues and insets at their beats
+          (only the title drop is drawn over them, and a 3D card never takes the title drop's breather). */}
+      {blenderPlaced
+        .filter((c) => !(c.role === "chapter" && c.segment === drop?.breakSegment))
+        .map((c) => (
+          <Sequence key={`b3d${c.from}`} from={c.from} durationInFrames={c.len} layout="none">
+            <Blender3D src={resolveSrc(c.src)!} len={c.len} fadeIn={c.role !== "chapter"} />
+          </Sequence>
+        ))}
       {/* The title drop: the title lands on the cold open's last beat, with a swell peaking as it lands (in a
           breather the first chapter's own swell already lands there, so it gets no second one). */}
       {drop ? (

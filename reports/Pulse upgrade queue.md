@@ -358,3 +358,10 @@ In progress, owned by the improvement engine. `SHORT_CLIP_EDGE_TEXT` (default on
 **Build:** a layout check before the render that measures every card, ticker and name strip's text against its box at the real font (as the stamp and card fitters already do for some cards) and shrinks or wraps it; tell the vision QA that a scrolling ticker is meant to run off both edges; strip any "WORD:" internal prefix from card text.
 
 **Measure:** QA failures naming our own cards, ticker or name strips per week (3 on 19 Nov), target zero.
+
+## 44. ElevenLabs balance kept across restarts (improvement engine, 20 Nov)
+
+In progress, owned by the improvement engine. `ELEVENLABS_BALANCE_STALE_HOURS` (default 12, commit f510350b2, deployed 20 Nov 10:52): a balance reading kept on disk stands in when the subscription check goes unanswered after a restart (18 Nov: 5 Shorts lost with 619,000 characters left). Judge by 4 Dec: no "balance unknown" narrator failures; any usage-based ElevenLabs charge switches it to 0. Details in `Pulse improvement log.md`.
+
+- Follow-up (small): narrations running at the same time are each checked against the full balance. Add an in-process reservation, so open jobs come off `left` before the check. Only matters near the month's end.
+- Follow-up (small): with VOICE_PROVIDER=elevenlabs and an unknown balance, long scripts still get unlimited re-voices (`revoiceChars` undefined means no limit in elevenlabsLong.ts). Pass 0 there too.

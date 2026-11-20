@@ -2,6 +2,27 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 20 Nov 2026, 10:35 UK: a restart during an ElevenLabs hiccup no longer stops the narrator
+
+**Change:** before every narration the factory asks ElevenLabs how many characters are left this month and refuses if it can't tell. It already kept the last answer in memory for 2 hours, but every restart wiped it (the factory restarted 14 times on 20 Nov alone). The balance is now also kept on disk (`data/elevenlabs_balance.json`), and each job's characters come off it. When the check goes unanswered and memory has nothing, a reading kept on disk stands in if it is under 12 hours old, less an assumed 50,000 characters a day of spend the factory can't see. A reading from disk pays for the job only: no re-voiced takes and no hook takes. A rejected key never falls back. Branch `claude/engine-balance`, commit f510350b2, merged into `claude/stage` (485b16f80) and **deployed 10:52 UK on 20 Nov**; /health fine afterwards, uploads_active 0.
+
+**Evidence:**
+
+- 18 Nov, 15:26 to 19:04 UTC: 14 step failures, all "no narrator available (ElevenLabs balance unknown)". Five Shorts were lost (ep_20261118_1a37bafb, 3297d396, cc193e76, b65753e7, b6e1069d), with about 619,000 characters left. In the same window two other Shorts were voiced by ElevenLabs without trouble (18:07 and 18:37). Voicing worked; only the balance check was failing.
+- Cause: the factory restarted at 15:12 and 15:34 while the subscription check wasn't answering. That wiped the memory reading from the 14:32 narration, and nothing else was left.
+- Replayed against the new rule: the 14:32 reading would have been 1 to 4.5 hours old at each failure, with about 600,000 characters estimated against the 11,080 a Short needs. All 14 attempts would have been voiced.
+- Proof on the Mac against the real account: a live read (613,743) was kept on disk. With the API cut off and memory wiped, the same read 4 hours later returned 605,409 from disk, enough for a Short. With the setting at 0 it returned nothing, the old behaviour.
+- A fresh-eyes review found four real gaps in the first version, all fixed with tests. (1) "No extra takes" was passed as "no limit" to the long-video voicer. (2) Spend from re-voices, hook takes and failed jobs was never counted; each job's maximum spend is now counted, even when it fails. (3) Jobs finishing together could lose a spend; file writes now take turns. (4) The window was cut from 24 to 12 hours.
+- 16 new tests, including two full narrations through a stand-in ElevenLabs: a Short, and a long script that is confirmed to get no re-voices. Typecheck clean; 2,944 of 2,944 tests pass.
+
+**Setting:** `ELEVENLABS_BALANCE_STALE_HOURS` (default 12; `0` restores the old behaviour). Uses show in the log as "ElevenLabs balance: older reading used" and as an `elevenlabs_balance_stale` event.
+
+**Judged:** by 4 Dec. Pass mark: no "no narrator available ... balance unknown" step failures while a disk reading under 12 hours old exists. ElevenLabs must never go into overage: if the monthly bill shows any usage-based charge, switch it to 0 straight away. Note: no real outage may come in two weeks; then the verdict is "kept, unproven live".
+
+**Not changed, noted:** jobs running at the same time are each checked against the full balance (true before this change too); with over 600,000 characters left it can't matter this month. Added to the queue. Also, C:\PulseFactory has another session's staged, uncommitted edits to four files (codex.ts, llm.ts, lanes.ts, pipeline.ts, plus two deleted tests), so it couldn't be fast-forwarded. I deployed commit 485b16f80 straight from the stage worktree instead and left those edits alone.
+
+**Judged this run:** nothing due. CODEX_GRAMMAR_FALLBACK: still no "compiled grammar is too large" failures since 19 Nov 13:26 (full verdict 21 Nov). FACT_REPAIR, SHORT_CLIP_EDGE_TEXT and DEMAND_STALE_DAYS have not fired in today's log yet. Core numbers: too soon after the 07:29 change to compare.
+
 ## 20 Nov 2026, 07:00 UK: clips whose subtitles the Short's crop would slice are caught before the render, not after it
 
 **Change:** a Short shows a 16:9 clip zoomed in (1.24 times, a little more during the punch at each cut) so the bottom tenth, where burned-in subtitles live, is hidden. Subtitles set a little higher sit right on that edge and come out sliced in half. The clip text screen only looked for big lettering, read at 960 pixels wide, where subtitle-sized text is unreadable. Now it also reads the top and bottom fifth of each clip at up to 2160 wide and counts any word the zoom would show only in part. A clip with such words is cut to its clean stretch or dropped before the render, as big trailer text already is. The Short library's single-frame check does the same. Long videos show the whole picture, so they are untouched (including the cutscene search, which a fresh-eyes review caught). Branch `claude/engine-edgetext`, commits 107f11151 and 47fba20c1, merged into `claude/stage` and **deployed 07:29 UK on 20 Nov**; /health fine afterwards, uploads_active 0.

@@ -45,3 +45,18 @@ test("a bundle missing any listed bed, house or mood, old or new, is not intact"
     fs.writeFileSync(path.join(dir, "public", f), "x");
   }
 });
+
+test("a bundle missing a sound effect that public/ has is not intact (20 Nov: land-D and swell-D lost)", () => {
+  const pub = tmp();
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, "index.html"), "<html></html>");
+  for (const root of [pub, path.join(dir, "public")]) {
+    fs.mkdirSync(path.join(root, "sfx", "v3"), { recursive: true });
+    for (const n of ["air-3.mp3", "tick.mp3"]) fs.writeFileSync(path.join(root, "sfx", "v3", n), "x");
+  }
+  assert.equal(bundleIntact(dir, pub), true);
+  fs.writeFileSync(path.join(pub, "sfx", "v3", "land-D.mp3"), "x");
+  assert.equal(bundleIntact(dir, pub), false);
+  fs.writeFileSync(path.join(dir, "public", "sfx", "v3", "land-D.mp3"), "x");
+  assert.equal(bundleIntact(dir, pub), true);
+});

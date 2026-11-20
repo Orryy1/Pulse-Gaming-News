@@ -117,10 +117,32 @@ export function bundleIntact(dir: string, publicDir = PUBLIC_DIR): boolean {
       .flat()
       .map((b) => b.file),
   ];
-  return beds.every(
+  // 20 Nov 2026: a bundle on the Mac kept every bed but lost 3 of the 11 sound effects (land-D, swell-D), and a
+  // render failed on a 404 for one of them. Every sound effect public/ has must be there too.
+  const sfx = listFiles(path.join(publicDir, "sfx")).map((f) =>
+    path.join("sfx", f),
+  );
+  return [...beds, ...sfx].every(
     (b) =>
       !fs.existsSync(path.join(publicDir, b)) ||
       fs.existsSync(path.join(dir, "public", b)),
+  );
+}
+
+/** Every file under a folder, as paths relative to it; none when the folder is missing. */
+function listFiles(root: string, sub = ""): string[] {
+  let names: fs.Dirent[];
+  try {
+    names = fs.readdirSync(path.join(root, sub), { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return names.flatMap((d) =>
+    d.isDirectory()
+      ? listFiles(root, path.join(sub, d.name))
+      : d.isFile()
+        ? [path.join(sub, d.name)]
+        : [],
   );
 }
 
@@ -620,7 +642,12 @@ export interface RenderInput {
     /** MENTION_*: the scheduled mention insets, each picture's src relative to the episode folder. */
     mentionFiles?: import("./mentions.ts").MentionSlot[];
     /** PEOPLE_INSETS: the people's face photos, relative to the episode folder, with when each name is said. */
-    peopleFiles?: Array<{ name: string; file: string; credit: string; at: number }>;
+    peopleFiles?: Array<{
+      name: string;
+      file: string;
+      credit: string;
+      at: number;
+    }>;
     /** CHARACTER_QUOTES: the quotes' clips, relative to the episode folder. */
     quoteFiles?: Array<
       Omit<import("./props.ts").ShortQuote, "src"> & { file: string }
@@ -639,7 +666,12 @@ export interface RenderInput {
       focusX?: number;
       noCollage?: boolean;
       /** mesh: PARALLAX_DEEP's 3D photo maps, only when the switch is on. */
-      layers?: { bg: string; mid: string; fg: string; mesh?: import("./parallax.ts").Mesh };
+      layers?: {
+        bg: string;
+        mid: string;
+        fg: string;
+        mesh?: import("./parallax.ts").Mesh;
+      };
     }>;
     clipFiles: Array<{
       file: string;
@@ -798,9 +830,16 @@ export function longProps(
   return {
     ...rest,
     ...(blenderFiles?.length
-      ? { blender: blenderFiles.map(({ file, ...c }) => ({ ...c, src: `${filesUrl}/${webPath(file)}` })) }
+      ? {
+          blender: blenderFiles.map(({ file, ...c }) => ({
+            ...c,
+            src: `${filesUrl}/${webPath(file)}`,
+          })),
+        }
       : {}),
-    ...(mentionFiles?.length ? { mentions: mentionUrls(mentionFiles, filesUrl) } : {}),
+    ...(mentionFiles?.length
+      ? { mentions: mentionUrls(mentionFiles, filesUrl) }
+      : {}),
     ...(quoteFiles?.length
       ? {
           quotes: quoteFiles.map(({ file, ...q }) => ({
@@ -833,16 +872,16 @@ export function longProps(
           },
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
-      images: imageFiles.map((i) => ({
+    images: imageFiles.map((i) => ({
       src: `${filesUrl}/${webPath(i.file)}`,
-        kind: i.kind,
-        aspect: i.aspect,
-        beatIndex: i.beatIndex,
-        credit: i.credit,
-        moment: i.moment,
-        label: i.label,
-        layers: i.layers
-          ? {
+      kind: i.kind,
+      aspect: i.aspect,
+      beatIndex: i.beatIndex,
+      credit: i.credit,
+      moment: i.moment,
+      label: i.label,
+      layers: i.layers
+        ? {
             bg: `${filesUrl}/${webPath(i.layers.bg)}`,
             mid: `${filesUrl}/${webPath(i.layers.mid)}`,
             fg: `${filesUrl}/${webPath(i.layers.fg)}`,
@@ -863,16 +902,16 @@ export function longProps(
     })),
     clips: clipFiles.map((c) => ({
       src: `${filesUrl}/${webPath(c.file)}`,
-        durationSeconds: c.durationSeconds,
-        beatIndex: c.beatIndex,
-        role: c.role,
-        moment: c.moment,
-        credit: c.credit,
-        audio: c.audio,
-        label: c.label,
-      })),
-      logoSrc: "logo.png",
-      musicSrc: musicFile,
+      durationSeconds: c.durationSeconds,
+      beatIndex: c.beatIndex,
+      role: c.role,
+      moment: c.moment,
+      credit: c.credit,
+      audio: c.audio,
+      label: c.label,
+    })),
+    logoSrc: "logo.png",
+    musicSrc: musicFile,
     // The Epidemic beds this bundle carries, then any the pipeline adds (ACE_BEDS, src/render/acebeds.ts) that it carries.
     extraBeds: [
       ...extraBeds(serveUrl),
@@ -880,7 +919,7 @@ export function longProps(
         fs.existsSync(path.join(serveUrl, "public", b.file)),
       ),
     ],
-    };
+  };
 }
 
 export interface LongStillsInput {
@@ -1116,24 +1155,32 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
     await (input.thumbRenderer ?? renderLongThumbs)({
       episodeDir: input.episodeDir,
       thumbs: [
-      { file: input.thumbFile, thumb: input.thumb },
-      ...(input.thumbVariants ?? []),
+        { file: input.thumbFile, thumb: input.thumb },
+        ...(input.thumbVariants ?? []),
       ],
       gl: input.gl,
-        browserExecutable,
-      });
+      browserExecutable,
+    });
   } finally {
     await files.close();
   }
 }
 
 /** MENTION_*: each mention picture's episode-relative path as a URL on the loopback server. */
-export function mentionUrls<T extends { pictures: Array<{ src: string }> }>(list: T[], filesUrl: string): T[];
-export function mentionUrls<T extends { m: { pictures: Array<{ src: string }> } }>(list: T[], filesUrl: string): T[];
+export function mentionUrls<T extends { pictures: Array<{ src: string }> }>(
+  list: T[],
+  filesUrl: string,
+): T[];
+export function mentionUrls<
+  T extends { m: { pictures: Array<{ src: string }> } },
+>(list: T[], filesUrl: string): T[];
 export function mentionUrls(list: any[], filesUrl: string): any[] {
   const fix = (m: { pictures: Array<{ src: string }> }) => ({
     ...m,
-    pictures: m.pictures.map((p) => ({ ...p, src: /^https?:/.test(p.src) ? p.src : `${filesUrl}/${webPath(p.src)}` })),
+    pictures: m.pictures.map((p) => ({
+      ...p,
+      src: /^https?:/.test(p.src) ? p.src : `${filesUrl}/${webPath(p.src)}`,
+    })),
   });
   return list.map((x) => ("m" in x ? { ...x, m: fix(x.m) } : fix(x)));
 }
@@ -1156,7 +1203,9 @@ export async function renderShort(input: RenderInput): Promise<void> {
     } = input.props;
     const props: ShortProps = {
       ...rest,
-      ...(mentionFiles?.length ? { mentions: mentionUrls(mentionFiles, files.url) } : {}),
+      ...(mentionFiles?.length
+        ? { mentions: mentionUrls(mentionFiles, files.url) }
+        : {}),
       ...(peopleFiles?.length
         ? {
             people: peopleFiles.map(({ file, ...p }) => ({

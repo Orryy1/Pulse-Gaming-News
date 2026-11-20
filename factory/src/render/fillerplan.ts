@@ -9,6 +9,7 @@
 
 import { completeCard, type KineticData } from "./components/kinetic/choose.ts";
 import type { DiagramData } from "./components/diagram/choose.ts";
+import { EXPLAINER_SOUND, type Explainer } from "./components/explainers/types.ts";
 import type { DocScene } from "./components/docs/choose.ts";
 import type { ReconTag } from "../assets/recon.ts";
 
@@ -19,6 +20,8 @@ export const FILLER_FAMILIES = [
   "objects",
   "silhouettes",
   "recon",
+  // EXPLAINERS (src/explainerstep.ts): the writer's explainer for a line that explains how something works.
+  "explainer",
 ] as const;
 export type FillerFamily = (typeof FILLER_FAMILIES)[number];
 
@@ -29,6 +32,10 @@ export interface KineticFillerData {
 }
 export interface DiagramFillerData {
   diagram: DiagramData;
+  backdrop?: number;
+}
+export interface ExplainerFillerData {
+  explainer: Explainer;
   backdrop?: number;
 }
 export interface DocumentFillerData {
@@ -60,6 +67,7 @@ export interface MomentFiller {
   data:
     | KineticFillerData
     | DiagramFillerData
+    | ExplainerFillerData
     | DocumentFillerData
     | SceneFillerData
     | ReconFillerData;
@@ -116,6 +124,8 @@ export const DIAGRAM_SETTLED: Record<string, number> = {
 export const DOCUMENT_SETTLED = 98;
 export const SCENE_SETTLED = 100;
 export const RECON_SETTLED = 40;
+/** An explainer's items land on their words; by this frame of a timed build the last connector or counter is done. */
+export const EXPLAINER_SETTLED = 100;
 /** kinetic/kit.tsx landFrames' pacing when the voice timings are missing (packs/fit.ts DRAWN_BY). */
 const KINETIC_DRAWN_BY = 100;
 
@@ -154,6 +164,7 @@ export function fillerSettle(
   } else if (f.family === "diagram") at = DIAGRAM_SETTLED[f.style] ?? 92;
   else if (f.family === "document") at = DOCUMENT_SETTLED;
   else if (f.family === "recon") at = RECON_SETTLED;
+  else if (f.family === "explainer") at = EXPLAINER_SETTLED;
   else at = SCENE_SETTLED;
   return Math.max(0, Math.min(len - 12, at));
 }
@@ -199,6 +210,7 @@ export function fillerSound(
   f: MomentFiller,
 ): "pop" | "glint" | "stamp" | undefined {
   if (f.family === "recon") return undefined;
+  if (f.family === "explainer") return EXPLAINER_SOUND[(f.data as ExplainerFillerData).explainer.type];
   if (f.family === "kinetic")
     return (
       (
@@ -225,4 +237,5 @@ export const FAMILY_WORDS: Record<FillerFamily, [string, string]> = {
   objects: ["drawn period scene", "drawn period scenes"],
   silhouettes: ["silhouette scene", "silhouette scenes"],
   recon: ["in-game reconstruction", "in-game reconstructions"],
+  explainer: ["animated explainer", "animated explainers"],
 };

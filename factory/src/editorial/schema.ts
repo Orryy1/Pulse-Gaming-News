@@ -269,6 +269,8 @@ export const ScriptSchema = z.object({
   ),
 });
 export type Script = z.infer<typeof ScriptSchema> & {
+  /** EXPLAINERS (src/explainerstep.ts): the animated explainers on its beats or take, set at render; [] means none fit. */
+  explainers?: import("./explainers.ts").ShortExplainer[];
   /** The series the Short belongs to (format redesign plan, src/series.ts): "why", "gta_file", "verdict" or
    * "news_control". Set by the pipeline, never by the writer; the weekly report sums subscribers by it. */
   series?: import("../series.ts").SeriesTag;

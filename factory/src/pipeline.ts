@@ -227,7 +227,9 @@ import {
   LONG_TAIL_SECONDS,
   entryOf,
   realWorldImage,
+  splitSentences,
 } from "./render/longplan.ts";
+import { markGameMaps, stageGameMaps } from "./assets/gamemaps.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import { motifPictureOrder } from "./render/motifpictures.ts";
 import { heroLook } from "./assets/localvision.ts";
@@ -12533,6 +12535,23 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
   const hasMoments = moments.some((m) => m.length);
+  // MAP_PINS (src/assets/gamemaps.ts): a sentence naming a place in its game, with nothing else on screen, shows the
+  // game's own map in 3D with that place pinned. Only places the game's table has checked; never a guessed spot.
+  if (s.cfg.mapPins && hasMoments) {
+    const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
+    for (let e = 0; e < moments.length; e++) {
+      const sentences = segments.flatMap((seg, i) =>
+        seg.kind === "beat" && entryOf(segments, i) === e ? splitSentences(seg.text) : [],
+      );
+      const game = ranked[e]?.game_title ?? script.game_title;
+      if (!moments[e]!.length || sentences.length !== moments[e]!.length) continue;
+      const marked = markGameMaps(moments[e]!, sentences, game);
+      if (!marked.added.length) continue;
+      const staged = await stageGameMaps(marked.moments, dir, path.join(s.cfg.dataDir, "gamemaps"), { before: moments[e] });
+      moments[e] = staged.moments;
+      await logEvent(s.db, ep.id, "game_maps", { entry: e, game, added: marked.added, failed: staged.failed }).catch(() => undefined);
+    }
+  }
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the cutscenes' own sound goes into their clips and
   // the long render's game-sound envelope plays it (under the voice, up in long pauses, silent under a quote).
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -13492,6 +13511,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         coldOpenLine: craft.coldOpen && !isWeeklyGuide(ep.factcheck_json) ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
     codeScenes: s.cfg.codeScenes,
+    // GAME_LOOK (src/render/gamelook.ts): the graphics in the game's own look where it has a style profile.
+    gameLook: s.cfg.gameLook,
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
     loops: docLoops,

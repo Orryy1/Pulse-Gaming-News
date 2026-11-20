@@ -829,6 +829,8 @@ export function longProps(
   } = p;
   return {
     ...rest,
+    // MAP_PINS: each game map's picture, staged in the episode's folder (src/assets/gamemaps.ts), as a URL.
+    ...(rest.moments ? { moments: gameMapUrls(rest.moments, filesUrl) } : {}),
     ...(blenderFiles?.length
       ? {
           blender: blenderFiles.map(({ file, ...c }) => ({
@@ -920,6 +922,20 @@ export function longProps(
       ),
     ],
   };
+}
+
+/** MAP_PINS: a game map graphic's episode-relative picture as a URL on the loopback server (src). */
+export function gameMapUrls<M extends { graphic: { gameMap?: { file?: string; src?: string } } }>(
+  moments: M[][],
+  filesUrl: string,
+): M[][] {
+  return moments.map((ms) =>
+    ms.map((m) =>
+      m.graphic.gameMap?.file
+        ? { ...m, graphic: { ...m.graphic, gameMap: { ...m.graphic.gameMap, src: `${filesUrl}/${webPath(m.graphic.gameMap.file)}` } } }
+        : m,
+    ),
+  );
 }
 
 export interface LongStillsInput {

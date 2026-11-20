@@ -28,6 +28,8 @@ export function mapStops(items: string[]): Stop[] | undefined {
 
 /** A 2-6 word heading (the search) and one to three places the list knows. */
 export function fitsPulseMaps(g: MomentGraphic): boolean {
+  // A game's own map (MAP_PINS) is drawn by Map/Game3D only.
+  if (g.gameMap) return false;
   const head = txt(g.primary);
   if (!head || head.length > 40) return false;
   if (wordCount(head) < 2 || wordCount(head) > 6) return false;

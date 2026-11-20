@@ -1,12 +1,17 @@
 // Concept sketches for the documentary lines nothing filmed can show. After the sentence top-up
 // (src/assets/fill.ts) about a fifth of a documentary's screen time is still lines about meetings, decisions,
-// offices and a studio's early days: things never photographed. This module draws them on this PC's own
-// image model (FLUX.1 dev through ComfyUI, the server other projects on the machine already use) as an honest
-// pencil-and-ink "concept sketch", styled so it reads as an illustration and never as a photograph, and tagged
-// ILLUSTRATION on screen like the graphic cards. Only real-world scene lines qualify (people, a place, an
+// offices and a studio's early days: things never photographed. This module draws them on a local image model,
+// FLUX.2 klein 4B (Apache 2.0, so fine for a monetised channel; evidence in docs/licences/flux2-klein-4b.md), as an
+// honest pencil-and-ink "concept sketch", styled so it reads as an illustration and never as a photograph, and
+// tagged ILLUSTRATION on screen like the graphic cards. FLUX.1 dev and FLUX.1 Fill are non-commercial and are never
+// used. Two ways to reach the model (ILLUSTRATE_BACKEND): "klein", the Mac mini's own sketch service
+// (mac/sketch_server.py, installed by mac/sketch.sh, POST /draw), the default; or "comfy", ComfyUI on the PC with
+// the klein workflow in ./illustrate.workflow.json. Only real-world scene lines qualify (people, a place, an
 // action); figures, abstractions, named real people and sensitive subjects never do. Seeds come from the
 // episode and sentence so a re-run draws the same picture. ILLUSTRATE_STUB=true draws a plain placeholder
-// without the model, so tests and dry runs work on a PC whose GPU is spoken for.
+// without the model, so tests and dry runs work anywhere. A sketch that is late or fails is simply not drawn:
+// its line keeps its normal footage, and the run stops asking once the video's time budget is spent or the
+// model has failed several times in a row, so sketches never hold up a video.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -21,7 +26,7 @@ export const SKETCH_KIND = "sketch";
 
 /** The fixed look: a sketch, never a photo, with nothing readable and nobody recognisable. */
 export const STYLE_SUFFIX =
-  "Pencil and ink concept sketch on cream paper, loose confident linework with light ink wash and soft graphite shading, muted palette, a documentary storyboard drawing. No text, no letters, no logos, no readable signage, no recognisable real faces: figures drawn small or turned away, faces simplified.";
+  "Pencil and ink concept sketch on cream paper, one single scene in one frame, a wide view, loose confident linework with light ink wash and soft graphite shading, muted palette, like a production designer's sketch for a documentary. No text, no letters, no logos, no readable signage, no recognisable real faces: figures drawn small or turned away, seen from behind, in profile or at a distance, faces simplified to a few lines. No speech bubbles, no captions, no comic panels, no frame numbers. Every sign, poster, screen, photograph, page and label is blank or a few loose scribbles, with no writing anywhere.";
 
 export const NEGATIVE_PROMPT =
   "photograph, photo, photorealistic, realistic skin, 3d render, video game screenshot, HUD, text, letters, words, numbers, logo, watermark, signature, signage, caption, subtitle, real person, celebrity, likeness, recognisable face, portrait, blood, weapon, gore, nudity, neon, saturated colours";
@@ -37,7 +42,8 @@ export interface SketchMoment {
 export interface SketchChapter {
   game: string;
   year?: number;
-  /** The real place the chapter's story happens in, when known (a studio's city); period detail for the prompt. */
+  /** The real place the chapter's story happens in, when known (a studio's city). Kept out of the prompt: the model
+   *  writes place names onto signs. */
   place?: string;
 }
 
@@ -58,7 +64,7 @@ const STATISTICAL =
 // A shot note that asks for the game itself, hardware, a brand or a chart: those have real pictures (official
 // art, Commons photos, the graphic cards), and a drawing of them would be a fake, not an illustration.
 const NOT_A_SCENE =
-  /\b(gameplay|screenshot|screenshots|footage|trailer|cutscene|in-game|ingame|console|controller|handheld|cartridge|disc|logo|logos|chart|charts|graph|cover art|box art|key art|menu|silhouette|mascot|character|characters|hero|protagonist|monster|brand|headline|newspaper|magazine|website|screen recording)\b/i;
+  /\b(gameplay|screenshot|screenshots|footage|trailer|cutscene|mission|missions|in-game|ingame|console|controller|handheld|cartridge|disc|logo|logos|chart|charts|graph|cover art|box art|key art|menu|silhouette|mascot|character|characters|hero|protagonist|monster|brand|headline|newspaper|magazine|website|screen recording)\b/i;
 
 // Words that look like a person's name but are a place, a studio or a game.
 const NOT_A_NAME =
@@ -119,22 +125,127 @@ export function sceneOf(sentence: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+const NAME_WORD = /^[A-Z][\w'’&.-]*$/;
+const LEAD_IN = /^(called|named|titled|codenamed|dubbed)$/i;
+const COMMON_OPENER =
+  /^(in|inside|outside|at|on|once|when|after|before|during|even|by|for|from|with|without|within|across|under|over|the|a|an|each|every|some|many|most|few|if|but|and|so|then|as|while|until|since|nobody|everyone|there|this|that|those|these|their|its|his|her|our|your|my|we|they|you|it|he|she)$/i;
+// An ordinary word at the start of a sentence or a shot note ("Developers ...", "Camera drops ...", "Team pitching
+// ..."): kept. Anything else there that is capitalised is taken for a name ("Rockstar moved ...").
+const COMMON_START =
+  /^(team|staff|crew|camera|desktop|office|studio|server|privacy|research|company|fast|slow|reviewer|analyst|developer|designer|artist|programmer|tester|player|people|founder|manager|boss|writer|actor|engineer|one|two|three|four|five|six|several|empty|small|large|big|late|early|old|new|night|morning|evening|rain|close|wide|young|tired|busy|quiet|dark|bright|long|short|half|work|time|years?|months?|weeks?|days?|nothing|everything|something|what|who|why|how|where|which|whose|no|not|now|still|later|soon|here|its|it's|that's|there's|you're|we'd|we're|they're|don't|didn't|couldn't|wouldn't|wasn't|weren't|isn't|aren't)$/i;
+const PLAIN_SUFFIX =
+  /(s|ing|ed|ly|er|ers|ion|ions|al|ic|ful|less|ness|ment|ments|ity|ive|ous|able|ible)$/i;
+// Capitalised but never lettered as a name: months, days and seasons stay as they are.
+const CALENDAR =
+  /^(January|February|March|April|May|June|July|August|September|October|November|December|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Christmas|Easter)$/;
+// Where a name stands, the word that takes its place: a place after a word of movement, a game after "on".
+const PLACE_BEFORE = /^(in|to|from|across|towards|toward|near|around|outside|into)$/i;
+const GAME_BEFORE = /^(on|playing|played|play)$/i;
+
 /**
- * The positive and negative prompts for one sentence: the writer's shot note is the scene, the sentence its
- * context, then the chapter's place and year for period detail and the fixed style.
+ * The text with its proper names (studios, games, companies, cities) swapped for plain words. FLUX.2 klein
+ * letters any name it is given onto a sign or a poster: on 20 Nov 2026 "DMA Design team at work" came back with
+ * "DMA DESITGN" on the wall, whatever the prompt said about text. "A game called Race'n'Chase" becomes "a game",
+ * "Rockstar North's research team" becomes "the studio's research team", "in Edinburgh" or "to New York" becomes
+ * "the city", "work on Grand Theft Auto 2" becomes "work on the game". A sentence's first word stays only when it
+ * reads as an ordinary word; "Rockstar moved" becomes "The studio moved".
+ */
+export function withoutNames(text: string): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  const out: string[] = [];
+  let i = 0;
+  const core = (w: string) =>
+    w.replace(/[,.;:!?)]+$/, "").replace(/['’]s$/, "");
+  const namey = (w: string) => {
+    const c = core(w);
+    return (
+      c !== "I" && !CALENDAR.test(c) && NAME_WORD.test(c) && /[A-Za-z]/.test(c)
+    );
+  };
+  while (i < words.length) {
+    const w = words[i]!;
+    const startOfSentence = i === 0 || /[.!?]$/.test(words[i - 1]!);
+    let j = i;
+    // A sentence's opening "In", "Inside", "Even" or "The" is an ordinary word, whatever follows it.
+    if (startOfSentence && COMMON_OPENER.test(core(w))) {
+      out.push(w);
+      i++;
+      continue;
+    }
+    if (namey(w)) {
+      j = i + 1;
+      // A run: further names, or a number or roman numeral that belongs to one ("Grand Theft Auto 2").
+      while (
+        j < words.length &&
+        !/[,.;:!?]$|['’]s$/.test(words[j - 1]!) &&
+        (namey(words[j]!) ||
+          (/^(\d+|[IVX]{2,}|V|X)[,.;:!?]?$/.test(words[j]!) &&
+            !/^(1[89]|20)\d\d/.test(words[j]!)))
+      )
+        j++;
+      const c = core(w);
+      const single = j === i + 1;
+      const acronym = c.length >= 2 && c === c.toUpperCase();
+      const possessive = /['’]s[,.;:!?)]*$/.test(w);
+      if (
+        startOfSentence &&
+        single &&
+        !acronym &&
+        !possessive &&
+        !/[A-Z]/.test(c.slice(1)) &&
+        (COMMON_START.test(c) || PLAIN_SUFFIX.test(c))
+      ) {
+        out.push(w);
+        i++;
+        continue;
+      }
+    } else {
+      out.push(w);
+      i++;
+      continue;
+    }
+    const last = words[j - 1]!;
+    const tail = last.match(/[,.;:!?)]+$/)?.[0] ?? "";
+    const possessive = /['’]s[,.;:!?)]*$/.test(last);
+    const prev = out[out.length - 1]?.toLowerCase();
+    if (prev && LEAD_IN.test(prev)) {
+      out.pop(); // "a game called X" is "a game"
+      if (tail) out[out.length - 1] += tail;
+    } else if (prev === "the studio's" && !possessive) {
+      // "Rockstar's New York research team": the second name goes, "the studio's research team" is enough.
+      if (tail) out[out.length - 1] += tail;
+    } else {
+      if (prev === "the" || prev === "a" || prev === "an") out.pop();
+      const noun =
+        prev && PLACE_BEFORE.test(prev)
+          ? "the city"
+          : prev && GAME_BEFORE.test(prev)
+            ? "the game"
+            : "the studio";
+      out.push(`${noun}${possessive ? "'s" : ""}${tail}`);
+    }
+    i = j;
+  }
+  const s = out.join(" ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * The positive and negative prompts for one sentence: the writer's shot note is the scene (the sentence only when
+ * there is no note), then the chapter's year for period detail and the fixed style. Names are taken out of the
+ * scene (withoutNames) so none can end up written on the drawing.
  */
 export function sketchPrompt(
   sentence: string,
   chapter: SketchChapter,
   show?: string,
 ): { prompt: string; negative: string } {
-  const note = (show ?? "").trim().replace(/[.!?]+$/, "");
-  const scene = note
-    ? `${note.charAt(0).toUpperCase()}${note.slice(1)}. The moment: ${sceneOf(sentence)}.`
-    : `${sceneOf(sentence)}.`;
-  const when = chapter.year ? `around ${chapter.year}` : "";
-  const where = chapter.place ? `in ${chapter.place}` : "";
-  const period = [where, when].filter(Boolean).join(", ");
+  const note = withoutNames((show ?? "").trim().replace(/[.!?]+$/, ""));
+  // The writer's shot note alone when there is one: the narrated sentence came back as a speech bubble or a banner
+  // ("the crew had to talk them into letting the work continue" was lettered across the wall on 20 Nov 2026).
+  const scene = note ? `${note}.` : `${withoutNames(sceneOf(sentence))}.`;
+  // The year only: a place name is letters the model would write on a sign ("Dundee" came back as "DUNSE").
+  const period = chapter.year ? `around ${chapter.year}` : "";
   const parts = [
     `Concept sketch of a scene: ${scene}`,
     period
@@ -159,27 +270,56 @@ export function sketchSeed(episodeId: string, sentence: string): number {
   return h & 0x7fffffff;
 }
 
+/** How the model is reached: the Mac's sketch service (mac/sketch_server.py) or ComfyUI on the PC. */
+export type SketchBackend = "klein" | "comfy";
+
 export interface IllustrateOptions {
   dest: string;
   seed: number;
   negative?: string;
-  /** The ComfyUI server; ILLUSTRATE_URL. */
+  /** The sketch service or ComfyUI server; ILLUSTRATE_URL. */
   url?: string;
+  /** ILLUSTRATE_BACKEND; "klein" (the Mac's sketch service) when not given. */
+  backend?: SketchBackend;
   /** Queue, draw and download within this; ILLUSTRATE_TIMEOUT_SECONDS. */
   timeoutMs?: number;
   /** A placeholder PNG instead of the model; ILLUSTRATE_STUB. */
   stub?: boolean;
 }
 
-export const DEFAULT_ILLUSTRATE_URL = "http://127.0.0.1:8188";
+/** The Mac mini's sketch service (mac/sketch.sh): FLUX.2 klein 4B on its own GPU. */
+export const DEFAULT_ILLUSTRATE_URL = "http://127.0.0.1:8798";
+/** ComfyUI's usual port: the PC route for sketches, and the motion clips of ./localvideo.ts. */
+export const DEFAULT_COMFY_URL = "http://127.0.0.1:8188";
+/** FLUX.2 klein 4B is step-distilled: four steps is its published setting. */
+export const SKETCH_STEPS = 4;
 
 /**
- * Whether the ComfyUI server answers at all, asked once before a video's sketches. It runs on the PC's
- * 4090 only when someone has it open, and the Mac mini has none of its own (ILLUSTRATE_URL can point at the
- * PC's over the LAN): without this every sketch was queued against a closed port and counted "not drawn".
+ * Whether the sketch model answers at all, asked once before a video's sketches: the sketch service's /health
+ * (which is 503 while its weights are missing, say the external drive is not mounted) or ComfyUI's
+ * /system_stats. Without this every sketch was queued against a closed port and counted "not drawn".
+ */
+export async function sketchReachable(
+  url = DEFAULT_ILLUSTRATE_URL,
+  backend: SketchBackend = "klein",
+  timeoutMs = 4000,
+  fetcher: (u: string) => Promise<{ ok: boolean }> = (u) =>
+    fetchWithTimeout(u, {}, timeoutMs),
+): Promise<boolean> {
+  if (backend === "comfy") return comfyReachable(url, timeoutMs, fetcher);
+  try {
+    return (await fetcher(`${url.replace(/\/$/, "")}/health`)).ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a ComfyUI server answers at all. It runs on the PC's 4090 only when someone has it open, and the
+ * Mac mini cannot reach it unless the PC's relay forwards its port.
  */
 export async function comfyReachable(
-  url = DEFAULT_ILLUSTRATE_URL,
+  url = DEFAULT_COMFY_URL,
   timeoutMs = 4000,
   fetcher: (u: string) => Promise<{ ok: boolean }> = (u) =>
     fetchWithTimeout(u, {}, timeoutMs),
@@ -193,7 +333,7 @@ export async function comfyReachable(
 const POLL_MS = 2000;
 const WORKFLOW_FILE = new URL("./illustrate.workflow.json", import.meta.url);
 
-/** The workflow with the prompt, negative and seed substituted (nodes 6, 7 and 3; see the JSON's comment). */
+/** The workflow with the prompt, negative and seed substituted (nodes 6, 7 and 25; see the JSON's comment). */
 export async function sketchWorkflow(
   prompt: string,
   negative: string,
@@ -212,13 +352,26 @@ export async function sketchWorkflow(
   >;
   nodes["6"]!.inputs.text = prompt;
   nodes["7"]!.inputs.text = negative;
-  nodes["3"]!.inputs.seed = seed;
+  nodes["25"]!.inputs.noise_seed = seed;
   return nodes;
 }
 
+/** A PNG's IHDR size, or undefined when the bytes are not a PNG. */
+export function pngSize(
+  buf: Buffer,
+): { width: number; height: number } | undefined {
+  if (
+    buf.length < 24 ||
+    buf.readUInt32BE(0) !== 0x89504e47 ||
+    buf.subarray(12, 16).toString("ascii") !== "IHDR"
+  )
+    return undefined;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+}
+
 /**
- * Draws one sketch to opts.dest (PNG) and returns its path. Posts the workflow to ComfyUI, waits for it in
- * the history and downloads the first image it made; a job past the timeout is dropped from the queue.
+ * Draws one sketch to opts.dest (PNG) and returns its path, on the Mac's sketch service or ComfyUI
+ * (opts.backend). Anything late, refused or not a PNG throws, and nothing is written.
  */
 export async function illustrate(
   prompt: string,
@@ -229,7 +382,72 @@ export async function illustrate(
     await fs.writeFile(opts.dest, placeholderPng(opts.seed));
     return opts.dest;
   }
+  if ((opts.backend ?? "klein") === "klein")
+    return illustrateService(prompt, opts);
+  return illustrateComfy(prompt, opts);
+}
+
+/**
+ * The Mac's sketch service: one POST /draw that answers with the PNG. The service is told the deadline too, so a
+ * job that runs late is stopped there between steps instead of keeping the Mac's GPU after we stopped waiting.
+ */
+async function illustrateService(
+  prompt: string,
+  opts: IllustrateOptions,
+): Promise<string> {
   const url = (opts.url ?? DEFAULT_ILLUSTRATE_URL).replace(/\/$/, "");
+  const timeoutMs = opts.timeoutMs ?? 180_000;
+  // One timer over the request and the body, so a reply that stalls half-way still ends at the timeout.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let png: Buffer;
+  try {
+    const res = await fetch(`${url}/draw`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        seed: opts.seed,
+        width: SKETCH_WIDTH,
+        height: SKETCH_HEIGHT,
+        steps: SKETCH_STEPS,
+        // A little under ours, so the service gives up first and says so.
+        deadline_s: Math.max(5, Math.round(timeoutMs / 1000) - 5),
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok)
+      throw new Error(
+        `sketch service ${res.status}: ${(await res.text()).slice(0, 300)}`,
+      );
+    png = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    if (ctrl.signal.aborted)
+      throw new Error(
+        `sketch service took longer than ${Math.round(timeoutMs / 1000)}s`,
+      );
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+  const size = pngSize(png);
+  if (!size || size.width !== SKETCH_WIDTH || size.height !== SKETCH_HEIGHT)
+    throw new Error(
+      `sketch service gave ${size ? `a ${size.width}x${size.height} PNG` : "no PNG"}`,
+    );
+  await fs.writeFile(opts.dest, png);
+  return opts.dest;
+}
+
+/**
+ * ComfyUI: posts the klein workflow, waits for it in the history and downloads the first image it made; a job
+ * past the timeout is dropped from the queue.
+ */
+async function illustrateComfy(
+  prompt: string,
+  opts: IllustrateOptions,
+): Promise<string> {
+  const url = (opts.url ?? DEFAULT_COMFY_URL).replace(/\/$/, "");
   const timeoutMs = opts.timeoutMs ?? 180_000;
   const deadline = Date.now() + timeoutMs;
   const workflow = await sketchWorkflow(
@@ -428,12 +646,21 @@ export interface SketchRunOptions {
   max: number;
   stub: boolean;
   timeoutMs: number;
+  /** ILLUSTRATE_BACKEND; "klein" when not given. */
+  backend?: SketchBackend;
+  /** ILLUSTRATE_BUDGET_SECONDS: the whole video's drawing time; no new sketch starts that could run past it. 0 = none. */
+  budgetMs?: number;
   /** Test seam: the drawing function. */
   draw?: typeof illustrate;
+  /** Test seam: the clock. */
+  now?: () => number;
 }
 
+/** Failures in a row after which the run stops asking: the model is down, and each try costs a timeout. */
+export const SKETCH_FAILS_IN_A_ROW = 3;
+
 export const SKETCH_PROVENANCE =
-  "Concept sketch drawn by a local image model (FLUX.1 dev via ComfyUI) from the narration; an illustration, not a photograph";
+  "Concept sketch drawn by a local image model (FLUX.2 klein 4B, Apache 2.0) from the narration; an illustration, not a photograph";
 
 /**
  * One run per documentary, shared across its chapters so the cap (ILLUSTRATE_MAX) holds for the whole video.
@@ -456,9 +683,36 @@ export function createSketchRun(opts: SketchRunOptions): {
     seconds: 0,
   };
   const draw = opts.draw ?? illustrate;
+  const now = opts.now ?? Date.now;
+  // The video's budget starts at its first sketch, and a run whose model keeps failing stops asking.
+  let started: number | undefined;
+  let failsInARow = 0;
+  let stopped = false;
+  /** Whether another sketch may start: one that could run past the budget, or after the breaker, never does. */
+  const mayStart = (): boolean => {
+    if (stopped) return false;
+    if (failsInARow >= SKETCH_FAILS_IN_A_ROW) {
+      stopped = true;
+      log("warn", "sketches stopped: the model failed several times in a row", {
+        fails: failsInARow,
+      });
+      return false;
+    }
+    if (opts.budgetMs && started !== undefined) {
+      if (now() - started + opts.timeoutMs > opts.budgetMs) {
+        stopped = true;
+        log("info", "sketches stopped: the video's drawing time is spent", {
+          budgetSeconds: Math.round(opts.budgetMs / 1000),
+        });
+        return false;
+      }
+    }
+    return true;
+  };
   return {
     summary: () => ({ ...sum, seconds: Math.round(sum.seconds) }),
     async forChapter(ch, bare, images) {
+      if (stopped) return 0;
       const left = opts.max - sum.asked;
       const want = bare
         .filter((k) =>
@@ -472,6 +726,8 @@ export function createSketchRun(opts: SketchRunOptions): {
       // No place is guessed: the chapter's map graphic names where the story goes (Miami for Vice City), not
       // where the studio sits, and a wrong setting draws the wrong room. A caller that knows the place passes it.
       for (const k of want) {
+        if (!mayStart()) break;
+        started ??= now();
         sum.asked++;
         const sentence = ch.sentences[k] ?? "";
         const { prompt, negative } = sketchPrompt(
@@ -486,13 +742,16 @@ export function createSketchRun(opts: SketchRunOptions): {
             seed: sketchSeed(opts.episodeId, sentence),
             negative,
             url: opts.url,
+            backend: opts.backend,
             timeoutMs: opts.timeoutMs,
             stub: opts.stub,
           });
           made.push({ k, file });
           sum.drawn++;
+          failsInARow = 0;
         } catch (err) {
           sum.failed++;
+          failsInARow++;
           log("warn", "sketch not drawn", {
             game: ch.game,
             sentence: k,

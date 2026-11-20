@@ -104,7 +104,7 @@ import {
   photoSourcesLine,
 } from "./assets/libraries.ts";
 import { pressForShort, reportLibraries } from "./assets/librarystep.ts";
-import { comfyReachable, createSketchRun } from "./assets/illustrate.ts";
+import { createSketchRun, sketchReachable } from "./assets/illustrate.ts";
 import {
   animateSketches,
   chooseEpisodeFillers,
@@ -12196,28 +12196,32 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.clips ??= [];
     // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
     // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes. A server that
-    // does not answer (closed on the PC, or none on the Mac) skips them for this video, said once.
-    const comfyUp =
+    // does not answer (the Mac's sketch service down or its weights missing, or ComfyUI closed on the PC) skips them
+    // for this video, said once; a sketch that is late or fails later leaves its line on the normal footage.
+    const sketchesUp =
       s.cfg.illustrate &&
-      (s.cfg.illustrateStub || (await comfyReachable(s.cfg.illustrateUrl)));
-    if (s.cfg.illustrate && !comfyUp) {
+      (s.cfg.illustrateStub ||
+        (await sketchReachable(s.cfg.illustrateUrl, s.cfg.illustrateBackend)));
+    if (s.cfg.illustrate && !sketchesUp) {
       await logEvent(s.db, ep.id, "sketches_skipped", {
         url: s.cfg.illustrateUrl,
       });
       await s.notify({
         level: "info",
-        content: `${kind} "${script.headline}": no concept sketches this time, because the image server (ComfyUI at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
+        content: `${kind} "${script.headline}": no concept sketches this time, because the sketch server (${s.cfg.illustrateBackend === "comfy" ? "ComfyUI" : "the sketch service, mac/sketch.sh"} at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
       });
     }
-    const sketches = comfyUp
+    const sketches = sketchesUp
       ? createSketchRun({
           llm: s.llm,
           dir,
           episodeId: ep.id,
           url: s.cfg.illustrateUrl,
+          backend: s.cfg.illustrateBackend,
           max: s.cfg.illustrateMax,
           stub: s.cfg.illustrateStub,
           timeoutMs: s.cfg.illustrateTimeoutSeconds * 1000,
+          budgetMs: s.cfg.illustrateBudgetSeconds * 1000,
         })
       : undefined;
     const r = await fillSentencePictures(
@@ -12275,7 +12279,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           clips: assets.clips as never,
           dir,
           episodeId: ep.id,
-          url: s.cfg.illustrateUrl,
+          url: s.cfg.illustrateVideoUrl,
           max: s.cfg.illustrateVideoMax,
           stub: s.cfg.illustrateVideoStub,
           timeoutMs: s.cfg.illustrateVideoTimeoutSeconds * 1000,

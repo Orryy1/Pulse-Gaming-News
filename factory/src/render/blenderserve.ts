@@ -135,9 +135,10 @@ export function createBlenderServer(opts: ServeOptions): http.Server {
         seconds: Math.round(res.renderSeconds + res.encodeSeconds),
       });
     } catch (err) {
-      job.state = "failed";
-      job.error = errorMessage(err).slice(0, 300);
+      // The bad file goes before the job says "failed", so nobody asking in between can be handed it.
       await fs.rm(clipPath(job.key), { force: true }).catch(() => undefined);
+      job.error = errorMessage(err).slice(0, 300);
+      job.state = "failed";
       log("warn", "3D clip failed", {
         key: job.key,
         scene: job.scene,

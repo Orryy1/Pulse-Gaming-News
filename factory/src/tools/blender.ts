@@ -8,6 +8,7 @@
 //       timings.json with the render seconds and the black and freeze checks per clip (inside `orch run` too)
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { spawn } from "node:child_process";
 import { renderScene, type SceneResult } from "../render/blenderrun.ts";
 
@@ -312,7 +313,9 @@ async function main(): Promise<void> {
     const cacheDir =
       flag("cache") ??
       process.env.BLENDER_CACHE ??
-      "D:/pulse-data/blender/cache";
+      (process.platform === "win32"
+        ? "D:/pulse-data/blender/cache"
+        : path.join(os.homedir(), "PulseFactory", "blender", "cache"));
     // This machine only: the orchestrator's LAN relay forwards the Mac's requests here.
     createBlenderServer({ cacheDir }).listen(port, "127.0.0.1", () =>
       console.log(`3D clips: http://127.0.0.1:${port} (cache ${cacheDir})`),

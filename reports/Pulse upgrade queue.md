@@ -367,3 +367,18 @@ In progress, owned by the improvement engine. `ELEVENLABS_BALANCE_STALE_HOURS` (
 - Follow-up (small): with VOICE_PROVIDER=elevenlabs and an unknown balance, long scripts still get unlimited re-voices (`revoiceChars` undefined means no limit in elevenlabsLong.ts). Pass 0 there too.
 
 - 20 Nov 16:20 (hourly watch, small): in `maybeSelectLongform` (src/pipeline.ts ~5513), after `chooseLongformTopic`, run `dropFailedThemes([{ name: topic.theme }], failedThemes)`; if it comes back empty, drop that candidate and ask once more (or skip quietly with an event), so a reworded theme ("Valve's Half-Life and Portal games") cannot bring back a topic that failed in the last 2 days. Add a case to tests/longfailed.test.ts. Also worth a look: three different fact-check fails on one long ranking in a day suggests the long writer needs the fact pack used by the Shorts writers' room.
+
+## 45. Long rankings fail their fact-check on absolutes, sourceless stat cards and claims about the viewer (improvement engine, 20 Nov 18:35)
+
+**Why:** on 20 Nov the long ranking "Ranking EVERY Half-Life and Portal Game" failed its fact-check four times (ep_20261120_37fa9031, 595dbd8a, f439862d, ff70a139), about an hour of writing each, and no long video came of it. Long videos convert about 4 times better than Shorts (1.85 subscribers per 1,000 views). Fact repair (FACT_REPAIR) fired every time and saved none: 2, 7 and 5 blockers were "not_repairable", one "recheck_failed".
+
+**What the blockers were:** unsupported absolutes ("never", "only", "every other", "the whole way"); stat cards with figures that are not in the fact pack ("Story length: a few hours", "Time to finish: one evening"); and claims about the viewer or the world ("most of you don't own one", "cheaper than most movie tickets"). Repair only edits spoken lines, while the same claim sits on the moment's card, so the re-check fails even after a clean cut.
+
+**Build (behind a setting, e.g. `LONG_FACT_DISCIPLINE`):**
+
+- A deterministic pre-check on the long draft before the fact-check: flag absolutes (never, always, only, every other, no other, the whole way) and stat/list cards whose figure appears in no fact-pack line; send them back in the writer's one rewrite as named lines to soften or source.
+- Let repair edit a moment's card along with its spoken line: drop the card (graphic kind "none") when its text carries the blocked quote, so a cut is not undone by the card.
+- For long scripts only, allow repair up to 4 blockers (the 15% cut cap still applies); Shorts keep 2.
+- Tests from the four real blocker sets above.
+
+**Measure:** long rankings that pass the fact-check on the first or second try (0 of 4 on 20 Nov), and `fact_repair` "repaired" outcomes on long videos. No comments saying a long video got a fact wrong.

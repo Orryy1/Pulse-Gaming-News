@@ -2,6 +2,25 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 20 Nov 2026, 18:35 UK: no build this run; why long rankings keep failing their fact-check (queued as item 45)
+
+**Change:** none shipped. Claude's week was at 89% (one point under the engine's report-only line), the 19:00 to 19:30 gap was the only deploy window before the 20:00 and 21:00 slots, and the one small item ready to build (a reworded failed long topic coming back) had already been fixed by another session today (6ecafb48a and 78ff82f0c on `claude/stage`). A careful fix for the fault below needs a writer change, tests and a fresh-eyes review, so it is queued rather than rushed.
+
+**Evidence (factory log and `fact_repair` events, 20 Nov):**
+
+- All four "fact-check still failing after a rewrite" failures today were the same long ranking, "Ranking EVERY Half-Life and Portal Game" (ep_20261120_37fa9031, 595dbd8a, f439862d, ff70a139), about an hour of writing each. No long video has been made from it.
+- Fact repair fired on all four and saved none: three "not_repairable" (2, 7 and 5 blockers) and one "recheck_failed".
+- The blockers share three shapes. (1) Unsupported absolutes: "No cutscene ever takes the controls away", "It's the only gun where...", "Alyx never leaves your side", "the shooter every other shooter studied". (2) Card figures with no source: "[stat] a few hours, Story length" and "[stat] one evening, Time to finish" (no completion times are in the fact pack, and the second was a rewrite of an already rejected "three hours"). (3) Claims about the viewer: "most of you don't own one", "cheaper than most movie tickets", "you can't start it on a laptop tonight".
+- Repair only edits the spoken lines. The checker flags the same claim on the moment's card too ("the card repeats it"), so even a clean cut fails the re-check, as on f439862d.
+
+**Judged this run:**
+
+- CODEX_GRAMMAR_FALLBACK (due 21 Nov 15:30): early pass holds. No "compiled grammar is too large" failures on 20 Nov (3 on 19 Nov before the fix); 6 calls routed to Codex with the "too big for Claude" note. Room scripts publishing (`script.room.wrote`) still 0, so that half stays unproven until the verdict.
+- DEMAND_STALE_DAYS: in use, 7 picks today took an older reading (one at 18:30: "Grand Theft Auto IV, 26.3M when last measured 6 days ago"). Verdict 27 Nov.
+- SHORT_CLIP_EDGE_TEXT: 6 clips dropped or trimmed today (42 on 19 Nov counting the probe); today's only QA failure was a body crop, not edge text. Verdict 27 Nov.
+- ELEVENLABS_BALANCE_STALE_HOURS: no "balance unknown" failures and no stale reading needed yet. Verdict 4 Dec.
+- Core numbers: 4 published in 24 h, factory healthy; no sign of a 20% drop to revert.
+
 ## 20 Nov 2026, 10:35 UK: a restart during an ElevenLabs hiccup no longer stops the narrator
 
 **Change:** before every narration the factory asks ElevenLabs how many characters are left this month and refuses if it can't tell. It already kept the last answer in memory for 2 hours, but every restart wiped it (the factory restarted 14 times on 20 Nov alone). The balance is now also kept on disk (`data/elevenlabs_balance.json`), and each job's characters come off it. When the check goes unanswered and memory has nothing, a reading kept on disk stands in if it is under 12 hours old, less an assumed 50,000 characters a day of spend the factory can't see. A reading from disk pays for the job only: no re-voiced takes and no hook takes. A rejected key never falls back. Branch `claude/engine-balance`, commit f510350b2, merged into `claude/stage` (485b16f80) and **deployed 10:52 UK on 20 Nov**; /health fine afterwards, uploads_active 0.

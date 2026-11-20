@@ -152,7 +152,7 @@ import {
 import { hudYield, type HudSpan } from "./hudyield.ts";
 import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
-import { QuoteMoment as CharacterQuote, inQuote } from "./components/QuoteMoment.tsx";
+import { QuoteMoment as CharacterQuote, inQuote, quoteBedFactor } from "./components/QuoteMoment.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
 import type { Motif } from "./components/motifs/types.ts";
 import {
@@ -2784,7 +2784,7 @@ export const Long: React.FC<LongProps> = (props) => {
         bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.07,
         0.42 * lift,
       ) *
-      (inQuote(quoteSpans, f) ? 0.45 : 1)
+      quoteBedFactor(quoteSpans, f)
     );
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute

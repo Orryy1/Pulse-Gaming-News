@@ -1194,6 +1194,16 @@ export interface Config {
    * and with GAME_AUDIO_BED a trailer clip whose stretch is mostly speech is heard through its isolated voice.
    */
   trailerQuotes: boolean;
+  /**
+   * GAME_SPEECH_DIALOGUE (off by default until proven; owner, 20 Nov 2026: the game's characters "talking with" the
+   * narrator): with CHARACTER_QUOTES on, quotes become exchanges. Up to 2 in a Short and 12 in a long video; the
+   * writer may answer, complete or contradict the narrator and the narrator may give a short verdict back ("He's not
+   * wrong."); speakers are named from the dialogue where a story needs them (src/sceneindex/speakerdemand.ts);
+   * official trailer lines count as a source (as TRAILER_QUOTES); a room-written Short may take one too; a clip
+   * YouTube will not serve is cut from the scene index's own proxy; every clip is heard by Whisper before the voice
+   * and dropped unless its words match the line; and the music bed and game bed duck further under the character.
+   */
+  gameSpeechDialogue: boolean;
   /** GAME_AUDIO_BED (off by default; owner, 12 Nov 2026): the footage's own game sound under the narration, ducked
    * well under the voice, up in the gaps between sentences, silent under a character quote (src/assets/gameaudio.ts). */
   gameAudioBed: boolean;
@@ -2308,6 +2318,7 @@ export function loadConfig(): Config {
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
     trailerQuotes: bool("TRAILER_QUOTES", false),
+    gameSpeechDialogue: bool("GAME_SPEECH_DIALOGUE", false),
     gameAudioBed: bool("GAME_AUDIO_BED", false),
     gameAudioShare: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_SHARE", "0.5")) || 0)),
     gameAudioUnderLufs: Math.min(-18, Math.max(-50, Number(str("GAME_AUDIO_UNDER_LUFS", "-30")) || -30)),

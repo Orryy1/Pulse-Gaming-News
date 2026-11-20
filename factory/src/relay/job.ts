@@ -78,6 +78,38 @@ export interface Current {
   givenUp?: boolean;
   /** The Twitch title as last seen (the owner's "[CHALLENGE: rule]" tag lives there). */
   twitchTitle?: string;
+  /**
+   * STREAM_RELAY_MIN_LIVE_MINUTES: the warm-up before the first public broadcast. Since when Twitch has said live
+   * without a break, when the warm-up pipe started, since when streamlink has delivered data without a gap, and
+   * whether the warm-up is over.
+   */
+  warmSince?: number;
+  pipeAt?: number;
+  dataSince?: number;
+  warmedUp?: boolean;
+}
+
+/** Streamlink counts as delivering while its last bytes are this recent. */
+export const DATA_FRESH_MS = 30_000;
+
+/**
+ * Whether the warm-up is over (pure): Twitch live without a break and streamlink's data flowing without a gap, each
+ * for at least `minutes`. 18-20 Nov 2026: five public "LIVE" stubs of 0 seconds to 3 minutes were left on the channel
+ * by Twitch sessions that dropped within minutes (Xbox blocked GTA VI broadcasts until 72 h after the NZ release).
+ */
+export function warmedUp(
+  cur: Pick<Current, "warmSince" | "dataSince">,
+  now: number,
+  minutes: number,
+): boolean {
+  if (minutes <= 0) return true;
+  const need = minutes * 60_000;
+  return (
+    cur.warmSince !== undefined &&
+    cur.dataSince !== undefined &&
+    now - cur.warmSince >= need &&
+    now - cur.dataSince >= need
+  );
 }
 
 export interface RelayState {
@@ -218,12 +250,27 @@ export class RelayJob {
           cur.twitchStreamIds.push(live.id);
         if (!cur.givenUp) {
           if (!cur.broadcastId) {
-            if (now - (cur.setupFailedAt ?? 0) >= 10 * 60_000)
+            if (!cur.warmedUp && cur.part === 1) await this.warm(cur);
+            else if (now - (cur.setupFailedAt ?? 0) >= 10 * 60_000)
               await this.setup(cur);
           } else await this.watch(cur);
         }
       }
     } else if (live === undefined && cur) {
+      // No broadcast yet (warming up, or the setup after it failed): the warm-up starts again from nothing when he is
+      // back, and the warm-up pipe stops (nothing is public yet).
+      if (!cur.broadcastId) {
+        if (cur.warmSince !== undefined)
+          this.d.log("info", "relay: Twitch dropped during the warm-up; no broadcast made", {
+            seconds: Math.round((now - cur.warmSince) / 1000),
+          });
+        cur.warmSince = undefined;
+        cur.dataSince = undefined;
+        cur.pipeAt = undefined;
+        cur.warmedUp = false;
+        this.pipe?.stop();
+        this.pipe = undefined;
+      }
       cur.offlineSince ??= now;
       if (now - cur.offlineSince >= s.offlineMinutes * 60_000)
         await this.finish(cur);
@@ -251,6 +298,60 @@ export class RelayJob {
       stream: live.id,
       game,
       day: cur.day,
+    });
+    await this.warm(cur);
+  }
+
+  /**
+   * STREAM_RELAY_MIN_LIVE_MINUTES: before the first broadcast, streamlink pushes to the relay's own YouTube stream with
+   * no broadcast bound (nothing public), and the broadcast is made only once Twitch has been live and the data has
+   * flowed steadily for the whole warm-up. A drop on the way starts it again; a session that ends never shows.
+   */
+  private async warm(cur: Current): Promise<void> {
+    const s = this.d.settings;
+    const now = this.d.now();
+    if (s.minLiveMinutes <= 0) {
+      cur.warmedUp = true;
+      await this.setup(cur);
+      return;
+    }
+    cur.warmSince ??= now;
+    if (!this.pipe || cur.pipeAt === undefined) {
+      // A failed setup (live streaming not switched on, quota, login) is told once and tried every 10 minutes, as setup does.
+      if (now - (cur.setupFailedAt ?? -Infinity) < 10 * 60_000) return;
+      try {
+        this.pipe?.stop();
+        this.pipe = this.d.startPipe((await this.d.yt.ingest()).url);
+        cur.pipeAt = now;
+        cur.dataSince = undefined;
+        cur.setupFailedAt = undefined;
+      } catch (err) {
+        cur.setupFailedAt = now;
+        const why = setupProblem(err);
+        this.d.log("warn", "relay: no ingest address for the warm-up", { why });
+        if (!cur.setupAlerted) {
+          cur.setupAlerted = true;
+          await this.d.notify(
+            `⚠️ TinoTV is live on Twitch but I could not start the Pulse YouTube stream: ${why}. I keep trying every 10 minutes while he is live.`,
+          );
+        }
+        return;
+      }
+    } else if (this.pipe.gaveUp()) {
+      this.pipe.restart("warm-up: streamlink kept failing");
+      cur.pipeAt = now;
+      cur.dataSince = undefined;
+    }
+    const flowing =
+      this.pipe.alive() &&
+      this.pipe.lastData() > (cur.pipeAt ?? now) + 500 &&
+      now - this.pipe.lastData() < DATA_FRESH_MS;
+    if (flowing) cur.dataSince ??= now;
+    else cur.dataSince = undefined;
+    if (!warmedUp(cur, now, s.minLiveMinutes)) return;
+    cur.warmedUp = true;
+    this.d.log("info", "relay: warm-up over; making the broadcast", {
+      minutes: s.minLiveMinutes,
     });
     await this.setup(cur);
   }
@@ -477,6 +578,13 @@ export class RelayJob {
               why: setupProblem(err),
             },
           ),
+        );
+      // Made and bound but never live (Twitch dropped between the warm-up and YouTube starting): it shows as an
+      // upcoming public stream, and the next warm-up's data could start it under the old title. Nothing here deletes;
+      // the owner is told so he can remove it in Studio.
+      else if (b && (b.lifeCycle === "created" || b.lifeCycle === "ready"))
+        await this.d.notify(
+          `⚠️ The Pulse YouTube stream ${watchUrl(cur.broadcastId)} was set up but never went live before Twitch stopped. It shows as an upcoming stream: please delete it in YouTube Studio (Content, Live) before the next stream, or that stream may start under its old title.`,
         );
     }
     let ended: Archive[] = [];

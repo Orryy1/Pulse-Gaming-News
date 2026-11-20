@@ -265,10 +265,16 @@ class FakeYt implements LiveApi {
 }
 
 function fakePipe() {
-  const p = { restarts: [] as string[], stopped: false, dead: false };
+  const p = {
+    restarts: [] as string[],
+    stopped: false,
+    dead: false,
+    /** The last time bytes came from Twitch, on the rig's clock (unset: the real clock, as before). */
+    lastData: undefined as number | undefined,
+  };
   const handle: PipeHandle = {
     alive: () => !p.stopped,
-    lastData: () => Date.now(),
+    lastData: () => p.lastData ?? Date.now(),
     restart: (why) => p.restarts.push(why),
     stop: () => {
       p.stopped = true;
@@ -280,8 +286,9 @@ function fakePipe() {
 
 async function rig(env: NodeJS.ProcessEnv = {}) {
   const dir = await tmpDir();
+  // The warm-up (STREAM_RELAY_MIN_LIVE_MINUTES) has its own tests below; the rest start at once.
   const settings = {
-    ...relaySettings({ STREAM_RELAY: "true", ...env }),
+    ...relaySettings({ STREAM_RELAY: "true", STREAM_RELAY_MIN_LIVE_MINUTES: "0", ...env }),
     dataDir: dir,
   };
   let now = Date.parse("2026-11-21T18:00:00Z");
@@ -319,6 +326,7 @@ async function rig(env: NodeJS.ProcessEnv = {}) {
     log: () => undefined,
   };
   return {
+    now: () => now,
     dir,
     yt,
     notes,
@@ -611,4 +619,122 @@ test("an older game's stream is never called a first playthrough", async () => {
   const { streamTitle } = await import("../src/liveclips/simulcast.ts");
   assert.equal(streamTitle({ game: "Grand Theft Auto V", day: 2 }), "Grand Theft Auto V LIVE Day 2: Live Gameplay");
   assert.equal(streamTitle({ game: "Grand Theft Auto VI", day: 1 }), "GTA 6 LIVE Day 1: First Playthrough");
+});
+
+// STREAM_RELAY_MIN_LIVE_MINUTES (20 Nov 2026): five public 0 s to 3 min "LIVE" stubs came from Twitch sessions that
+// dropped within minutes. The broadcast now waits for Twitch live and streamlink data, steady for the whole warm-up.
+test("relay settings: the warm-up is 3 minutes by default, 0 makes the broadcast at once", () => {
+  assert.equal(relaySettings({}).minLiveMinutes, 3);
+  assert.equal(relaySettings({ STREAM_RELAY_MIN_LIVE_MINUTES: "0" }).minLiveMinutes, 0);
+  assert.equal(relaySettings({ STREAM_RELAY_MIN_LIVE_MINUTES: "500" }).minLiveMinutes, 30);
+});
+
+test("relay warm-up: a Twitch session that drops within minutes leaves no public broadcast", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 0, "nothing public at the first sight of Twitch live");
+  assert.equal(r.pipes.length, 1, "streamlink warms up into the relay's own stream");
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  r.advance(60_000);
+  r.setLive(undefined);
+  await r.job.tick();
+  assert.ok(r.pipes[0]!.p.stopped, "the warm-up pipe stops when Twitch drops");
+  r.advance(3 * 60_000);
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 0, "no stub");
+  assert.deepEqual(r.yt.bound, []);
+  assert.equal(readArchives(r.dir).length, 0);
+  assert.ok(r.notes.every((n) => !/live on YouTube/.test(n)), "Discord hears nothing of a broadcast");
+  assert.equal(r.job.state.current, undefined);
+});
+
+test("relay warm-up: steady for 3 minutes makes one public broadcast on the same pipe", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  await r.job.tick();
+  for (let m = 1; m <= 3; m++) {
+    r.advance(60_000);
+    r.pipes[0]!.p.lastData = r.now() - 2_000;
+    await r.job.tick();
+    if (m < 3) assert.equal(r.yt.made.length, 0, `not yet at minute ${m}`);
+  }
+  assert.equal(r.yt.made.length, 0, "data counted from its first tick: 2 minutes so far");
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now() - 2_000;
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 1);
+  assert.equal(r.yt.made[0]!.privacy, "public");
+  assert.deepEqual(r.yt.bound, [["B1", "S1"]]);
+  assert.equal(r.pipes.length, 1, "the warm-up pipe carries on into the broadcast");
+  assert.match(r.notes.at(-1)!, /live on YouTube too/);
+  r.advance(60_000);
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 1, "one broadcast a stream");
+});
+
+test("relay warm-up: a gap in streamlink's data starts the clock again", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  await r.job.tick();
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  // Twitch says live but streamlink has had nothing for a minute.
+  r.advance(60_000);
+  await r.job.tick();
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  r.advance(2 * 60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 0, "only 2 minutes of steady data since the gap");
+  r.advance(60_000);
+  r.pipes[0]!.p.lastData = r.now();
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 1);
+});
+
+test("relay warm-up: a setup failure is told once and tried again every 10 minutes", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  const ingest = r.yt.ingest.bind(r.yt);
+  let calls = 0;
+  r.yt.ingest = async () => {
+    calls++;
+    throw new YouTubeApiError(403, ["liveStreamingNotEnabled"], "no");
+  };
+  await r.job.tick();
+  r.advance(60_000);
+  await r.job.tick();
+  assert.equal(calls, 1, "not every tick");
+  assert.equal(r.notes.length, 1);
+  assert.match(r.notes[0]!, /not switched on/);
+  r.yt.ingest = ingest;
+  r.advance(10 * 60_000);
+  await r.job.tick();
+  assert.equal(r.pipes.length, 1, "the warm-up starts once YouTube allows it");
+  assert.equal(r.yt.made.length, 0);
+});
+
+test("relay warm-up: a drop after a failed setup starts the warm-up again", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  await r.job.tick();
+  for (let m = 1; m <= 4; m++) {
+    r.advance(60_000);
+    r.pipes[0]!.p.lastData = r.now() - 1_000;
+    if (m === 4) r.yt.fail = new YouTubeApiError(500, [], "boom");
+    await r.job.tick();
+  }
+  assert.equal(r.yt.made.length, 0, "the setup failed");
+  r.yt.fail = undefined;
+  r.setLive(undefined);
+  await r.job.tick();
+  assert.equal(r.job.state.current?.warmedUp, false);
+  r.setLive({ id: "T9", startedAt: "2026-11-21T18:06:00Z", title: "day 3", game: "Grand Theft Auto VI", viewers: 1 });
+  r.advance(11 * 60_000);
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 0, "a fresh warm-up first, no broadcast at once");
 });

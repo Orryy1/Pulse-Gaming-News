@@ -101,6 +101,8 @@ export interface ShortQuote {
   text: string;
   credit: string;
   mode: "bleed" | "framed";
+  /** GAME_SPEECH_DIALOGUE: the music bed's level under the character, as a share of its level (default 0.45). */
+  bedUnder?: number;
 }
 
 export const SAMPLE_PROPS: ShortProps = {

@@ -326,12 +326,41 @@ export async function readQueue(dataDir: string): Promise<SceneQueue> {
   }
 }
 
+let tmpSeq = 0;
+
 export async function writeQueue(dataDir: string, queue: SceneQueue): Promise<void> {
   const file = queueFile(dataDir);
   await fsp.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fsp.writeFile(tmp, JSON.stringify(queue, null, 1));
-  await fsp.rename(tmp, file);
+  // 12-19 Nov 2026: two writers in one process shared "queue.json.<pid>.tmp", so the second rename found the file
+  // already moved (ENOENT) and the game was never queued (Assassin's Creed Shadows, Bully, Fable and ten more).
+  // Every write has its own temporary file now, and updateQueue runs one change at a time.
+  const tmp = `${file}.${process.pid}.${++tmpSeq}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+  try {
+    await fsp.writeFile(tmp, JSON.stringify(queue, null, 1));
+    await fsp.rename(tmp, file);
+  } finally {
+    await fsp.rm(tmp, { force: true }).catch(() => undefined);
+  }
+}
+
+let queueChain: Promise<unknown> = Promise.resolve();
+
+/**
+ * One change to the queue at a time in this process: read, change, write, so two callers never write over each
+ * other's entry. `change` returns the same object to write nothing. Returns the queue as it now stands.
+ */
+export function updateQueue(
+  dataDir: string,
+  change: (q: SceneQueue) => SceneQueue,
+): Promise<SceneQueue> {
+  const run = queueChain.then(async () => {
+    const queue = await readQueue(dataDir);
+    const next = change(queue);
+    if (next !== queue) await writeQueue(dataDir, next);
+    return next;
+  });
+  queueChain = run.catch(() => undefined);
+  return run;
 }
 
 /** Asks for a game's index (a video about it is being made, or it has launched). Does nothing while the setting is off. */
@@ -344,12 +373,13 @@ export async function requestSceneIndex(
 ): Promise<void> {
   if (!cfg.sceneIndex || !game.trim()) return;
   try {
-    const queue = await readQueue(cfg.dataDir);
-    const next = queueGame(queue, game, reason, now, recentRelease);
-    if (next !== queue) {
-      await writeQueue(cfg.dataDir, next);
-      log("info", "scene index: game queued", { game, reason });
-    }
+    let added = false;
+    await updateQueue(cfg.dataDir, (queue) => {
+      const next = queueGame(queue, game, reason, now, recentRelease);
+      added = next !== queue;
+      return next;
+    });
+    if (added) log("info", "scene index: game queued", { game, reason });
   } catch (err) {
     log("warn", "scene index: could not queue", {
       game,
@@ -365,6 +395,63 @@ export async function requestSceneIndexes(
   reason: string,
 ): Promise<void> {
   for (const g of games) await requestSceneIndex(cfg, g.game, reason, Boolean(g.recentRelease));
+}
+
+/** Free disk above the floor a turn needs, GB: a proxy download for a launch plan, a proxy for anything else. */
+export const LAUNCH_PROXY_MARGIN_GB = 3;
+export const PROXY_MARGIN_GB = 6;
+
+/** Whether a queued game's next turn is the light index (ARCHIVE_BACKLOG, src/sceneindex/light.ts): no video at all. */
+export function isLightTurn(g: QueuedGame, archiveBacklog: boolean, hasIndex: boolean): boolean {
+  return (
+    archiveBacklog &&
+    !g.fetch &&
+    !g.reason.startsWith("archive: full") &&
+    g.state !== "done" &&
+    !hasIndex
+  );
+}
+
+/**
+ * The turn to give now (pure). 12-19 Nov 2026 the job gave GTA VI's launch build every turn (priority 50, always
+ * "building") and the disk gate refused all of them at 42 GB free: 493 refusals, while thirty games a video had asked
+ * for never got their one-minute light index, so no quote could come from them. Now:
+ *   - a light turn downloads no video, so it needs only the floor itself, and a ready one goes first (a minute each);
+ *   - a turn whose proxy is already on disk needs no margin above the floor (it only transcribes and describes);
+ *   - a turn that must fetch a proxy keeps its margin, and when it cannot have it the next ready game that can run
+ *     goes instead of nothing.
+ * `blocked` is the first game the disk refused, for the log, when nothing could run.
+ */
+export function pickTurn(
+  queue: SceneQueue,
+  now: Date,
+  o: {
+    freeGb: number;
+    floorGb: number;
+    archiveBacklog: boolean;
+    hasIndex: (g: QueuedGame) => boolean;
+    hasProxy: (g: QueuedGame) => boolean;
+  },
+): { job?: QueuedGame; light?: boolean; blocked?: QueuedGame } {
+  // Every ready game, in the order nextJob would give them.
+  let rest = queue;
+  const ready: QueuedGame[] = [];
+  for (;;) {
+    const g = nextJob(rest, now);
+    if (!g) break;
+    ready.push(g);
+    rest = { games: rest.games.filter((x) => x !== g) };
+  }
+  const light = ready.filter((g) => isLightTurn(g, o.archiveBacklog, o.hasIndex(g)));
+  if (light.length && o.freeGb >= o.floorGb) return { job: light[0], light: true };
+  let blocked: QueuedGame | undefined;
+  for (const g of ready) {
+    if (light.includes(g)) continue;
+    const margin = o.hasProxy(g) ? 0 : g.fetch ? LAUNCH_PROXY_MARGIN_GB : PROXY_MARGIN_GB;
+    if (o.freeGb >= o.floorGb + margin) return { job: g, light: false };
+    blocked ??= g;
+  }
+  return { blocked: blocked ?? light[0] };
 }
 
 let running = false;
@@ -418,13 +505,12 @@ export async function sceneIndexTick(
   running = true;
   const now = deps.now ?? (() => new Date());
   try {
-    let queue = await readQueue(cfg.dataDir);
-    const before = queue;
-    for (const w of wanted)
-      queue = queueGame(queue, w.game, w.reason, now(), true);
-    if (queue !== before) await writeQueue(cfg.dataDir, queue);
-    const job = nextJob(queue, now());
-    if (!job) return undefined;
+    const queue = await updateQueue(cfg.dataDir, (q0) => {
+      let q = q0;
+      for (const w of wanted) q = queueGame(q, w.game, w.reason, now(), true);
+      return q;
+    });
+    if (!nextJob(queue, now())) return undefined;
     // The proxy is the only big file: never start a turn with the disk near the Mac's floor.
     const free = await (
       deps.freeGb ??
@@ -433,27 +519,27 @@ export async function sceneIndexTick(
         return (s.bavail * s.bsize) / 1e9;
       })
     )().catch(() => Infinity);
-    // 19 Nov 2026: a launch fetch (GTA VI) waited all afternoon at 43 GB free. Its 480p proxy of a movie part is a
-    // few GB, so a launch turn keeps 3 GB above the floor; other turns keep 6.
-    // A game whose proxy is already on disk only describes and transcribes it (no big download), so its turn needs
-    // no margin above the floor (19 Nov 2026: the GTA VI movie, downloaded at 17:12, then waited at 42 GB free).
-    const haveProxy = fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, job.game), "proxy.mp4"));
-    if (free < cfg.macMinFreeGb + (haveProxy ? 0 : job.fetch ? 3 : 6)) {
-      log("warn", "scene index: not enough free disk for a turn", {
-        freeGb: Math.round(free),
-      });
+    const has = (g: QueuedGame, file: string) => fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, g.game), file));
+    const picked = pickTurn(queue, now(), {
+      freeGb: free,
+      floorGb: cfg.macMinFreeGb,
+      archiveBacklog: Boolean(cfg.archiveBacklog),
+      hasIndex: (g) => has(g, "index.json"),
+      hasProxy: (g) => has(g, "proxy.mp4"),
+    });
+    if (!picked.job) {
+      if (picked.blocked)
+        log("warn", "scene index: not enough free disk for a turn", {
+          freeGb: Math.round(free),
+          game: picked.blocked.game,
+        });
       return undefined;
     }
+    const job = picked.job;
     const macrun = path.join(os.homedir(), "orch", "macrun.sh");
     // ARCHIVE_BACKLOG (src/sceneindex/light.ts): a game a video asked for gets the light index first, built in a
     // minute from what YouTube serves without the video; the full build is for launch plans and the archive's top.
-    const lightFirst =
-      Boolean(cfg.archiveBacklog) &&
-      !job.fetch &&
-      !job.reason.startsWith("archive: full") &&
-      job.state !== "done" &&
-      !fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, job.game), "index.json"));
-    if (lightFirst) {
+    if (picked.light) {
       const [lc, la] = turnCommand(process.platform, fs.existsSync(macrun) ? macrun : undefined, process.execPath, [
         "--import",
         "tsx",
@@ -465,7 +551,7 @@ export async function sceneIndexTick(
       ]);
       const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background", YTDLP_COOKIES_FILE: "" });
       const lightOut = lr.code === 75 ? "waiting" : turnOutcome(lr.stdout) || "waiting";
-      await writeQueue(cfg.dataDir, afterTurn(await readQueue(cfg.dataDir), job.game, lightOut, now()));
+      await updateQueue(cfg.dataDir, (q) => afterTurn(q, job.game, lightOut, now()));
       log("info", "scene index: light turn finished", { game: job.game, outcome: lightOut });
       return lightOut;
     }
@@ -507,10 +593,7 @@ export async function sceneIndexTick(
     // Exit 75 is the turn-taker saying a render had the Mac the whole time: wait, it is not a failure.
     const outcome =
       r.code === 75 ? "waiting" : turnOutcome(r.stdout) || "waiting";
-    await writeQueue(
-      cfg.dataDir,
-      afterTurn(await readQueue(cfg.dataDir), job.game, outcome, now()),
-    );
+    await updateQueue(cfg.dataDir, (q) => afterTurn(q, job.game, outcome, now()));
     log("info", "scene index: turn finished", {
       game: job.game,
       outcome,

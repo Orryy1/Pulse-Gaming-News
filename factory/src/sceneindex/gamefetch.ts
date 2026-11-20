@@ -29,7 +29,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import {
   planGame,
   readQueue,
-  writeQueue,
+  updateQueue,
   type FetchPlan,
   type QueuedGame,
   type SceneQueue,
@@ -950,14 +950,15 @@ export async function gameFetchPass(
         filed: book.games,
       });
       book = mergeFiled(book, candidates, now, settings);
-      const queue = await readQueue(cfg.dataDir);
-      const next = plannedQueue(unplanDropped(queue, book), book, now, {
-        hours: cfg.gameFetchHours,
-        recheckHours: cfg.gameFetchRecheckHours,
-        recheckDays: cfg.gameFetchRecheckDays,
-        ...settings,
-      });
-      if (next !== queue) await writeQueue(cfg.dataDir, next);
+      // One change at a time (src/sceneindex/job.ts updateQueue): a Short queueing its game meanwhile keeps its entry.
+      await updateQueue(cfg.dataDir, (queue) =>
+        plannedQueue(unplanDropped(queue, book), book, now, {
+          hours: cfg.gameFetchHours,
+          recheckHours: cfg.gameFetchRecheckHours,
+          recheckDays: cfg.gameFetchRecheckDays,
+          ...settings,
+        }),
+      );
     }
     const queue = await readQueue(cfg.dataDir);
     const indexes = new Map<string, SceneIndex>();

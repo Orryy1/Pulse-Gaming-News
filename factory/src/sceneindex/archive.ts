@@ -23,9 +23,8 @@ import { errorMessage, log } from "../lib/util.ts";
 import { canonicalGame } from "./gamefetch.ts";
 import {
   queueGame,
-  readQueue,
   turnCommand,
-  writeQueue,
+  updateQueue,
   turnOutcome,
 } from "./job.ts";
 import { loadSceneIndex, sceneIndexDir, sceneSlug } from "./schema.ts";
@@ -821,18 +820,18 @@ export async function archiveTick(
     }
     if (turn.kind === "full") {
       // The scene index job builds it (one game at a time, its own turns); the light index stays until replaced.
-      const queue = await readQueue(cfg.dataDir);
-      const next = queueGame(
-        queue,
-        turn.rec.game,
-        "archive: full index",
-        now,
-        Boolean(
-          ARCHIVE_BACKLOG.find((b) => sceneSlug(b.game) === turn.rec.slug)
-            ?.recent,
+      await updateQueue(cfg.dataDir, (queue) =>
+        queueGame(
+          queue,
+          turn.rec.game,
+          "archive: full index",
+          now,
+          Boolean(
+            ARCHIVE_BACKLOG.find((b) => sceneSlug(b.game) === turn.rec.slug)
+              ?.recent,
+          ),
         ),
       );
-      if (next !== queue) await writeQueue(cfg.dataDir, next);
       book = {
         ...book,
         games: book.games.map((g) =>

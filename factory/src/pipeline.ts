@@ -155,7 +155,6 @@ import {
   groundDocMoments,
   type DocMoment,
   docWordCount,
-  DOC_CHAPTERS_MIN,
   DOC_WORDS_MIN,
   DOC_WORDS_MAX,
   type DocTopic,
@@ -164,6 +163,12 @@ import {
   loopsOfScript,
 } from "./editorial/documentary.ts";
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
+import {
+  chooseLongformTopic,
+  loopsWithoutChapter,
+  pollWinnerOf,
+  refusedChapterFate,
+} from "./editorial/longrescue.ts";
 import {
   LONG_RULE_REVISIONS,
   writerNoteProblems,
@@ -4433,11 +4438,15 @@ async function stepScriptDocumentary(
   const pick = retro ? retroSandboxChapters(s.cfg.retroSandboxChapters, retro.chapters ?? []) : undefined;
   const written: number[] = [];
   // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
-  for (const index of pick ??
+  const order =
+    pick ??
     (s.cfg.docSandboxChapters
-    ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
-    : outline.chapters
-    ).map((_, i) => i)) {
+      ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
+      : outline.chapters
+    ).map((_, i) => i);
+  // Chapters dropped because the writer still refused them after widening (DOC_DROP_REFUSED_CHAPTER).
+  const droppedRefused: number[] = [];
+  for (const [position, index] of order.entries()) {
     const plan = outline.chapters[index]!;
     const article = await s.research(
       plan.wiki_title,
@@ -4621,7 +4630,9 @@ async function stepScriptDocumentary(
       // Lines the source doesn't back: the next try has more of the record in front of it.
       else if (unsupported.length && s.cfg.writerNotesGuard) await widen();
     }
-    // Still a refusal after the wider sources: this chapter can't be told, so the video stops here. Never a warning.
+    // Still a refusal after the wider sources: this chapter can't be told. Never a warning: it is dropped and the
+    // rest goes on while the documentary can still reach DOC_MIN_CHAPTERS (18 Nov 2026: chapter 7 of "GTA 6 Map
+    // Explained: Leonida" stopped a documentary with six chapters already written), otherwise the video stops here.
     if (s.cfg.writerNotesGuard) {
       const refused = chapterRefusal(chapter!);
       if (refused.length) {
@@ -4631,9 +4642,42 @@ async function stepScriptDocumentary(
           final: true,
           why: refused.slice(0, 3),
         });
+        const fate = refusedChapterFate({
+          on: s.cfg.docDropRefusedChapter,
+          // Nothing written yet (an earlier chapter had no article) counts as the first: the video can't open two in.
+          position: chapters.length ? position : 0,
+          written: chapters.length,
+          left: order.length - position - 1,
+          // A sandbox or a picked set of chapters has no minimum at the end either.
+          min: s.cfg.docSandboxChapters || pick ? 1 : s.cfg.docMinChapters,
+        });
+        if (fate.drop) {
+          droppedRefused.push(index + 1);
+          // A question raised or answered in this chapter would be left hanging: it goes with the chapter.
+          const kept = loopsWithoutChapter(openLoops.loops, index + 1);
+          openLoops.loops = kept.loops;
+          openLoops.removed.push(...kept.removed);
+          // A question an earlier chapter already asked now has no answer: named for the release checks.
+          warnings.push(...kept.hanging.map((h) => `${plan.game_title}: ${h}`));
+          warnings.push(
+            `${plan.game_title}: chapter ${index + 1} ("${plan.chapter_title}") dropped, the writer still refused it after widening its sources.`,
+          );
+          await logEvent(s.db, ep.id, "doc_chapter_dropped", {
+            chapter: index + 1,
+            title: plan.chapter_title,
+            why: refused.slice(0, 3),
+            fate: fate.why,
+            loopsRemoved: kept.removed,
+            loopsHanging: kept.hanging,
+          });
+          await s.notify({
+            content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), it still can't be written after widening its sources; the documentary goes on without it (${fate.why}). ${refused[0]!.slice(0, 240)}`,
+          });
+          continue;
+        }
         await s.notify({
           ping: true,
-          content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still can't be written after widening its sources. ${refused[0]!.slice(0, 300)}`,
+          content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still can't be written after widening its sources, and it can't be dropped: ${fate.why}. ${refused[0]!.slice(0, 300)}`,
         });
         throw new FatalError(
           `documentary chapter ${index + 1} refused after widening its sources: ${refused[0]!.slice(0, 200)}`,
@@ -4888,9 +4932,9 @@ async function stepScriptDocumentary(
       game: plan.game_title,
     });
   }
-  if (!s.cfg.docSandboxChapters && !pick && chapters.length < DOC_CHAPTERS_MIN)
+  if (!s.cfg.docSandboxChapters && !pick && chapters.length < s.cfg.docMinChapters)
     throw new FatalError(
-      `documentary has only ${chapters.length} chapters with sources`,
+      `documentary has only ${chapters.length} chapters with sources${droppedRefused.length ? ` (chapter${droppedRefused.length === 1 ? "" : "s"} ${droppedRefused.join(", ")} dropped after refusals)` : ""}`,
     );
   const ends = {
     priorDoc,
@@ -5254,25 +5298,50 @@ export async function maybeSelectLongform(
   // The long version of a ranking Short that did well (SEQUEL_WINNERS, src/sequels.ts): already proven on our own
   // channel, so it joins the list whatever the demand check says, and its Short does not count as covering it.
   const sequels = s.cfg.sequelWinners ? await longSequels(s, now) : undefined;
-  const candidates = [
+  const shortlist = [
     ...(sequels?.candidates ?? []),
     ...ranked.candidates.filter(
       (c) => !sequels?.candidates.some((x) => x.name === c.name),
     ),
   ];
-  if (!candidates.length) return undefined;
-  const topic = await selectLongformTopic(
-    s.llm,
-    candidates,
-    covered.filter((h) => !sequels?.headlines.includes(h)),
-    [await topicDemand(s, "long"), sequels?.block ?? ""]
-      .filter(Boolean)
-      .join("\n\n"),
-  );
-  if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
+  if (!shortlist.length) return undefined;
+  const notCovered = covered.filter((h) => !sequels?.headlines.includes(h));
+  const demandText = [await topicDemand(s, "long"), sequels?.block ?? ""]
+    .filter(Boolean)
+    .join("\n\n");
+  // The viewer poll's winner joins the shortlist (LONG_POLL_CANDIDATE), and a refusal that leans on the poll is asked
+  // again without it, then falls back to the top of the shortlist (LONG_POLL_FALLBACK), src/editorial/longrescue.ts.
+  const poll = await readPoll(db).catch(() => undefined);
+  const chosen = await chooseLongformTopic({
+    select: (c, d) => selectLongformTopic(s.llm, c, notCovered, d),
+    candidates: shortlist,
+    demand: demandText,
+    pollLine: pollBlock(poll, now),
+    winner: pollWinnerOf(poll, now),
+    covered: notCovered,
+    addWinner: cfg.longPollCandidate,
+    fallback: cfg.longPollFallback,
+  });
+  const topic = chosen.topic;
+  const candidates = chosen.candidates;
+  if (chosen.how === "none") {
     log("info", "no long-form topic today", { reason: topic.reason });
+    // Kept as an event so the output audit (src/outputaudit.ts) can say why a long slot went empty.
+    await logEvent(db, null, "long_topic_skipped", {
+      reason: topic.reason,
+      // The picker runs every tick while the slot is due: the audit counts slots, not ticks.
+      slot_at: due.toISOString(),
+      pollWinnerAdded: chosen.added,
+    }).catch(() => undefined);
     return undefined;
   }
+  if (chosen.how !== "picked" || chosen.added)
+    await logEvent(db, null, "long_topic_rescue", {
+      how: chosen.how,
+      pollWinnerAdded: chosen.added,
+      theme: topic.theme,
+      refusal: chosen.refusal ?? null,
+    }).catch(() => undefined);
   const cluster: StoryCluster = {
     hash: `longform:${dayKey(now, cfg.timezone)}:${topic.theme.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     headline: topic.title_idea,

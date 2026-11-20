@@ -1203,6 +1203,12 @@ export interface Config {
   gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
+  docDropRefusedChapter: boolean; // DOC_DROP_REFUSED_CHAPTER: a chapter the writer still refuses after widening its sources is dropped and the documentary goes on, while DOC_MIN_CHAPTERS can still be met and it is not the first (src/editorial/longrescue.ts); on by default
+  docMinChapters: number; // DOC_MIN_CHAPTERS: the fewest chapters a documentary goes out with (default 5)
+  longPollCandidate: boolean; // LONG_POLL_CANDIDATE: the viewer poll winner joins the weekly ranking's shortlist when it is missing (src/editorial/longrescue.ts); on by default
+  longPollFallback: boolean; // LONG_POLL_FALLBACK: a topic refusal that cites the poll is asked again without it, then falls back to the top of the shortlist; on by default
+  outputAudit: boolean; // OUTPUT_AUDIT: once a day, each lane's planned slots over the last week against what went public, a warning for any lane under half its plan or no long video for LONG_DROUGHT_DAYS, with the failed attempts grouped by cause (src/outputaudit.ts); on by default
+  longDroughtDays: number; // LONG_DROUGHT_DAYS: days without a public long video before the warning (default 7)
   peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
   /** MENTION_* (src/render/mentions.ts, src/assets/mentions.ts): a small picture of the exact thing a word names pops
    * up on that word, one setting per kind, all off by default; MENTION_MAX_PER_SHORT caps a Short (a long video adds
@@ -2280,6 +2286,12 @@ export function loadConfig(): Config {
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
   appleHwEncode: bool("APPLE_HW_ENCODE", false),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
+  docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),
+  docMinChapters: Math.max(1, int("DOC_MIN_CHAPTERS", 5)),
+  longPollCandidate: bool("LONG_POLL_CANDIDATE", true),
+  longPollFallback: bool("LONG_POLL_FALLBACK", true),
+  outputAudit: bool("OUTPUT_AUDIT", true),
+  longDroughtDays: Math.max(1, int("LONG_DROUGHT_DAYS", 7)),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
     ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
     signedClips: bool("SIGNED_CLIPS", false),

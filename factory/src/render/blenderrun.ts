@@ -211,6 +211,12 @@ export async function renderScene(r: SceneRun): Promise<SceneResult> {
       b.out.split("\n").filter(Boolean).slice(-3).join(" | ");
     throw new Error(`Blender ${r.scene} failed: ${why.slice(0, 400)}`);
   }
+  // A vertical clip opens a Short under its captions: words that could not be fitted inside their rows would sit
+  // under the captions or shrink to nothing, so the clip is refused and the Short keeps its flat card.
+  if (r.params.vertical === true && /"fitted":\s*false/.test(done[1]!)) {
+    if (!r.keepFrames) await fs.rm(frames, { recursive: true, force: true });
+    throw new Error(`Blender ${r.scene}: the words did not fit inside the vertical frame's safe rows`);
+  }
   const renderSeconds = (Date.now() - t0) / 1000;
   const t1 = Date.now();
   await fs.mkdir(path.dirname(r.outFile), { recursive: true });

@@ -398,11 +398,19 @@ def safe_margins(ctx):
     return 0.06, 0.94, 0.08, 0.92
 
 
-def fit_in_safe(ctx, cam, group, frames, pivot=None, tries=24):
+def band(ctx, top_px, bottom_px, left=None, right=None):
+    """Margins (left, right, bottom, top) for fit_in_safe from a band of rows in pixels from the top of the frame,
+    for text that must stay clear of something drawn over the clip (a Short's captions, its brand row)."""
+    l, r, _, _ = safe_margins(ctx)
+    return (l if left is None else left, r if right is None else right, 1 - bottom_px / ctx.height, 1 - top_px / ctx.height)
+
+
+def fit_in_safe(ctx, cam, group, frames, pivot=None, tries=24, margins=None):
     """Scales a group of objects about a pivot until every one is inside the safe frame on every listed frame.
-    group: the objects to scale (their children follow); frames: the frames the text is meant to be read on."""
+    group: the objects to scale (their children follow); frames: the frames the text is meant to be read on;
+    margins: (left, right, bottom, top) in place of the safe frame (see band)."""
     sc = bpy.context.scene
-    left, right, bottom, top = safe_margins(ctx)
+    left, right, bottom, top = margins or safe_margins(ctx)
     pivot = Vector(pivot) if pivot is not None else None
     for _ in range(tries):
         ok = True

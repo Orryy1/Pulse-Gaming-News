@@ -22,8 +22,11 @@ import {
 import { placeCallouts } from "../src/render/components/explainers/Anatomy.tsx";
 import {
   runningTotals,
+  tallCounterSize,
   tileUnit,
 } from "../src/render/components/explainers/HowMuch.tsx";
+import { fitLabel, fitValue, tallContentUsed } from "../src/render/components/explainers/layout.ts";
+import { textWidth } from "../src/render/components/packs/fit.ts";
 import {
   anchorFor,
   project,
@@ -579,4 +582,34 @@ test("explainers: a documentary moment's explainer becomes its filler shot, over
   assert.equal(fillerSound(pick.filler), "pop");
   assert.equal(fillerSettle(pick.filler, 300, 30), 100);
   for (const f of FILLER_FAMILIES) assert.ok(FAMILY_WORDS[f], f);
+});
+
+test("tall boards: bigger type for cards and the price build, the long video's sizes unchanged", () => {
+  assert.equal(fitLabel("Driver arrives", "steps", "tall", 3, "Scooter Bros delivery").size, 66);
+  assert.equal(fitLabel("Driver arrives", "steps", "wide", 3).size, 44);
+  assert.equal(fitLabel("Driver arrives", "timeline", "tall", 3).size, 52);
+  // One line while it can stay at the old largest size, so no word is left alone on a second line.
+  assert.equal(fitLabel("World loads around you", "chain", "tall", 2).lines.length, 1);
+  assert.equal(fitValue("$79.99", "versus", "tall", 2).size > 76, true);
+  // A short flow is centred in the board; a full one fills it.
+  assert.ok(tallContentUsed("chain", "tall", 2, "") !== undefined);
+  assert.equal(tallContentUsed("steps", "tall", 3, "Scooter Bros delivery"), undefined);
+  assert.equal(tallContentUsed("steps", "wide", 2, ""), undefined);
+});
+
+test("tall price build: the counter shrinks until it clears a total row set top left", () => {
+  const items = [
+    { label: "Console", value: "$999.99" },
+    { label: "Pro extra", value: "+$300" },
+    { label: "Total price", value: "$1,299.99" },
+  ];
+  const totals = runningTotals(items.map((x) => x.value));
+  const size = tallCounterSize(items, totals, Math.max(...totals), 952);
+  assert.ok(size < 176);
+  const flat = fitValue("$1,299.99", "howmuch", "tall", 3).size * 0.8;
+  const label = fitLabel("Total price", "howmuch", "tall", 3);
+  const rowW = Math.max(textWidth("$1,299.99", "anton", flat), textWidth("Total price", "inter", label.size, -0.3));
+  assert.ok(952 - textWidth("$1,299.99", "anton", size) >= rowW + 30);
+  // No total row: the counter keeps its full size.
+  assert.equal(tallCounterSize(items.slice(0, 2), totals.slice(0, 2), Math.max(...totals.slice(0, 2)), 952), 176);
 });

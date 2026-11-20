@@ -6,6 +6,7 @@ import {
   blenderSettings,
   blenderKey,
   contentKey,
+  lookVersion,
   inShare,
   planBlender,
   timelineItems,
@@ -617,5 +618,17 @@ test("every asset file a scene loads is in the manifest, and a render checks the
     entry.indexOf("check_assets(ctx)") > 0 &&
       entry.indexOf("check_assets(ctx)") < entry.indexOf("mod.build(ctx)"),
     "render_scene.py checks the asset folder before building the scene",
+  );
+});
+
+test("the vertical podium's own look version leaves every other scene's cached key alone", () => {
+  assert.equal(lookVersion("podium", { vertical: true }), 2);
+  assert.equal(lookVersion("podium", { rank: 1 }), undefined);
+  assert.equal(lookVersion("chapter", { vertical: true }), undefined);
+  // A landscape podium keeps the key it had before the vertical look changed (KIT_VERSION 1, no look version).
+  assert.equal(blenderKey("podium", { rank: 1, title: "A" }, 4.5), "1edc6e19b2f255d5");
+  assert.notEqual(
+    blenderKey("podium", { rank: 1, title: "A", vertical: true }, 3),
+    blenderKey("podium", { rank: 1, title: "A", vertical: false }, 3),
   );
 });

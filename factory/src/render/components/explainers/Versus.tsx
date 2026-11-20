@@ -21,6 +21,7 @@ import {
   useClock,
   Value,
 } from "./kit.tsx";
+import { versusGap } from "./layout.ts";
 import type { ExplainerProps } from "./types.ts";
 
 /** What a value counts in, its figure taken out ("$79.99" "$", "30 FPS target" "FPS target"). */
@@ -70,9 +71,9 @@ const VersusBody: React.FC<{
   const { frame, fps } = useClock();
   const { active } = progress(frame, at);
   const tall = o === "tall";
-  const gap = 120;
+  const gap = versusGap(o);
   const w = (content.width - gap) / 2;
-  const h = Math.min(tall ? 640 : 560, content.height - 30);
+  const h = Math.min(tall ? 700 : 560, content.height - (tall ? 20 : 30));
   const top = content.top + (content.height - h) / 2;
   const nums = e.items.map((x) => figure(x.value));
   const units = e.items.map((x) => unitOf(x.value ?? ""));
@@ -82,6 +83,7 @@ const VersusBody: React.FC<{
   const lead = e.items.findIndex((x) => x.lead);
   const vsIn = land(frame, fps, Math.min(at[0]!, at[1]!) + 8);
   const pulse = 0.5 + 0.5 * Math.sin(frame / 7);
+  const vs = tall ? 116 : 104;
   return (
     <>
       {e.items.map((it, i) => {
@@ -125,13 +127,13 @@ const VersusBody: React.FC<{
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: tall ? 26 : 22,
+                gap: tall ? 30 : 22,
                 padding: "30px 30px",
               }}
             >
               <IconDisc
                 icon={it.icon}
-                size={tall ? 116 : 104}
+                size={tall ? 150 : 104}
                 accent={colour}
                 p={count}
                 active={i === active}
@@ -174,10 +176,10 @@ const VersusBody: React.FC<{
       <div
         style={{
           position: "absolute",
-          left: content.left + w + gap / 2 - 52,
-          top: top + h / 2 - 52,
-          width: 104,
-          height: 104,
+          left: content.left + w + gap / 2 - vs / 2,
+          top: top + h / 2 - vs / 2,
+          width: vs,
+          height: vs,
           borderRadius: "50%",
           background: COLOUR.ink,
           boxShadow: `0 0 0 3px ${accent}, 0 0 ${20 + 18 * pulse}px ${accent}88`,
@@ -195,7 +197,7 @@ const VersusBody: React.FC<{
           style={{
             fontFamily: BODY,
             fontWeight: 900,
-            fontSize: 40,
+            fontSize: tall ? 44 : 40,
             letterSpacing: 1,
           }}
         >

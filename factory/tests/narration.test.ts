@@ -266,3 +266,11 @@ test("a figure and its word, split or hyphenated anywhere, are the same to the n
   const c = checkNarration(meant, heard);
   assert.deepEqual(c.issues, []);
 });
+
+test("Whisper's own spelling of the same sounds is no voice fault: Mount Kalaga written as Mt. Calaga (20 Nov)", async () => {
+  const { soundKey } = await import("../src/qa/narration.ts");
+  assert.equal(soundKey(["mount", "kalaga"]), soundKey(["mt", "calaga"]));
+  assert.equal(soundKey(["kronos"]), soundKey(["cronos"]));
+  assert.notEqual(soundKey(["kalaga"]), soundKey(["kaluga"]));
+  assert.notEqual(soundKey(["city"]), soundKey(["kity"]));
+});

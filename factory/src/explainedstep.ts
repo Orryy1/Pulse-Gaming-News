@@ -193,6 +193,7 @@ export async function chooseWeekStory(
       lookups: s.cfg.demandLookups,
       minViews: s.cfg.demandMinViews,
       now,
+      staleDays: s.cfg.demandStaleDays,
     }).catch((err) => {
       log("warn", "explained demand check failed", {
         error: errorMessage(err),

@@ -3368,6 +3368,7 @@ async function demandRanked(
     lookups: s.cfg.demandLookups,
     minViews: s.cfg.demandMinViews,
     now: s.now(),
+    staleDays: s.cfg.demandStaleDays,
   }).catch((err) => {
     log("warn", "demand check failed", { error: errorMessage(err) });
     return new Map<string, Demand>();
@@ -3390,7 +3391,7 @@ async function reportDemand(
 ): Promise<void> {
   if (!s.cfg.demandCheck || !s.searchDemand) return;
   await s
-    .notify({ content: demandLine(lane, picked, d, skipped) })
+    .notify({ content: demandLine(lane, picked, d, skipped, s.now()) })
     .catch(() => undefined);
 }
 

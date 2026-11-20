@@ -384,6 +384,8 @@ export interface Config {
   demandMinViews: number;
   /** Search pages fetched per pick at most; the rest wait for the cache (24 h). */
   demandLookups: number;
+  /** Days an older cached demand reading may stand in when no fresh one can be had (bot-check pause, failed search, lookups spent); 0 = never. */
+  demandStaleDays: number;
   /** A title or hook phrase in this many of the last 30 days' Shorts already is sent back for a rewrite; 0 = off (src/authenticity.ts). */
   repeatMax: number;
   spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
@@ -1816,6 +1818,7 @@ export function loadConfig(): Config {
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
+    demandStaleDays: Math.max(0, int("DEMAND_STALE_DAYS", 10)),
     repeatMax: Math.max(0, int("REPEAT_MAX", 3)),
     // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
     spareUploads: bool("SPARE_UPLOADS", false),

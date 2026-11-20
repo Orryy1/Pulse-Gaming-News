@@ -83,7 +83,7 @@ void main() {
   // Air: the far depths lean towards a lifted copy of the picture's own average colour (its smallest mip).
   vec3 avg = textureLod(uColour, vec2(0.5), 14.0).rgb;
   vec3 air = mix(avg, vec3(0.86, 0.88, 0.92), 0.45);
-  c = mix(c, air, uHaze * smoothstep(0.5, 0.0, vDepth));
+  c = mix(c, air, uHaze * (1.0 - smoothstep(0.0, 0.5, vDepth)));
   // The stills' usual grade (contrast 1.03, saturation 1.05), so a shot matches the ones round it.
   c = (c - 0.5) * 1.03 + 0.5;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -246,7 +246,10 @@ export const DepthCam: React.FC<{
         const [im, dm, fm, fdm] = await Promise.all(
           [src, mesh.depth, mesh.far, mesh.farDepth].map(loadImage),
         );
-        if (!live) return;
+        if (!live) {
+          release();
+          return;
+        }
         const prog = program(gl);
         const g = grid(aspect);
         const vao = gl.createVertexArray();
@@ -291,6 +294,15 @@ export const DepthCam: React.FC<{
     })();
     return () => {
       live = false;
+      // Free the GPU memory now rather than at garbage collection: a long video mounts many of these.
+      const s = state.current;
+      if (s) {
+        for (const t of [s.front.colour, s.front.depth, s.back.colour, s.back.depth]) s.gl.deleteTexture(t);
+        s.gl.deleteProgram(s.prog);
+        s.gl.getExtension("WEBGL_lose_context")?.loseContext();
+        state.current = null;
+      }
+      release();
     };
   }, [src, mesh.depth, mesh.far, mesh.farDepth, aspect, handle]);
 

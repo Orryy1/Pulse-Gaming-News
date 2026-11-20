@@ -3972,7 +3972,8 @@ export const Long: React.FC<LongProps> = (props) => {
       if (sh.media.type !== "image") return;
       const im = props.images[sh.media.index];
       if (!im?.layers?.mesh || im.aspect < 0.9 || im.kind === "photo" || im.kind === "sketch") return;
-      if (focusAt.has(i) || retro.has(i) || photoPlan.displays.has(i)) return;
+      // The opening shot keeps its fade from black and a punched shot its punch-in (the plain Still draws both).
+      if (i === 0 || punches.has(i) || focusAt.has(i) || retro.has(i) || photoPlan.displays.has(i)) return;
       const mv = cameraMoves?.plan.shots.get(i);
       if (mv && ["orbit", "rack", "dolly", "freeze", "emotion"].includes(mv.kind)) return;
       const w = windows.find((x) => {
@@ -4002,6 +4003,8 @@ export const Long: React.FC<LongProps> = (props) => {
           ...retro.keys(),
           ...photoPlan.displays.keys(),
           ...(cameraMoves?.plan.shots.keys() ?? []),
+          ...punches.keys(),
+          0,
         ]),
       )
     : new Map<number, { phrase: string; window: number; at: number }>();
@@ -4015,7 +4018,8 @@ export const Long: React.FC<LongProps> = (props) => {
       if (x.kind === "beat" && x.visual?.kind === "chapter" && e !== undefined && x.visual.secondary)
         games.set(e, x.visual.secondary);
     });
-    return compareWipePlan(windows, words, games, props.images, fps);
+    // A line already set behind its subject (DEPTH_TYPE) keeps that: a wipe over it would hide both.
+    return compareWipePlan(windows, words, games, props.images, fps).filter((w) => !typedWindows.has(w.window));
   })();
 
   const richSoundAt = new Map<number, number>();

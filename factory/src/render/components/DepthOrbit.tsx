@@ -182,7 +182,10 @@ export const DepthOrbit: React.FC<{
         const [im, dm, fm, fdm] = await Promise.all(
           [src, mesh.depth, mesh.far, mesh.farDepth].map(loadImage),
         );
-        if (!live) return;
+        if (!live) {
+          release();
+          return;
+        }
         const prog = program(gl);
         const g = grid(aspect);
         const vao = gl.createVertexArray();
@@ -223,6 +226,15 @@ export const DepthOrbit: React.FC<{
     })();
     return () => {
       live = false;
+      // Free the GPU memory now rather than at garbage collection: a long video mounts many of these.
+      const s = state.current;
+      if (s) {
+        for (const t of [s.front.colour, s.front.depth, s.back.colour, s.back.depth]) s.gl.deleteTexture(t);
+        s.gl.deleteProgram(s.prog);
+        s.gl.getExtension("WEBGL_lose_context")?.loseContext();
+        state.current = null;
+      }
+      release();
     };
   }, [src, mesh.depth, mesh.far, mesh.farDepth, aspect, handle]);
 

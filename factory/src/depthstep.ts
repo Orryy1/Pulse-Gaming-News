@@ -193,7 +193,13 @@ export async function meshStills(
     cfg.depthOrbit || cfg.subjectPop ? orbitCandidates(a.images, cfg.depthOrbitMax) : [],
   );
   if (cfg.parallaxDeep) for (const k of deepCandidates(a.images, cfg.parallaxDeepMax)) chosen.add(k);
-  const picks = [...chosen].sort((x, y) => x - y).filter((k) => !a.images[k]!.layers?.mesh);
+  // With PARALLAX_DEEP a still meshed earlier with the older inpaint is made again with the push-pull fill.
+  const picks = [...chosen]
+    .sort((x, y) => x - y)
+    .filter((k) => {
+      const m = a.images[k]!.layers?.mesh;
+      return !m || (cfg.parallaxDeep && m.fill !== "pushpull");
+    });
   if (!picks.length) return 0;
   const made = await d.makeMeshes(
     cfg.parallaxPython,

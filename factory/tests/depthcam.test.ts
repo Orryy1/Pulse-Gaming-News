@@ -200,3 +200,38 @@ test("depth camera: off, no maps are made; on, its stills get maps painted with 
   await meshStills(orbit.d, { headline: "H", episodeDir: "/e", images: deepImages() });
   assert.equal(orbit.calls[0]!.fill, undefined);
 });
+
+import { camMatrix, camPose } from "../src/render/depthcam.ts";
+import { project, reliefZ } from "../src/render/orbit.ts";
+
+test("depth camera: checked densely and independently, no point of the plane's edge ever enters the frame", () => {
+  // The review's worst case (a 3.5:1 still, a truck, a far subject) among a spread of shapes and paths.
+  for (const frameAspect of [16 / 9, 9 / 16])
+    for (const aspect of [1.2, 16 / 9, 2.4, 3.5])
+      for (const pivot of [0.2, 0.6, 0.95])
+        for (let i = 0; i < 6; i++)
+          for (const fx of [0, 0.3, 1]) {
+            const plan = depthCamPlan(i, 120, 30);
+            const o = camOverscan(plan, aspect, frameAspect, pivot, fx);
+            const { w, h, offsetX } = camPlane(aspect, frameAspect, o, fx);
+            for (let k = 0; k <= 60; k++) {
+              const m = camMatrix(camPose(plan, camProgress(k / 60, plan.emphasis)), frameAspect, reliefZ(pivot));
+              for (const z of [0, reliefZ(0.5), reliefZ(1)])
+                for (let q = 0; q <= 32; q++) {
+                  const u = q / 32 - 0.5;
+                  for (const [x, y] of [
+                    [-w / 2, u * h],
+                    [w / 2, u * h],
+                    [u * w, -h / 2],
+                    [u * w, h / 2],
+                  ] as const) {
+                    const [ex, ey] = project(m, [x + offsetX, y, z]);
+                    assert.ok(
+                      !(Math.abs(ex) < 1 && Math.abs(ey) < 1),
+                      `edge inside frame: ${plan.kind} aspect ${aspect} frame ${frameAspect} pivot ${pivot} fx ${fx}`,
+                    );
+                  }
+                }
+            }
+          }
+});

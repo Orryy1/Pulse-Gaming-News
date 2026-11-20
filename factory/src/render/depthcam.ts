@@ -175,9 +175,14 @@ export function camPlane(
   return { w, h, offsetX };
 }
 
+/** How far outside the frame (normalised units) every point of the plane's edge must stay: a pixel of margin. */
+export const EDGE_MARGIN = 1.005;
+
 /**
- * Whether the plane's edges stay out of frame for the whole move (pure): the edges' midpoints, at the nearest and
- * farthest depth the surface takes, project outside the frame at every sampled moment.
+ * Whether the plane's edges stay out of frame for the whole move (pure): nine points along each edge, corners
+ * included, at the nearest and farthest depth the surface takes, never project inside the frame at any sampled
+ * moment. The camera aims a little short of its travel, so it turns slightly and the edges are not parallel to
+ * the frame: the corners matter, not only the midpoints.
  */
 export function camEdgesHidden(
   plan: Pick<DepthCamPlan, "kind" | "dir" | "emphasis">,
@@ -195,16 +200,20 @@ export function camEdgesHidden(
       frameAspect,
       pivotZ,
     );
-    for (const z of [0, reliefZ(1)]) {
-      for (const sx of [-1, 1]) {
-        const [ex] = project(m, [(sx * w) / 2 + offsetX, 0, z]);
-        if (Math.abs(ex) < 1) return false;
+    for (const z of [0, reliefZ(1)])
+      for (let q = 0; q <= 8; q++) {
+        const u = q / 8 - 0.5;
+        const edge: Array<[number, number]> = [
+          [-w / 2, u * h],
+          [w / 2, u * h],
+          [u * w, -h / 2],
+          [u * w, h / 2],
+        ];
+        for (const [x, y] of edge) {
+          const [ex, ey] = project(m, [x + offsetX, y, z]);
+          if (Math.abs(ex) < EDGE_MARGIN && Math.abs(ey) < EDGE_MARGIN) return false;
+        }
       }
-      for (const sy of [-1, 1]) {
-        const [, ey] = project(m, [offsetX, (sy * h) / 2, z]);
-        if (Math.abs(ey) < 1) return false;
-      }
-    }
   }
   return true;
 }

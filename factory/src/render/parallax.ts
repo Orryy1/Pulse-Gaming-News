@@ -38,6 +38,8 @@ export interface Mesh {
   pivot: number;
   /** The subject's footprint, 32 x 18 cells row by row, one digit 0-9 each (src/render/popout.ts). */
   grid: string;
+  /** How the place behind the subject was painted: "pushpull" (PARALLAX_DEEP); absent, the older inpaint. */
+  fill?: "pushpull";
 }
 
 /** Pictures worth layering: wide stills shown full bleed (not box art, archive prints or portraits). */
@@ -171,6 +173,7 @@ export async function makeMeshes(
         farDepth: rel(d.farDepth),
         pivot: d.pivot,
         grid: d.grid,
+        ...(fill ? { fill } : {}),
       });
     log("info", "3D photo maps", {
       made: r.done.length,

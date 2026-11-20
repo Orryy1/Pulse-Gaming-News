@@ -165,9 +165,20 @@ export function depthTypePlan(
   return out;
 }
 
-/** Words that make a sentence a comparison. */
-const COMPARE_CUE =
-  /\b(than|versus|vs\.?|compared|comparison|against|unlike|whereas|while|next to)\b/i;
+/** Words that make a sentence a comparison ("while" and "against" were too loose: "the journey while you..."). */
+const COMPARE_CUE = /\b(than|versus|vs\.?|compared|comparison|unlike|whereas|next to)\b/i;
+
+/**
+ * A case-sensitive pattern for a name as written in the transcript: each word with its capital (or figure) first,
+ * the rest in any case, so "Journey" the game is told from "the journey" (the series word "gta" is not checked).
+ */
+function capitalised(name: string): RegExp {
+  const words = name.split(" ").filter((w) => w && w !== "gta");
+  const word = (w: string) =>
+    (/[a-z]/.test(w[0]!) ? w[0]!.toUpperCase() : w[0]!) +
+    [...w.slice(1)].map((c) => (/[a-z]/.test(c) ? "[" + c + c.toUpperCase() + "]" : c)).join("");
+  return new RegExp("(^|[^A-Za-z0-9])" + words.map(word).join("[^A-Za-z0-9]+") + "($|[^A-Za-z0-9])");
+}
 
 /** A game's name as spoken: lower case, "grand theft auto" folded to "gta", numerals kept. */
 const fold = (s: string) =>
@@ -191,6 +202,17 @@ export function gameCallNames(game: string): string[] {
 export const COMPARE_SECONDS = 4;
 export const COMPARE_MAX = 6;
 
+export interface CompareWipe {
+  from: number;
+  len: number;
+  left: number;
+  right: number;
+  leftGame: string;
+  rightGame: string;
+  /** The window the comparison is said in (its index in `windows`). */
+  window: number;
+}
+
 /**
  * The comparison wipes (pure): a window whose words carry a comparison cue and name another chapter's game, inside
  * a chapter that has a wide picture of its own game and where the other game has one too. At most COMPARE_MAX, one
@@ -202,22 +224,8 @@ export function compareWipePlan(
   chapterGames: ReadonlyMap<number, string>,
   images: readonly IdeaImage[],
   fps: number,
-): Array<{
-  from: number;
-  len: number;
-  left: number;
-  right: number;
-  leftGame: string;
-  rightGame: string;
-}> {
-  const out: Array<{
-    from: number;
-    len: number;
-    left: number;
-    right: number;
-    leftGame: string;
-    rightGame: string;
-  }> = [];
+): CompareWipe[] {
+  const out: CompareWipe[] = [];
   const best = (entry: number) =>
     images.findIndex(
       (im) =>
@@ -227,16 +235,15 @@ export function compareWipePlan(
         !im.wordy,
     );
   const used = new Set<number>();
-  for (const w of windows) {
+  for (const [k, w] of windows.entries()) {
     if (out.length >= COMPARE_MAX || used.has(w.entry)) continue;
     const own = chapterGames.get(w.entry);
     if (!own) continue;
-    const text = fold(
-      words
-        .filter((x) => x.start >= w.start - 0.05 && x.start < w.end)
-        .map((x) => x.text ?? "")
-        .join(" "),
-    );
+    const raw = words
+      .filter((x) => x.start >= w.start - 0.05 && x.start < w.end)
+      .map((x) => x.text ?? "")
+      .join(" ");
+    const text = fold(raw);
     if (!COMPARE_CUE.test(text)) continue;
     const ownNames = gameCallNames(own);
     let other: number | undefined;
@@ -249,7 +256,7 @@ export function compareWipePlan(
         names.some((n) =>
           new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
             text,
-          ),
+          ) && capitalised(n).test(raw.replace(/Grand Theft Auto/g, "GTA")),
         )
       ) {
         other = entry;
@@ -266,14 +273,7 @@ export function compareWipePlan(
       Math.max(0, Math.round(w.end * fps) - from),
     );
     if (len < 2 * fps) continue;
-    out.push({
-      from,
-      len,
-      left,
-      right,
-      leftGame: own,
-      rightGame: chapterGames.get(other)!,
-    });
+    out.push({ from, len, left, right, leftGame: own, rightGame: chapterGames.get(other)!, window: k });
     used.add(w.entry);
   }
   return out;

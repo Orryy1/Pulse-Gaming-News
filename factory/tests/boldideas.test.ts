@@ -166,6 +166,7 @@ test("compare wipe: a comparison naming another chapter's game, both with pictur
     right: 0,
     leftGame: "Grand Theft Auto IV",
     rightGame: "Grand Theft Auto: San Andreas",
+    window: 0,
   });
   // No comparison word, no wipe; a chapter without a picture of the other game, no wipe.
   assert.equal(compareWipePlan([ws[1]!], words, games, imgs, 30).length, 0);
@@ -180,4 +181,21 @@ test("compare wipe: a game is called by its distinctive name, never by the serie
   ]);
   // "GTA V" folds to "gta v"; "v" alone is too short to count.
   assert.deepEqual(gameCallNames("Grand Theft Auto V"), ["gta v"]);
+});
+
+test("compare wipe: a game's name must be written as a name, so an ordinary word never triggers it", () => {
+  const games = new Map([
+    [0, "Journey"],
+    [1, "Grand Theft Auto IV"],
+  ]);
+  const imgs: IdeaImage[] = [
+    { kind: "hero", aspect: 1.78, beatIndex: 0 },
+    { kind: "hero", aspect: 1.78, beatIndex: 1 },
+  ];
+  const ws: IdeaWindow[] = [{ entry: 1, moment: 1, start: 0, end: 5, at: 1 }];
+  const say = (line: string) => line.split(" ").map((text, k) => ({ start: k * 0.3, text }));
+  assert.equal(compareWipePlan(ws, say("the journey felt longer than before"), games, imgs, 30).length, 0);
+  assert.equal(compareWipePlan(ws, say("it felt longer than Journey ever did"), games, imgs, 30).length, 1);
+  // "while" is no longer a comparison word.
+  assert.equal(compareWipePlan(ws, say("Journey played while the city slept"), games, imgs, 30).length, 0);
 });

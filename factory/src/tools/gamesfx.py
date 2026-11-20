@@ -13,6 +13,10 @@ licensed song. The song is a Content ID risk; the game's own sound is what a Sho
      over WINDOW seconds, at 40 to 180 beats a minute, the lag and twice the lag both lining up) WHILE a score is
      playing (the removed tonal music at least MUSIC_OVER_DB above what is kept), the stem is taken down by GATE_DB,
      eased over a quarter second. Steady game sounds with no score over them (footsteps, rotors, automatic fire) stay.
+     Where the score drowns the game (the removed music MUSIC_DOMINANT_DB above what is kept) the stem is gated too.
+  Measured 20 Nov 2026 (landmark fingerprint of each stem against a music-only reference of its own source): the stems
+  keep about 1-2% of the reference's hashes, against 15-48% for the original sound; stricter gating barely moved it,
+  so what remains is bleed inside the game sound itself. Not proof of Content ID safety: a private upload is.
 Usage: python -I gamesfx.py <in.wav 44.1 kHz stereo> <outdir>
   -> outdir/sfx.wav (the game's sound), outdir/music.wav (everything taken out, for checks), outdir/sfx.json
      {"version", "step", "sfx": [dB], "music": [dB], "beat": [0-1], "gate": [dB], "tonal": [...], "kept", "gatedShare"}
@@ -38,6 +42,9 @@ BEAT_MAX = 60 / 40
 BEAT_GATE = 0.45  # autocorrelation peak at which a window repeats on a beat
 MUSIC_OVER_DB = 3.0  # ... and counts as a groove only while the removed music is this much louder than what is kept
 GATE_DB = -24.0
+# Wherever the score drowns the game (the removed music this much louder than what is kept), whatever is left is mostly
+# the score's own bleed: gated too, beat or not (set by the fingerprint leak check, 20 Nov 2026).
+MUSIC_DOMINANT_DB = float(os.environ.get("GAMESFX_MUSIC_DOMINANT_DB", "9"))
 STEMS = ("drums", "bass", "other", "vocals")
 
 
@@ -121,7 +128,7 @@ def gate_steps(times, scores, sfx_db, music_db):
     m = len(sfx_db)
     t = (np.arange(m) + 0.5) * STEP
     beat = np.interp(t, times, scores) if len(times) else np.zeros(m)
-    on = (beat >= BEAT_GATE) & (music_db >= sfx_db + MUSIC_OVER_DB)
+    on = ((beat >= BEAT_GATE) & (music_db >= sfx_db + MUSIC_OVER_DB)) | (music_db >= sfx_db + MUSIC_DOMINANT_DB)
     db = np.where(on, GATE_DB, 0.0)
     # Close small holes and smooth: a 3-step (0.75 s) moving average of the gate.
     if m >= 3:

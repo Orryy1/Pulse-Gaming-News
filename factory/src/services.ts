@@ -66,6 +66,9 @@ import {
   searchPixabayImages,
 } from "./assets/libraries.ts";
 import { searchPress } from "./assets/press.ts";
+import { pressKitRoot, pressWithKits } from "./sources/presskits.ts";
+import { ensurePressIndex } from "./sources/refresh.ts";
+import { steamAchievements } from "./sources/achievementart.ts";
 import { breaker } from "./lib/breaker.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import path from "node:path";
@@ -342,7 +345,15 @@ export function createServices(db: Db, cfg: Config): Services {
         },
         q,
       ),
-    searchPress: (game) => (cfg.libraryPress ? searchPress(game) : Promise.resolve([])),
+    // PRESS_KITS: the game's indexed press kit pictures first, then the live press feeds (LIBRARY_PRESS).
+    searchPress: (game) =>
+      (cfg.pressKits ? ensurePressIndex(pressKitRoot(cfg.dataDir), game).catch(() => false) : Promise.resolve(false)).then(() =>
+      pressWithKits({
+        root: pressKitRoot(cfg.dataDir),
+        game,
+        kits: cfg.pressKits,
+        ...(cfg.libraryPress ? { live: () => searchPress(game) } : {}),
+      })),
     // PEOPLE_INSETS: a named person's own Wikidata photo, under a clear free licence, cut square on the face (Apple
     // Vision's face finder on the Mac mini).
     personPortrait: (c, dir, slot) =>
@@ -433,7 +444,11 @@ export function createServices(db: Db, cfg: Config): Services {
       trailerFrames({ episodeDir: dir, gameTitle, ytdlp: cfg.ytdlpPath }, trailer, count, textCheck),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
-    achievements: (appId) => fetchAchievements(appId),
+    // ACHIEVEMENT_ART with STEAM_API_KEY: Steam's official Web API schema; otherwise the public community page.
+    achievements: (appId) =>
+      cfg.achievementArt && cfg.steamApiKey
+        ? steamAchievements(appId, { apiKey: cfg.steamApiKey }).then((r) => r.list)
+        : fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
     verdictCandidates: (exclude) => verdictCandidates(exclude),

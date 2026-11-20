@@ -16,6 +16,7 @@
 // SEQUEL_WINNERS (src/sequels.ts) puts one thing ahead of the score: the long version of a Why Short that already did
 // well on the channel, since proof from our own viewers beats a prediction. It is still never a repeat of a documentary.
 import fs from "node:fs/promises";
+import { leadText, readWikiLeads, wikiLeadsRoot } from "./sources/wikileads.ts";
 import {
   DOC_FRANCHISES,
   DOC_STORIES,
@@ -670,6 +671,8 @@ export interface PickDeps {
   ) => Promise<{ reviews?: number; players?: number } | undefined>;
   /** A Wikipedia overview's text, for the arc. */
   overview?: (c: DocCandidate) => Promise<string | undefined>;
+  /** WIKI_LEADS: fan wiki leads already checked at their primary sources, for the arc (src/sources/wikileads.ts). */
+  leads?: (c: DocCandidate) => Promise<string | undefined>;
   demand?: DemandLookup;
   /** At most this many candidates get the slow lookups above. */
   lookups: number;
@@ -730,6 +733,10 @@ export async function gatherDocSignals(
       const text = await d.overview(c).catch(() => undefined);
       if (text) s.overview = text.slice(0, 6000);
     }
+    if (d.leads) {
+      const more = await d.leads(c).catch(() => undefined);
+      if (more) s.overview = `${s.overview ?? ""}\n${more}`.trim().slice(0, 8000);
+    }
     if (d.demand) {
       const q = DEMAND_QUERY[c.subject] ?? c.subject;
       const dem = await d.demand(q).catch(() => undefined);
@@ -756,7 +763,13 @@ export interface PickServices {
 /** The pick's inputs from the database (read-only) and the slow lookups through the services. */
 export async function pickDeps(
   s: PickServices,
-  o: { now: Date; lookups: number; demand?: DemandLookup; offline?: boolean },
+  o: {
+    now: Date;
+    lookups: number;
+    demand?: DemandLookup;
+    offline?: boolean;
+    leadsDir?: string;
+  },
 ): Promise<PickDeps> {
   const { db } = s;
   const { now } = o;
@@ -836,6 +849,12 @@ export async function pickDeps(
               6000,
             )
           )?.text,
+    ...(o.leadsDir
+      ? {
+          leads: async (c: DocCandidate) =>
+            leadText(await readWikiLeads(o.leadsDir!, c.subject)) || undefined,
+        }
+      : {}),
     demand: o.demand,
     lookups: o.lookups,
     now,
@@ -852,6 +871,7 @@ export async function rankBreakoutDocs(
     offline?: boolean;
     extra?: DocCandidate[];
     singleSubject?: boolean;
+    leadsDir?: string;
   },
 ): Promise<DocScore[]> {
   const cands = [...(o.extra ?? []), ...docCandidates()];
@@ -883,6 +903,8 @@ export async function pickBreakoutDoc(
       sequelWinners?: boolean;
       docPickSingleSubject?: boolean;
       filmSlateFile?: string;
+      wikiLeads?: boolean;
+      dataDir?: string;
     };
     now(): Date;
   },
@@ -905,6 +927,9 @@ export async function pickBreakoutDoc(
     demand: docDemandLookup(s, () => s.now()),
     extra: [...extra, ...slate],
     singleSubject: s.cfg.docPickSingleSubject,
+    ...(s.cfg.wikiLeads && s.cfg.dataDir
+      ? { leadsDir: wikiLeadsRoot(s.cfg.dataDir) }
+      : {}),
   });
   const open = ranked.filter((x) => !x.excluded);
   // The strongest winner not yet made goes first, in the order sequelWinners ranked them.

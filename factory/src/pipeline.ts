@@ -763,6 +763,8 @@ import {
   recentShapesFrom,
   type RoomStepInput,
 } from "./roomstep.ts";
+import { leadPrimaries, readWikiLeads, wikiLeadsRoot } from "./sources/wikileads.ts";
+import { ensureWikiLeads } from "./sources/refresh.ts";
 import {
   firstSecondArmFor,
   firstSecondEvent,
@@ -8174,8 +8176,18 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ).map((r) => r.room),
       )
     : [];
+  // WIKI_LEADS: primary sources that back fan wiki leads about this game, read from the stored leads (no fetch here).
+  // A missing or week-old leads file is refreshed in the background for the next story about the game.
+  if (s.cfg.wikiLeads && cluster.gameHint) void ensureWikiLeads(wikiLeadsRoot(s.cfg.dataDir), cluster.gameHint).catch(() => false);
+  const leadSources =
+    s.cfg.wikiLeads && cluster.gameHint
+      ? await readWikiLeads(wikiLeadsRoot(s.cfg.dataDir), cluster.gameHint)
+          .then((f) => leadPrimaries(f, 2, [cluster.headline, ...cluster.items.map((i) => `${i.title} ${i.summary}`)].join("\n")))
+          .catch(() => [])
+      : [];
   // SCRIPT_ROOM's inputs: the story's sources, the vault and the length lane, as the normal writer has them.
   const roomInput = (): RoomStepInput => ({
+    ...(leadSources.length ? { leadPrimaries: leadSources } : {}),
     recent: roomRecent,
     llm: s.llm,
     cfg: s.cfg,

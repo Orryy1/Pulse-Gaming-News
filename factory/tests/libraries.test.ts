@@ -543,10 +543,12 @@ test("press: every site is asked once, results interleave, a failing site gives 
     false,
     "the Steam Deck kit is for Steam Deck lines only",
   );
+  // PlayStation Blog's robots.txt forbids its search (20 Nov 2026): its main feed is read instead.
   assert.equal(
     asked.filter((u) => u.includes("/search/gears%20war%20e-day/")).length,
-    4,
+    3,
   );
+  assert.ok(asked.includes("https://blog.playstation.com/feed/"));
 });
 
 test("press for a Short: downloaded, too-small pictures dropped, credited; nothing without the setting", async () => {

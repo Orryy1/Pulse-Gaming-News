@@ -58,6 +58,8 @@ export interface LiveApi {
   broadcast(id: string): Promise<BroadcastState | undefined>;
   stream(id: string): Promise<StreamState | undefined>;
   end(id: string): Promise<void>;
+  /** Broadcasts still active (live or testing) on this stream, other than a new one: they would take its video. */
+  activeOn?(streamId: string): Promise<string[]>;
 }
 
 export class YouTubeLive implements LiveApi {
@@ -220,6 +222,13 @@ export class YouTubeLive implements LiveApi {
   }
 
   /** Ends a broadcast now (the archive is kept). */
+  async activeOn(streamId: string): Promise<string[]> {
+    const j = await this.call<{
+      items?: Array<{ id: string; contentDetails?: { boundStreamId?: string } }>;
+    }>("GET", "liveBroadcasts?part=id,contentDetails&broadcastStatus=active&broadcastType=all&maxResults=50");
+    return (j.items ?? []).filter((x) => x.contentDetails?.boundStreamId === streamId).map((x) => x.id);
+  }
+
   async end(id: string): Promise<void> {
     await this.call(
       "POST",

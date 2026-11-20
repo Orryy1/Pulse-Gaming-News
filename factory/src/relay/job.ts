@@ -424,6 +424,15 @@ export class RelayJob {
         privacy: s.privacy,
         start: new Date(this.d.now()),
       });
+      // 20 Nov 2026: a test broadcast from the day before was still "live" on the reusable stream, so today's video
+      // went to it and today's public broadcast sat at "ready". Anything else still active on the stream is ended first.
+      if (this.d.yt.activeOn) {
+        const stale = (await this.d.yt.activeOn(ingest.streamId).catch(() => [] as string[])).filter((x) => x !== id);
+        for (const old of stale) {
+          await this.d.yt.end(old).catch(() => undefined);
+          this.d.log("warn", "relay: ended a leftover broadcast still holding the stream", { broadcast: old });
+        }
+      }
       await this.d.yt.bind(id, ingest.streamId);
       cur.broadcastId = id;
       cur.streamId = ingest.streamId;

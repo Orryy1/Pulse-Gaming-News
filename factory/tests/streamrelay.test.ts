@@ -238,6 +238,11 @@ class FakeYt implements LiveApi {
   states = new Map<string, BroadcastState>();
   streamStatus = "active";
   fail?: Error;
+  /** Broadcasts left active on stream S1 from an earlier day. */
+  leftover: string[] = [];
+  async activeOn(streamId: string) {
+    return streamId === "S1" ? this.leftover.filter((x) => !this.ended.includes(x)) : [];
+  }
   async ingest() {
     return { streamId: "S1", url: INGEST };
   }
@@ -737,4 +742,13 @@ test("relay warm-up: a drop after a failed setup starts the warm-up again", asyn
   r.advance(11 * 60_000);
   await r.job.tick();
   assert.equal(r.yt.made.length, 0, "a fresh warm-up first, no broadcast at once");
+});
+
+test("relay: a broadcast left active on the stream from an earlier day is ended before the new one is bound", async () => {
+  const r = await rig({ GTA_DAILY_START: "2026-11-19" });
+  r.yt.leftover = ["OLD1"];
+  await r.job.tick();
+  assert.deepEqual(r.yt.ended, ["OLD1"]);
+  assert.equal(r.yt.made.length, 1);
+  assert.deepEqual(r.yt.bound, [["B1", "S1"]]);
 });

@@ -697,3 +697,44 @@ test("relay warm-up: a gap in streamlink's data starts the clock again", async (
   await r.job.tick();
   assert.equal(r.yt.made.length, 1);
 });
+
+test("relay warm-up: a setup failure is told once and tried again every 10 minutes", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  const ingest = r.yt.ingest.bind(r.yt);
+  let calls = 0;
+  r.yt.ingest = async () => {
+    calls++;
+    throw new YouTubeApiError(403, ["liveStreamingNotEnabled"], "no");
+  };
+  await r.job.tick();
+  r.advance(60_000);
+  await r.job.tick();
+  assert.equal(calls, 1, "not every tick");
+  assert.equal(r.notes.length, 1);
+  assert.match(r.notes[0]!, /not switched on/);
+  r.yt.ingest = ingest;
+  r.advance(10 * 60_000);
+  await r.job.tick();
+  assert.equal(r.pipes.length, 1, "the warm-up starts once YouTube allows it");
+  assert.equal(r.yt.made.length, 0);
+});
+
+test("relay warm-up: a drop after a failed setup starts the warm-up again", async () => {
+  const r = await rig({ STREAM_RELAY_MIN_LIVE_MINUTES: "3" });
+  await r.job.tick();
+  for (let m = 1; m <= 4; m++) {
+    r.advance(60_000);
+    r.pipes[0]!.p.lastData = r.now() - 1_000;
+    if (m === 4) r.yt.fail = new YouTubeApiError(500, [], "boom");
+    await r.job.tick();
+  }
+  assert.equal(r.yt.made.length, 0, "the setup failed");
+  r.yt.fail = undefined;
+  r.setLive(undefined);
+  await r.job.tick();
+  assert.equal(r.job.state.current?.warmedUp, false);
+  r.setLive({ id: "T9", startedAt: "2026-11-21T18:06:00Z", title: "day 3", game: "Grand Theft Auto VI", viewers: 1 });
+  r.advance(11 * 60_000);
+  await r.job.tick();
+  assert.equal(r.yt.made.length, 0, "a fresh warm-up first, no broadcast at once");
+});

@@ -66,6 +66,7 @@ import {
   trailerIndexes,
   trailerIndexFor,
   trailerQuoteSection,
+  SUNG_WORD_SECONDS,
 } from "./assets/trailerlines.ts";
 import { canonicalGame } from "./assets/gamelib.ts";
 
@@ -518,7 +519,9 @@ export async function quoteLongStep(
         (b) => b > 0 && (before[b] ?? 0) >= FIRST_MINUTE_WORDS,
       ),
     }));
-    const withTrailers = trailersOn(s.cfg);
+    // Trailer lines in a long video come with GAME_SPEECH_DIALOGUE only: TRAILER_QUOTES alone keeps long videos as
+    // they were (cutscene lines only).
+    const withTrailers = dialogue;
     // Each game's sources once: its scene index (speakers named on demand per chapter) and its trailers' lines.
     const indexes = new Map<string, SceneIndex | undefined>();
     const trailerSets = new Map<string, SceneIndex[]>();
@@ -772,10 +775,15 @@ export async function prepareQuotes(
           source: "proxy",
           why: fellBack,
         }).catch(() => undefined);
-      // GAME_SPEECH_DIALOGUE: the clip is heard before the voice; words that are not the line drop it.
-      if (dialogue && !cached) await checkHeard(s.cfg.whisperPython, dir, made, q.text, deps?.hear);
-      prepared.push(made);
-      await writePrepared(dir, made);
+      // GAME_SPEECH_DIALOGUE: the clip is heard before the voice (a cached clip too, unless it was heard already);
+      // words that are not the line, or a line that sounds sung, drop it.
+      let ready = made;
+      if (dialogue && !made.heard) {
+        await checkHeard(s.cfg.whisperPython, dir, made, q.text, deps?.hear, Boolean(fellBack));
+        ready = { ...made, heard: true };
+      }
+      prepared.push(ready);
+      await writePrepared(dir, ready);
     } catch (err) {
       next = withoutQuote(next, q.id);
       await logEvent(s.db, ep.id, "character_quote_dropped", {
@@ -823,13 +831,22 @@ async function checkHeard(
   p: PreparedQuote,
   text: string,
   hear?: (file: string) => Promise<string[]>,
+  fromProxy = false,
 ): Promise<void> {
+  // Sung, not said: words held over the beat (the trailer lines' measure, src/assets/trailerlines.ts).
+  const w = p.words ?? [];
+  if (w.length >= 3) {
+    const perWord = (w.at(-1)!.end - w[0]!.start) / w.length;
+    if (perWord >= SUNG_WORD_SECONDS) throw new Error(`sounds sung (${perWord.toFixed(2)} s a word)`);
+  }
   let heard: string[];
   try {
     heard = hear
       ? await hear(path.join(dir, p.file))
       : (await transcribeWords(path.join(dir, p.file), python)).map((w) => w.text);
   } catch (err) {
+    // A clip cut from the proxy has only this check to prove its cut: no Whisper, no quote.
+    if (fromProxy) throw new Error(`Whisper could not hear the proxy clip: ${errorMessage(err).slice(0, 120)}`);
     log("warn", "character quote: Whisper could not hear the clip; kept", {
       id: p.id,
       error: errorMessage(err),
@@ -1049,10 +1066,10 @@ export function quoteCaptionWords(
   }));
 }
 
-/** The quotes as the Short's composition takes them (files relative to the episode folder). */
 /** GAME_SPEECH_DIALOGUE: the music bed under the character's voice, as a share of its level (-14 dB). */
 export const DIALOGUE_BED_UNDER = 0.2;
 
+/** The quotes as the Short's composition takes them (files relative to the episode folder). */
 export function quoteRenderFiles(
   assets: Pick<EpisodeAssets, "quotes">,
   o: { dialogue?: boolean } = {},

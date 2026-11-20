@@ -1,6 +1,7 @@
 // Trailer voice lines, made once per library trailer on the PC (TRAILER_QUOTES, src/assets/trailerlines.ts).
 //   npx tsx src/tools/trailerlines.ts "Grand Theft Auto VI" [--audio-dir=DIR] [--force]
 //   npx tsx src/tools/trailerlines.ts --all     every game in the library with an official trailer not yet processed
+//                                               (about 4 minutes a trailer: give orch --est for the whole list)
 // For each official trailer in the game's library: its sound (from DIR/<item>.m4a when given, else read from the
 // publisher's own file, picture skipped: the library keeps the picture only), Demucs's isolated voice and the music
 // under it (src/tools/trailervoice.py, htdemucs_ft from the torch cache), Whisper's word timings of the voice
@@ -121,7 +122,12 @@ async function main(): Promise<void> {
       !flag("force") && fs.existsSync(path.join(libraryDir(root, game), voicelinesFile(item))),
     );
     console.log(`${games.length} games with trailers to process: ${games.join(", ")}`);
-    for (const g of games) await processGame(root, g);
+    // One game's failure (its publisher's file gone, a Demucs crash) never stops the rest.
+    for (const g of games)
+      await processGame(root, g).catch((err) => {
+        console.log(`${g}: failed: ${errorMessage(err).slice(0, 300)}`);
+        process.exitCode = 1;
+      });
     return;
   }
   await processGame(root, game0);

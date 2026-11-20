@@ -515,3 +515,50 @@ test("in dialogue mode a caption names characters, never a screen label or a pla
   for (const bad of ["APPROACH", "CONNECTED", "La Mesa", "Grand Senora Desert", "OUGRideR", "Blaine County", "San Andreas", "Final Chapter"])
     assert.ok(speakerProblem(index, bad), bad);
 });
+
+test("in dialogue mode an official trailer's lines stay quotable: a trailer never names who speaks", async () => {
+  const { trailerSceneIndex } = await import("../src/assets/trailerlines.ts");
+  const { quoteCandidates, verifyQuote } = await import("../src/sceneindex/quotepick.ts");
+  const words = timed("Nothing ever goes to plan in Leonida.", 10)!;
+  const tl = {
+    version: 1,
+    game: "Grand Theft Auto VI",
+    item: "abcdef123456",
+    name: "Trailer 2",
+    sourceUrl: "https://example.invalid/t2.mp4",
+    publisher: "Rockstar Games",
+    duration: 120,
+    voiceFile: "voicelines/abcdef123456.voice.m4a",
+    builtAt: "2026-11-20T00:00:00Z",
+    lines: [{ start: 10, end: words.at(-1)!.end, text: "Nothing ever goes to plan in Leonida.", words, voiceDb: -20, musicDb: -40, sustain: 0 }],
+    levels: { step: 0.25, voice: [], music: [] },
+  };
+  const index = trailerSceneIndex(tl as any);
+  const c = quoteCandidates(index, "Leonida plan heist", { verbatim: true, use: "short" });
+  assert.equal(c.length, 1);
+  assert.equal(verifyQuote(index, c[0]!, { verbatim: true }).ok, true);
+});
+
+test("TRAILER_QUOTES alone leaves long videos to cutscene lines; GAME_SPEECH_DIALOGUE brings trailers in", async () => {
+  const dir = await tmpDir();
+  const db = await testDb();
+  const words = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ") + ".";
+  const script = {
+    game_title: "Some Unindexed Game",
+    headline: "x",
+    hook: words(20),
+    beats: [{ narration: words(200) }, { narration: words(80) }],
+    pulse_take: { narration: "t" },
+    loop_line: "l",
+    youtube: { title: "t", description: "d", tags: [] },
+  } as any;
+  const llm = { structured: async () => assert.fail("no call") } as any;
+  const now = () => new Date("2026-11-20T00:00:00Z");
+  await quoteLongStep({ cfg: testConfig(dir, { characterQuotes: true, trailerQuotes: true, gameSpeechDialogue: false }), db, llm, now }, { id: "epA" }, script);
+  await quoteLongStep({ cfg: testConfig(dir, { characterQuotes: true, trailerQuotes: false, gameSpeechDialogue: true }), db, llm, now }, { id: "epB" }, script);
+  const why = async (id: string) =>
+    (await db.query<{ detail: any }>(`SELECT detail FROM events WHERE episode_id = $1 AND kind = 'character_quote'`, [id]))[0]?.detail.why;
+  assert.match(await why("epA"), /no scene index$/);
+  assert.match(await why("epB"), /no scene index and no trailer lines/);
+  await db.close();
+});

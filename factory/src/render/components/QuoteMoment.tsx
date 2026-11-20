@@ -194,7 +194,6 @@ export const QuoteMoment: React.FC<QuoteMomentProps> = ({
   );
 };
 
-/** True while any quote is playing at `frame` (spans in frames, end exclusive). */
 /** The music bed's level under a character quote, as a share of its level, when no quote says otherwise. */
 export const QUOTE_BED_UNDER = 0.45;
 
@@ -210,6 +209,7 @@ export function quoteBedFactor(
   return s ? (s.q?.bedUnder ?? QUOTE_BED_UNDER) : 1;
 }
 
+/** True while any quote is playing at `frame` (spans in frames, end exclusive). */
 export function inQuote(
   spans: ReadonlyArray<{ from: number; frames: number }>,
   frame: number,

@@ -257,8 +257,9 @@ export class RelayJob {
         }
       }
     } else if (live === undefined && cur) {
-      // Still warming up: the warm-up starts again from nothing, and the warm-up pipe stops (nothing is public yet).
-      if (!cur.broadcastId && !cur.warmedUp) {
+      // No broadcast yet (warming up, or the setup after it failed): the warm-up starts again from nothing when he is
+      // back, and the warm-up pipe stops (nothing is public yet).
+      if (!cur.broadcastId) {
         if (cur.warmSince !== undefined)
           this.d.log("info", "relay: Twitch dropped during the warm-up; no broadcast made", {
             seconds: Math.round((now - cur.warmSince) / 1000),
@@ -266,6 +267,7 @@ export class RelayJob {
         cur.warmSince = undefined;
         cur.dataSince = undefined;
         cur.pipeAt = undefined;
+        cur.warmedUp = false;
         this.pipe?.stop();
         this.pipe = undefined;
       }
@@ -315,15 +317,24 @@ export class RelayJob {
     }
     cur.warmSince ??= now;
     if (!this.pipe || cur.pipeAt === undefined) {
+      // A failed setup (live streaming not switched on, quota, login) is told once and tried every 10 minutes, as setup does.
+      if (now - (cur.setupFailedAt ?? -Infinity) < 10 * 60_000) return;
       try {
         this.pipe?.stop();
         this.pipe = this.d.startPipe((await this.d.yt.ingest()).url);
         cur.pipeAt = now;
         cur.dataSince = undefined;
+        cur.setupFailedAt = undefined;
       } catch (err) {
-        this.d.log("warn", "relay: no ingest address for the warm-up", {
-          why: setupProblem(err),
-        });
+        cur.setupFailedAt = now;
+        const why = setupProblem(err);
+        this.d.log("warn", "relay: no ingest address for the warm-up", { why });
+        if (!cur.setupAlerted) {
+          cur.setupAlerted = true;
+          await this.d.notify(
+            `⚠️ TinoTV is live on Twitch but I could not start the Pulse YouTube stream: ${why}. I keep trying every 10 minutes while he is live.`,
+          );
+        }
         return;
       }
     } else if (this.pipe.gaveUp()) {
@@ -567,6 +578,13 @@ export class RelayJob {
               why: setupProblem(err),
             },
           ),
+        );
+      // Made and bound but never live (Twitch dropped between the warm-up and YouTube starting): it shows as an
+      // upcoming public stream, and the next warm-up's data could start it under the old title. Nothing here deletes;
+      // the owner is told so he can remove it in Studio.
+      else if (b && (b.lifeCycle === "created" || b.lifeCycle === "ready"))
+        await this.d.notify(
+          `⚠️ The Pulse YouTube stream ${watchUrl(cur.broadcastId)} was set up but never went live before Twitch stopped. It shows as an upcoming stream: please delete it in YouTube Studio (Content, Live) before the next stream, or that stream may start under its old title.`,
         );
     }
     let ended: Archive[] = [];

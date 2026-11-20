@@ -115,10 +115,12 @@ export function unquotable(
     const miss = misreadWords(index, said, heard);
     if (miss.length) return `words the voice never says ("${miss.slice(0, 3).join(", ")}")`;
     // A label the game showed must be one it showed often; a name read from the dialogue was checked against the cast.
-    const who = o.anySpeaker ? undefined : speakerProblem(index, line.speaker);
+    // A trailer never names who speaks: its lines carry the trailer's own name and need no cast check.
+    const named = !o.anySpeaker && index.origin !== "trailer";
+    const who = named ? speakerProblem(index, line.speaker) : undefined;
     if (who) return who;
     if (
-      !o.anySpeaker &&
+      named &&
       line.speakerFrom !== "context" &&
       (speakerCounts(index).get(line.speaker!.trim()) ?? 0) < MIN_SPEAKER_LINES
     )

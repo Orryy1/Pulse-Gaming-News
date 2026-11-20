@@ -38,6 +38,8 @@ export interface PreparedQuote {
   keep: number;
   /** The quote's words, seconds from the clip's start (the caption follows them). */
   words: Array<{ text: string; start: number; end: number }>;
+  /** GAME_SPEECH_DIALOGUE: Whisper heard the clip and it is the line. */
+  heard?: boolean;
 }
 
 /** Seconds of the source fetched either side of the line, so the cut can find its quiet moments. */

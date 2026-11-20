@@ -24,7 +24,9 @@ const SCENES = new Set<BlenderScene>([
   "sting",
 ]);
 const KEY = /^[0-9a-f]{16}$/;
-/** The fields a request may set per scene: nothing that names a file, sets the render size or changes the output. */
+/** The fields a request may set per scene: nothing that names a file, sets the render size or changes the output.
+ * The size is one of two: landscape, or with `vertical: true` the Shorts frame for the scenes that have an upright
+ * layout (VERTICAL_SCENES; a Short's podium, src/render/shortupgrades.ts). */
 const ALLOWED: Record<BlenderScene, string[]> = {
   podium: ["rank", "title", "meta", "kicker"],
   data: ["mode", "title", "items", "unit", "highlight"],
@@ -34,15 +36,29 @@ const ALLOWED: Record<BlenderScene, string[]> = {
   sting: ["line"],
 };
 
-/** A request's parameters cut down to the scene's own fields (pure). */
+/** The scenes with an upright layout (blender/pulse3d: podium, chapter, globe and sting lay out for a tall frame). */
+export const VERTICAL_SCENES = new Set<BlenderScene>(["podium", "chapter", "globe", "sting"]);
+
+/** A request's parameters cut down to the scene's own fields (pure). `vertical` only as true, and only where it fits. */
 export function safeParams(
   scene: BlenderScene,
   params: Record<string, unknown>,
 ): Record<string, unknown> {
   const keep = new Set([...ALLOWED[scene], "accent", "seed"]);
-  return Object.fromEntries(
+  const out = Object.fromEntries(
     Object.entries(params).filter(([k]) => keep.has(k)),
   );
+  return params.vertical === true && VERTICAL_SCENES.has(scene)
+    ? { ...out, vertical: true }
+    : out;
+}
+
+/** The render size a job's parameters ask for (pure): the Shorts frame when vertical, else the kit's landscape. */
+export function sceneSize(params: Record<string, unknown>): {
+  width?: number;
+  height?: number;
+} {
+  return params.vertical === true ? { width: 1080, height: 1920 } : {};
 }
 
 interface Job {
@@ -121,6 +137,7 @@ export function createBlenderServer(opts: ServeOptions): http.Server {
       const res = await render({
         scene: job.scene,
         params,
+        ...sceneSize(job.params),
         seconds: job.seconds,
         workDir,
         outFile: clipPath(job.key),

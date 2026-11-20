@@ -96,22 +96,63 @@ export function wideShot(
  * holds detail for: at most MAX_UPSCALE screen pixels to one map pixel (a small in-game screenshot stays further out).
  */
 export const MAX_UPSCALE = 2.5;
-export function closeShot(pins: Vec3[], heightPx = 4000): MapShot {
+/** A tall frame (a Short, aspect under 1) needs the camera further out for places side by side, and the pins stand a
+ * little higher, in the hero band above the captions. */
+export function closeShot(pins: Vec3[], heightPx = 4000, aspect = 16 / 9, frameH = 1080): MapShot {
   const xs = pins.map((p) => p[0]);
   const zs = pins.map((p) => p[2]);
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
   const cz = (Math.min(...zs) + Math.max(...zs)) / 2;
   const span = Math.max(
-    Math.max(...xs) - Math.min(...xs),
+    (Math.max(...xs) - Math.min(...xs)) * Math.max(1, 16 / 9 / aspect),
     (Math.max(...zs) - Math.min(...zs)) * 1.4,
   );
+  const tall = aspect < 1;
+  const distance = Math.max(
+    tall ? 4.2 : 3.4,
+    span * 1.25 + 1.5,
+    frameH / MAX_UPSCALE / ((heightPx / PLANE_H) * 2 * Math.tan(rad(FOV / 2))),
+  );
   // One place sits a little above the middle of the frame, leaving room under it for its label and beam.
-  return {
-    target: [cx, 0, cz - 0.15],
-    distance: Math.max(3.4, span * 1.25 + 1.5, 1080 / MAX_UPSCALE / ((heightPx / PLANE_H) * 2 * Math.tan(rad(FOV / 2)))),
-    elevation: 50,
-    fov: FOV,
-  };
+  if (!tall) return { target: [cx, 0, cz - 0.15], distance, elevation: 50, fov: FOV };
+  return tallClose(pins, cx, cz, distance, aspect);
+}
+
+/** Where a tall frame's pins must stand (shares of the frame): the hero and shelf bands, clear of the captions. */
+export const TALL_PIN_BOX = { left: 0.11, right: 0.83, top: 0.24, bottom: 0.56 } as const;
+
+/**
+ * A tall frame's closing shot: the camera backs off from `d0` until every pin's foot stands inside TALL_PIN_BOX, with
+ * the pins' middle at about 40% down the frame (Shorts: the hero band, above the captions' lower third).
+ */
+function tallClose(pins: Vec3[], cx: number, cz: number, d0: number, aspect: number): MapShot {
+  const W = 1000;
+  const H = W / aspect;
+  let shot: MapShot = { target: [cx, 0, cz], distance: d0, elevation: 50, fov: FOV };
+  for (let n = 0; n < 40; n++) {
+    // Slide the target along north-south until the pins' middle sits at 40% down (a few steps: nearly linear).
+    for (let k = 0; k < 6; k++) {
+      const ys = pins.map((p) => project(p, shot, W, H).y / H);
+      const mid = (Math.min(...ys) + Math.max(...ys)) / 2;
+      const err = mid - 0.4;
+      if (Math.abs(err) < 0.005) break;
+      // A point further north stands higher: moving the target south (+z) lifts the pins, by about dz / distance.
+      shot = { ...shot, target: [cx, 0, shot.target[2] + err * shot.distance * 0.9] };
+    }
+    const fits = pins.every((p) => {
+      const q = project(p, shot, W, H);
+      return (
+        q.z > 0 &&
+        q.x / W >= TALL_PIN_BOX.left &&
+        q.x / W <= TALL_PIN_BOX.right &&
+        q.y / H >= TALL_PIN_BOX.top &&
+        q.y / H <= TALL_PIN_BOX.bottom
+      );
+    });
+    if (fits) return shot;
+    shot = { ...shot, distance: shot.distance * 1.08 };
+  }
+  return shot;
 }
 
 const ease = (t: number) =>

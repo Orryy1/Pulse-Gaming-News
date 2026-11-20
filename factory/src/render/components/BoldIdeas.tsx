@@ -110,7 +110,9 @@ export const DepthType: React.FC<{
   at: number;
   len: number;
   dir?: 1 | -1;
-}> = ({ layers, phrase, at, len, dir = 1 }) => {
+  /** Where the layers sit in a crop narrower than the picture (a Short: round its subject, focusPosition). */
+  position?: string;
+}> = ({ layers, phrase, at, len, dir = 1, position }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const p = Math.min(1, frame / Math.max(1, len));
@@ -134,6 +136,7 @@ export const DepthType: React.FC<{
         width: "100%",
         height: "100%",
         objectFit: "cover",
+        objectPosition: position,
         filter: "contrast(1.03) saturate(1.05)",
         transform: `scale(${1.08 + 0.03 * k * p}) translateX(${truck * k}px)`,
       }}

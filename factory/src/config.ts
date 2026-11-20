@@ -11,6 +11,7 @@ import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
 import { blenderSettings, type BlenderSettings } from "./render/blender.ts";
+import type { ShortUpgradeSwitches } from "./render/shortupgrades.ts";
 import {
   defaultBackupDir,
   defaultCodexPython,
@@ -1407,6 +1408,15 @@ export interface Config {
   /** 3D game boxes (src/render/boxart.ts): a ranking entry's box turns in on its card; a documentary's "it came
    * out" sentence turns the game's box in beside the picture (BOX_3D, default off until proven). */
   box3d: boolean;
+  /**
+   * The long videos' 3D and look craft in Shorts (src/render/shortupgrades.ts, src/shortupgradestep.ts), each on by
+   * default but only where its long-video switch is on too, so the long switch stays the one kill switch:
+   * SHORT_MAP_PINS (with MAP_PINS), SHORT_GAME_LOOK (GAME_LOOK), SHORT_BLENDER (BLENDER_SCENES), SHORT_BOX_3D
+   * (BOX_3D), SHORT_DEPTH_TYPE (DEPTH_TYPE), SHORT_COMPARE_WIPE (COMPARE_WIPE) and SHORT_DEPTH_ORBIT (DEPTH_ORBIT).
+   * SHORT_BLENDER_WAIT_MINUTES (default 25) is the most a Short waits for its 3D clip, and SHORT_BLENDER_MARGIN_MINUTES
+   * (default 45) the time it keeps before its slot: a Short with no slot (news) never waits for one.
+   */
+  shortUpgrades: ShortUpgradeSwitches;
   /** AI upscaling of old games' footage and stills (src/assets/upscale.ts): Real-ESRGAN on this machine's GPU at
    * gather time, cached by file hash (UPSCALE, default off until proven; also off where no model files are found). */
   upscale: boolean;
@@ -2467,6 +2477,17 @@ export function loadConfig(): Config {
     compareWipe: bool("COMPARE_WIPE", false),
     subjectPop: bool("SUBJECT_POP", false),
     box3d: bool("BOX_3D", false),
+    shortUpgrades: {
+      mapPins: bool("SHORT_MAP_PINS", true),
+      gameLook: bool("SHORT_GAME_LOOK", true),
+      blender: bool("SHORT_BLENDER", true),
+      blenderWaitMinutes: Math.max(1, int("SHORT_BLENDER_WAIT_MINUTES", 25)),
+      blenderMarginMinutes: Math.max(10, int("SHORT_BLENDER_MARGIN_MINUTES", 45)),
+      box3d: bool("SHORT_BOX_3D", true),
+      depthType: bool("SHORT_DEPTH_TYPE", true),
+      compareWipe: bool("SHORT_COMPARE_WIPE", true),
+      depthOrbit: bool("SHORT_DEPTH_ORBIT", true),
+    },
     upscale: bool("UPSCALE", false),
     upscaleModel:
       (["anime", "general", "x4plus"] as const).find(

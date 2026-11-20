@@ -4,6 +4,8 @@
 // arcing between them. The pins come from the graphic (src/assets/gamemaps.ts): a place the table does not know
 // never reaches here. The look is the real-world map's (src/render/components/MapMoment.tsx): heading top left,
 // labels on dark plates with an accent edge, credit in the corner; the accent follows GAME_LOOK when it is on.
+// SHORT_MAP_PINS (src/render/shortupgrades.ts): the same map in a Short's tall frame (GameMap3DShort), the camera's dive
+// quicker so the pin lands on the place's word, the heading and labels inside the Shorts safe area.
 
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -38,9 +40,8 @@ import {
   type Vec3,
 } from "../gamemap.ts";
 import { SAFE_EDGE } from "./packs/fit.ts";
-
-const W = 1920;
-const H = 1080;
+import { shortMapFrame } from "../shortupgrades.ts";
+import { SAFE } from "../layout.ts";
 const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const PIN_H = 0.62;
 
@@ -234,9 +235,23 @@ const Route: React.FC<{ a: Vec3; b: Vec3; p: number; colour: string; radius: num
   );
 };
 
-export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
+export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => <GameMapView g={g} len={len} />;
+
+/** SHORT_MAP_PINS: the map in a Short, for its whole span (`len`), at the Short's pace and in its safe area. */
+export const GameMap3DShort: React.FC<{ g: GfxProps["g"]; len: number }> = ({ g, len }) => (
+  <GameMapView g={g} len={len} short />
+);
+
+/** Roughly how wide a label's plate is (bold capitals about 0.64 em, plus its padding and edge). */
+const labelWidth = (name: string, size: number) => Math.round(name.length * size * 0.64 + 44);
+
+const GameMapView: React.FC<{ g: GfxProps["g"]; len: number; short?: boolean }> = ({ g, len, short = false }) => {
   const look = useLook();
-  const { frame, fps, showFor, dim, visible } = useStage(len, 240);
+  const { width: W, height: H } = useVideoConfig();
+  const stage = useStage(len, short ? len : 240);
+  const { fps, showFor, dim, visible } = stage;
+  // A Short's camera dives quicker; everything timed to the dive follows it.
+  const frame = short ? shortMapFrame(stage.frame) : stage.frame;
   const m = g.gameMap;
   const ok = drawableGameMap(g) && !!m?.src;
   const tex = useMapTexture(ok ? m!.src! : "", m?.crop);
@@ -247,13 +262,15 @@ export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
   );
   if (!ok || !visible || !m || !tex) return null;
   const { w, h } = planeSize(m.width, m.height);
-  const wide = wideShot(m.width, m.height);
-  const close = closeShot(pins, m.height);
-  const shot = shotAt(frame, wide, close, showFor);
+  const wide = wideShot(m.width, m.height, W / H);
+  const close = closeShot(pins, m.height, W / H, H);
+  const shot = shotAt(frame, wide, close, short ? shortMapFrame(showFor) : showFor);
   // The pin keeps its size on screen when the closing shot sits further out (a small map, or places far apart).
   const pinScale = Math.max(1, close.distance / 5);
   const accent = look.accent;
   const heading = displayText(g.primary);
+  // A Short's labels, placed in pin order, each pushed below one it would overlap.
+  const shortLabels: Array<{ left: number; top: number; w: number }> = [];
   return (
     <AbsoluteFill style={{ opacity: dim, overflow: "hidden" }}>
       <AbsoluteFill
@@ -328,11 +345,49 @@ export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
       {m.pins.map((pin, i) => {
         const at = FLY_TO - 10 + i * 12 + 6;
         if (frame < at) return null;
-        const head = project([pins[i]![0], (PIN_H + 0.12) * pinScale, pins[i]![2]], shot);
+        const head = project([pins[i]![0], (PIN_H + 0.12) * pinScale, pins[i]![2]], shot, W, H);
         const label = spring({ frame: frame - at, fps, config: SPRING.ENTER });
+        if (short) {
+          // Under its pin's foot, centred on it, inside the Shorts safe area (clear of the header, the right-hand rail
+          // and the captions); big enough to read on a phone.
+          const size = pin.name.length > 18 ? 38 : 46;
+          const w = labelWidth(pin.name, size);
+          const left = Math.max(SAFE.left, Math.min(SAFE.railRight - w, head.x - w / 2));
+          const foot = project(pins[i]!, shot, W, H);
+          let top = Math.max(470, Math.min(1090, foot.y + 30));
+          for (const o of shortLabels)
+            if (left < o.left + o.w && o.left < left + w && Math.abs(top - o.top) < 80) top = o.top + 84;
+          shortLabels.push({ left, top, w });
+          return (
+            <div
+              key={pin.name}
+              style={{
+                position: "absolute",
+                left,
+                top,
+                padding: "12px 22px 12px 18px",
+                background: withAlpha(look.ink, 0.88),
+                borderLeft: `7px solid ${accent}`,
+                borderRadius: 8,
+                fontFamily: BODY,
+                fontWeight: 900,
+                fontSize: size,
+                letterSpacing: 2,
+                color: look.paper,
+                textTransform: "uppercase",
+                whiteSpace: "nowrap",
+                boxShadow: "0 12px 30px rgba(0,0,0,0.55)",
+                opacity: label,
+                transform: `translateY(${(1 - label) * 18}px)`,
+              }}
+            >
+              {pin.name}
+            </div>
+          );
+        }
         const right =
           head.x < 1300 &&
-          !(m.pins.length > 1 && i === 0 && project(pins[1]!, shot).x < head.x);
+          !(m.pins.length > 1 && i === 0 && project(pins[1]!, shot, W, H).x < head.x);
         const x = Math.max(
           SAFE_EDGE + 20,
           Math.min(W - SAFE_EDGE - 20, head.x),
@@ -370,9 +425,10 @@ export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
         <div
           style={{
             position: "absolute",
-            left: 80,
-            top: 96,
-            maxWidth: 900,
+            // A Short's heading sits in the hero band, below the Shorts header and the brand row.
+            left: short ? SAFE.left : 80,
+            top: short ? 380 : 96,
+            maxWidth: short ? SAFE.railRight - SAFE.left : 900,
             // A plate: the map under it is busy with its own printed names.
             padding: "22px 30px 24px",
             background: withAlpha(look.ink, 0.84),
@@ -393,7 +449,7 @@ export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
           <div
             style={{
               fontFamily: DISPLAY,
-              fontSize: heading.length > 28 ? 60 : 76,
+              fontSize: heading.length > 28 ? 60 : short ? 84 : 76,
               lineHeight: 1.02,
               color: look.paper,
               textTransform: "uppercase",
@@ -422,9 +478,8 @@ export const GameMap3D: React.FC<GfxProps> = ({ g, len }) => {
       <div
         style={{
           position: "absolute",
-          // Inside the corners GAME_LOOK may draw.
-          right: 170,
-          bottom: 30,
+          // Inside the corners GAME_LOOK may draw; in a Short above the captions, clear of the bottom UI.
+          ...(short ? { left: SAFE.left, top: 1124 } : { right: 170, bottom: 30 }),
           padding: "5px 12px",
           borderRadius: 4,
           background: withAlpha(look.ink, 0.78),

@@ -89,6 +89,11 @@ export type ShortProps = {
   tracklist?: import("./people.ts").TracklistPlacement;
   /** MENTION_* (src/render/mentions.ts): the mention insets, scheduled on their words; each stands in for its beat's card. */
   mentions?: import("./mentions.ts").MentionSlot[];
+  /**
+   * SHORT_* upgrades (src/render/shortupgrades.ts): the game map, the 3D podium, the compare wipe, the depth type, the
+   * orbit, the game's look and the 3D box. The render step turns the map's and the clips' files into URLs.
+   */
+  upgrades?: import("./shortupgrades.ts").ShortUpgrades;
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

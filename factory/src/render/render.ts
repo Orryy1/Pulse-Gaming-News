@@ -1201,6 +1201,38 @@ export function mentionUrls(list: any[], filesUrl: string): any[] {
   return list.map((x) => ("m" in x ? { ...x, m: fix(x.m) } : fix(x)));
 }
 
+/** SHORT_* upgrades with their files (relative to the episode folder) as URLs on the render's file server (pure). */
+export function shortUpgradeUrls(
+  up: import("./shortupgrades.ts").ShortUpgrades,
+  filesUrl: string,
+): import("./shortupgrades.ts").ShortUpgrades {
+  const url = (f: string) => (/^https?:/.test(f) ? f : `${filesUrl}/${webPath(f)}`);
+  return {
+    ...up,
+    ...(up.maps
+      ? {
+          maps: up.maps.map((m) => ({
+            ...m,
+            graphic: {
+              ...m.graphic,
+              gameMap: {
+                ...m.graphic.gameMap,
+                ...(m.graphic.gameMap.file ? { src: url(m.graphic.gameMap.file) } : {}),
+              },
+            },
+          })),
+        }
+      : {}),
+    ...(up.blender
+      ? {
+          blender: up.blender.flatMap(({ file, ...c }) =>
+            file ? [{ ...c, src: url(file) }] : c.src ? [c] : [],
+          ),
+        }
+      : {}),
+  };
+}
+
 export async function renderShort(input: RenderInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);
@@ -1215,10 +1247,13 @@ export async function renderShort(input: RenderInput): Promise<void> {
       gameBedFile,
       peopleFiles,
       mentionFiles,
+      upgrades,
       ...rest
     } = input.props;
     const props: ShortProps = {
       ...rest,
+      // SHORT_* upgrades: the game map's picture and the 3D clips, staged in the episode's folder, as URLs.
+      ...(upgrades ? { upgrades: shortUpgradeUrls(upgrades, files.url) } : {}),
       ...(mentionFiles?.length
         ? { mentions: mentionUrls(mentionFiles, files.url) }
         : {}),

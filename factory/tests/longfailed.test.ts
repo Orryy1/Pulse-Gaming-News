@@ -22,3 +22,15 @@ test("whole words only, and nothing failed leaves the list alone", () => {
   assert.deepEqual(names(dropFailedThemes(list, ["Days Gone"])), ["Ys"]);
   assert.equal(dropFailedThemes(list, []), list);
 });
+
+test("a picked theme that renames a failed topic is swapped for the top clean candidate", async () => {
+  const { avoidFailedTheme } = await import("../src/pipeline.ts");
+  const cands = [{ name: "Half-Life" }, { name: "Fallout" }, { name: "Ys" }] as any;
+  const picked = { candidate_index: 0, format: "ranking", theme: "Valve's Half-Life and Portal games", title_idea: "x", criterion: "y", reason: "z" } as any;
+  const out = avoidFailedTheme(picked, cands, ["Half-Life and Portal"], ["Every Fallout Game Ranked"]);
+  assert.equal(out?.theme, "Ys");
+  assert.equal(out?.candidate_index, 2);
+  const fine = { ...picked, theme: "Metroid" };
+  assert.equal(avoidFailedTheme(fine, cands, ["Half-Life and Portal"], []), fine);
+  assert.equal(avoidFailedTheme(picked, [{ name: "Portal" }] as any, ["Half-Life and Portal"], []), undefined);
+});

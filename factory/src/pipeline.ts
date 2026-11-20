@@ -77,6 +77,7 @@ import {
   validateEvergreen,
   writeEvergreen,
   type EvergreenCandidate,
+  type EvergreenTopic,
 } from "./editorial/evergreen.ts";
 import {
   longformToScript,
@@ -177,6 +178,7 @@ import {
   loopsWithoutChapter,
   pollWinnerOf,
   refusedChapterFate,
+  sameSeries,
 } from "./editorial/longrescue.ts";
 import {
   LONG_RULE_REVISIONS,
@@ -5414,6 +5416,32 @@ export function dropFailedThemes<T extends { name: string }>(list: T[], failedTh
   });
 }
 
+/**
+ * The picker writes its own theme, so a topic that failed can come back under a new name ("Valve's Half-Life and
+ * Portal games" after three Half-Life and Portal failures, 20 Nov). A picked theme that overlaps a recent failure is
+ * swapped for the top shortlist topic that neither failed nor was ranked lately; undefined when there is none.
+ */
+export function avoidFailedTheme(
+  topic: EvergreenTopic,
+  candidates: EvergreenCandidate[],
+  failedThemes: string[],
+  covered: string[],
+): EvergreenTopic | undefined {
+  if (!failedThemes.length || dropFailedThemes([{ name: topic.theme }], failedThemes).length) return topic;
+  const clean = new Set(dropFailedThemes(candidates, failedThemes));
+  const at = candidates.findIndex((c) => clean.has(c) && !covered.some((h) => sameSeries(h, c.name)));
+  if (at < 0) return undefined;
+  const best = candidates[at]!;
+  return {
+    candidate_index: at,
+    format: "ranking",
+    theme: best.name,
+    title_idea: `Every ${best.name} Game Ranked Worst to Best`.slice(0, 60),
+    criterion: "How each game plays today, what it changed and whether it still holds up.",
+    reason: `Swapped from "${topic.theme}": that topic failed in the last two days.`,
+  };
+}
+
 export async function maybeSelectLongform(
   s: Services,
 ): Promise<string | undefined> {
@@ -5510,8 +5538,12 @@ export async function maybeSelectLongform(
     addWinner: cfg.longPollCandidate,
     fallback: cfg.longPollFallback,
   });
-  const topic = chosen.topic;
   const candidates = chosen.candidates;
+  const swapped = chosen.how === "none" ? chosen.topic : avoidFailedTheme(chosen.topic, candidates, failedThemes, notCovered);
+  if (!swapped) return quiet("the picked topic failed recently and no other topic is left", { theme: chosen.topic.theme });
+  if (swapped !== chosen.topic)
+    log("info", "long ranking: picked topic failed recently, swapped", { from: chosen.topic.theme, to: swapped.theme });
+  const topic = swapped;
   if (chosen.how === "none") {
     log("info", "no long-form topic today", { reason: topic.reason });
     // Kept as an event so the output audit (src/outputaudit.ts) can say why a long slot went empty.

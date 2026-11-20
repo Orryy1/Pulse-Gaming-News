@@ -317,7 +317,7 @@ The Sunday report said "Facebook: 37 comments, 0 answered". All of those are the
 
 ## 38. URGENT: the Shorts footage gate holds every GTA 6 Short during the YouTube block (found 15 Nov 16:35 by the hourly watch)
 
-Five GTA 6 news Shorts in a row were held on 15 Nov (03:04, 05:04, 07:04, 13:24 and 16:26 UK; the first four were retried at 15:31-15:41 and held again), so their slots went to other Shorts. Cause: `src/pipeline.ts` near line 13244 counts footage as existing when `assets.officialTrailer?.clipSeconds > 0`, but that is the publisher's allowed cap (Rockstar 10 s), set when the trailer is found by search, even when yt-dlp could not download a single clip (YouTube bot block since 14 Nov). So the gate regathers, finds nothing and holds. Fix: count the trailer only when official clips actually landed in the episode (or rely on `libraryHasFootage` alone), with a test. A `gamelib fetch Grand Theft Auto VI` run started on the Mac at about 16:27, so once it finishes the library should give real GTA 6 footage; then retry the held episodes (ep_20261115_db8356b3, _000b0a99, _75345555, _a11bf864, _80f93adf) with /admin/retry.
+Five GTA 6 news Shorts in a row were held on 15 Nov (03:04, 05:04, 07:04, 13:24 and 16:26 UK; the first four were retried at 15:31-15:41 and held again), so their slots went to other Shorts. Cause: `src/pipeline.ts` near line 13244 counts footage as existing when `assets.officialTrailer?.clipSeconds > 0`, but that is the publisher's allowed cap (Rockstar 10 s), set when the trailer is found by search, even when yt-dlp could not download a single clip (YouTube bot block since 14 Nov). So the gate regathers, finds nothing and holds. Fix: count the trailer only when official clips actually landed in the episode (or rely on `libraryHasFootage` alone), with a test. A `gamelib fetch Grand Theft Auto VI` run started on the Mac at about 16:27, so once it finishes the library should give real GTA 6 footage; then retry the held episodes (ep_20261115_db8356b3, \_000b0a99, \_75345555, \_a11bf864, \_80f93adf) with /admin/retry.
 
 ## 39. The narration check re-voices "rumored" read as "rumoured" (found 15 Nov)
 
@@ -326,6 +326,7 @@ ep_20261115_db8356b3 was voiced twice because the check flagged "rumored" heard 
 Update 15 Nov 18:30 UK (hourly watch): the Mac library now holds 11 GTA 6 videos (fetched 16:48), but the 17:43-17:46 retries still held at 0% footage because `libraryHasFootage` and the Short picker only use scenes that have been vision-tagged ("seen"). The PC job "game library: vision-tag GTA VI + GTA V" is running and should finish about 19:18 UK. After it lands, retry the five held episodes once. YouTube block still in place at 18:25 UK (yt-dlp bot check).
 
 ## 19 Nov 14:25 (hourly watch): writers' room layout fails on Claude, "compiled grammar is too large"
+
 - Update 19 Nov 15:30 (improvement engine): the router fix is merged (CODEX_GRAMMAR_FALLBACK, commit 9993b13bd): a format Claude rejects as too big now goes to Codex, so neither the room nor the normal writer fails on it. Probe: Claude rejects even the plain ScriptSchema, so slimming only the layout schema would not have been enough. Still to do (smaller): a slimmer schema for the Short writers so they can run on Claude again, plus a test that every schema sent to Claude compiles. SCRIPT_ROOM set back to on.
 - What: with SCRIPT_ROOM=on, the room's layout call (site room.layout, and room.repair) sends the full ScriptSchema to Claude as a strict output format. Anthropic rejects it with 400 "The compiled grammar is too large". The step is not caught, so the whole Short fails. ep_20261119_aeff0c03 (GameStop/GTA 6 launch story) failed 3 times at 12:57, 13:06 and 13:26.
 - Done now: Mac .env SCRIPT_ROOM=on -> check (backup .env.bak-20261119-room); one-off ~/PulseFactory/state/room-restart.sh restarts the factory in the 15:32-15:58 gap if nothing is producing and retries that episode (result in state/room-restart.log).
@@ -334,8 +335,9 @@ Update 15 Nov 18:30 UK (hourly watch): the Mac library now holds 11 GTA 6 videos
 ## 40. Fact repair: deploy and watch (improvement engine, 19 Nov 23:10)
 
 In progress, owned by the improvement engine. `FACT_REPAIR` (default on) is deployed: the Mac factory restarted with it at 00:21 UK on 20 Nov. No ranking has failed its fact-check since, so it has not fired yet. After that, check `fact_repair` events (`/admin/events?kinds=fact_repair`) after any ranking fact-check failure. Judge by 26 Nov (details in `Pulse improvement log.md`).
+
 - Follow-up idea: the ranking writer keeps asserting a consensus ("most lists", "the usual order") that it has no source for. A writer rule or fact-sheet line saying "never claim what other lists say" would stop these before the check. Only do it if repairs keep firing on consensus lines.
-- Also seen tonight, not fixed: QA failed 3 times on source footage with burned-in subtitles cut off at the bottom edge (ep_20261119_3fac5cb6). A crop or subtitle screen for source clips would save those retries.
+- Also seen tonight, not fixed: QA failed 3 times on source footage with burned-in subtitles cut off at the bottom edge (ep_20261119_3fac5cb6). A crop or subtitle screen for source clips would save those retries. Built 20 Nov as item 42 (SHORT_CLIP_EDGE_TEXT).
 
 ## 41. Demand figures while YouTube search is paused: an official route (improvement engine, 20 Nov)
 
@@ -344,3 +346,15 @@ In progress, owned by the improvement engine. `FACT_REPAIR` (default on) is depl
 **Build:** when the anonymous lane has been paused for more than a day, look up demand through the YouTube Data API's search (search.list, this week's uploads by view count) with the API key, at most 4 lookups a pick and inside the per-bucket quota, never the upload bucket. Readings go into the same cache.
 
 **Measure:** share of picks with a figure while YouTube is paused (target 9 in 10); API units used a day.
+
+## 42. Source subtitles sliced by the Short's crop: screened before the render (improvement engine, 20 Nov)
+
+In progress, owned by the improvement engine. `SHORT_CLIP_EDGE_TEXT` (default on, commit 107f11151): the clip text screen also reads each clip's top and bottom fifth at full width and drops or trims a clip whose words the 1.24 zoom would show only in part. Judge by 27 Nov: no QA failures naming source subtitles or text cut off at the edge; no rise in "footage gate: no moving footage" holds. Details in `Pulse improvement log.md`.
+
+## 43. The Short's own cards and ticker clipped at the edge (found 20 Nov by the improvement engine)
+
+**Why:** on 19 Nov final QA failed two renders on Pulse's own graphics, not source footage: the lower ticker cut at both ends ("PORTED BY STEAM NEWS", ep_20261119_1ced6ff3) and a speaker line "JACOB NOVAK • FORMER SQUARE ENIX FINANCIAL LEAD" with its top clipped (ep_20261119_f82c3330). A third (ep_20261119_f9dcbbb5) showed an internal label "FAINT:" leaking onto a card. Each costs a full re-render.
+
+**Build:** a layout check before the render that measures every card, ticker and name strip's text against its box at the real font (as the stamp and card fitters already do for some cards) and shrinks or wraps it; tell the vision QA that a scrolling ticker is meant to run off both edges; strip any "WORD:" internal prefix from card text.
+
+**Measure:** QA failures naming our own cards, ticker or name strips per week (3 on 19 Nov), target zero.

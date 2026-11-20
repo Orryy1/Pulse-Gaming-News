@@ -129,10 +129,10 @@ test("depth camera: the stressed word is the writer's emphasis, else a figure or
 
 // ---------------------------------------------------------------- which stills the depth camera gets (src/depthstep.ts)
 
-import { deepCandidates, meshStills, type DepthConfig, type DepthDeps } from "../src/depthstep.ts";
+import { deepCandidates, meshStills, type DepthConfig, type DepthDeps, type DepthImage } from "../src/depthstep.ts";
 
 const L = { bg: "b", mid: "m", fg: "f" };
-const deepImages = () => [
+const deepImages = (): DepthImage[] => [
   { file: "a.jpg", kind: "hero", aspect: 1.78, layers: { ...L } },
   { file: "b.jpg", kind: "screenshot", aspect: 1.78, layers: { ...L }, wordy: true },
   { file: "c.jpg", kind: "screenshot", aspect: 1.78, layers: { ...L } },

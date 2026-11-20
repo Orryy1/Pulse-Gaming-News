@@ -26,6 +26,7 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
+import { semanticSettings, semanticSummary, type SemanticSettings } from "./semantic/settings.ts";
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./subslearn/settings.ts";
 import { packagingSettings, packagingSummary, type PackagingSettings } from "./packaging/settings.ts";
@@ -1166,6 +1167,8 @@ export interface Config {
   spoilerGuard: boolean;
   /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
   streamAsks: StreamAsksSettings;
+  /** MATCH_SEMANTIC and VOD_TAGS: lines matched to pictures by meaning, the owner's recordings tagged (src/semantic). */
+  semantic: SemanticSettings;
   /** SEARCH_SHORTS and its settings: the search-demand engine (src/searchq). Off by default. */
   searchShorts: SearchShortsSettings;
   /** SUBS_LEARN and its settings: subscribers per 1,000 views by format, and one slot a week moved towards the formats
@@ -2320,6 +2323,7 @@ export function loadConfig(): Config {
     archiveSections: bool("ARCHIVE_SECTIONS", false),
     spoilerGuard: bool("SPOILER_GUARD", false),
     streamAsks: streamAsksSettings(process.env),
+    semantic: semanticSettings(process.env),
     // Facts files resolve against the factory folder the server runs in, like SHORT_RUN_FILE.
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
@@ -2633,6 +2637,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     streamAsks: streamAsksSummary(c.streamAsks),
+    semantic: semanticSummary(c.semantic),
     searchShorts: searchShortsSummary(c.searchShorts),
     subsLearn: subsLearnSummary(c.subsLearn),
     packaging: packagingSummary(c.packaging),

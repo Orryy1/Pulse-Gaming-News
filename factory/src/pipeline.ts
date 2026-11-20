@@ -52,6 +52,8 @@ import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { hasUsableIndex } from "./sceneindex/footage.ts";
+import { backgroundFor, embedderFor } from "./semantic/hook.ts";
+import { pinChapterMoments, pinShortStills, type ShortPins } from "./semantic/stills.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
 import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import {
@@ -12339,8 +12341,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           budgetMs: s.cfg.illustrateBudgetSeconds * 1000,
         })
       : undefined;
+    // MATCH_SEMANTIC: the chapter's own pictures and clips the meaning model is sure of are pinned before the editor's
+    // pass over the bin (src/semantic/stills.ts); the services are borrowed as they are, only the pin is added.
+    const semDeps = s.cfg.semantic.enabled
+      ? Object.assign(Object.create(s) as typeof s, {
+          semanticPin: async (ch: Parameters<typeof pinChapterMoments>[3], open: number[], images: Parameters<typeof pinChapterMoments>[5], clips: Parameters<typeof pinChapterMoments>[6]) => {
+            const pins = await pinChapterMoments(embedderFor(s.cfg.dataDir, s.cfg.semantic), dir, path.join(dir, `entry_${ch.entry}`, "fill"), ch, open, images, clips, { ...s.cfg.semantic, background: await backgroundFor(s.cfg.dataDir, s.cfg.semantic, ch.game ?? "") });
+            if (pins.length) await logEvent(s.db, ep.id, "semantic_pins", { entry: ch.entry, pins }).catch(() => undefined);
+            return pins.length;
+          },
+        })
+      : s;
     const r = await fillSentencePictures(
-      s,
+      semDeps,
       dir,
       chapters,
       assets.images,
@@ -14219,6 +14232,37 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const i of todo) {
       const a = coverWorth(scores.get(path.join(dir, i.file)));
       if (a !== undefined) i.aesthetic = a;
+    }
+  }
+  // MATCH_SEMANTIC (src/semantic/stills.ts): a still nobody tagged for a line is tagged for the beat it clearly shows,
+  // so "a phone app that delivers your car" is no longer shown over a controller. Fresh plans only, rankings excluded
+  // (their art belongs to its entry); a still the model is unsure of stays in turn as before.
+  if (s.cfg.semantic.enabled && !assets.plan && !script.entries?.length && (assets.images ?? []).length) {
+    const got = await pinShortStills(
+      embedderFor(s.cfg.dataDir, s.cfg.semantic),
+      dir,
+      assets.images ?? [],
+      (script.beats ?? []).map((b) => ({
+        text: b.narration,
+        note: [b.footage?.want, ...(b.footage?.keywords ?? [])].filter(Boolean).join(", "),
+      })),
+      { ...s.cfg.semantic, background: await backgroundFor(s.cfg.dataDir, s.cfg.semantic, script.game_title ?? "") },
+    ).catch((err): ShortPins => {
+      log("warn", "semantic: Short stills not pinned", { episode: ep.id, error: errorMessage(err) });
+      return { pins: [], offTopic: [] };
+    });
+    if (got.pins.length)
+      await logEvent(s.db, ep.id, "semantic_pins", {
+        pins: got.pins.map((p) => ({ file: assets.images![p.image]!.file, beat: p.beat, score: p.score })),
+      }).catch(() => undefined);
+    // Stills about something else than every line (a controller press shot under a story about a phone app) go while
+    // at least four other pictures are left, like lettered art above.
+    const keep = (assets.images ?? []).filter((_, i) => !got.offTopic.includes(i));
+    if (got.offTopic.length && keep.length >= 4) {
+      await logEvent(s.db, ep.id, "semantic_offtopic_dropped", {
+        files: got.offTopic.map((i) => assets.images![i]!.file),
+      }).catch(() => undefined);
+      assets.images = keep;
     }
   }
   // SHORT_OPEN_FOOTAGE (src/openingstep.ts): frame one is the game's own moving footage, cut out and tagged for the hook.

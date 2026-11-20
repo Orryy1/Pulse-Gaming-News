@@ -10,6 +10,8 @@ import { vodIndexDir } from "../vodindex/schema.ts";
 import { vodIndexStep } from "../vodindex/build.ts";
 import { detectGame } from "../vodindex/vods.ts";
 import { parseVodName } from "../vodindex/schema.ts";
+import { loadSceneIndex } from "../sceneindex/schema.ts";
+import { Embedder } from "../semantic/embed.ts";
 
 const args = process.argv.slice(2);
 const flag = (name: string) => {
@@ -33,6 +35,25 @@ const game =
   detectGame(parseVodName(file).title, [...sa.games, ...cfg.ownerGames]) ??
   "";
 const steps = Number(flag("steps") ?? 200);
+// VOD_TAGS: once described, every stretch is tagged (place, activity, vehicle, brands, time of day, story) and every
+// shot gets its meaning vector, on this machine's own model (src/semantic).
+const sem = cfg.semantic;
+const tags = sem.vodTags
+  ? {
+      batch: sem.vodTagsBatch,
+      places: (await loadSceneIndex(dataDir, game).catch(() => undefined))?.places ?? [],
+      embedder: new Embedder({
+        python: sem.python,
+        model: sem.model,
+        device: sem.device,
+        cacheDir: path.join(dataDir, "semantic"),
+        idleSeconds: 30,
+        priority: 20,
+      }),
+      model: sem.model,
+      embedBatch: sem.shotsPerTurn,
+    }
+  : undefined;
 for (let i = 0; i < steps; i++) {
   const r = await vodIndexStep(path.resolve(file), game, {
     dataDir,
@@ -40,6 +61,7 @@ for (let i = 0; i < steps; i++) {
     ocrFps: sa.ocrFps,
     chunkSeconds: sa.chunkMinutes * 60,
     describeBatch: sa.describeBatch,
+    ...(tags ? { tags } : {}),
   });
   const v = r.index;
   console.log(
@@ -47,6 +69,7 @@ for (let i = 0; i < steps; i++) {
   );
   if (r.did === "done" || r.did === "waiting") break;
 }
+tags?.embedder.close();
 console.log(
   path.join(vodIndexDir(dataDir, parseVodName(file).vodId), "index.json"),
 );

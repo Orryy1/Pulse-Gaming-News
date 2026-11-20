@@ -6,6 +6,7 @@ import type { Db } from "../src/db.ts";
 import { migrate } from "../src/db.ts";
 import type { Config } from "../src/config.ts";
 import { streamAsksSettings } from "../src/streamasks/settings.ts";
+import { semanticSettings } from "../src/semantic/settings.ts";
 import { searchShortsSettings } from "../src/searchq/settings.ts";
 import { liveClipsSettings } from "../src/liveclips/settings.ts";
 import { streamWeeklySettings } from "../src/streamweekly/settings.ts";
@@ -573,6 +574,8 @@ export function testConfig(
     archiveSections: false,
     spoilerGuard: false,
     streamAsks: streamAsksSettings({}),
+    // The stream tags look for recordings on disk: off in tests unless a test turns them on.
+    semantic: { ...semanticSettings({}, () => false), vodTags: false },
     searchShorts: searchShortsSettings({}),
     subsLearn: subsLearnSettings({}),
     packaging: packagingSettings({}),

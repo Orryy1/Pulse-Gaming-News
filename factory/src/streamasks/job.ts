@@ -21,6 +21,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import { spoilerWindows, windowFor } from "../sceneindex/spoilers.ts";
 import { listVodIndexes, loadVodIndex } from "../vodindex/schema.ts";
 import { vodIndexReady } from "../vodindex/build.ts";
+import { readableInTime, vodTagsReady } from "../vodindex/tags.ts";
 import { gamesStreamed, listRecordings } from "../vodindex/vods.ts";
 import {
   foldSightings,
@@ -369,7 +370,15 @@ export async function vodMinerTick(
     );
     for (const r of recordings) {
       const have = await loadVodIndex(cfg.dataDir, r.vodId);
-      if (have && vodIndexReady(have)) continue;
+      // VOD_TAGS: a recording is finished once its stretches are tagged and its shots have their meaning vectors too.
+      if (
+        have &&
+        vodIndexReady(have) &&
+        (!cfg.semantic.vodTags || (await vodTagsReady(cfg.dataDir, have, cfg.semantic.model)))
+      )
+        continue;
+      // VOD_TAGS: a recording this process cannot read (drive unplugged or not allowed) gives its turn to the next.
+      if (cfg.semantic.vodTags && !(await readableInTime(r.file))) continue;
       const macrun = path.join(os.homedir(), "orch", "macrun.sh");
       const orch = "C:\\Claude\\orchestrator\\orch.cmd";
       const [cmd, args] = vodTurnCommand(

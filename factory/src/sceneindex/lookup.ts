@@ -10,6 +10,7 @@
 // belongs to "Link draws the Master Sword" even though the close-up alone shows neither name.
 
 import type { DialogueLine, SceneIndex, SceneShot } from "./schema.ts";
+import { blend } from "../semantic/match.ts";
 
 const STOP = new Set(
   "a an the and or but of in on at to for from by with as is are was were be been being it its this that these those he she they them his her their you your we our i me my not no so do does did has have had will would can could should than then there here over under into out up down off about after before again just very also only when while where who whom which what why how all any each every some more most other such own same too s t".split(
@@ -133,6 +134,8 @@ export interface ShotHit {
   score: number;
   /** The target's words the shot matched, for the log and the contact sheet. */
   matched: string[];
+  /** MATCH_SEMANTIC: the shot's meaning score for the target, when it has a vector. */
+  meaning?: number;
   desc: string;
 }
 
@@ -145,6 +148,17 @@ export interface FindShotsOptions {
   minConfidence?: number;
   /** Only shots inside this stretch of the source, in seconds (a retrospective's story act). */
   within?: { from: number; to: number };
+  /**
+   * MATCH_SEMANTIC: each shot's meaning score for this target, 0 to 1 (src/semantic/shots.ts targetScorer). Blended
+   * with the word score, so the shot that shows what the line is about wins over one that only shares a name with it,
+   * and a shot the words missed can still be offered. Shots absent from the map are judged by their words alone.
+   */
+  semantic?: ReadonlyMap<number, number>;
+  /**
+   * A shot the caller may not use (SPOILER_GUARD: beyond the opening during a game's window) is never ranked, so the
+   * best usable shots fill the list instead of being cut from it afterwards.
+   */
+  allow?: (shot: SceneShot) => boolean;
 }
 
 /**
@@ -228,7 +242,7 @@ export function findShots(
   const names = nameWords(index);
   const keywordTokens = new Set((target.keywords ?? []).flatMap(tokens));
   const terms = [...new Set([...tokens(target.text), ...keywordTokens])];
-  if (!terms.length || !index.shots.length) return [];
+  if ((!terms.length && !o.semantic?.size) || !index.shots.length) return [];
   const docs = shotDocs(index);
   const N = docs.length;
   const has = (d: ShotDoc, t: string): number => {
@@ -260,6 +274,7 @@ export function findShots(
     if (shot.blank || shot.menu) continue;
     if (shot.end - shot.start < minSeconds) continue;
     if (o.within && (shot.start < o.within.from || shot.end > o.within.to)) continue;
+    if (o.allow && !o.allow(shot)) continue;
     let score = 0;
     let named = 0;
     const matched: string[] = [];
@@ -282,8 +297,12 @@ export function findShots(
       if (m >= 0.4) matched.push(t);
       if (names.has(t) && m >= 0.4) named++;
     }
-    if (score <= 0) continue;
-    let confidence = score / total;
+    const meaning = o.semantic?.get(shot.id);
+    if (score <= 0 && !meaning) continue;
+    const word = Math.min(1, score / total);
+    // Meaning reorders and lifts; it lowers a strong word match by a quarter at most (a name said over an unrelated
+    // picture still sinks, but a good match the model rates as ordinary is not lost under the bar).
+    let confidence = meaning === undefined ? word : Math.max(blend(word, meaning), 0.75 * word);
     // The target names someone or somewhere and this shot has none of them: at best a look-alike.
     if (wantsName && !named) confidence *= 0.5;
     if (confidence < minConfidence) continue;
@@ -292,8 +311,9 @@ export function findShots(
       start: shot.start,
       end: shot.end,
       confidence: Math.round(Math.min(1, confidence) * 100) / 100,
-      score: Math.round(score * 1000) / 1000,
+      score: Math.round((o.semantic ? confidence : score) * 1000) / 1000,
       matched,
+      ...(meaning === undefined ? {} : { meaning: Math.round(meaning * 100) / 100 }),
       desc: shot.desc,
     });
   }

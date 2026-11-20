@@ -540,6 +540,8 @@ export function createServices(db: Db, cfg: Config): Services {
       soundTags: cfg.appleSoundTags,
           // LONG_WATERMARK_CROP: a long video's section with one small corner mark is cropped clear of it.
           ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep } : {}),
+          // SHORT_CLIP_EDGE_TEXT is for the Short's zoomed crop; a long video shows the whole picture.
+          ...(o.long ? { edgeText: false } : {}),
           llm: cfg.clipRanking === "llm" ? llm : undefined,
         }),
       ),

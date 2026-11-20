@@ -13,13 +13,19 @@ import { FFMPEG } from "../lib/bin.ts";
 
 const MIN_RUN = 1.6; // clipscore.ts MIN_CLIP_SECONDS
 
+const workDirs: string[] = [];
+
 async function segments(
   video: string,
   every: number,
   len: number,
 ): Promise<string[]> {
   const total = (await videoSeconds(video).catch(() => undefined)) ?? 0;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "edgeproof-"));
+  // Footage scratch: EDGEPROOF_WORK (on the PC, a folder under D:\pulse-data\scratch), else the system temp; removed at exit.
+  const dir = await fs.mkdtemp(
+    path.join(process.env.EDGEPROOF_WORK || os.tmpdir(), "edgeproof-"),
+  );
+  workDirs.push(dir);
   const out: string[] = [];
   for (let at = 1; at + len < total; at += every) {
     const file = path.join(dir, `${path.basename(video, ".mp4")}_${at}.mp4`);
@@ -103,7 +109,12 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    for (const d of workDirs)
+      await fs.rm(d, { recursive: true, force: true }).catch(() => undefined);
+  });

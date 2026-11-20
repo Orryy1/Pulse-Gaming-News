@@ -104,9 +104,11 @@ export function edgeCutWords(
   if (!page.width || !page.height) return [];
   // A picture narrower than 9:16 overflows top and bottom under "cover" and is placed off centre; not judged here.
   if (page.width / page.height < 0.5625) return [];
-  const wide = page.width / page.height > 1.2;
-  const left = wide ? (1 - CROP_KEEPS) / 2 : 0;
-  const right = wide ? 1 - left : 1;
+  // What the zoomed 9:16 crop shows of the width (smartcrop.ts cropWindow: 0.25 of a 16:9 picture), centred. The
+  // smart crop slides it towards the subject, so half a window's slack is allowed either side.
+  const view = Math.min(1, 0.5625 / (page.width / page.height)) / zoom;
+  const left = Math.max(0, 0.5 - view);
+  const right = Math.min(1, 0.5 + view);
   const bands = [zoom, zoom * punch].map(
     (z) => [0.5 - 0.5 / z, 0.5 + 0.5 / z] as const,
   );
@@ -124,12 +126,7 @@ export function edgeCutWords(
       const s = shownShare(y0, y1, lo, hi);
       return s > PART_SHOWN[0] && s < PART_SHOWN[1];
     });
-    // Also cut when the word is whole at one zoom and gone at the other: it slides out of the frame during the punch.
-    const shares = bands.map(([lo, hi]) => shownShare(y0, y1, lo, hi));
-    const slides =
-      Math.max(...shares) >= PART_SHOWN[1] &&
-      Math.min(...shares) <= PART_SHOWN[0];
-    if (cut || slides) hits.push(w.text);
+    if (cut) hits.push(w.text);
   }
   return hits;
 }
@@ -247,11 +244,12 @@ export async function clipBigText(
       .sort()
       .map((f) => path.join(work, f));
     if (!frames.length) return clean();
-    const pages = await readText(frames);
+    // Subtitle-sized lettering is too small to read at 960 wide, so the edge check also reads the top and bottom fifth
+    // at up to 2160 wide (one stacked strip per sample), in the same OCR run.
+    const stripFiles = edge ? await edgeStripFiles(file, work) : [];
+    const pages = await readText([...frames, ...stripFiles]);
     if (!pages.size) return clean();
-    // Subtitle-sized lettering is too small to read at 960 wide, so the edge check reads the top and bottom fifth at
-    // up to 2160 wide in a second, cheap pass (one stacked strip per sample).
-    const strips = edge ? await edgeStripPages(file, work) : [];
+    const strips = stripFiles.map((f) => stripToPage(pages.get(f) ?? { width: 0, height: 0, words: [] }));
     const words: string[] = [];
     const faulted = frames.map((f, i) => {
       const page = pages.get(f) ?? { width: 0, height: 0, words: [] };
@@ -294,8 +292,8 @@ export function stripToPage(strip: OcrPage): OcrPage {
   return { width: strip.width, height, words };
 }
 
-/** One page per 0.5 s sample of the clip's edge strips, read at up to 2160 wide; empty on any failure. */
-async function edgeStripPages(file: string, work: string): Promise<OcrPage[]> {
+/** One stacked edge-strip image per 0.5 s sample of the clip, at up to 2160 wide; none on any failure. */
+async function edgeStripFiles(file: string, work: string): Promise<string[]> {
   try {
     const band = `trunc(ih*${EDGE_STRIP}/2)*2`;
     await runCapped(FFMPEG, [
@@ -312,12 +310,10 @@ async function edgeStripPages(file: string, work: string): Promise<OcrPage[]> {
       "3",
       path.join(work, "e%03d.jpg"),
     ]);
-    const files = (await fs.readdir(work))
+    return (await fs.readdir(work))
       .filter((f) => f.startsWith("e") && f.endsWith(".jpg"))
       .sort()
       .map((f) => path.join(work, f));
-    const pages = await readText(files);
-    return files.map((f) => stripToPage(pages.get(f) ?? { width: 0, height: 0, words: [] }));
   } catch {
     return [];
   }

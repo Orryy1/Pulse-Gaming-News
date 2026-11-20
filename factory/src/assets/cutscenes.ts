@@ -827,6 +827,8 @@ export interface CutsceneOptions {
   soundTags?: boolean;
   /** LONG_WATERMARK_CROP: a section with one small corner mark is cropped clear of it when this much picture stays. */
   watermarkCropKeep?: number;
+  /** SHORT_CLIP_EDGE_TEXT: false for long videos, which show the whole picture, so text near the edge is not cut. */
+  edgeText?: boolean;
   deps?: {
     search?: (query: string) => Promise<CutsceneUpload[]>;
     details?: (
@@ -1276,6 +1278,7 @@ export async function cutsceneMedia(
         ...(o.sceneCheck ? { sceneReview: localSceneReview(o.gameTitle) } : {}),
         prefix: `${path.basename(workDir)}_${pass++}`,
       textCheck: true,
+        ...(o.edgeText === undefined ? {} : { edgeText: o.edgeText }),
         preserveWork: true,
         fillSeconds: fill ? remaining : undefined,
         describe: (t, seconds, at) => {

@@ -154,6 +154,9 @@ import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
 import { QuoteMoment as CharacterQuote, inQuote, quoteBedFactor } from "./components/QuoteMoment.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
+import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
+import { GameLookFrame } from "./components/GameLookFrame.tsx";
+import { lookMotif } from "./components/GameLookCard.tsx";
 import type { Motif } from "./components/motifs/types.ts";
 import {
   ArcadeCabinet,
@@ -309,6 +312,8 @@ export type LongProps = {
   blender?: LongBlenderProp[];
   /** Code scenes join the graphic rotation (src/render/codescene.ts, CODE_SCENES). */
   codeScenes?: boolean;
+  /** GAME_LOOK (src/render/gamelook.ts): each game's graphics in its own look, where it has a profile. */
+  gameLook?: boolean;
   title: string; // on-screen title
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
@@ -3480,6 +3485,15 @@ export const Long: React.FC<LongProps> = (props) => {
   // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
   // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
   // or date keeps its small card half the time, so footage still carries most of the video.
+  // GAME_LOOK (src/render/gamelook.ts): an entry's game's style profile, else the video's game's, else Pulse's own.
+  const lookCache = new Map<number | undefined, GameLook>();
+  const lookFor = (e: number | undefined): GameLook => {
+    if (!props.gameLook) return PULSE_LOOK;
+    if (lookCache.has(e)) return lookCache.get(e)!;
+    const look = gameLookFor(entryTitle(e).title) ?? gameLookFor(props.theme) ?? PULSE_LOOK;
+    lookCache.set(e, look);
+    return look;
+  };
   // Motifs (src/render/components/motifs): the look of a game's series, console or genre, most specific first.
   const motifCache = new Map<number, Motif | undefined>();
   const motifOf = (e: number | undefined): Motif | undefined => {
@@ -3492,7 +3506,7 @@ export const Long: React.FC<LongProps> = (props) => {
         entryOf(props.segments, i) === e,
     );
     const v = k >= 0 ? props.segments[k]!.visual : undefined;
-    const m = v
+    const base = v
       ? motifsFor({
           title: displayText(
             (v.kind === "rank" ? v.primary : v.secondary) ?? "",
@@ -3502,14 +3516,19 @@ export const Long: React.FC<LongProps> = (props) => {
           theme: props.theme,
         })[0]
       : undefined;
+    // GAME_LOOK: a game with a style profile takes its look's chapter card (and keeps its motif's styles).
+    const look = lookFor(e);
+    const m = look !== PULSE_LOOK ? lookMotif(look, base) : base;
     motifCache.set(e, m);
     return m;
   };
-  const videoMotif = motifsFor({
+  const videoMotifBase = motifsFor({
     title: props.title,
     platforms: "",
     theme: props.theme,
   })[0];
+  const videoLook = props.gameLook ? gameLookFor(props.theme) : undefined;
+  const videoMotif = videoLook ? lookMotif(videoLook, videoMotifBase) : videoMotifBase;
   /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
   // Panel-shaped pictures first, logo banners last (src/render/motifpictures.ts), as on the thumbnail.
   const motifPictures = (e: number | undefined) =>
@@ -4982,6 +5001,7 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
+            <LookContext.Provider value={lookFor(w.entry)}>
             {packFor.get(k) && m.graphic.kind !== "none" ? (
               React.createElement(packFor.get(k)!.component, {
                 g: m.graphic,
@@ -5091,6 +5111,11 @@ export const Long: React.FC<LongProps> = (props) => {
                 ) : null}
               </Sequence>
             ) : null}
+            {/* GAME_LOOK: the look's corners and HUD over a full-screen pack graphic. */}
+            {packFor.get(k) && m.graphic.kind !== "none" && lookFor(w.entry) !== PULSE_LOOK ? (
+              <GameLookFrame len={len} variant={props.variant + k} />
+            ) : null}
+            </LookContext.Provider>
           </Sequence>
         );
       })}

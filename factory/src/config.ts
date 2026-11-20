@@ -490,6 +490,10 @@ export interface Config {
   runDocPrivateHours: number;
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
+  /** MAP_PINS (default off): a sentence naming a place in its game shows the game's own map in 3D with a pin on it (src/assets/gamemaps.ts). */
+  mapPins: boolean;
+  /** GAME_LOOK (default off): the graphics take on the game's own palette, corners, HUD framing and a matched free face (src/render/gamelook.ts). */
+  gameLook: boolean;
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
   shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
   shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
@@ -1953,6 +1957,8 @@ export function loadConfig(): Config {
     runDocPrivateHours: Math.max(0, int("RUN_DOC_PRIVATE_HOURS", 2)),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
     codeScenes: bool("CODE_SCENES", false),
+    mapPins: bool("MAP_PINS", false),
+    gameLook: bool("GAME_LOOK", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
     shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
     shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),

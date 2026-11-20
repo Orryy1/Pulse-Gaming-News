@@ -174,7 +174,7 @@ export interface BlenderPlanInput {
     entry: number,
     moment: number,
   ) =>
-    | { kind: string; primary: string; secondary: string; items?: string[] }
+    | { kind: string; primary: string; secondary: string; items?: string[]; gameMap?: unknown }
     | undefined;
   /** A documentary's breathers (seconds), each opening a chapter. */
   breaks?: Array<{ start: number; end: number }>;
@@ -366,7 +366,7 @@ export function planBlender(input: BlenderPlanInput): BlenderRequest[] {
         entry: w.entry,
         moment: w.moment,
       });
-    } else if (g.kind === "map") {
+    } else if (g.kind === "map" && !g.gameMap) {
       const places = (g.items ?? [])
         .map((x) => ({ name: x, p: placeFor(x) }))
         .filter((x) => x.p);

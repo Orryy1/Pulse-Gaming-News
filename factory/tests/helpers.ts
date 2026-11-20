@@ -74,6 +74,8 @@ export function testConfig(
     appleSubjectLift: false,
     appleHwEncode: false,
     codeScenes: false,
+    mapPins: false,
+    gameLook: false,
     docPickSingleSubject: false,
     filmSlateFile: "",
     gameplayDirect: false,

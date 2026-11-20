@@ -1,0 +1,360 @@
+{
+  "id": "gta6",
+  "titles": [
+    "Grand Theft Auto VI",
+    "Grand Theft Auto 6",
+    "GTA VI",
+    "GTA 6",
+    "GTA6"
+  ],
+  "name": "Leonida",
+  "map": {
+    "file": "gta6_leonida.jpg",
+    "url": "https://www.rockstargames.com/VI/_next/static/media/Leonida_Map_Poster.08ir77j-.26ny.jpg?akim=1&imdensity=1&imwidth=3840",
+    "width": 2805,
+    "height": 3840,
+    "sha256": "57a1ac679e41731f4276c5f8041a7a9a93f70a4d4767c337d2c5dcf130bbb6b5",
+    "credit": "MAP: ROCKSTAR GAMES",
+    "provenance": {
+      "kind": "official",
+      "page": "https://www.rockstargames.com/VI/media",
+      "note": "Rockstar's own Leonida Map Poster, from the official Grand Theft Auto VI media page (published 19 Nov 2026)"
+    }
+  },
+  "places": [
+    {
+      "name": "Vice City",
+      "x": 0.6698,
+      "y": 0.521,
+      "kind": "city",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Vice Beach",
+      "x": 0,
+      "y": 0,
+      "kind": "district",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Little Cuba",
+      "x": 0.6608,
+      "y": 0.5331,
+      "kind": "district",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Downtown",
+      "aliases": [
+        "Downtown Vice City"
+      ],
+      "x": 0,
+      "y": 0,
+      "kind": "district",
+      "located": "vision",
+      "checked": false,
+      "ambiguous": true
+    },
+    {
+      "name": "Port Gellhorn",
+      "x": 0.3016,
+      "y": 0.3574,
+      "kind": "city",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Ambrosia",
+      "x": 0,
+      "y": 0,
+      "kind": "city",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Lake Leonida",
+      "x": 0.6052,
+      "y": 0.3134,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Mount Kalaga National Park",
+      "aliases": [
+        "Mount Kalaga"
+      ],
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Grassrivers",
+      "x": 0.4508,
+      "y": 0.6631,
+      "kind": "region",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Grassrivers\""
+    },
+    {
+      "name": "Hamlet",
+      "x": 0.5753,
+      "y": 0.6859,
+      "kind": "city",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed",
+      "ambiguous": true
+    },
+    {
+      "name": "Key Lento",
+      "x": 0.5688,
+      "y": 0.8331,
+      "kind": "city",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "VCIA",
+      "aliases": [
+        "Vice City International Airport"
+      ],
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Leonard County",
+      "x": 0.7001,
+      "y": 0.3594,
+      "kind": "region",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Kelly County",
+      "x": 0.4242,
+      "y": 0.3955,
+      "kind": "region",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Lummox County",
+      "x": 0.4706,
+      "y": 0.2048,
+      "kind": "region",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Mariana County",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Vice-Dale County",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Millport",
+      "x": 0.6595,
+      "y": 0.2306,
+      "kind": "city",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Millport\"",
+      "ambiguous": true
+    },
+    {
+      "name": "Bonanza",
+      "x": 0.4816,
+      "y": 0.1417,
+      "kind": "city",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Bonanza\"",
+      "ambiguous": true
+    },
+    {
+      "name": "Grayson",
+      "x": 0.3802,
+      "y": 0.2185,
+      "kind": "city",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Grayson\""
+    },
+    {
+      "name": "Draper Island",
+      "x": 0.2461,
+      "y": 0.3003,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Capri",
+      "x": 0,
+      "y": 0,
+      "kind": "city",
+      "located": "vision",
+      "checked": false,
+      "ambiguous": true
+    },
+    {
+      "name": "Belville",
+      "x": 0.6581,
+      "y": 0.396,
+      "kind": "city",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Belville\"",
+      "ambiguous": true
+    },
+    {
+      "name": "Washington Beach",
+      "x": 0,
+      "y": 0,
+      "kind": "district",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Stockyard",
+      "x": 0.7239,
+      "y": 0.4504,
+      "kind": "district",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Stockyard\""
+    },
+    {
+      "name": "Crosstown",
+      "x": 0.6981,
+      "y": 0.4967,
+      "kind": "district",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Crosstown\"",
+      "ambiguous": true
+    },
+    {
+      "name": "Rockridge",
+      "x": 0.6501,
+      "y": 0.4977,
+      "kind": "district",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Rockridge\""
+    },
+    {
+      "name": "Waning Sands",
+      "x": 0,
+      "y": 0,
+      "kind": "city",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Southwind",
+      "x": 0,
+      "y": 0,
+      "kind": "city",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Mile Zero Air Station",
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Buckskin Swamp",
+      "x": 0.4802,
+      "y": 0.4735,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false,
+      "check": "ocr 2026-11-20: found, but the crop check failed"
+    },
+    {
+      "name": "Watson Bay",
+      "x": 0.4312,
+      "y": 0.7029,
+      "kind": "city",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Watson Bay\""
+    },
+    {
+      "name": "Tequesta",
+      "x": 0.6736,
+      "y": 0.5957,
+      "kind": "district",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Tequesta\"",
+      "ambiguous": true
+    },
+    {
+      "name": "Ocean Beach",
+      "x": 0,
+      "y": 0,
+      "kind": "district",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Little Hardin Island",
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Leaf Links",
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Bobcat Key",
+      "x": 0,
+      "y": 0,
+      "kind": "landmark",
+      "located": "vision",
+      "checked": false
+    }
+  ]
+}

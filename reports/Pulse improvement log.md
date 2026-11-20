@@ -2,6 +2,24 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 20 Nov 2026, 03:00 UK: topic picks use the last known demand when YouTube search is paused
+
+**Change:** before a ranking Short, a "why" Short or a long ranking is picked, each candidate topic is checked against what people are watching on YouTube this week, and the editor sees the figures. When that search can't run, the factory now uses the topic's most recent stored reading, up to 10 days old, instead of picking blind. An older reading counts half against a fresh one, never drops a topic on its own and is never saved back as fresh. The editor's note and the Discord line say how old it is ("when last measured 3 days ago"). Branch `claude/engine-staledemand`, commit ce8a40813.
+
+**Evidence:**
+
+- From 12 to 19 Nov, 20 of the 26 topic picks went out with "demand not checked". Every GTA "why" Short from 15 to 18 Nov was picked blind, and so were all three ranking picks on 19 Nov.
+- Cause: YouTube's bot check has paused the factory's anonymous YouTube fetches since 14 Nov. The current pause is the fifth strike, running 48 hours until 21 Nov about 22:19 UTC. The log shows 180 failed demand searches on 15, 16, 18 and 19 Nov, all "fetching is paused". No demand search has succeeded since 14 Nov 21:24.
+- The factory still holds 96 stored readings from 14 Nov (GTA V 69.9M, GTA IV 26.3M, GTA III 13.2M, Zelda 5.7M). They were simply ignored once they were a day old.
+- Dry run of the new code on those real readings (`src/tools/staledemand-proof.ts`): 6 of the 7 blind "why" picks from 15 to 18 Nov would have had a figure; only Bully, never measured, stays unknown. The 19 Nov 20:19 ranking list goes from 7 topics with no figure to a clear order: Grand Theft Auto 32.9M, Zelda 5.7M, Resident Evil 3.2M, Call of Duty 2.5M, Steam Controller 590K. The 0-view "remakes that beat the originals" sinks to the bottom.
+- The default window is 10 days so the 14 Nov readings last until the pause lifts (7 days would have run out about an hour before it does).
+- A fresh-eyes review found no bugs. Three of its suggestions were taken: a test that older readings are never saved back, half weight for older readings, and the old cache rule kept for timestamps. 7 new tests. Typecheck clean. Full suite: see the ship note below.
+- Tried and dropped this run: an "opening line must echo the title" check. Over 130 Shorts, openings that share no word with the title held viewers as well as the rest (median 55% viewed against 53%) and got as many views at 72 hours (median 195 against 152). So there is no case for it.
+
+**Setting:** `DEMAND_STALE_DAYS` (default 10; `0` restores the old behaviour). The log line "demand: older readings used" counts uses.
+
+**Judged:** by 27 Nov. Pass mark: no more than 1 in 5 picks says "demand not checked" while YouTube is paused (it was 20 in 26), and the picked topics' 72-hour views are no lower than the blind picks of 15 to 19 Nov. If a pick based on an old reading clearly misfires (a topic whose interest had already faded), cut the window to 5 days.
+
 ## 19 Nov 2026, 23:10 UK: a ranking that fails its fact-check on one or two small lines gets them mended instead of being thrown away
 
 **Change:** when a ranking, "every game" or long ranking script still fails the fact-check after the writer's one rewrite, and only one or two lines are at fault, the factory now mends those lines itself, without a model. A rounded figure the source doesn't round gets "about" in front ("now costs about $30"). An unsupported side line ("Most lists rank GTA 5 higher") is cut: the whole sentence, or the clause before "but". It never cuts the hook, a rank line ("In third place..."), a whole beat or more than 15% of the words. The mended script is then fact-checked again, and only a clean pass saves the Short; otherwise it fails as before. Branch `claude/engine-factrepair` (5fdcaff4c, 328cfaaec), merged into `claude/stage` (328cfaaec) and `C:\PulseFactory`. **Not deployed yet:** at 23:10 the 23:30 slot, then the 01:00 and 03:00 GTA launch slots, left no safe 30-minute gap. The next run deploys it.

@@ -333,6 +333,14 @@ Update 15 Nov 18:30 UK (hourly watch): the Mac library now holds 11 GTA 6 videos
 
 ## 40. Fact repair: deploy and watch (improvement engine, 19 Nov 23:10)
 
-In progress, owned by the improvement engine. `FACT_REPAIR` (default on) is merged in claude/stage 328cfaaec and C:\PulseFactory, **not yet deployed** (slot windows at 23:10). The next engine run deploys it in a safe gap. After that, check `fact_repair` events (`/admin/events?kinds=fact_repair`) after any ranking fact-check failure. Judge by 26 Nov (details in `Pulse improvement log.md`).
+In progress, owned by the improvement engine. `FACT_REPAIR` (default on) is deployed: the Mac factory restarted with it at 00:21 UK on 20 Nov. No ranking has failed its fact-check since, so it has not fired yet. After that, check `fact_repair` events (`/admin/events?kinds=fact_repair`) after any ranking fact-check failure. Judge by 26 Nov (details in `Pulse improvement log.md`).
 - Follow-up idea: the ranking writer keeps asserting a consensus ("most lists", "the usual order") that it has no source for. A writer rule or fact-sheet line saying "never claim what other lists say" would stop these before the check. Only do it if repairs keep firing on consensus lines.
 - Also seen tonight, not fixed: QA failed 3 times on source footage with burned-in subtitles cut off at the bottom edge (ep_20261119_3fac5cb6). A crop or subtitle screen for source clips would save those retries.
+
+## 41. Demand figures while YouTube search is paused: an official route (improvement engine, 20 Nov)
+
+**Why:** the anonymous YouTube lane has been paused by bot checks since 14 Nov (fifth strike, 48 hours), so no demand search has worked for 6 days. `DEMAND_STALE_DAYS` (20 Nov, default 10) uses the last stored readings meanwhile, but they all date from 14 Nov and a new topic has none.
+
+**Build:** when the anonymous lane has been paused for more than a day, look up demand through the YouTube Data API's search (search.list, this week's uploads by view count) with the API key, at most 4 lookups a pick and inside the per-bucket quota, never the upload bucket. Readings go into the same cache.
+
+**Measure:** share of picks with a figure while YouTube is paused (target 9 in 10); API units used a day.

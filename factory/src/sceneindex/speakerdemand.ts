@@ -109,10 +109,14 @@ export async function withDemandSpeakers(
 }
 
 /** Whether a line would be quotable once someone is named (pure): heard, timed and clean in every other way. */
-export function quotableOnceNamed(index: SceneIndex, l: DialogueLine): boolean {
+export function quotableOnceNamed(
+  index: SceneIndex,
+  l: DialogueLine,
+  verbatim = true,
+): boolean {
   if (!needsSpeaker(l) || !l.words?.length) return false;
   const { speakerGuessed: _g, ...rest } = l;
-  return unquotable(index, { ...rest, speaker: "Someone" }) === undefined;
+  return unquotable(index, { ...rest, speaker: "Someone" }, { verbatim }) === undefined;
 }
 
 /**
@@ -125,11 +129,11 @@ export function demandLines(
   asked: ReadonlySet<string>,
   o: Pick<
     QuoteCandidateOptions,
-    "window" | "now" | "use" | "warned" | "placedAt"
+    "window" | "now" | "use" | "warned" | "placedAt" | "verbatim"
   > & { max?: number } = {},
 ): DialogueLine[] {
   const open = index.lines.filter(
-    (l) => quotableOnceNamed(index, l) && !asked.has(lineId(l)),
+    (l) => quotableOnceNamed(index, l, o.verbatim ?? true) && !asked.has(lineId(l)),
   );
   if (!open.length) return [];
   const ids = new Set(open.map((l) => l.id));
@@ -185,7 +189,7 @@ export async function nameSpeakersOnDemand(
   storyText: string,
   o: Pick<
     QuoteCandidateOptions,
-    "window" | "now" | "use" | "warned" | "placedAt"
+    "window" | "now" | "use" | "warned" | "placedAt" | "verbatim"
   > & { max?: number } = {},
 ): Promise<{ index: SceneIndex; asked: number; named: number }> {
   const kept = await readDemand(dataDir, index.game);

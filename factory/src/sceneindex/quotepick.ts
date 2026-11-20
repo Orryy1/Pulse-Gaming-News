@@ -79,6 +79,7 @@ function spoken(
 export function unquotable(
   index: SceneIndex,
   line: DialogueLine,
+  o: { verbatim?: boolean } = {},
 ): string | undefined {
   if (line.via === "textbox") return "read off the screen, never heard";
   const span = spoken(line);
@@ -106,12 +107,32 @@ export function unquotable(
   const agree =
     said.filter((w) => heard.has(w)).length / Math.max(1, said.length);
   if (agree < 0.6) return "the heard words do not match the line";
+  if (o.verbatim) {
+    const miss = misreadWords(index, said, heard);
+    if (miss.length) return `words the voice never says ("${miss.slice(0, 3).join(", ")}")`;
+  }
   return undefined;
+}
+
+/**
+ * GAME_SPEECH_DIALOGUE: the line's words the voice never says (pure), names aside (Whisper hears "Vig" for "Link").
+ * A line read off burned-in subtitles can carry the reader's slips ("ljust", "Let me gol" in GTA VI's index): the
+ * caption shows the line's text, so in dialogue mode every other word must be heard too.
+ */
+export function misreadWords(
+  index: Pick<SceneIndex, "cast" | "places">,
+  said: readonly string[],
+  heard: ReadonlySet<string>,
+): string[] {
+  const names = new Set([...index.cast, ...index.places].flatMap(plainWords));
+  return said.filter((w) => !heard.has(w) && !names.has(w) && !/^\d+$/.test(w));
 }
 
 export interface QuoteCandidateOptions {
   /** At most this many candidates (default 10). */
   max?: number;
+  /** GAME_SPEECH_DIALOGUE: every word of the line but names must be heard (see misreadWords). */
+  verbatim?: boolean;
   /** Story candidates need at least this score (default 1). */
   minScore?: number;
   /** Lines that only fill the list when too few fit the story (default: up to max). 0 for story fits only. */
@@ -179,7 +200,7 @@ export function quoteCandidates(
   const now = o.now ?? new Date();
   const own = new Set(gameAliases(index.game).flatMap(tokens));
   const eligible = index.lines.filter((line) => {
-    if (unquotable(index, line)) return false;
+    if (unquotable(index, line, { verbatim: o.verbatim })) return false;
     if (!o.window) return true;
     const span = spoken(line)!;
     const use = o.use ?? "short";
@@ -295,6 +316,7 @@ export function quoteCandidates(
 export function verifyQuote(
   index: SceneIndex,
   q: Pick<QuoteCandidate, "id" | "text" | "speaker" | "videoId">,
+  o: { verbatim?: boolean } = {},
 ): { ok: boolean; reason: string; line?: DialogueLine } {
   if (index.source.videoId !== q.videoId)
     return { ok: false, reason: "the index was rebuilt from another upload" };
@@ -304,7 +326,7 @@ export function verifyQuote(
     return { ok: false, reason: "the words differ from the index's line" };
   if ((line.speaker ?? "").trim() !== q.speaker.trim())
     return { ok: false, reason: "another speaker says it" };
-  const why = unquotable(index, line);
+  const why = unquotable(index, line, o);
   if (why) return { ok: false, reason: why };
   const hit = findQuote(index, q.text, { speaker: q.speaker, max: 1 })[0];
   if (!hit || hit.confidence < 1 || !hit.lines.includes(line.id))

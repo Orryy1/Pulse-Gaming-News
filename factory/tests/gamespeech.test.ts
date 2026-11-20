@@ -465,3 +465,20 @@ test("trailer lines are made for every library game with an unprocessed official
     ["Grand Theft Auto VI", "Grand Theft Auto V"],
   );
 });
+
+test("in dialogue mode a line read with slips off the subtitles is never quoted: every word but names is heard", async () => {
+  const { unquotable } = await import("../src/sceneindex/quotepick.ts");
+  const index = gtav();
+  const slip = line(9, 500, "ljust got him out, Lamar, that was all.", "Franklin", {
+    words: timed("I just got him out Lamar that was all", 500),
+  });
+  index.lines.push(slip);
+  assert.equal(unquotable(index, slip), undefined, "the old check lets it through");
+  assert.match(unquotable(index, slip, { verbatim: true }) ?? "", /never says \("ljust"\)/);
+  // A name Whisper mishears is fine.
+  const name = line(10, 600, "Franklin, you got the car back.", "Lamar", {
+    words: timed("Frankie you got the car back", 600),
+  });
+  index.lines.push(name);
+  assert.equal(unquotable(index, name, { verbatim: true }), undefined);
+});

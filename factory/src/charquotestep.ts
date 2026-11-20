@@ -325,7 +325,7 @@ export async function quoteScriptStep(
         s.cfg.dataDir,
         index,
         `${o.story ?? script.headline} ${narrationOf({ ...script, voice_tags: undefined })}`,
-        { window, now, use: "short" },
+        { window, now, use: "short", verbatim: true },
       );
       index = d.index;
       if (d.asked) demand = { asked: d.asked, named: d.named };
@@ -367,6 +367,7 @@ export async function quoteScriptStep(
             window: x.window,
             now,
             use: "short",
+            verbatim: dialogue,
             max: 10,
             // The second only when the story genuinely calls for it: lines that fit the story, never the filler.
             ...(k > 0 ? { general: 0 } : {}),
@@ -406,7 +407,8 @@ export async function quoteScriptStep(
         dialogue,
       });
       const from = r.quote ? indexOf(r.quote.videoId) : undefined;
-      const check = r.quote && from ? verifyQuote(from, r.quote) : undefined;
+      const check =
+        r.quote && from ? verifyQuote(from, r.quote, { verbatim: dialogue }) : undefined;
       if (!r.quote || !check?.ok) {
         const why = !r.quote
           ? `declined: ${r.why.slice(0, 3).join(" | ").slice(0, 300)}`
@@ -592,6 +594,7 @@ export async function quoteLongStep(
             use: "long",
             warned,
             placedAt: LONG_SPOILER_FREE_SECONDS,
+            verbatim: true,
           });
           index = d.index;
           indexes.set(ch.game, d.index);
@@ -615,6 +618,7 @@ export async function quoteLongStep(
               use: "long",
               warned,
               placedAt: LONG_SPOILER_FREE_SECONDS,
+              verbatim: dialogue,
               max: range ? 80 : 8,
             })
               .filter((c) => !taken.has(c.id) && playedSeconds(x.index, c) <= left)
@@ -651,7 +655,7 @@ export async function quoteLongStep(
         dialogue,
       });
       const from = r.quote ? best.indexOf(r.quote.videoId) : undefined;
-      if (!r.quote || !from || !verifyQuote(from, r.quote).ok) {
+      if (!r.quote || !from || !verifyQuote(from, r.quote, { verbatim: dialogue }).ok) {
         await logEvent(s.db, ep.id, "character_quote", {
           used: false,
           long: true,
@@ -724,7 +728,7 @@ export async function prepareQuotes(
       const index = await indexForQuote(s.cfg.dataDir, q);
       if (!index)
         throw new Error(trailer ? "the trailer's lines are gone" : "the scene index is gone");
-      const check = verifyQuote(index, q);
+      const check = verifyQuote(index, q, { verbatim: dialogue });
       if (!check.ok) throw new Error(check.reason);
       const cached = await readPrepared(dir, q.id);
       // GAME_SPEECH_DIALOGUE: a cutscene line YouTube will not serve is cut from the index's own proxy instead.

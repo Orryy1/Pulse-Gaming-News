@@ -349,7 +349,7 @@ In progress, owned by the improvement engine. `FACT_REPAIR` (default on) is depl
 
 ## 42. Source subtitles sliced by the Short's crop: screened before the render (improvement engine, 20 Nov)
 
-In progress, owned by the improvement engine. `SHORT_CLIP_EDGE_TEXT` (default on, commit 107f11151): the clip text screen also reads each clip's top and bottom fifth at full width and drops or trims a clip whose words the 1.24 zoom would show only in part. Judge by 27 Nov: no QA failures naming source subtitles or text cut off at the edge; no rise in "footage gate: no moving footage" holds. Details in `Pulse improvement log.md`.
+In progress, owned by the improvement engine. `SHORT_CLIP_EDGE_TEXT` (default on, commits 107f11151 and 47fba20c1, deployed 20 Nov 07:29): the clip text screen also reads each clip's top and bottom fifth at full width and drops or trims a clip whose words the 1.24 zoom would show only in part. Judge by 27 Nov: no QA failures naming source subtitles or text cut off at the edge; no rise in "footage gate: no moving footage" holds. Details in `Pulse improvement log.md`.
 
 ## 43. The Short's own cards and ticker clipped at the edge (found 20 Nov by the improvement engine)
 

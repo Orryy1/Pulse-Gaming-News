@@ -586,6 +586,8 @@ export function testConfig(
     gameAudioGapLufs: -24,
     gameAudioTrailers: false,
     gameAudioMusicDip: 0.6,
+    gameSfxStems: false,
+    aceBeds: false,
     ytdlpPath: "yt-dlp",
     // Tests never sign in to YouTube.
     ytdlpCookiesFile: "",

@@ -15,7 +15,10 @@ export type Mood =
   | "hype"
   | "chill"
   | "playful"
-  | "synthwave";
+  | "synthwave"
+  // 20 Nov 2026: orchestral fantasy, Pulse's own ACE-Step beds only (ACE_BEDS, src/render/acebeds.ts). A chapter is read
+  // as fantasy only when a fantasy bed is on hand, so with the switch off nothing changes.
+  | "fantasy";
 
 /** Every mood, in the order moodOf weighs them. */
 export const MOODS: readonly Mood[] = [
@@ -28,6 +31,7 @@ export const MOODS: readonly Mood[] = [
   "chill",
   "playful",
   "synthwave",
+  "fantasy",
 ];
 
 const TENSE =
@@ -50,6 +54,10 @@ const PLAYFUL =
 const SYNTHWAVE =
   /\b(vice city|leonida|miami|gta (?:vi|6)|grand theft auto (?:vi|6)|neon|synthwave|outrun|1980s|80s|eighties)\b/gi;
 
+/** Swords and sorcery: dragons, kingdoms, quests, the fantasy role-playing games. */
+const FANTASY =
+  /\b(dragons?|elves|elven|elf|wizards?|sorcer\w*|witch(?:es)?|magic\w*|spells?|knights?|kingdoms?|realms?|swords?|quests?|fantasy|dungeons?|myth\w*|castles?|role-playing|rpgs?|souls-?like|elder scrolls|skyrim|zelda|hyrule|witcher|elden ring|baldur's gate|dragon age|final fantasy)\b/gi;
+
 const count = (re: RegExp, text: string) => (text.match(re) ?? []).length;
 
 /** A section's mood, or undefined for the house beds. */
@@ -59,6 +67,8 @@ export function moodOf(o: {
   first: boolean;
   last: boolean;
   documentary: boolean;
+  /** A fantasy bed is on hand (ACE_BEDS): only then can a chapter read as fantasy. */
+  fantasy?: boolean;
 }): Mood | undefined {
   if (o.first) return undefined;
   if (o.year && o.year <= OLD_YEAR) return "retro";
@@ -72,10 +82,19 @@ export function moodOf(o: {
     hype: count(HYPE, o.text),
     chill: count(CHILL, o.text),
     playful: count(PLAYFUL, o.text),
+    fantasy: o.fantasy ? count(FANTASY, o.text) : 0,
   };
   // The strongest reading wins if it is clear (three hits, half as many again as the runner-up); the older
   // moods first on a tie, so a chapter scored before the new moods keeps its music.
-  const order = ["tense", "triumph", "mystery", "hype", "playful", "chill"] as const;
+  const order = [
+    "tense",
+    "triumph",
+    "mystery",
+    "hype",
+    "playful",
+    "chill",
+    "fantasy",
+  ] as const;
   const best = order.reduce((a, b) => (n[b] > n[a] ? b : a));
   const rest = Math.max(...order.filter((k) => k !== best).map((k) => n[k]));
   if (n[best] >= 3 && n[best] > rest * 1.5) return best;
@@ -117,6 +136,7 @@ export function musicSections(
       first: false,
       last: i === chapters.length - 1,
       documentary,
+      fantasy: has("fantasy"),
     });
     const want = m && has(m) ? m : undefined;
     const ran = c.frame - from;

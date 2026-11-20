@@ -371,6 +371,8 @@ import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
 import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
 import { SIGNATURE_LIBRARY } from "./render/signaturelib.ts";
+import { ACE_LIBRARY } from "./render/acebedlib.ts";
+import { aceExtraBeds, aceIdent, acePool, aceShortMood, withIdent } from "./render/acebeds.ts";
 import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
@@ -12305,6 +12307,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           underGain: GAME_UNDER,
           trailers: s.cfg.gameAudioTrailers,
           trailerVoice: s.cfg.trailerQuotes,
+          sfxStems: s.cfg.gameSfxStems,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -13229,6 +13232,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         musicFile,
         // SIGNATURE_MUSIC: documentaries open on the docs sting, lead with its bed and rise into chapters.
         signature: s.cfg.signatureMusic && doc ? signatureFor(SIGNATURE_LIBRARY, "docs") : undefined,
+        // ACE_BEDS: Pulse's own era and genre beds join the music plan's choice (src/render/acebeds.ts).
+        extraBeds: s.cfg.aceBeds ? aceExtraBeds(ACE_LIBRARY) : undefined,
         imageFiles: images,
         clipFiles: clips,
         plan,
@@ -13832,6 +13837,22 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   let musicFile: string | null = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) })
     : null;
+  // ACE_BEDS (src/render/acebeds.ts): a Short about an old game, Vice City or a fantasy world plays Pulse's own era or
+  // genre bed, still never one of the last few Shorts' beds; every other Short keeps the house rotation.
+  const aceMood =
+    s.cfg.aceBeds && musicFile
+      ? aceShortMood(
+          {
+            text: [script.headline, ...segments.map((g) => g.text)].join(" "),
+            year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+          },
+          ACE_LIBRARY,
+        )
+      : undefined;
+  if (aceMood) {
+    musicFile = chooseBed(s.cfg.dataDir, acePool(aceMood, ACE_LIBRARY), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) }) ?? musicFile;
+    await logEvent(s.db, ep.id, "ace_bed", { mood: aceMood, bed: musicFile }).catch(() => undefined);
+  }
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)
@@ -14167,6 +14188,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
     }
   }
+  // ACE_BEDS: the Pulse ident on the opening sting, in the bed's key (src/render/acebeds.ts); a series sting stays.
+  if (s.cfg.aceBeds) {
+    const ident = aceIdent(ACE_LIBRARY, bedSeed(ep.id));
+    if (ident) plan.sfx = withIdent(plan.sfx, sfxFile(SFX.sting), sfxFile(ident.sting));
+  }
   // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's predicted curve for this plan, its weakest moments
   // and, under "fix", the safe fixes (fresh footage for stills, the strongest picture first, shorter card text), before
   // the first-seconds check and the render, so no re-render is ever needed. Off by default; never throws.
@@ -14475,6 +14501,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           gapLufs: s.cfg.gameAudioGapLufs,
           trailers: s.cfg.gameAudioTrailers,
           trailerVoice: s.cfg.trailerQuotes,
+          sfxStems: s.cfg.gameSfxStems,
         })
       : undefined;
   if (s.cfg.gameAudioBed)

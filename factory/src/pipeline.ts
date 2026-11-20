@@ -13298,6 +13298,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     subjectPop: s.cfg.subjectPop,
     box3d: s.cfg.box3d,
     parallaxDeep: s.cfg.parallaxDeep,
+    // The research devices (src/render/boldideas.ts), each behind its own switch.
+    chapterWall: s.cfg.chapterWall,
+    depthType: s.cfg.depthType,
+    compareWipe: s.cfg.compareWipe,
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).

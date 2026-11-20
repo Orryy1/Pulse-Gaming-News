@@ -210,6 +210,8 @@ import { SketchShot } from "./components/SketchShot.tsx";
 import { DepthOrbit } from "./components/DepthOrbit.tsx";
 import { DepthCam } from "./components/DepthCam.tsx";
 import { depthCamPlan, stressedFrame } from "./depthcam.ts";
+import { CompareWipe, DepthType, ScreenshotWall } from "./components/BoldIdeas.tsx";
+import { compareWipePlan, depthTypePlan, wallPictures } from "./boldideas.ts";
 import { Box3D, BoxReveal } from "./components/Box3D.tsx";
 import { PopOut } from "./components/PopOut.tsx";
 import { popPicture } from "./popout.ts";
@@ -362,6 +364,12 @@ export type LongProps = {
   /** The depth camera (src/render/depthcam.ts, PARALLAX_DEEP): wide stills with 3D photo maps are filmed on a
    * gentle path timed to the stressed word, with a focus rack and haze, instead of the three-layer drift. Absent: off. */
   parallaxDeep?: boolean;
+  /** CHAPTER_WALL (src/render/boldideas.ts): a chapter's title breather over a 3D wall of its own stills. Absent: off. */
+  chapterWall?: boolean;
+  /** DEPTH_TYPE: a line's stressed phrase set huge behind a still's subject, in place of its caption. Absent: off. */
+  depthType?: boolean;
+  /** COMPARE_WIPE: a line comparing two chapters' games shows both pictures behind a sliding wipe. Absent: off. */
+  compareWipe?: boolean;
   /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
   debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
@@ -1199,6 +1207,8 @@ const Backdrop: React.FC<{
   /** PARALLAX_DEEP: the shots the depth camera films, each with its stressed word's frame from the shot's start
    * (undefined: no stressed word found, the move takes its natural beat). */
   deep?: Map<number, number | undefined>;
+  /** DEPTH_TYPE: the shots that set their line's stressed phrase behind the subject (the word's frame from the shot's start). */
+  typed?: Map<number, { phrase: string; at: number }>;
   /** Per shot index: its game's own colour, washed softly over the picture. */
   tints?: Map<number, string>;
   /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
@@ -1230,6 +1240,7 @@ const Backdrop: React.FC<{
   powerOff,
   punches,
   deep,
+  typed,
   tints,
   sketches,
   photos,
@@ -1479,6 +1490,17 @@ const Backdrop: React.FC<{
                         dir={i % 2 ? -1 : 1}
                       />,
                     )
+                ) : typed?.has(i) && img.layers ? (
+                  // DEPTH_TYPE: the stressed phrase rises behind the picture's subject on its word.
+                  dress(
+                    <DepthType
+                      layers={img.layers}
+                      phrase={typed.get(i)!.phrase}
+                      at={typed.get(i)!.at + (i > 0 ? xf : 0)}
+                      len={seqLen}
+                      dir={i % 2 ? -1 : 1}
+                    />,
+                  )
                 ) : deep?.has(i) && img.layers?.mesh ? (
                   // PARALLAX_DEEP: the still as a 3D photo on a gentle path, the move and focus landing on the word.
                   dress(
@@ -2189,7 +2211,9 @@ export const ChapterInterlude: React.FC<{
   frames: number;
   bg?: BackgroundKind;
   variant?: number;
-}> = ({ number, title, game, year, quote, frames, bg, variant }) => {
+  /** CHAPTER_WALL: the chapter's stills on a 3D wall behind the title, in place of the texture. */
+  wall?: string[];
+}> = ({ number, title, game, year, quote, frames, bg, variant, wall }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const out = interpolate(frame, [frames - 12, frames], [1, 0], {
@@ -2212,7 +2236,11 @@ export const ChapterInterlude: React.FC<{
   });
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {bg ? (
+      {wall?.length ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <ScreenshotWall pictures={wall} frames={frames} seed={number} />
+        </AbsoluteFill>
+      ) : bg ? (
         <AbsoluteFill style={{ opacity: dim }}>
           <TextureBackground kind={bg} variant={variant} />
         </AbsoluteFill>
@@ -3955,6 +3983,40 @@ export const Long: React.FC<LongProps> = (props) => {
     });
     return out;
   })();
+  // DEPTH_TYPE: lines whose plain caption is a short stressed phrase, landing on a wide layered still, set it behind
+  // the subject instead (src/render/boldideas.ts); their caption is then not drawn.
+  const typedPlan = props.depthType
+    ? depthTypePlan(
+        windows,
+        (w) => {
+          const raw = props.moments?.[w.entry]?.[w.moment];
+          if (!raw?.emphasis || usefulGraphic(raw.graphic)) return undefined;
+          return usefulEmphasis(raw.emphasis) ? raw.emphasis : undefined;
+        },
+        plan.shots,
+        props.images,
+        fps,
+        // Shots something else draws (a detail push, an old game's hardware, a display, a camera move of their own).
+        new Set([
+          ...focusAt.keys(),
+          ...retro.keys(),
+          ...photoPlan.displays.keys(),
+          ...(cameraMoves?.plan.shots.keys() ?? []),
+        ]),
+      )
+    : new Map<number, { phrase: string; window: number; at: number }>();
+  const typedWindows = new Set([...typedPlan.values()].map((x) => x.window));
+  // COMPARE_WIPE: a line comparing this chapter's game with another chapter's shows both games' pictures.
+  const wipes = (() => {
+    if (!props.compareWipe) return [];
+    const games = new Map<number, string>();
+    props.segments.forEach((x, k) => {
+      const e = entryOf(props.segments, k);
+      if (x.kind === "beat" && x.visual?.kind === "chapter" && e !== undefined && x.visual.secondary)
+        games.set(e, x.visual.secondary);
+    });
+    return compareWipePlan(windows, words, games, props.images, fps);
+  })();
 
   const richSoundAt = new Map<number, number>();
   const soundCands: LongSoundCandidate[] = windows
@@ -4241,6 +4303,7 @@ export const Long: React.FC<LongProps> = (props) => {
         powerOff={powerOff}
         punches={punches}
         deep={deepShots}
+        typed={typedPlan}
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}
@@ -4251,6 +4314,17 @@ export const Long: React.FC<LongProps> = (props) => {
         gameLevel={gameLevel}
         audioOnly={props.audioOnly}
       />
+      {wipes.map((w, k) => (
+        <Sequence key={`wipe${k}`} from={w.from} durationInFrames={w.len} layout="none">
+          <CompareWipe
+            left={props.images[w.left]!.src}
+            right={props.images[w.right]!.src}
+            leftLabel={displayText(w.leftGame)}
+            rightLabel={displayText(w.rightGame)}
+            len={w.len}
+          />
+        </Sequence>
+      ))}
       {accents.map((a, k) => (
         <Sequence
           key={`acc${k}`}
@@ -4673,6 +4747,11 @@ export const Long: React.FC<LongProps> = (props) => {
                       props.variant,
                     )}
                     variant={props.variant}
+                    wall={
+                      props.chapterWall
+                        ? wallPictures(props.images, b).map((k) => props.images[k]!.src)
+                        : undefined
+                    }
                     number={s.visual.value_a ?? (b ?? 0) + 1}
                     title={s.visual.primary}
                     game={s.visual.secondary}
@@ -4781,7 +4860,7 @@ export const Long: React.FC<LongProps> = (props) => {
             ? raw.graphic
             : { ...raw.graphic, kind: "none" as const },
           emphasis:
-            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k)
+            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k)
               ? raw.emphasis
               : "",
         };

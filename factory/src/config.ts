@@ -1329,6 +1329,15 @@ export interface Config {
   parallaxDeep: boolean;
   /** At most this many stills a video get the depth camera's maps (PARALLAX_DEEP_MAX, default 40). */
   parallaxDeepMax: number;
+  /** A documentary chapter's title breather over a 3D wall of the chapter's own stills (src/render/boldideas.ts;
+   * CHAPTER_WALL, default off until proven). */
+  chapterWall: boolean;
+  /** A line's short stressed phrase set huge behind a layered still's subject, in place of its caption
+   * (DEPTH_TYPE, default off until proven). */
+  depthType: boolean;
+  /** A line comparing two chapters' games shows both games' pictures behind a sliding wipe
+   * (COMPARE_WIPE, default off until proven). */
+  compareWipe: boolean;
   /** The subject pop-out (src/render/popout.ts): a still's subject steps in front of the title drop and every
    * other chapter opener's title when it fits (SUBJECT_POP, default off until proven). Needs PARALLAX. */
   subjectPop: boolean;
@@ -2361,6 +2370,9 @@ export function loadConfig(): Config {
     depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
     parallaxDeep: bool("PARALLAX_DEEP", false),
     parallaxDeepMax: Math.max(0, int("PARALLAX_DEEP_MAX", 40)),
+    chapterWall: bool("CHAPTER_WALL", false),
+    depthType: bool("DEPTH_TYPE", false),
+    compareWipe: bool("COMPARE_WIPE", false),
     subjectPop: bool("SUBJECT_POP", false),
     box3d: bool("BOX_3D", false),
     upscale: bool("UPSCALE", false),

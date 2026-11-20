@@ -17,6 +17,7 @@ import {
 import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { DepthProof, SAMPLE_DEPTH_PROOF, type DepthProofProps } from "./DepthProof.tsx";
+import { IdeasProof, SAMPLE_IDEAS_PROOF, ideasProofScenes, type IdeasProofProps } from "./IdeasProof.tsx";
 import { MascotSheet, SHEET_H, SHEET_W } from "./MascotSheet.tsx";
 import {
   StreamWeekly,
@@ -369,6 +370,19 @@ export const RemotionRoot: React.FC = () => (
         width: props.width,
         height: props.height,
         durationInFrames: Math.max(1, props.items.length) * Math.round(props.seconds * LONG_FPS),
+      })}
+    />
+    {/* CHAPTER_WALL, DEPTH_TYPE and COMPARE_WIPE proof reel (src/render/IdeasProof.tsx). */}
+    <Composition
+      id="PulseIdeasProof"
+      component={IdeasProof}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={LONG_FPS * 4}
+      defaultProps={SAMPLE_IDEAS_PROOF}
+      calculateMetadata={({ props }: { props: IdeasProofProps }) => ({
+        durationInFrames: Math.max(1, ideasProofScenes(props)) * Math.round(props.seconds * LONG_FPS),
       })}
     />
   </>

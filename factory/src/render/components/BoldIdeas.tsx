@@ -112,7 +112,9 @@ export const DepthType: React.FC<{
   dir?: 1 | -1;
   /** Where the layers sit in a crop narrower than the picture (a Short: round its subject, focusPosition). */
   position?: string;
-}> = ({ layers, phrase, at, len, dir = 1, position }) => {
+  /** The frame the phrase has gone by (a Short: its word moment's stretch ends); absent, it stays to the end. */
+  until?: number;
+}> = ({ layers, phrase, at, len, dir = 1, position, until }) => {
   const frame = useCurrentFrame();
   const { fps, width, height } = useVideoConfig();
   const p = Math.min(1, frame / Math.max(1, len));
@@ -157,6 +159,10 @@ export const DepthType: React.FC<{
               color: COLOUR.paper,
               textShadow: `0 ${size * 0.04}px ${size * 0.12}px rgba(0,0,0,0.45)`,
               transform: `translateY(${(1 - rise) * 105}%) translateX(${truck * 0.3}px)`,
+              opacity:
+                until === undefined
+                  ? 1
+                  : interpolate(frame, [until - 8, until], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
               whiteSpace: "nowrap",
             }}
           >

@@ -17,6 +17,7 @@ import {
   shortMapFrame,
   shortOrbit,
   shortTypeable,
+  checksClearOfUpgrades,
 } from "../src/render/shortupgrades.ts";
 import {
   shortBlenderRequests,
@@ -155,10 +156,31 @@ test("map placement: the pin lands on the place's word, never in the hook, never
   const a = placeShortMap({ ...base, wordAt: 12 })!;
   assert.equal(a.from + SHORT_MAP_PIN_FRAME, 360);
   assert.ok(a.len >= SHORT_MAP_MIN && a.len <= 150);
-  // Inside the hook: it waits for the hook to end (and the line still has time).
+  // A place said inside the hook: the pin would land seconds late, so no map (the hook stays clean).
   assert.equal(
-    placeShortMap({ ...base, segStart: 0, segEnd: 300, wordAt: 1 })!.from,
-    90,
+    placeShortMap({ ...base, segStart: 0, segEnd: 300, wordAt: 1 }),
+    undefined,
+  );
+  // Said just after the hook: the dive may start in the line before, so the pin still lands on the word.
+  const early = placeShortMap({
+    ...base,
+    segStart: 120,
+    segEnd: 300,
+    wordAt: 4.1,
+  })!;
+  assert.equal(early.from + SHORT_MAP_PIN_FRAME, 123);
+  // Said right at the hook's end: a few frames late at most.
+  const atHook = placeShortMap({
+    ...base,
+    segStart: 90,
+    segEnd: 300,
+    wordAt: 3.6,
+  })!;
+  assert.ok(atHook.from + SHORT_MAP_PIN_FRAME - 108 <= 12);
+  // A pin that would land more than a beat after its word: no map.
+  assert.equal(
+    placeShortMap({ ...base, segStart: 90, segEnd: 300, wordAt: 3.1 }),
+    undefined,
   );
   // A word moment holding the word: left out rather than late.
   assert.equal(
@@ -423,6 +445,16 @@ test("Blender step: waits with a slot, renders without, and drops a clip that is
     return [];
   };
   const probe = async () => ({ width: 1080, height: 1920 });
+  // The service: healthy, and each job's state as set here.
+  let jobState = "queued";
+  let healthy = true;
+  const http = (async (url: string) => {
+    if (url.endsWith("/health")) {
+      if (!healthy) throw new Error("ECONNREFUSED");
+      return new Response("{}");
+    }
+    return new Response(JSON.stringify({ state: jobState }));
+  }) as never;
   const wait = await shortBlenderStep({
     cfg,
     episodeDir: dir,
@@ -431,8 +463,70 @@ test("Blender step: waits with a slot, renders without, and drops a clip that is
     slotAt: "2026-11-20T14:00:00Z",
     probe,
     fetchClips: none,
+    http,
   });
   assert.equal(wait.verdict, "wait");
+  const state = wait.verdict === "wait" ? wait.state : undefined;
+  // Still within the wait, the job still queued: wait again from the same first ask.
+  const later = new Date(now.getTime() + 6 * 60_000);
+  const again = await shortBlenderStep({
+    cfg,
+    episodeDir: dir,
+    segments: segs,
+    now: later,
+    slotAt: "2026-11-20T14:00:00Z",
+    state,
+    probe,
+    fetchClips: none,
+    http,
+  });
+  assert.equal(again.verdict === "wait" && again.state.askedAt, state!.askedAt);
+  // The render failed: no more waiting, and nothing asked again.
+  jobState = "failed";
+  const before = asked;
+  const failed = await shortBlenderStep({
+    cfg,
+    episodeDir: dir,
+    segments: segs,
+    now: later,
+    slotAt: "2026-11-20T14:00:00Z",
+    state,
+    probe,
+    fetchClips: none,
+    http,
+  });
+  assert.deepEqual(failed, { verdict: "render", clips: [], asked: 0 });
+  assert.equal(asked, before);
+  // The service does not answer: render now with the cards.
+  jobState = "queued";
+  healthy = false;
+  const down = await shortBlenderStep({
+    cfg,
+    episodeDir: dir,
+    segments: segs,
+    now,
+    slotAt: "2026-11-20T14:00:00Z",
+    probe,
+    fetchClips: none,
+    http,
+  });
+  assert.equal(down.verdict, "render");
+  healthy = true;
+  // A re-render hours after an old ask, with no slot left to wait for, asks nothing.
+  const stale = await shortBlenderStep({
+    cfg,
+    episodeDir: dir,
+    segments: segs,
+    now: new Date(now.getTime() + 5 * 3_600_000),
+    slotAt: "2026-11-20T14:00:00Z",
+    state,
+    probe,
+    fetchClips: none,
+    http,
+  });
+  assert.deepEqual(stale, { verdict: "render", clips: [], asked: 0 });
+  assert.equal(asked, before);
+  asked = 1;
   const news = await shortBlenderStep({
     cfg,
     episodeDir: dir,
@@ -502,8 +596,24 @@ test("depth type: a short word moment on a wide layered still after the hook, ov
   const base = { shots, images, fps: FPS, hookEnd: 90, loopFrom: 900 };
   const d = shortDepthTypes({ ...base, stamps: [{ at: 4, text: "DELAYED" }] });
   assert.deepEqual(
-    d.map((x) => [x.from, x.len, x.phrase, x.at, x.stamp]),
-    [[90, 150, "DELAYED", 30, 0]],
+    d.map((x) => [x.from, x.len, x.phrase, x.at, x.until, x.stamp]),
+    [[90, 150, "DELAYED", 30, 114, 0]],
+    "the phrase holds the word moment's stretch (84 frames), not the whole shot",
+  );
+  // On a clean Short it follows the word moment's kept stretch; a moment the clean frame dropped gets none.
+  const k = shortDepthTypes({
+    ...base,
+    stamps: [{ at: 4, text: "DELAYED" }],
+    kept: [{ key: "stamp0", from: 130, to: 190 }],
+  });
+  assert.deepEqual(
+    k.map((x) => [x.at, x.until]),
+    [[40, 100]],
+  );
+  assert.equal(
+    shortDepthTypes({ ...base, stamps: [{ at: 4, text: "DELAYED" }], kept: [] })
+      .length,
+    0,
   );
   assert.equal(
     shortDepthTypes({
@@ -634,18 +744,18 @@ test("upgrades end to end: the map is staged, replaces its line's card and an in
     { kind: "hook", text: "GTA 6 has a secret swamp.", start: 0, end: 3 },
     {
       kind: "beat",
-      text: "Grassrivers is where the airboats live.",
+      text: "The airboats all live out in Grassrivers, the swamp.",
       start: 3,
-      end: 9,
+      end: 10,
       visual: { kind: "stat", primary: "40", secondary: "airboats" },
     },
-    { kind: "loop", text: "Would you go?", start: 9, end: 12 },
+    { kind: "loop", text: "Would you go?", start: 10, end: 13 },
   ];
   const words = wordsOf(segments);
   const mention = {
     key: "m1",
-    from: 95,
-    to: 160,
+    from: 150,
+    to: 234,
     m: { kind: "inworld", key: "grassrivers", pictures: [] },
   } as never;
   const staged: string[] = [];
@@ -655,14 +765,14 @@ test("upgrades end to end: the map is staged, replaces its line's card and an in
     game: "Grand Theft Auto VI",
     segments,
     words,
-    plan: { fps: FPS, totalFrames: 360, shots: [] },
-    layout: { hookEnd: 90, loopFrom: 300 },
+    plan: { fps: FPS, totalFrames: 390, shots: [] },
+    layout: { hookEnd: 90, loopFrom: 330 },
     images: [],
     stamps: [],
+    // As the clean frame keeps them: the in-game place inset already stood in for the line's card.
     kept: [
       { key: "hook", kind: "hook", from: 0, to: 90 },
-      { key: "card1", kind: "card", from: 100, to: 175 },
-      { key: "m1", kind: "mention", from: 95, to: 160 },
+      { key: "m1", kind: "mention", from: 150, to: 234 },
     ],
     mentions: [mention],
     blender: [],
@@ -684,8 +794,17 @@ test("upgrades end to end: the map is staged, replaces its line's card and an in
   assert.deepEqual(staged, ["gta6"]);
   const map = res.upgrades.maps![0]!;
   assert.equal(map.segment, 1);
-  assert.equal(map.replacesCard, true);
-  assert.equal(map.from, 90, "starts as the hook ends, the pin on the word");
+  assert.equal(
+    map.replacesCard,
+    true,
+    "the card the inset had stood in for comes back, so the map must stand in for it",
+  );
+  const word = words.find((w) => w.text.startsWith("Grassrivers"))!;
+  assert.equal(
+    map.from + SHORT_MAP_PIN_FRAME,
+    Math.round(word.start * FPS),
+    "the pin lands on the word",
+  );
   assert.deepEqual(res.mentions, [], "the place's inset gives way to its map");
   assert.equal(res.upgrades.look, true);
   assert.equal(res.upgrades.box3d, true);
@@ -717,8 +836,8 @@ test("upgrades end to end: the map is staged, replaces its line's card and an in
     game: "x",
     segments,
     words,
-    plan: { fps: FPS, totalFrames: 360, shots: [] },
-    layout: { hookEnd: 90, loopFrom: 300 },
+    plan: { fps: FPS, totalFrames: 390, shots: [] },
+    layout: { hookEnd: 90, loopFrom: 330 },
     images: [],
     stamps: [],
     kept: [],
@@ -727,4 +846,130 @@ test("upgrades end to end: the map is staged, replaces its line's card and an in
     isRumour: true,
   });
   assert.equal(rumour.upgrades.look, undefined);
+});
+
+test("full-frame upgrades never hide each other or an overlay: the podium, the wipe, the orbit", async () => {
+  const dir = await tmpDir();
+  const cfg = testConfig(dir, {
+    compareWipe: true,
+    depthOrbit: true,
+    parallaxDeep: true,
+    depthType: true,
+  });
+  const segs = ranking(3);
+  segs[2] = {
+    ...segs[2]!,
+    text: "It is bigger than Game 3 and better looking.",
+  };
+  const words = wordsOf(segs);
+  const mesh = { depth: "d", far: "f", farDepth: "fd", pivot: 0.5 };
+  const images = [
+    {
+      kind: "screenshot",
+      aspect: 1.78,
+      beatIndex: 0,
+      layers: { bg: "", mid: "", fg: "", mesh },
+    },
+    {
+      kind: "screenshot",
+      aspect: 1.78,
+      beatIndex: 1,
+      layers: { bg: "", mid: "", fg: "", mesh },
+    },
+  ];
+  // Entry 2's line is one still shot: the wipe takes it, so the orbit may not.
+  const shots = [
+    { start: 0, end: 90, media: { type: "clip", index: 0 } },
+    { start: 90, end: 300, media: { type: "image", index: 0 } },
+    { start: 300, end: 510, media: { type: "image", index: 1 } },
+    { start: 510, end: 720, media: { type: "clip", index: 1 } },
+  ];
+  const podium = {
+    key: "blender3",
+    from: 510,
+    len: 90,
+    role: "rank" as const,
+    segment: 3,
+    file: "a.mp4",
+  };
+  const common = {
+    cfg,
+    episodeDir: dir,
+    game: "x",
+    segments: segs,
+    words,
+    plan: { fps: FPS, totalFrames: 810, shots },
+    layout: { hookEnd: 90, loopFrom: 720 },
+    images,
+    stamps: [],
+    mentions: [],
+    isRumour: false,
+  };
+  const res = await shortUpgradesFor({
+    ...common,
+    kept: [{ key: "card2", kind: "entry", from: 300, to: 510 }],
+    blender: [podium],
+  });
+  assert.equal(res.upgrades.wipes?.length, 1);
+  const wipe = res.upgrades.wipes![0]!;
+  for (const o of res.upgrades.orbits ?? [])
+    assert.ok(
+      o.from + o.len <= wipe.from || o.from >= wipe.from + wipe.len,
+      "the orbit is not under the wipe",
+    );
+  assert.deepEqual(
+    res.upgrades.blender?.map((b) => b.key),
+    ["blender3"],
+    "the podium over its own entry card",
+  );
+  // A word moment in the podium's frames keeps them; so does a code scene.
+  const busy = await shortUpgradesFor({
+    ...common,
+    kept: [{ key: "stamp0", kind: "stamp", from: 540, to: 620 }],
+    blender: [podium],
+  });
+  assert.equal(busy.upgrades.blender, undefined);
+  const scene = await shortUpgradesFor({
+    ...common,
+    plan: { ...common.plan, scenes: [{ from: 520, to: 560 }] },
+    kept: [],
+    blender: [podium],
+  });
+  assert.equal(scene.upgrades.blender, undefined);
+  // Never in the hook.
+  assert.equal(
+    shortBlenderBeats([
+      { kind: "hook", text: "x", start: 0, end: 5 },
+      ...ranking(3)
+        .slice(1)
+        .map((s) => ({ ...s, start: s.start - 3, end: s.end - 3 })),
+    ]).length,
+    1,
+  );
+  const opensOnOne = ranking(3).map((s) =>
+    s.visual?.value_a === 1 ? { ...s, start: 1, end: 9 } : s,
+  );
+  assert.equal(shortBlenderBeats(opensOnOne).length, 0);
+});
+
+test("the graphics frame check never samples a card under the map or the podium", () => {
+  const up = {
+    maps: [{ key: "map2", from: 200, len: 120, segment: 2, replacesCard: true, graphic: {} as never }],
+    blender: [{ key: "b", from: 500, len: 90, role: "rank" as const, segment: 5 }],
+  };
+  const got = checksClearOfUpgrades(
+    [
+      { key: "card2", t: 5 },
+      { key: "card3", t: 250 / 30 },
+      { key: "card5", t: 530 / 30 },
+      { key: "card6", t: 20 },
+    ],
+    up,
+    30,
+  );
+  assert.deepEqual(got, [
+    { key: "card5", t: 605 / 30 },
+    { key: "card6", t: 20 },
+  ]);
+  assert.equal(checksClearOfUpgrades([{ key: "card1", t: 1 }], undefined, 30).length, 1);
 });

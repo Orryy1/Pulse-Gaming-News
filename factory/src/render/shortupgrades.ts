@@ -80,6 +80,8 @@ export interface ShortDepthTypeMoment {
   phrase: string;
   /** The word's frame from `from`. */
   at: number;
+  /** The frame (from `from`) the phrase is gone by: the word moment's kept stretch, so it never shares the frame. */
+  until: number;
   /** Which word moment it stands in for. */
   stamp: number;
 }
@@ -175,15 +177,16 @@ export function placeShortMap(o: {
   taken: readonly TakenSpan[];
 }): { from: number; len: number } | undefined {
   const ideal = Math.round(o.wordAt * o.fps) - SHORT_MAP_PIN_FRAME;
-  const from0 = Math.max(o.segStart, o.hookEnd, ideal);
+  // The dive may start in the line before (a place among a line's first words), never inside the hook.
+  const from0 = Math.max(o.segStart - SHORT_MAP_PIN_FRAME, o.hookEnd, ideal);
   const end = Math.min(o.segEnd + SHORT_MAP_SPILL, o.loopFrom);
   const piece = freeStretches(from0, end, o.taken).find(
     ([a]) => a - from0 <= 12,
   );
   if (!piece) return undefined;
   const [a, b] = piece;
-  // The pin must still land by the word's end of line: a map that starts late shows the pin after the line moved on.
-  if (a + SHORT_MAP_PIN_FRAME > o.segEnd) return undefined;
+  // The pin lands on its word, at most a beat (12 frames) late: a map pushed later shows the pin after the line moved on.
+  if (a > ideal + 12 || a + SHORT_MAP_PIN_FRAME > o.segEnd) return undefined;
   const len = Math.min(SHORT_MAP_MAX, b - a);
   return len >= SHORT_MAP_MIN ? { from: a, len } : undefined;
 }
@@ -216,9 +219,7 @@ export const SHORT_PODIUM_SECONDS = 3;
  * The 3D clips a Short asks for (pure): only a ranking's number one, opening its entry on the vertical podium, when
  * the entry runs long enough to leave its card most of its time. Returns the beat and the scene's parameters.
  */
-export function shortBlenderBeats(
-  segments: readonly Segment[],
-): Array<{
+export function shortBlenderBeats(segments: readonly Segment[]): Array<{
   segment: number;
   at: number;
   seconds: number;
@@ -233,7 +234,9 @@ export function shortBlenderBeats(
   );
   const s = segments[i];
   // Release-date lists and achievements wear a date or a requirement on the badge, not a rank: no podium.
-  if (!s?.visual || ranks.length < 3 || s.visual.date_to || s.visual.items?.[2])
+  // Never inside the hook: a list that opens on its number one keeps its opening clean.
+  const hookEnd = segments.find((x) => x.kind === "hook")?.end ?? 3;
+  if (!s?.visual || s.start < hookEnd || ranks.length < 3 || s.visual.date_to || s.visual.items?.[2])
     return [];
   const len = s.end - s.start;
   if (len < SHORT_PODIUM_SECONDS + 2) return [];
@@ -344,10 +347,13 @@ export function shortTypeable(text: string | undefined): string | undefined {
 
 /**
  * SHORT_DEPTH_TYPE (pure): each word moment with no second line, landing on a wide still with depth layers after the
- * hook, with at least 2 s of the shot left after its word, is set behind the still's subject for that whole shot.
+ * hook, with at least 2 s of the shot left after its word, is set behind the still's subject for that whole shot. The
+ * phrase rises and goes in the word moment's own kept stretch (`kept`, the clean frame's `stamp<k>`; the planned hold
+ * where there is none), so it never shares the frame with another overlay.
  */
 export function shortDepthTypes(o: {
   stamps: ReadonlyArray<{ at: number; text: string; sub?: string }>;
+  kept?: ReadonlyArray<{ key: string; from: number; to: number }>;
   shots: readonly UpgradeShot[];
   images: readonly UpgradeImage[];
   fps: number;
@@ -358,7 +364,11 @@ export function shortDepthTypes(o: {
   o.stamps.forEach((st, k) => {
     const phrase = shortTypeable(st.text);
     if (!phrase || st.sub?.trim()) return;
-    const f = Math.round(st.at * o.fps);
+    const span = o.kept
+      ? o.kept.find((x) => x.key === `stamp${k}`)
+      : { from: Math.round(st.at * o.fps), to: Math.round(st.at * o.fps) + 84 };
+    if (!span) return;
+    const f = span.from;
     const sh = o.shots.find((s) => f >= s.start && f < s.end);
     if (!sh || sh.media.type !== "image" || sh.then) return;
     const im = o.images[sh.media.index];
@@ -373,6 +383,7 @@ export function shortDepthTypes(o: {
       image: sh.media.index,
       phrase,
       at: f - sh.start,
+      until: Math.min(sh.end, span.to) - sh.start,
       stamp: k,
     });
   });
@@ -521,4 +532,28 @@ export function shortCompareWipe(o: {
     }
   }
   return undefined;
+}
+
+/**
+ * The graphics frame check's sample times with the upgrades in mind (pure): a card the map stands in for, or one the map
+ * covers at that moment, is not sampled (the frame shows the map); a rank card sampled under the 3D podium is sampled
+ * just after it instead, where the card itself is on screen.
+ */
+export function checksClearOfUpgrades<T extends { key: string; t: number }>(
+  checks: readonly T[],
+  up: ShortUpgrades | undefined,
+  fps: number,
+): T[] {
+  if (!up) return [...checks];
+  const out: T[] = [];
+  for (const c of checks) {
+    const f = Math.round(c.t * fps);
+    const map = (up.maps ?? []).find(
+      (m) => (m.replacesCard && c.key === `card${m.segment}`) || (f >= m.from && f < m.from + m.len),
+    );
+    if (map) continue;
+    const pod = (up.blender ?? []).find((b) => f >= b.from && f < b.from + b.len);
+    out.push(pod ? { ...c, t: (pod.from + pod.len + 15) / fps } : c);
+  }
+  return out;
 }

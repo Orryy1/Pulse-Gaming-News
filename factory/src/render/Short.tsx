@@ -701,6 +701,7 @@ export const Short: React.FC<ShortProps> = (props) => {
               len={d.len}
               dir={props.variant % 2 ? -1 : 1}
               position={focusPosition(props.images[d.image]!)}
+              until={d.until}
             />
           </Sequence>
         ) : null,

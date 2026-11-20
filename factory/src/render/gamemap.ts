@@ -119,7 +119,7 @@ export function closeShot(pins: Vec3[], heightPx = 4000, aspect = 16 / 9, frameH
 }
 
 /** Where a tall frame's pins must stand (shares of the frame): the hero and shelf bands, clear of the captions. */
-export const TALL_PIN_BOX = { left: 0.11, right: 0.83, top: 0.24, bottom: 0.56 } as const;
+export const TALL_PIN_BOX = { left: 0.11, right: 0.83, top: 0.32, bottom: 0.56 } as const;
 
 /**
  * A tall frame's closing shot: the camera backs off from `d0` until every pin's foot stands inside TALL_PIN_BOX, with

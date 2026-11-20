@@ -354,9 +354,12 @@ const GameMapView: React.FC<{ g: GfxProps["g"]; len: number; short?: boolean }> 
           const w = labelWidth(pin.name, size);
           const left = Math.max(SAFE.left, Math.min(SAFE.railRight - w, head.x - w / 2));
           const foot = project(pins[i]!, shot, W, H);
-          let top = Math.max(470, Math.min(1090, foot.y + 30));
+          // Below the heading plate (to about y 600) and above the captions.
+          let top = Math.max(610, Math.min(1090, foot.y + 30));
           for (const o of shortLabels)
             if (left < o.left + o.w && o.left < left + w && Math.abs(top - o.top) < 80) top = o.top + 84;
+          // Never into the caption band (from 1180): a label pushed that far goes above the one it met instead.
+          if (top > 1090) top = Math.max(600, top - 168);
           shortLabels.push({ left, top, w });
           return (
             <div

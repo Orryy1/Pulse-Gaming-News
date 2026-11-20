@@ -619,6 +619,7 @@ import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } fro
 import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
 import { shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
+import { checksClearOfUpgrades } from "./render/shortupgrades.ts";
 import { probe as probeMedia } from "./qa/media.ts";
 import {
   cardRequirement,
@@ -14705,6 +14706,33 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
+  // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
+  const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
+  const blender3d = await shortBlenderStep({
+    cfg: s.cfg,
+    episodeDir: dir,
+    segments,
+    now: s.now(),
+    slotAt: ep.slot_at,
+    state: blenderState,
+    probe: probeMedia,
+    fps: plan.fps,
+  });
+  if (blender3d.verdict === "wait") {
+    (assets as { shortBlender?: ShortBlenderState }).shortBlender = blender3d.state;
+    await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+      blender3d.retryAt,
+    ]);
+    if (!blenderState) await logEvent(s.db, ep.id, "short_blender_wait", { until: blender3d.retryAt.toISOString(), keys: blender3d.state.keys }).catch(() => undefined);
+    return;
+  }
+  // The wait is over (clips back, or not to be had): a later re-render never resumes it.
+  if (blenderState) delete (assets as { shortBlender?: ShortBlenderState }).shortBlender;
+  if (blender3d.asked)
+    await logEvent(s.db, ep.id, "short_blender", { asked: blender3d.asked, made: blender3d.clips.length }).catch(() => undefined);
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
   // on every Short and kept in qa_json; under SHORT_MEDIA_RICH_TARGET it is a line in the evening summary.
   // The long videos' craft on the new-look Shorts (src/shortcraftstep.ts): planned once, stored on the plan.
@@ -14886,30 +14914,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     ep.id,
     JSON.stringify(assets),
   ]);
-  // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
-  // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
-  const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
-  const blender3d = await shortBlenderStep({
-    cfg: s.cfg,
-    episodeDir: dir,
-    segments,
-    now: s.now(),
-    slotAt: ep.slot_at,
-    state: blenderState,
-    probe: probeMedia,
-  });
-  if (blender3d.verdict === "wait") {
-    (assets as { shortBlender?: ShortBlenderState }).shortBlender = blender3d.state;
-    await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [
-      ep.id,
-      JSON.stringify(assets),
-      blender3d.retryAt,
-    ]);
-    if (!blenderState) await logEvent(s.db, ep.id, "short_blender_wait", { until: blender3d.retryAt.toISOString(), keys: blender3d.state.keys }).catch(() => undefined);
-    return;
-  }
-  if (blender3d.asked)
-    await logEvent(s.db, ep.id, "short_blender", { asked: blender3d.asked, made: blender3d.clips.length }).catch(() => undefined);
   const publisher = String(
     (assets.steam
       ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details
@@ -15009,7 +15013,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     game: script.game_title,
     segments,
     words,
-    plan,
+    plan: { ...plan, scenes: plan.scenes ?? [] },
     layout: shortLayoutNow,
     images: (assets.images ?? []).map((i) => ({
       kind: i.kind,
@@ -15252,7 +15256,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // is remembered (assets.gfxMuted) so the retry's audit leaves it out.
   const frameProblems: string[] = [];
   if (tech.ok && s.cfg.visionQa && s.cfg.graphicsFrameCheck) {
-    const checked = cardCheckTimes(gfxIn());
+    // SHORT_* upgrades: never a card sampled under the map or the 3D podium (src/render/shortupgrades.ts).
+    const checked = checksClearOfUpgrades(cardCheckTimes(gfxIn()), upgraded?.upgrades, plan.fps);
     if (checked.length) {
       const gfxFrames = await s.extractFrames(final, path.join(dir, "qa", "gfx"), checked.map((c) => c.t));
       const look = await s.visionQa(gfxFrames, {

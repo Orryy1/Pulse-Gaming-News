@@ -18,6 +18,8 @@ import {
 } from "./assets/gamemaps.ts";
 import { blenderKey, fetchBlenderClips, type BlenderClip, type BlenderRequest } from "./render/blender.ts";
 import { keyTime } from "./render/longplan.ts";
+import { cardWindow } from "./render/shortcraft.ts";
+import { fetchWithTimeout } from "./lib/util.ts";
 import type { MentionSlot } from "./render/mentions.ts";
 import type { Segment } from "./render/timeline.ts";
 import {
@@ -117,6 +119,9 @@ export async function shortBlenderStep(o: {
   state?: ShortBlenderState;
   probe: (f: string) => Promise<{ width: number; height: number }>;
   fetchClips?: typeof fetchBlenderClips;
+  /** The service's health and job status (tests stub it). */
+  http?: typeof fetchWithTimeout;
+  fps?: number;
 }): Promise<
   | { verdict: "render"; clips: ShortBlenderMoment[]; asked: number }
   | { verdict: "wait"; retryAt: Date; state: ShortBlenderState }
@@ -139,8 +144,30 @@ export async function shortBlenderStep(o: {
     waitMinutes: su.blenderWaitMinutes,
     marginMinutes: su.blenderMarginMinutes,
   });
-  const wanted = reqs.filter((_, k) => have[k] || askable || o.state);
+  // An earlier ask counts only inside its own wait: a re-render hours later never asks again.
+  const live = !!o.state && now < new Date(o.state.askedAt).getTime() + su.blenderWaitMinutes * 60_000;
+  let wanted = reqs.filter((_, k) => have[k] || askable || live);
   if (!wanted.length) return { verdict: "render", clips: [], asked: 0 };
+  // A service that does not answer, or a clip it failed to make, ends the wait at once: the card it is.
+  const http = o.http ?? fetchWithTimeout;
+  const uncached = wanted.filter((r) => !have[reqs.indexOf(r)]);
+  if (uncached.length) {
+    const up = await http(`${o.cfg.blender.url}/health`, {}, 5_000)
+      .then((r) => r.ok)
+      .catch(() => false);
+    if (!up) wanted = wanted.filter((r) => have[reqs.indexOf(r)]);
+    else if (live)
+      for (const r of uncached) {
+        const st = await http(`${o.cfg.blender.url}/status/${r.key}`, {}, 5_000)
+          .then((x) => (x.ok ? (x.json() as Promise<{ state?: string }>) : undefined))
+          .catch(() => undefined);
+        if (st?.state === "failed") wanted = wanted.filter((x) => x !== r);
+      }
+    if (!wanted.length) {
+      log("info", "Short 3D clip not to be had (service down or render failed); the card stays", { keys: uncached.map((r) => r.key) });
+      return { verdict: "render", clips: [], asked: 0 };
+    }
+  }
   const fetch = o.fetchClips ?? fetchBlenderClips;
   let made: BlenderClip[] = await fetch(
     wanted,
@@ -183,7 +210,7 @@ export async function shortBlenderStep(o: {
         keys: wanted.map((r) => r.key),
       },
     };
-  const fps = 30;
+  const fps = o.fps ?? 30;
   return {
     verdict: "render",
     asked: wanted.length,
@@ -258,7 +285,13 @@ export async function shortUpgradesFor(o: {
   game: string;
   segments: readonly Segment[];
   words: ReadonlyArray<{ text: string; start: number }>;
-  plan: { fps: number; totalFrames: number; shots: readonly UpgradeShot[] };
+  plan: {
+    fps: number;
+    totalFrames: number;
+    shots: readonly UpgradeShot[];
+    /** Code scenes have the screen to themselves (src/render/codescene.ts). */
+    scenes?: ReadonlyArray<{ from: number; to: number }>;
+  };
   layout: { hookEnd: number; loopFrom: number };
   /** The Short's images as the render gets them (layers only where the Short has them). */
   images: readonly UpgradeImage[];
@@ -280,7 +313,20 @@ export async function shortUpgradesFor(o: {
   const up: ShortUpgrades = {};
   if (on.look && !o.isRumour) up.look = true;
   if (on.box3d) up.box3d = true;
-  if (o.blender.length) up.blender = o.blender;
+  const sceneSpans: TakenSpan[] = (o.plan.scenes ?? []).map((x) => ({ kind: "scene", from: x.from, to: x.to }));
+  // The podium stands in for its entry's card for 3 s; anything else there (a word moment, an inset, a code scene),
+  // or the hook or the loop, keeps the frame and the podium is not shown.
+  const podiums = o.blender.filter((b) => {
+    const clear =
+      b.from >= hookEnd &&
+      b.from + b.len <= loopFrom &&
+      ![...o.kept, ...sceneSpans].some(
+        (k) => k.kind !== "entry" && k.kind !== "shelf" && k.kind !== "hook" && k.from < b.from + b.len && k.to > b.from,
+      );
+    if (!clear) notes.push(`3D podium left out: another overlay holds its frames`);
+    return clear;
+  });
+  if (podiums.length) up.blender = podiums;
   let mentions = o.mentions;
   if (on.maps) {
     try {
@@ -297,14 +343,18 @@ export async function shortUpgradesFor(o: {
       })) {
         // The map may replace its own line's card and an inset of an in-game place (the same noun); everything else
         // keeps its frames.
-        const taken = o.kept.filter(
-          (k) =>
-            !(k.kind === "card" && k.key === `card${c.segment}`) &&
-            !(
-              k.kind === "mention" &&
-              mentionKindOf(o.mentions, k.key) === "inworld"
-            ),
-        );
+        const taken = [
+          ...o.kept.filter(
+            (k) =>
+              !(k.kind === "card" && k.key === `card${c.segment}`) &&
+              !(
+                k.kind === "mention" &&
+                mentionKindOf(o.mentions, k.key) === "inworld"
+              ),
+          ),
+          ...sceneSpans,
+          ...podiums.map((b) => ({ kind: "podium", from: b.from, to: b.from + b.len })),
+        ];
         const at = placeShortMap({
           wordAt: c.wordAt,
           segStart: segStart(c.segment),
@@ -332,9 +382,15 @@ export async function shortUpgradesFor(o: {
           );
           continue;
         }
-        const card = o.kept.find((k) => k.key === `card${c.segment}`);
+        // The line's card as it would be drawn: from its own window, since an in-game place inset may have stood in for
+        // it in `kept` (and gives way to the map below, which brings the card back).
+        const v = o.segments[c.segment]!.visual;
+        const card =
+          v && v.kind !== "none" && v.primary.trim()
+            ? cardWindow([...o.segments], [...o.words], c.segment, fps, o.plan.totalFrames)
+            : undefined;
         const replacesCard =
-          !!card && card.from < at.from + at.len && card.to > at.from;
+          !!card && card.from < at.from + at.len && card.from + card.len > at.from;
         up.maps = [
           {
             key: `map${c.segment}`,
@@ -366,6 +422,7 @@ export async function shortUpgradesFor(o: {
   if (on.depthType) {
     const d = shortDepthTypes({
       stamps: o.stamps,
+      kept: o.kept,
       shots: stillShots,
       images: o.images,
       fps,
@@ -374,27 +431,13 @@ export async function shortUpgradesFor(o: {
     });
     if (d.length) up.depthTypes = d;
   }
-  if (on.orbit) {
-    const blocked = new Set((up.depthTypes ?? []).map((d) => d.from));
-    // Not under the map or a 3D clip, which would hide it.
-    for (const m of [...(up.maps ?? []), ...(up.blender ?? [])])
-      for (const s of stillShots)
-        if (s.start < m.from + m.len && s.end > m.from) blocked.add(s.start);
-    const orbit = shortOrbit({
-      shots: stillShots,
-      images: o.images,
-      fps,
-      hookEnd,
-      loopFrom,
-      blocked,
-    });
-    if (orbit) up.orbits = [orbit];
-  }
+  // The compare wipe before the orbit: neither may hide the other, nor the map, the podium, a depth type or a code scene.
   if (on.compareWipe) {
     const taken: TakenSpan[] = [
       ...o.kept,
-      ...(up.maps ?? []).map((m) => ({
-        kind: "map",
+      ...sceneSpans,
+      ...[...(up.maps ?? []), ...(up.blender ?? []), ...(up.depthTypes ?? [])].map((m) => ({
+        kind: "upgrade",
         from: m.from,
         to: m.from + m.len,
       })),
@@ -412,6 +455,22 @@ export async function shortUpgradesFor(o: {
       up.wipes = [wipe];
       notes.push(`compare wipe: ${wipe.leftGame} and ${wipe.rightGame}`);
     }
+  }
+  if (on.orbit) {
+    const blocked = new Set((up.depthTypes ?? []).map((d) => d.from));
+    // Not under the map, a 3D clip, the wipe or a code scene, which would hide it.
+    for (const m of [...(up.maps ?? []), ...(up.blender ?? []), ...(up.wipes ?? []), ...sceneSpans.map((x) => ({ from: x.from, len: x.to - x.from }))])
+      for (const s of stillShots)
+        if (s.start < m.from + m.len && s.end > m.from) blocked.add(s.start);
+    const orbit = shortOrbit({
+      shots: stillShots,
+      images: o.images,
+      fps,
+      hookEnd,
+      loopFrom,
+      blocked,
+    });
+    if (orbit) up.orbits = [orbit];
   }
   return { upgrades: up, mentions, notes };
 }

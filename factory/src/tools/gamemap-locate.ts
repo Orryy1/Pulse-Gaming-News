@@ -338,6 +338,8 @@ async function main(): Promise<void> {
     if (v?.shows === true && normName(v.text ?? "") === normName(name)) checks.set(name, `vision crop ${today}: read "${v.text}"`);
   }
   for (const place of wanted) {
+    // A spot a person checked by eye on a close crop stays as checked: OCR misreads big stylised labels ("VICE CITY").
+    if (place.checked && /by eye/.test(place.check ?? "")) continue;
     const c = found.get(place.name);
     if (!c) {
       console.log(`NOT FOUND ${place.name}`);

@@ -5405,7 +5405,9 @@ export function longShortlist<T>(
 
 /** The shortlist without topics that failed recently: a candidate goes when its name and a failed theme overlap. */
 export function dropFailedThemes<T extends { name: string }>(list: T[], failedThemes: string[]): T[] {
-  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  // Bracketed descriptions are set aside: a failed theme is stored as "Half-Life and Portal (Valve's shared universe:
+  // ...)", which matched no shorter name, so the same topic was picked four times on 20 Nov.
+  const norm = (x: string) => x.replace(/\([^)]*\)?/g, " ").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
   const failed = failedThemes.map(norm).filter(Boolean);
   if (!failed.length) return list;
   // Whole words only, so "Ys" is not left out because a failed theme says "Days Gone".
@@ -5530,12 +5532,18 @@ export async function maybeSelectLongform(
   // The viewer poll's winner joins the shortlist (LONG_POLL_CANDIDATE), and a refusal that leans on the poll is asked
   // again without it, then falls back to the top of the shortlist (LONG_POLL_FALLBACK), src/editorial/longrescue.ts.
   const poll = await readPoll(db).catch(() => undefined);
+  const pollWinner = pollWinnerOf(poll, now);
+  const winnerFailed = !!pollWinner && dropFailedThemes([{ name: pollWinner.name }], failedThemes).length === 0;
+  if (winnerFailed) log("info", "long ranking: the poll winner failed recently, so it is not pushed this pick", { winner: pollWinner!.name });
   const chosen = await chooseLongformTopic({
     select: (c, d) => selectLongformTopic(s.llm, c, notCovered, d),
     candidates: shortlist,
-    demand: demandText,
-    pollLine: pollBlock(poll, now),
-    winner: pollWinnerOf(poll, now),
+    // The poll block is part of the demand notes too (topicDemand): with the winner held back it comes out of both,
+    // or the picker is told to pick a topic it may not have and refuses the week (code review, 20 Nov).
+    demand: winnerFailed ? demandText.replace(pollBlock(poll, s.now()), "").trim() : demandText,
+    // A poll winner whose ranking failed in the last two days is not pushed again (it failed four times on 20 Nov).
+    pollLine: winnerFailed ? "" : pollBlock(poll, now),
+    winner: winnerFailed ? undefined : pollWinner,
     covered: notCovered,
     addWinner: cfg.longPollCandidate,
     fallback: cfg.longPollFallback,

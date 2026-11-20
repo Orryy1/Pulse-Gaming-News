@@ -340,6 +340,9 @@ export async function stepScriptExplained(
   }> = [];
   const games = [story.game || outline.title];
   const youFloor = longRulesFor(s.cfg, "explained").youFloor;
+  // Parts dropped because the writer still found no source for them (20 Nov 2026: one part stopped the whole weekly
+  // explainer). At most one, never the first, and only with DOC_DROP_REFUSED_CHAPTER on, as for documentaries.
+  const dropped = new Set<number>();
   for (const [index] of EXPLAINED_PARTS.entries()) {
     let chapter: DocChapter | undefined;
     let feedback: string[] = [];
@@ -400,6 +403,13 @@ export async function stepScriptExplained(
         return kept.length === sentencesOf(p.narration).length ? p : { ...p, narration: kept.join(" ") };
       }),
     };
+    if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length && s.cfg.docDropRefusedChapter && index > 0 && dropped.size === 0) {
+      dropped.add(index);
+      warnings.push(`${EXPLAINED_PARTS[index]!.label}: dropped, the writer found no source for it (${chapterRefusal(chapter!)[0]!.slice(0, 160)})`);
+      await logEvent(s.db, ep.id, "explained_part_dropped", { part: EXPLAINED_PARTS[index]!.label, why: chapterRefusal(chapter!)[0]!.slice(0, 300) }).catch(() => undefined);
+      log("warn", "explained part dropped", { episode: ep.id, part: EXPLAINED_PARTS[index]!.label });
+      continue;
+    }
     if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
       throw new FatalError(
         `explainer part "${EXPLAINED_PARTS[index]!.label}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
@@ -452,7 +462,9 @@ export async function stepScriptExplained(
     });
   }
   const chapters = done.map((d) => d.chapter);
-  let bookends = await writeExplainedBookends(s.llm, outline, chapters, story);
+  // The plan without the dropped part, so each written part keeps its own title.
+  const plan = dropped.size ? { ...outline, chapters: outline.chapters.filter((_, i) => !dropped.has(i)) } : outline;
+  let bookends = await writeExplainedBookends(s.llm, plan, chapters, story);
   const bookendSpoilers = (b: typeof bookends) =>
     spoilerProblems(
       [b.intro.narration, b.intro.on_screen, b.outro.narration, b.outro.on_screen].filter(Boolean).join(" "),
@@ -467,7 +479,7 @@ export async function stepScriptExplained(
   if (endProblems.length) {
     bookends = await writeExplainedBookends(
       s.llm,
-      outline,
+      plan,
       chapters,
       story,
       endProblems,
@@ -485,12 +497,14 @@ export async function stepScriptExplained(
     );
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
-  const script = explainedToScript(story, outline, done, bookends);
+  const script = explainedToScript(story, plan, done, bookends);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
       explained: true,
+      // Parts dropped for want of a source, so the weekly round-up test can tell a shorter explainer apart.
+      ...(dropped.size ? { dropped: [...dropped].map((i) => EXPLAINED_PARTS[i]!.label) } : {}),
       story,
       words,
       sources: script.sources,

@@ -726,7 +726,7 @@ export async function writeExplainedBookends(
   const digest = chapters
     .map(
       (c, i) =>
-        `${i + 1}. ${outline.chapters[i]?.chapter_title} (${EXPLAINED_PARTS[i]?.label}): ${c.claims
+        `${i + 1}. ${outline.chapters[i]?.chapter_title} (${EXPLAINED_PARTS.find((p) => p.job === outline.chapters[i]?.focus)?.label ?? EXPLAINED_PARTS[i]?.label}): ${c.claims
           .slice(0, 6)
           .map((x) => x.claim)
           .join("; ")}`,

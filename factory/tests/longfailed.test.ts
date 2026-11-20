@@ -36,3 +36,9 @@ test("a picked theme that renames a failed topic is swapped for the top clean ca
   // The picker's own clean candidate is kept when only its theme overlapped.
   assert.equal(avoidFailedTheme({ ...picked, candidate_index: 1 }, cands, ["Half-Life and Portal"], [])?.theme, "Fallout");
 });
+
+test("a failed theme stored with a bracketed description still matches the shorter names it came back under (20 Nov)", () => {
+  const failed = ["Half-Life and Portal (Valve's shared universe: Half-Life, Portal and the episodes)"];
+  const list = [{ name: "Half-Life and Portal" }, { name: "Valve's Half-Life and Portal games" }, { name: "Fallout" }];
+  assert.deepEqual(dropFailedThemes(list, failed).map((c) => c.name), ["Fallout"]);
+});

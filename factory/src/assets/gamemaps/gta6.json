@@ -28,8 +28,8 @@
       "y": 0.521,
       "kind": "city",
       "located": "vision",
-      "checked": false,
-      "check": "ocr 2026-11-20: found, but the crop check failed"
+      "checked": true,
+      "check": "2026-11-20: crop check by eye (claude/shorts-upgrades): the printed label sits on the spot; the OCR crop check had failed on the large white lettering"
     },
     {
       "name": "Vice Beach",
@@ -45,8 +45,8 @@
       "y": 0.5331,
       "kind": "district",
       "located": "vision",
-      "checked": false,
-      "check": "ocr 2026-11-20: found, but the crop check failed"
+      "checked": true,
+      "check": "2026-11-20: crop check by eye (claude/shorts-upgrades): the printed label sits on the spot; the OCR crop check had failed on the large white lettering"
     },
     {
       "name": "Downtown",
@@ -66,8 +66,8 @@
       "y": 0.3574,
       "kind": "city",
       "located": "vision",
-      "checked": false,
-      "check": "ocr 2026-11-20: found, but the crop check failed"
+      "checked": true,
+      "check": "2026-11-20: crop check by eye (claude/shorts-upgrades): the printed label sits on the spot; the OCR crop check had failed on the large white lettering"
     },
     {
       "name": "Ambrosia",

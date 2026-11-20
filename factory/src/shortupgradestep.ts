@@ -16,11 +16,7 @@ import {
   placesIn,
   stageGameMaps,
 } from "./assets/gamemaps.ts";
-import {
-  blenderKey,
-  fetchBlenderClips,
-  type BlenderRequest,
-} from "./render/blender.ts";
+import { blenderKey, fetchBlenderClips, type BlenderClip, type BlenderRequest } from "./render/blender.ts";
 import { keyTime } from "./render/longplan.ts";
 import type { MentionSlot } from "./render/mentions.ts";
 import type { Segment } from "./render/timeline.ts";
@@ -146,16 +142,16 @@ export async function shortBlenderStep(o: {
   const wanted = reqs.filter((_, k) => have[k] || askable || o.state);
   if (!wanted.length) return { verdict: "render", clips: [], asked: 0 };
   const fetch = o.fetchClips ?? fetchBlenderClips;
-  let made = await fetch(
+  let made: BlenderClip[] = await fetch(
     wanted,
     { url: o.cfg.blender.url, waitMinutes: 0.03 },
     o.episodeDir,
     { pollMs: 600 },
-  ).catch((err) => {
+  ).catch((err): BlenderClip[] => {
     log("warn", "Short 3D clips not asked", { error: errorMessage(err) });
     return [];
   });
-  const ok: typeof made = [];
+  const ok: BlenderClip[] = [];
   for (const c of made) {
     if (await upright(path.join(o.episodeDir, c.file), o.probe)) ok.push(c);
     else {
@@ -219,6 +215,8 @@ export function shortMapCandidates(o: {
   }> = [];
   o.segments.forEach((s, i) => {
     if (s.kind !== "beat") return;
+    // A line with its own explainer keeps it: the explainer is drawn for the whole line (claude/explainers).
+    if (s.explainer) return;
     // A rank card stays up for its whole entry: a map would cover it.
     if (s.visual?.kind === "rank") return;
     const game = lookTitleAt(o.segments, i, o.game);
@@ -232,7 +230,7 @@ export function shortMapCandidates(o: {
     );
     let hi = o.words.findIndex((w) => w.start >= s.end);
     if (hi < 0) hi = o.words.length;
-    const wordAt = keyTime(o.words, lo, hi, places[0]!.name);
+    const wordAt = keyTime([...o.words], lo, hi, places[0]!.name);
     if (wordAt === undefined) return;
     out.push({
       segment: i,

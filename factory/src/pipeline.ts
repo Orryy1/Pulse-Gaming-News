@@ -618,6 +618,8 @@ import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } from "./gfxauditstep.ts";
 import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
+import { shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
+import { probe as probeMedia } from "./qa/media.ts";
 import {
   cardRequirement,
   entryCardProblems,
@@ -14884,6 +14886,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     ep.id,
     JSON.stringify(assets),
   ]);
+  // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
+  // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
+  const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
+  const blender3d = await shortBlenderStep({
+    cfg: s.cfg,
+    episodeDir: dir,
+    segments,
+    now: s.now(),
+    slotAt: ep.slot_at,
+    state: blenderState,
+    probe: probeMedia,
+  });
+  if (blender3d.verdict === "wait") {
+    (assets as { shortBlender?: ShortBlenderState }).shortBlender = blender3d.state;
+    await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+      blender3d.retryAt,
+    ]);
+    if (!blenderState) await logEvent(s.db, ep.id, "short_blender_wait", { until: blender3d.retryAt.toISOString(), keys: blender3d.state.keys }).catch(() => undefined);
+    return;
+  }
+  if (blender3d.asked)
+    await logEvent(s.db, ep.id, "short_blender", { asked: blender3d.asked, made: blender3d.clips.length }).catch(() => undefined);
   const publisher = String(
     (assets.steam
       ? (await s.findGame(assets.steam.name).catch(() => undefined))?.details
@@ -14963,6 +14989,57 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     tracklist,
     mentions,
   });
+  // The game collage card's place (cleanframe.ts stingPlacement), worked out once for the upgrades and the render.
+  const stingAt = assets.suite
+    ? (stingPlacement({
+        segments,
+        words,
+        fps: plan.fps,
+        totalFrames: plan.totalFrames,
+        names: (t) => namesGame(t, script.game_title),
+        pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
+      }) ?? null)
+    : undefined;
+  // SHORT_* upgrades (src/shortupgradestep.ts): the game map, depth type, orbit, compare wipe, look and 3D box,
+  // placed round every overlay the Short keeps. Mention insets of a place the map pins give way to it.
+  const shortLayoutNow = shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames);
+  const upgraded = await shortUpgradesFor({
+    cfg: s.cfg,
+    episodeDir: dir,
+    game: script.game_title,
+    segments,
+    words,
+    plan,
+    layout: shortLayoutNow,
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      aspect: i.aspect,
+      wordy: i.wordy,
+      focusX: i.focusX,
+      beatIndex: i.beatIndex,
+      ...(depthArm === "depth" && i.layers
+        ? { layers: { ...i.layers, mesh: s.cfg.parallaxDeep ? i.layers.mesh : undefined } }
+        : {}),
+    })),
+    stamps: shownStamps,
+    kept: [
+      ...(shortClean ? arbitrate(entrySpans) : entrySpans),
+      ...(stingAt ? [{ key: "sting", kind: "sting", from: stingAt.from, to: stingAt.from + stingAt.frames }] : []),
+    ],
+    mentions,
+    blender: blender3d.clips,
+    isRumour: !!script.is_rumour,
+  }).catch((err) => {
+    log("warn", "Short upgrades skipped", { episode: ep.id, error: errorMessage(err) });
+    return undefined;
+  });
+  if (upgraded) {
+    mentions.splice(0, mentions.length, ...upgraded.mentions);
+    await logEvent(s.db, ep.id, "short_upgrades", {
+      devices: Object.keys(upgraded.upgrades).filter((k) => (upgraded.upgrades as Record<string, unknown>)[k]),
+      notes: upgraded.notes,
+    }).catch(() => undefined);
+  }
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -15012,15 +15089,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       // The game collage card only on a line that names the game, held 2.5 s, never with hardware (cleanframe.ts).
       ...(assets.suite
         ? {
-            motifSting:
-              stingPlacement({
-                segments,
-                words,
-                fps: plan.fps,
-                totalFrames: plan.totalFrames,
-                names: (t) => namesGame(t, script.game_title),
-                pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
-              }) ?? null,
+            motifSting: stingAt ?? null,
           }
         : {}),
       // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
@@ -15103,6 +15172,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
       ...(mentions.length ? { mentionFiles: mentions } : {}),
+      ...(upgraded && Object.keys(upgraded.upgrades).length ? { upgrades: upgraded.upgrades } : {}),
       ...(gameBed
         ? {
             gameBedFile: {

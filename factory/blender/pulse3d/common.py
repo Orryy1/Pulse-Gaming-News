@@ -83,6 +83,54 @@ class Ctx:
         return max(1, min(self.frames, round(seconds * FPS) + 1))
 
 
+MANIFEST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "manifest.json")
+
+
+def manifest_files():
+    """Every file the asset folder must hold, from assets/manifest.json: the downloads and the files made from
+    them (the logo trace lives in git, not the asset folder). [(relative path, md5 or None), ...]"""
+    with open(MANIFEST, encoding="utf-8") as f:
+        man = json.load(f)
+    out = [(e["file"], e.get("md5")) for e in man.get("files", [])]
+    for e in man.get("made", []):
+        for part in str(e.get("file", "")).split(","):
+            part = part.strip()
+            if part and "(in git)" not in part:
+                out.append((part, None))
+    return out
+
+
+def check_assets(ctx):
+    """Stops the render, loudly, when the asset folder is missing a file or holds a broken one. A scene built
+    without its textures renders a wrong picture with no error at all, so this runs before anything is built."""
+    import hashlib
+
+    bad = []
+    for rel, md5 in manifest_files():
+        path = ctx.asset(rel)
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            bad.append(f"{rel} (missing)")
+        elif md5:
+            with open(path, "rb") as f:
+                if hashlib.md5(f.read()).hexdigest() != md5:
+                    bad.append(f"{rel} (checksum differs)")
+    if bad:
+        raise RuntimeError(f"asset folder {ctx.assets} is incomplete: {', '.join(bad)}; run fetch_assets.py or copy them from the PC")
+
+
+def image(path, non_color=False):
+    """Loads a picture or stops with its name: Blender would otherwise render a missing or unreadable file as
+    flat magenta (or nothing) and carry on."""
+    if not os.path.isfile(path):
+        raise RuntimeError(f"missing image {path}")
+    img = bpy.data.images.load(path, check_existing=True)
+    if img.size[0] == 0 or img.size[1] == 0:
+        raise RuntimeError(f"unreadable image {path}")
+    if non_color:
+        img.colorspace_settings.name = "Non-Color"
+    return img
+
+
 def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -162,7 +210,7 @@ def world(ctx, strength=0.5, rotation=0.0, backdrop="#08080A", hdri="hdri/studio
     mp = nt.nodes.new("ShaderNodeMapping")
     mp.inputs["Rotation"].default_value = (0, 0, rotation)
     env = nt.nodes.new("ShaderNodeTexEnvironment")
-    env.image = bpy.data.images.load(ctx.asset(hdri), check_existing=True)
+    env.image = image(ctx.asset(hdri))
     light = nt.nodes.new("ShaderNodeBackground")
     light.inputs["Strength"].default_value = strength
     nt.links.new(tc.outputs["Generated"], mp.inputs["Vector"])
@@ -610,7 +658,7 @@ def floor(ctx, size=200, color="#0D0D10", roughness=0.28, z=0.0, grid=0.0, grid_
     return o
 
 
-def dust(ctx, count=260, box=((-8, 8), (-6, 6), (0, 6)), drift=(0.4, 0.2, 0.35), size=0.012, color="#FFE2C8", strength=6.0, name="dust"):
+def dust(ctx, count=260, box=((-8, 8), (-6, 6), (0, 6)), drift=(0.4, 0.2, 0.35), size=0.012, color="#FFE2C8", strength=1.5, name="dust"):
     """Motes floating in the light: points with a tiny glowing sphere on each, every one drifting on its own
     path over the clip (a shape key), so they blur and fall into bokeh like real dust."""
     import bmesh

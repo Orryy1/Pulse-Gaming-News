@@ -30,6 +30,7 @@ def main():
     t0 = time.time()
     common.reset()
     ctx = common.Ctx(p)
+    common.check_assets(ctx)  # a missing texture fails here by name, not as a silently wrong picture
     mod = importlib.import_module(f"pulse3d.{scene}")
     info = mod.build(ctx) or {}
     built = time.time() - t0

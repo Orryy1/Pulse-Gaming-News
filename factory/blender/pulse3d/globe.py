@@ -59,8 +59,7 @@ def earth(ctx):
     nt.links.new(u.outputs["Result"], comb.inputs["X"])
     nt.links.new(vv.outputs["Result"], comb.inputs["Y"])
     land = nt.nodes.new("ShaderNodeTexImage")
-    land.image = bpy.data.images.load(ctx.asset("geo/land_4096.png"), check_existing=True)
-    land.image.colorspace_settings.name = "Non-Color"
+    land.image = c.image(ctx.asset("geo/land_4096.png"), non_color=True)
     land.interpolation = "Linear"
     nt.links.new(comb.outputs["Vector"], land.inputs["Vector"])
     # A dot grid: dots where a fine lattice lands on land.

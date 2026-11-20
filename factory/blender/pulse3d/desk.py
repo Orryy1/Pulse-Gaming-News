@@ -44,23 +44,21 @@ def slab(name, w, h, d, mat):
 
 
 def wood(ctx):
-    m = c.material("desk", "#5A3A22", roughness=0.45, coat=0.35)
+    m = c.material("desk", "#5A3A22", roughness=0.5, coat=0.15)
     nt = m.node_tree
     b = c.bsdf(m)
+    b.inputs["Coat Roughness"].default_value = 0.22  # a satin varnish, not a mirror
     tc = nt.nodes.new("ShaderNodeTexCoord")
     mp = nt.nodes.new("ShaderNodeMapping")
     mp.inputs["Scale"].default_value = (0.22, 0.22, 0.22)
     nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
     for key_, sock, non_color in (("tex/wood_table_001_diff_2k.jpg", "Base Color", False), ("tex/wood_table_001_rough_2k.jpg", "Roughness", True)):
         t = nt.nodes.new("ShaderNodeTexImage")
-        t.image = bpy.data.images.load(ctx.asset(key_), check_existing=True)
-        if non_color:
-            t.image.colorspace_settings.name = "Non-Color"
+        t.image = c.image(ctx.asset(key_), non_color=non_color)
         nt.links.new(mp.outputs["Vector"], t.inputs["Vector"])
         nt.links.new(t.outputs["Color"], b.inputs[sock])
     nt_ = nt.nodes.new("ShaderNodeTexImage")
-    nt_.image = bpy.data.images.load(ctx.asset("tex/wood_table_001_nor_gl_2k.jpg"), check_existing=True)
-    nt_.image.colorspace_settings.name = "Non-Color"
+    nt_.image = c.image(ctx.asset("tex/wood_table_001_nor_gl_2k.jpg"), non_color=True)
     nm = nt.nodes.new("ShaderNodeNormalMap")
     nt.links.new(mp.outputs["Vector"], nt_.inputs["Vector"])
     nt.links.new(nt_.outputs["Color"], nm.inputs["Color"])
@@ -69,10 +67,10 @@ def wood(ctx):
 
 
 def photo_material(name, path):
-    m = c.material(name, "#FFFFFF", roughness=0.28, coat=0.3)
+    m = c.material(name, "#FFFFFF", roughness=0.42, coat=0.08)
     nt = m.node_tree
     t = nt.nodes.new("ShaderNodeTexImage")
-    t.image = bpy.data.images.load(path, check_existing=True)
+    t.image = c.image(path)
     t.extension = "EXTEND"
     nt.links.new(t.outputs["Color"], c.bsdf(m).inputs["Base Color"])
     return m, t.image
@@ -129,7 +127,7 @@ def build(ctx):
     captions = list(p.get("captions") or [])
     v = ctx.vertical
     c.setup_render(ctx)
-    c.world(ctx, strength=0.12, rotation=math.radians(90), backdrop="#050506")
+    c.world(ctx, strength=0.18, rotation=math.radians(90), backdrop="#050506")
     desk = plane("desk", 14, 10, wood(ctx))
 
     # The folder, the case title on its label and a pen beside it.
@@ -222,11 +220,21 @@ def build(ctx):
             if img is not None:
                 words.append(ct)
 
-    # Light: a warm desk lamp from the upper left; a faint cool bounce.
-    lamp = c.spot("lamp", (-3.2, 2.6, 6.5), 2600, angle=62, blend=0.85, color="#FFD6A0", radius=0.6)
-    lamp.rotation_euler = (math.radians(30), math.radians(-25), 0)
-    c.area_light("bounce", (4, -5, 4), 60, size=6, color="#A9BCE0", rot=(math.radians(55), 0, math.radians(40)))
-    c.dust(ctx, count=160, box=((-4, 4), (-3, 3), (0.3, 3.5)), size=0.008, strength=3.0)
+    # Light: a warm desk lamp from the upper left, aimed (a Track To, not hand-set angles: the old rotation sent
+    # the pool 7 m behind the desk and left the set lit by the faint world alone), a soft warm spill so the wood
+    # reads past the pool, and a faint cool bounce from the right. The fills cast no reflections (a big square
+    # light mirrored in the varnish at a grazing angle drew a hard white bar across the desk) and the lamp only a
+    # soft one.
+    pool = Vector((-0.6, -0.3, 0)) if not v else Vector((0.0, 0.4, 0))
+    lamp = c.spot("lamp", (-3.4, 2.4, 5.6), 2100, angle=60, blend=1.0, color="#FFD2A0", radius=0.9)
+    lamp.data.specular_factor = 0.3
+    c.look_at(lamp, pool)
+    spill = c.area_light("spill", (-3.5, 3.0, 6.0), 110, size=8, color="#FFD8B0")
+    c.look_at(spill, pool)
+    bounce = c.area_light("bounce", (4, -5, 4), 70, size=6, color="#A9BCE0", rot=(math.radians(55), 0, math.radians(40)))
+    for fill in (spill, bounce):
+        fill.data.specular_factor = 0.0
+    # No drifting dust here: at this distance and aperture the motes stayed sharp and read as stars on the wood.
 
     # Camera: high over the desk, pushing in to the lead print; focus on it.
     focus = c.empty("focus", (0, 0, 0))

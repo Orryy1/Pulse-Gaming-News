@@ -582,3 +582,40 @@ test("a clip with black frames fails and is not kept; a render takes a turn firs
     },
   );
 });
+
+test("every asset file a scene loads is in the manifest, and a render checks the manifest before it builds", async () => {
+  // The Mac once lacked a wood texture and nothing said so: the kit must know every file it needs and stop by name.
+  const kit = path.join(import.meta.dirname, "..", "blender");
+  const man = JSON.parse(
+    await fs.readFile(path.join(kit, "assets", "manifest.json"), "utf8"),
+  ) as {
+    files: Array<{ file: string }>;
+    made: Array<{ file: string }>;
+  };
+  const listed = new Set([
+    ...man.files.map((f) => f.file),
+    ...man.made.flatMap((f) => f.file.split(",").map((s) => s.trim())),
+  ]);
+  const dir = path.join(kit, "pulse3d");
+  const used = new Set<string>();
+  for (const name of await fs.readdir(dir)) {
+    if (!name.endsWith(".py")) continue;
+    const src = await fs.readFile(path.join(dir, name), "utf8");
+    for (const m of src.matchAll(
+      /["']((?:tex|hdri|geo|fonts)\/[\w.-]+\.\w+)["']/g,
+    ))
+      used.add(m[1]!);
+  }
+  assert.ok(used.size >= 6, `found only ${[...used].join(", ")}`);
+  for (const f of used)
+    assert.ok(
+      listed.has(f),
+      `${f} is loaded by a scene but missing from assets/manifest.json`,
+    );
+  const entry = await fs.readFile(path.join(kit, "render_scene.py"), "utf8");
+  assert.ok(
+    entry.indexOf("check_assets(ctx)") > 0 &&
+      entry.indexOf("check_assets(ctx)") < entry.indexOf("mod.build(ctx)"),
+    "render_scene.py checks the asset folder before building the scene",
+  );
+});

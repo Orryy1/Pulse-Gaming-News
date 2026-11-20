@@ -14,6 +14,8 @@
 // - twoStage: "move, settle, move" Ken Burns on long stills, an operator's move rather than a linear one.
 // - rack and dolly: from the stills' depth layers, a focus pull from subject to place (or back) on the key
 //   word, and a vertigo push where the background grows while the subject holds (Fern, LEMMiNO).
+// - orbit: a still's 3D photo (src/render/orbit.ts) filmed by a camera swinging slowly round its subject,
+//   about once a chapter, on the stills that have their mesh maps (DEPTH_ORBIT).
 // - lens and boil: a lens's edge softness and colour fringing over the picture, and a 12 fps texture
 //   flicker over full-screen explainers.
 //
@@ -35,6 +37,7 @@ export const CAMERA_TECHNIQUES = [
   "twoStage",
   "rack",
   "dolly",
+  "orbit",
   "lens",
   "boil",
 ] as const;
@@ -76,6 +79,7 @@ export const SPACING_SECONDS: Record<CameraEventKind, number> = {
   twoStage: 40,
   rack: 80,
   dolly: 300,
+  orbit: 120,
 };
 /** Whip pans in a whole video: they are energy, and a documentary needs only a few. */
 export const WHIP_MAX = 4;
@@ -97,6 +101,9 @@ export const WHIP_FRAMES = 5;
 export const FREEZE_HOLD = 54;
 /** A freeze never holds before its clip has played this long. */
 export const FREEZE_LEAD = 18;
+/** A 3D photo orbit (src/render/orbit.ts) needs a still on screen this long; a chapter gets at most this many. */
+export const ORBIT_MIN_FRAMES = 150;
+export const ORBIT_PER_CHAPTER = 1;
 /** How long a rack focus takes to pull. */
 export const RACK_FRAMES = 20;
 
@@ -143,6 +150,7 @@ export type ShotMove =
   | { kind: "freeze"; at: number; hold: number; label: string }
   | { kind: "rack"; at: number; toBack: boolean }
   | { kind: "dolly"; dir: 1 | -1 }
+  | { kind: "orbit"; dir: 1 | -1 }
   | { kind: "emotion"; at: number; push: boolean };
 
 export interface CameraEvent {
@@ -239,6 +247,13 @@ function layered(input: CameraInput, i: number): boolean {
   if (!s || s.media.type !== "image") return false;
   const im = input.images[s.media.index];
   return !!im?.layers && !PRINT_KINDS.has(im.kind) && im.aspect >= 1.2;
+}
+
+/** A layered still that also has its 3D photo maps (src/render/parallax.ts makeMeshes). */
+function meshed(input: CameraInput, i: number): boolean {
+  if (!layered(input, i)) return false;
+  const im = input.images[input.shots[i]!.media.index];
+  return !!(im?.layers as { mesh?: unknown } | undefined)?.mesh;
 }
 
 /** Key art (a subject posed in front of a place): the only stills whose depth survives a vertigo push.
@@ -377,6 +392,27 @@ export function planCamera(input: CameraInput): CameraPlan {
     if (dressed.has(i) || input.punched?.has(i) || input.fixed?.has(i)) continue;
     const inside = (f: number, before: number, after: number) =>
       f - sh.start >= before && sh.end - f >= after;
+    // The 3D photo orbit: a chapter's hero still, once a chapter, ahead of the flatter depth moves.
+    const chapter = input.chapterOf(sh.segment);
+    if (
+      on.has("orbit") &&
+      meshed(input, i) &&
+      len >= ORBIT_MIN_FRAMES &&
+      free(sh.start, sh.end) &&
+      plan.events.filter(
+        (e) =>
+          e.kind === "orbit" &&
+          input.chapterOf(shots[e.shot]!.segment) === chapter,
+      ).length < ORBIT_PER_CHAPTER &&
+      allowed(plan.events, "orbit", sh.start, fps)
+    ) {
+      plan.shots.set(i, {
+        kind: "orbit",
+        dir: (racks++ % 2 ? -1 : 1) as 1 | -1,
+      });
+      take("orbit", sh.start, i);
+      continue;
+    }
     if (layered(input, i) && len >= 120 && free(sh.start, sh.end)) {
       const twist = (input.beats ?? []).some(
         (b) => inside(b.at, 0, 0) && ["reveal", "turn", "key"].includes(b.kind),
@@ -675,6 +711,7 @@ export function cameraNotice(
     twoStage: "two-stage Ken Burns on long stills",
     rack: "rack focus",
     dolly: "a vertigo push",
+    orbit: "a slow 3D orbit round a still's subject",
     lens: "a lens look at the edges",
     boil: "a 12 fps texture on explainers",
   };

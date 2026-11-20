@@ -113,9 +113,15 @@ import {
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
-import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { makeMeshes, makeParallax, LAYERED_KINDS, SHORT_DEPTH_MAX, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
 import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
 import { frameTarget } from "./render/smartcrop.ts";
+import {
+  depthDeps,
+  meshStills,
+  upscaleOldFootage,
+  upscaleOldStills,
+} from "./depthstep.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -12134,6 +12140,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     });
     // A plan made before the new clips existed would never play them.
     if (assets.footageFirst.kept) delete assets.longPlan;
+    // Old games' small sources redrawn at 1080 by the local upscaler (src/depthstep.ts, UPSCALE).
+    await upscaleOldFootage(
+      depthDeps(
+        s.cfg,
+        (k, d) => logEvent(s.db, ep.id, k, d),
+        (m) => s.notify(m),
+      ),
+      { headline: script.headline, episodeDir: dir, clips: assets.clips },
+    ).catch((err) =>
+      log("warn", "footage upscaling failed; plain resize kept", {
+        error: errorMessage(err),
+      }),
+    );
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
       ep.id,
       JSON.stringify(assets),
@@ -12316,6 +12335,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const musicFile = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "long", seed: bedSeed(ep.id) })
     : null;
+  // Small old stills upscaled first, so the layers and 3D photos are cut from the sharper copy (src/depthstep.ts).
+  const depth = depthDeps(
+    s.cfg,
+    (k, d) => logEvent(s.db, ep.id, k, d),
+    (m) => s.notify(m),
+  );
+  if (assets.images?.length)
+    await upscaleOldStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch((err) =>
+      log("warn", "still upscaling failed", { error: errorMessage(err) }),
+    );
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
   if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
@@ -12337,6 +12370,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           JSON.stringify(assets),
         ]);
     }
+    // The 3D photo maps for the orbit and the subject pop-out (src/depthstep.ts; DEPTH_ORBIT, SUBJECT_POP).
+    const meshed = await meshStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch(() => 0);
+    if (meshed)
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+      ]);
   }
   // Some pictures were stored without their shape (older episodes, some entry art); measure them now, since
   // the framing and the zoom-to-detail maths need it.
@@ -12710,7 +12754,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Named details written in the pictures (src/assets/ocr.ts): a sign or shop front the narrator names gets
   // a hand-drawn circle or arrow from the long video's camera (LONG_CAMERA detail). Once per video.
-  const docCamera = craft.camera;
+  // The orbit needs its own switch: the depth camera's maps (PARALLAX_DEEP) must not start orbits on their own.
+  const docCamera = s.cfg.depthOrbit ? craft.camera : craft.camera.filter((t) => t !== "orbit");
   if (docCamera.length && hasMoments && !assets.textDetails) {
     assets.textDetails = !docCamera.includes("detail")
       ? []
@@ -13317,6 +13362,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // The depth craft (src/depthstep.ts), each behind its own switch: the subject pop-out, the 3D boxes and the
+    // depth camera (SUBJECT_POP, BOX_3D, PARALLAX_DEEP).
+    subjectPop: s.cfg.subjectPop,
+    box3d: s.cfg.box3d,
+    parallaxDeep: s.cfg.parallaxDeep,
+    // The research devices (src/render/boldideas.ts), each behind its own switch.
+    chapterWall: s.cfg.chapterWall,
+    depthType: s.cfg.depthType,
+    compareWipe: s.cfg.compareWipe,
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
@@ -14403,6 +14457,26 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       }
       log("info", "short depth layers", { ep: ep.id, wanted: want.length, made: made.size });
     }
+    // PARALLAX_DEEP: the layered stills also get the depth camera's maps, painted from the background only.
+    if (s.cfg.parallaxDeep) {
+      const deep = assets.images
+        .filter((i) => i.layers && !i.layers.mesh && !i.wordy)
+        .slice(0, SHORT_DEPTH_MAX);
+      if (deep.length) {
+        const maps = await makeMeshes(
+          s.cfg.parallaxPython,
+          dir,
+          deep.map((i) => i.file),
+          undefined,
+          "pushpull",
+        );
+        for (const i of deep) {
+          const m = maps.get(i.file.split(path.sep).join("/"));
+          if (m && i.layers) i.layers.mesh = m;
+        }
+        log("info", "short depth camera maps", { ep: ep.id, wanted: deep.length, made: maps.size });
+      }
+    }
   }
   if (
     assets.suite &&
@@ -14623,7 +14697,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ...(isHardwareAsset(i) ? { noCollage: true } : {}),
         // SHORT_PARALLAX: the depth layers made above; the long render's layers ride along only when it is on.
         ...(depthArm === "depth" && i.layers
-          ? { layers: { bg: i.layers.bg, mid: i.layers.mid, fg: i.layers.fg } }
+          ? {
+              layers: {
+                bg: i.layers.bg,
+                mid: i.layers.mid,
+                fg: i.layers.fg,
+                ...(s.cfg.parallaxDeep && i.layers.mesh ? { mesh: i.layers.mesh } : {}),
+              },
+            }
           : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({

@@ -638,7 +638,8 @@ export interface RenderInput {
       credit?: string;
       focusX?: number;
       noCollage?: boolean;
-      layers?: { bg: string; mid: string; fg: string };
+      /** mesh: PARALLAX_DEEP's 3D photo maps, only when the switch is on. */
+      layers?: { bg: string; mid: string; fg: string; mesh?: import("./parallax.ts").Mesh };
     }>;
     clipFiles: Array<{
       file: string;
@@ -715,7 +716,12 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
-      layers?: { bg: string; mid: string; fg: string };
+      layers?: {
+        bg: string;
+        mid: string;
+        fg: string;
+        mesh?: import("./parallax.ts").Mesh;
+      };
     }>;
     clipFiles: Array<{
       file: string;
@@ -820,36 +826,48 @@ export function longProps(
           },
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
-    images: imageFiles.map((i) => ({
+      images: imageFiles.map((i) => ({
       src: `${filesUrl}/${webPath(i.file)}`,
-      kind: i.kind,
-      aspect: i.aspect,
-      beatIndex: i.beatIndex,
-      credit: i.credit,
-      moment: i.moment,
-      label: i.label,
-      layers: i.layers
-        ? {
+        kind: i.kind,
+        aspect: i.aspect,
+        beatIndex: i.beatIndex,
+        credit: i.credit,
+        moment: i.moment,
+        label: i.label,
+        layers: i.layers
+          ? {
             bg: `${filesUrl}/${webPath(i.layers.bg)}`,
             mid: `${filesUrl}/${webPath(i.layers.mid)}`,
             fg: `${filesUrl}/${webPath(i.layers.fg)}`,
+            // The 3D photo maps, when the orbit or the pop-out may use this still (src/render/orbit.ts).
+            ...(i.layers.mesh
+              ? {
+                  mesh: {
+                    depth: `${filesUrl}/${webPath(i.layers.mesh.depth)}`,
+                    far: `${filesUrl}/${webPath(i.layers.mesh.far)}`,
+                    farDepth: `${filesUrl}/${webPath(i.layers.mesh.farDepth)}`,
+                    pivot: i.layers.mesh.pivot,
+                    grid: i.layers.mesh.grid,
+                  },
+                }
+              : {}),
           }
         : undefined,
     })),
     clips: clipFiles.map((c) => ({
       src: `${filesUrl}/${webPath(c.file)}`,
-      durationSeconds: c.durationSeconds,
-      beatIndex: c.beatIndex,
-      role: c.role,
-      moment: c.moment,
-      credit: c.credit,
-      audio: c.audio,
-      label: c.label,
-    })),
-    logoSrc: "logo.png",
-    musicSrc: musicFile,
-    extraBeds: extraBeds(serveUrl),
-  };
+        durationSeconds: c.durationSeconds,
+        beatIndex: c.beatIndex,
+        role: c.role,
+        moment: c.moment,
+        credit: c.credit,
+        audio: c.audio,
+        label: c.label,
+      })),
+      logoSrc: "logo.png",
+      musicSrc: musicFile,
+      extraBeds: extraBeds(serveUrl),
+    };
 }
 
 export interface LongStillsInput {
@@ -1085,12 +1103,12 @@ export async function renderLong(input: LongRenderInput): Promise<void> {
     await (input.thumbRenderer ?? renderLongThumbs)({
       episodeDir: input.episodeDir,
       thumbs: [
-        { file: input.thumbFile, thumb: input.thumb },
-        ...(input.thumbVariants ?? []),
+      { file: input.thumbFile, thumb: input.thumb },
+      ...(input.thumbVariants ?? []),
       ],
       gl: input.gl,
-      browserExecutable,
-    });
+        browserExecutable,
+      });
   } finally {
     await files.close();
   }
@@ -1170,6 +1188,16 @@ export async function renderShort(input: RenderInput): Promise<void> {
                 bg: `${files.url}/${webPath(i.layers.bg)}`,
                 mid: `${files.url}/${webPath(i.layers.mid)}`,
                 fg: `${files.url}/${webPath(i.layers.fg)}`,
+                ...(i.layers.mesh
+                  ? {
+                      mesh: {
+                        depth: `${files.url}/${webPath(i.layers.mesh.depth)}`,
+                        far: `${files.url}/${webPath(i.layers.mesh.far)}`,
+                        farDepth: `${files.url}/${webPath(i.layers.mesh.farDepth)}`,
+                        pivot: i.layers.mesh.pivot,
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),

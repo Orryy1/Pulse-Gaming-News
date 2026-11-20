@@ -140,7 +140,15 @@ export interface EpisodeAssets {
     role?: "hook";
     /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
     libKey?: string;
-    layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
+    layers?: {
+      bg: string;
+      mid: string;
+      fg: string;
+      fgx?: number;
+      mesh?: import("./render/parallax.ts").Mesh; // the 3D photo maps (src/render/orbit.ts)
+    }; // 2.5D depth layers (src/render/parallax.ts)
+    /** The picture before it was upscaled (src/assets/upscale.ts); `file` is then the upscaled copy. */
+    upscaledFrom?: string;
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;

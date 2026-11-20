@@ -701,6 +701,7 @@ import {
   quotaCalls,
   dueSlot,
   evergreenDue,
+  evergreenWhyNot,
   franchiseKey,
   inWindow,
   isBreaking,
@@ -4005,7 +4006,14 @@ export async function maybeSelectDocumentary(
   s: Services,
 ): Promise<string | undefined> {
   const { db, cfg } = s;
-  if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
+  const quiet = (reason: string, extra?: Record<string, unknown>) => {
+    quietLog("documentary", reason, extra, s.now().getTime());
+    return undefined;
+  };
+  if (!cfg.docEnabled || !cfg.longformEnabled)
+    return quiet(
+      cfg.docEnabled ? "LONGFORM_ENABLED is off" : "DOC_ENABLED is off",
+    );
   const now = s.now();
   // A long video planned by date (the launch run, src/shortrun.ts): started early enough to be finished and
   // scheduled well ahead, so the PC is free when it goes out.
@@ -4089,11 +4097,34 @@ export async function maybeSelectDocumentary(
     : undefined;
   let banked = false;
   if (!due) {
+    const week = weekOfMonth(now, cfg.timezone);
+    const why = cfg.docWeeks.includes(week)
+      ? evergreenWhyNot(
+          now,
+          {
+            days: cfg.docDays,
+            slot: cfg.docSlot,
+            leadMinutes: Math.max(cfg.docLeadMinutes, cfg.longLeadMinutes),
+            graceMinutes: cfg.slotGraceMinutes,
+            timeZone: cfg.timezone,
+          },
+          await takenSlots(db),
+        )
+      : { reason: `week ${week} of the month is not in DOC_WEEKS` };
+    const extra = {
+      days: cfg.docDays.join(","),
+      weeks: cfg.docWeeks.join(","),
+      slot: "slot" in why ? why.slot?.toISOString() : undefined,
+      opensAt: "opensAt" in why ? why.opensAt?.toISOString() : undefined,
+    };
     // Overnight only: a documentary holds the factory for hours, and the day's Shorts come first.
-    if (!inWindow(now, cfg.bankWindow, cfg.timezone)) return undefined;
-    if (!(await surplusDocumentary(s))) return undefined;
+    if (!inWindow(now, cfg.bankWindow, cfg.timezone))
+      return quiet(`${why.reason}; outside the banking window`, extra);
+    if (!(await surplusDocumentary(s)))
+      return quiet(`${why.reason}; no credit surplus to bank one`, extra);
     due = nextBankSlot(cfg, now, await takenSlots(db));
-    if (!due) return undefined;
+    if (!due)
+      return quiet(`${why.reason}; no free evening to bank one into`, extra);
     banked = true;
   }
   const covered = (
@@ -4176,7 +4207,10 @@ export async function maybeSelectDocumentary(
     priority: LANE_PRIORITY.longform,
     slotAt: due,
   });
-  if (!created) return undefined;
+  if (!created)
+    return quiet("an episode with the same documentary and day already exists", {
+      hash: cluster.hash,
+    });
   await db.query(
     `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
     [id, JSON.stringify({ doc: true, topic })],
@@ -4205,6 +4239,7 @@ export async function maybeSelectDocumentary(
       publishes: due.toISOString(),
     },
   );
+  quietReset("documentary");
   return id;
 }
 
@@ -5276,27 +5311,93 @@ async function longSequels(s: Services, now: Date) {
   );
 }
 
+/**
+ * One info line when a lane goes quiet, naming why (20 Nov 2026: the long ranking lane published nothing for a week
+ * and the log said nothing at all; LONGFORM_DAYS was "sat" only). Said again only when the reason changes or after
+ * `everyMs`, so the selection tick, which runs every few minutes, does not repeat it. Returns whether it was said.
+ */
+const quietSaid = new Map<string, { reason: string; at: number }>();
+export function quietLog(
+  lane: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+  now = Date.now(),
+  everyMs = 6 * 3_600_000,
+): boolean {
+  const was = quietSaid.get(lane);
+  if (was && was.reason === reason && now - was.at < everyMs) return false;
+  quietSaid.set(lane, { reason, at: now });
+  log("info", `${lane}: nothing picked`, { reason, ...extra });
+  return true;
+}
+
+/** A lane picked something: its next quiet spell is said afresh. */
+export function quietReset(lane: string): void {
+  quietSaid.delete(lane);
+}
+
+/** Who holds a slot, for the quiet log: "news ep_..." or undefined. */
+async function slotHolder(
+  db: Db,
+  slot: Date | undefined,
+): Promise<string | undefined> {
+  if (!slot) return undefined;
+  const [row] = await db.query<{ id: string; lane: string }>(
+    `SELECT id, lane FROM episodes WHERE slot_at = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+    [slot],
+  );
+  return row ? `${row.lane} ${row.id}` : undefined;
+}
+
+/**
+ * The long ranking's shortlist after the demand check: the topics it kept or, when it would drop every one (fresh
+ * "no demand" readings for all of them), the whole pool, so the demand check alone never leaves a long slot empty.
+ * A topic whose search could not run (YouTube's bot check) is already kept as "not checked" (rankByDemand).
+ */
+export function longShortlist<T>(
+  kept: T[],
+  base: T[],
+): { list: T[]; demandIgnored: boolean } {
+  if (kept.length || !base.length) return { list: kept, demandIgnored: false };
+  return { list: base, demandIgnored: true };
+}
+
 export async function maybeSelectLongform(
   s: Services,
 ): Promise<string | undefined> {
   const { db, cfg } = s;
-  if (!cfg.longformEnabled) return undefined;
+  const quiet = (reason: string, extra?: Record<string, unknown>) => {
+    quietLog("long ranking", reason, extra, s.now().getTime());
+    return undefined;
+  };
+  if (!cfg.longformEnabled) return quiet("LONGFORM_ENABLED is off");
   const now = s.now();
-  if (cfg.longformSkip.includes(dayKey(now, cfg.timezone))) return undefined;
-  const due = evergreenDue(
-    now,
-    {
-      days: cfg.longformDays,
-      slot: cfg.longformSlot,
-      // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render; the day
-      // before, so the owner's recordings can join and the render can wait for a gap between Shorts.
-      leadMinutes: Math.max(cfg.slotLeadMinutes + 420, cfg.longLeadMinutes),
-      graceMinutes: cfg.slotGraceMinutes,
-      timeZone: cfg.timezone,
-    },
-    await takenSlots(db),
-  );
-  if (!due) return undefined;
+  if (cfg.longformSkip.includes(dayKey(now, cfg.timezone)))
+    return quiet("today is in LONGFORM_SKIP", {
+      day: dayKey(now, cfg.timezone),
+    });
+  const plan = {
+    days: cfg.longformDays,
+    slot: cfg.longformSlot,
+    // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render; the day
+    // before, so the owner's recordings can join and the render can wait for a gap between Shorts.
+    leadMinutes: Math.max(cfg.slotLeadMinutes + 420, cfg.longLeadMinutes),
+    graceMinutes: cfg.slotGraceMinutes,
+    timeZone: cfg.timezone,
+  };
+  const taken = await takenSlots(db);
+  const due = evergreenDue(now, plan, taken);
+  if (!due) {
+    const why = evergreenWhyNot(now, plan, taken);
+    return quiet(why.reason, {
+      days: cfg.longformDays.join(","),
+      slot: why.slot?.toISOString(),
+      opensAt: why.opensAt?.toISOString(),
+      heldBy: /taken/.test(why.reason)
+        ? await slotHolder(db, why.slot)
+        : undefined,
+    });
+  }
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
@@ -5304,18 +5405,28 @@ export async function maybeSelectLongform(
     )
   ).map((r) => r.headline);
   // Ranked by recent YouTube demand, topics with none skipped (src/discovery/searchdemand.ts).
-  const ranked = await demandRanked(s, await s.discoverEvergreen());
+  const base = await s.discoverEvergreen();
+  const ranked = await demandRanked(s, base);
   const { demand, skipped } = ranked;
+  // Never emptied by the demand check alone: with every topic dropped, the whole pool stays on the list.
+  const pool = longShortlist(ranked.candidates, base);
+  if (pool.demandIgnored)
+    log("info", "long ranking: every topic showed no demand, so the demand check is set aside for this pick", {
+      topics: base.length,
+    });
   // The long version of a ranking Short that did well (SEQUEL_WINNERS, src/sequels.ts): already proven on our own
   // channel, so it joins the list whatever the demand check says, and its Short does not count as covering it.
   const sequels = s.cfg.sequelWinners ? await longSequels(s, now) : undefined;
   const shortlist = [
     ...(sequels?.candidates ?? []),
-    ...ranked.candidates.filter(
+    ...pool.list.filter(
       (c) => !sequels?.candidates.some((x) => x.name === c.name),
     ),
   ];
-  if (!shortlist.length) return undefined;
+  if (!shortlist.length)
+    return quiet("no topic candidates: the evergreen topic pool is empty", {
+      slot: due.toISOString(),
+    });
   const notCovered = covered.filter((h) => !sequels?.headlines.includes(h));
   const demandText = [await topicDemand(s, "long"), sequels?.block ?? ""]
     .filter(Boolean)
@@ -5371,7 +5482,10 @@ export async function maybeSelectLongform(
     priority: LANE_PRIORITY.longform,
     slotAt: due,
   });
-  if (!created) return undefined;
+  if (!created)
+    return quiet("an episode with the same topic and day already exists", {
+      hash: cluster.hash,
+    });
   await db.query(
     `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
     [id, JSON.stringify({ topic })],
@@ -5394,6 +5508,7 @@ export async function maybeSelectLongform(
     skipped.length,
   );
   log("info", "long-form topic selected", { id, theme: topic.theme });
+  quietReset("long ranking");
   return id;
 }
 

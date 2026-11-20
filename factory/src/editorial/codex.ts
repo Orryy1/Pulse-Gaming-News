@@ -15,6 +15,7 @@ import path from "node:path";
 import { z } from "zod";
 import { log } from "../lib/util.ts";
 import {
+  isGrammarTooLarge,
   jobOf,
   recordUsage,
   type Llm,
@@ -102,11 +103,7 @@ export function isUsageLimit(err: unknown): boolean {
  * Claude's refusal of an answer format too big for its constrained decoding (a 400, never billed): the same call
  * will fail every time, so retrying it on Claude is pointless. Seen 19 Nov 2026 on the writers' room layout.
  */
-export function isGrammarTooLarge(err: unknown): boolean {
-  return /compiled grammar is too large|reduce the number of strict tools/i.test(
-    (err as Error)?.message ?? String(err),
-  );
-}
+export { isGrammarTooLarge };
 
 export const DEFAULT_RUNNER_DIR = "C:\\Claude\\orchestrator";
 

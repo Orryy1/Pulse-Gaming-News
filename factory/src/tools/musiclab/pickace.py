@@ -57,7 +57,7 @@ FAMOUS = {
 }
 
 
-def artefacts(path, dropouts_too=True):
+def artefacts(path, dropouts_too=True, edge=0.5):
     """Clipped samples, true peak (ffmpeg's ebur128), dropouts inside the music (not for an ident, whose tail
     decays) and DC offset. A true peak that cannot be measured fails."""
     y, sr = sf.read(path, always_2d=True)
@@ -66,7 +66,7 @@ def artefacts(path, dropouts_too=True):
     n = int(0.05 * sr)
     m = len(mono) // n
     db = 20 * np.log10(np.sqrt((mono[: m * n].reshape(m, n) ** 2).mean(axis=1)) + 1e-9)
-    inner = db[int(0.5 / 0.05): m - int(0.5 / 0.05)] if m > 40 else db
+    inner = db[int(edge / 0.05): m - int(edge / 0.05)] if m > 2 * int(edge / 0.05) + 20 else db
     dropouts = int((inner < DROPOUT_DB).sum()) if dropouts_too else 0
     dc = float(abs(y.mean()))
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
@@ -213,7 +213,7 @@ def main():
         y[:, -fo:] *= np.linspace(1, 0, fo) ** 1.5
         sf.write(fin, y.T.astype(np.float32), SR, subtype="PCM_16")
         f = S.features(y)
-        art, aflags = artefacts(fin)
+        art, aflags = artefacts(fin, edge=2.5)  # the theme fades out over 2 s
         flags = {
             "harsh top": max(0, f["presence"] - 0.12) * 40 + max(0, f["air"] - 0.02) * 150,
             "lost on phones": max(0, 0.55 - f["phone"]) * 20,

@@ -135,6 +135,7 @@ import { hudVodTick } from "./hudreader/job.ts";
 import { startLeverJobs } from "./levers/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
+import { semanticIndexTick } from "./semantic/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
 import { searchDir, searchKey } from "./searchq/store.ts";
 import { asksKey } from "./streamasks/page.ts";
@@ -2186,6 +2187,11 @@ async function main(): Promise<void> {
   if (cfg.streamAsks.vodMiner) {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);
     setInterval(() => void vodMinerTick(cfg), 10 * 60_000);
+  }
+  // MATCH_SEMANTIC: every scene index gets its shot vectors, a turn at a time behind renders (src/semantic/job.ts).
+  if (cfg.semantic.enabled) {
+    setTimeout(() => void semanticIndexTick(cfg), 8 * 60_000);
+    setInterval(() => void semanticIndexTick(cfg), 15 * 60_000);
   }
   // The week of streams as one long video (STREAM_WEEKLY): src/streamweekly/job.ts, checked every half hour.
   if (cfg.streamWeekly.enabled) {

@@ -130,6 +130,10 @@ export interface EpisodeAssets {
     sourceUrl: string;
     provenance: string;
     blurFile?: string;
+    /** FILL_FRAME: the picture extended to the frame's shape by the PC's image model (src/gpuvis/fill.ts). */
+    fillFile?: string;
+    /** UPSCALE_STILLS: the picture enlarged by Real-ESRGAN, or by whole pixels for pixel art (src/gpuvis/upscale.ts). */
+    upFile?: string;
     beatIndex?: number;
     moment?: number;
     label?: string;

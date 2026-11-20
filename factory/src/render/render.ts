@@ -661,6 +661,8 @@ export interface RenderInput {
       kind: string;
       aspect: number;
       blurFile?: string;
+      fillFile?: string;
+      upFile?: string;
       beatIndex?: number;
       credit?: string;
       focusX?: number;
@@ -751,6 +753,8 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
+      fillFile?: string;
+      upFile?: string;
       layers?: {
         bg: string;
         mid: string;
@@ -875,7 +879,8 @@ export function longProps(
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
     images: imageFiles.map((i) => ({
-      src: `${filesUrl}/${webPath(i.file)}`,
+      src: `${filesUrl}/${webPath(i.upFile ?? i.file)}`,
+      ...(i.fillFile ? { fillSrc: `${filesUrl}/${webPath(i.fillFile)}` } : {}),
       kind: i.kind,
       aspect: i.aspect,
       beatIndex: i.beatIndex,
@@ -1072,6 +1077,58 @@ export async function renderEraFrame(input: {
       inputProps,
       imageFormat: "jpeg",
       jpegQuality: 90,
+      browserExecutable,
+      chromiumOptions: { gl: input.gl ?? "swangle" },
+    });
+  } finally {
+    await files.close();
+  }
+}
+
+/**
+ * MATCH_WIPE: renders matched pairs of two games' clips (files inside clipDir) as one wipe comparison
+ * (src/render/MatchWipe.tsx), wide (1920x1080) or tall (1080x1920 for a Short). Silent: the caller lays sound under it.
+ */
+export async function renderMatchWipe(input: {
+  clipDir: string;
+  outFile: string;
+  aName: string;
+  bName: string;
+  pairs: Array<{ aFile: string; aFrom: number; bFile: string; bFrom: number; label: string }>;
+  secondsPerPair: number;
+  tall?: boolean;
+  gl?: LongRenderInput["gl"];
+  browserExecutable?: string;
+}): Promise<void> {
+  const serveUrl = await getBundle();
+  const files = await serveDir(input.clipDir);
+  const browserExecutable = input.browserExecutable || undefined;
+  try {
+    const inputProps = {
+      aName: input.aName,
+      bName: input.bName,
+      secondsPerPair: input.secondsPerPair,
+      pairs: input.pairs.map((p) => ({
+        aSrc: `${files.url}/${webPath(p.aFile)}`,
+        aFrom: p.aFrom,
+        bSrc: `${files.url}/${webPath(p.bFile)}`,
+        bFrom: p.bFrom,
+        label: p.label,
+      })),
+    };
+    const composition = await selectComposition({
+      serveUrl,
+      id: input.tall ? "PulseMatchWipeTall" : "PulseMatchWipe",
+      inputProps,
+      browserExecutable,
+    });
+    await renderMedia({
+      composition,
+      serveUrl,
+      codec: "h264",
+      outputLocation: input.outFile,
+      inputProps,
+      muted: true,
       browserExecutable,
       chromiumOptions: { gl: input.gl ?? "swangle" },
     });
@@ -1293,10 +1350,11 @@ export async function renderShort(input: RenderInput): Promise<void> {
         : undefined,
       audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${webPath(i.file)}`,
+        src: `${files.url}/${webPath(i.upFile ?? i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
         blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
+        ...(i.fillFile ? { fillSrc: `${files.url}/${webPath(i.fillFile)}` } : {}),
         beatIndex: i.beatIndex,
         credit: i.credit,
         focusX: i.focusX,

@@ -341,6 +341,31 @@ export const RemotionRoot: React.FC = () => (
         ),
       })}
     />
+    {/* MATCH_WIPE: the same place in two games, one wiping into the other (src/render/MatchWipe.tsx), wide and tall. */}
+    <Composition
+      id="PulseMatchWipe"
+      component={MatchWipe}
+      fps={MATCH_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={MATCH_FPS * MATCH_SECONDS}
+      defaultProps={SAMPLE_MATCH_WIPE}
+      calculateMetadata={({ props }: { props: MatchWipeProps }) => ({
+        durationInFrames: Math.max(1, props.pairs.length) * Math.round((props.secondsPerPair ?? MATCH_SECONDS) * MATCH_FPS),
+      })}
+    />
+    <Composition
+      id="PulseMatchWipeTall"
+      component={MatchWipe}
+      fps={MATCH_FPS}
+      width={1080}
+      height={1920}
+      durationInFrames={MATCH_FPS * MATCH_SECONDS}
+      defaultProps={SAMPLE_MATCH_WIPE}
+      calculateMetadata={({ props }: { props: MatchWipeProps }) => ({
+        durationInFrames: Math.max(1, props.pairs.length) * Math.round((props.secondsPerPair ?? MATCH_SECONDS) * MATCH_FPS),
+      })}
+    />
     {/* One AI motion clip shot on its own, for previews (src/render/components/localvideo/Preview.tsx). */}
     <Composition
       id="PulseLocalVideo"

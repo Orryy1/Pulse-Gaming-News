@@ -1273,6 +1273,22 @@ export interface Config {
   /** APPLE_HW_ENCODE (Mac mini only, off until switched on): clip cuts and other in-between encodes on the Mac's
    * VideoToolbox encoder (src/lib/videoenc.ts); final masters stay on libx264. */
   appleHwEncode: boolean;
+  /** FILL_FRAME (off until switched on): a picture of the wrong shape (a 16:9 still in a Short, a portrait cover in a
+   * long video) is extended to fill the frame by FLUX.2 klein on the PC instead of sitting over its blurred copy,
+   * labelled "EDGES EXTENDED BY AI" (src/gpuvis/fill.ts). Needs the PC's GPU service at GPUVIS_URL. */
+  fillFrame: boolean;
+  /** UPSCALE_STILLS (off until switched on): low-resolution stills and pre-2010 games' screenshots enlarged by
+   * Real-ESRGAN on the PC, pixel art by whole pixels (src/gpuvis/upscale.ts). Needs GPUVIS_URL. */
+  upscaleStills: boolean;
+  /** THUMB_CANDIDATES (off until switched on): GPU-made thumbnail candidates (extended and relit art) beside the
+   * usual designs, all ranked by the local vision model; the top three become the thumbnail and the Test & compare
+   * variants (src/gpuvis/thumbs.ts). */
+  thumbCandidates: boolean;
+  /** MATCH_WIPE (off until switched on): the same place in two games, matched by the vision model and wiped one
+   * into the other (src/gpuvis/framematch.ts, src/render/MatchWipe.tsx). */
+  matchWipe: boolean;
+  /** The PC's GPU picture service (src/gpuvis/server.ts); on the Mac the PC's address over the cable. */
+  gpuvisUrl: string;
   ytdlpPath: string;
   /**
    * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
@@ -2415,6 +2431,11 @@ export function loadConfig(): Config {
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
   appleHwEncode: bool("APPLE_HW_ENCODE", false),
+  fillFrame: bool("FILL_FRAME", false),
+  upscaleStills: bool("UPSCALE_STILLS", false),
+  thumbCandidates: bool("THUMB_CANDIDATES", false),
+  matchWipe: bool("MATCH_WIPE", false),
+  gpuvisUrl: str("GPUVIS_URL", "http://127.0.0.1:8797"),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
   docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),
   docMinChapters: Math.max(1, int("DOC_MIN_CHAPTERS", 5)),

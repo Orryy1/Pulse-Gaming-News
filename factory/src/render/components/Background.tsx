@@ -23,6 +23,7 @@ import {
 } from "../motion.ts";
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
+import { FILL_LABEL } from "../../gpuvis/label.ts";
 import { CrtLook, VhsLook } from "./Retro.tsx";
 import { ShotCamera } from "./CameraMoves.tsx";
 import { VPhotoShot } from "./vertical/craft.tsx";
@@ -381,7 +382,16 @@ export const ArtTrack: React.FC<{
       </AbsoluteFill>
     );
   } else if (image) {
-    body = shot.framed ? (
+    // FILL_FRAME: a wide still the plan framed over its blurred plate fills the frame instead, extended by the PC's
+    // image model (src/gpuvis/fill.ts); the original sits untouched in the hero band and the margins are labelled.
+    const filled = shot.framed && image.fillSrc;
+    body = filled ? (
+      <Still
+        image={{ ...image, src: image.fillSrc!, aspect: 9 / 16, focusX: undefined, layers: undefined }}
+        durationFrames={len}
+        move={shot.move}
+      />
+    ) : shot.framed ? (
       <FramedFootage
         blurSrc={image.blurSrc}
         durationFrames={len}
@@ -407,6 +417,9 @@ export const ArtTrack: React.FC<{
     body = <AbsoluteFill style={{ transform: `scale(${safeScale(p)})` }}>{body}</AbsoluteFill>;
   }
   const photo = dress?.photos?.get(index);
+  const photoShot = Boolean(photo && image && (image.kind === "photo" || image.kind === "portrait"));
+  // The AI label only while the filled picture is what shows (a photo treatment below puts the original back).
+  const fillShown = Boolean(image && shot.framed && image.fillSrc) && !photoShot;
   if (photo && image && (image.kind === "photo" || image.kind === "portrait"))
     body = (
       <VPhotoShot
@@ -444,6 +457,8 @@ export const ArtTrack: React.FC<{
             credit="ILLUSTRATIVE · STOCK FOOTAGE"
             durationFrames={len}
           />
+        ) : fillShown ? (
+          <FootageCredit credit={image?.credit ? `${FILL_LABEL} · ${image.credit}` : FILL_LABEL} durationFrames={len} small={clean} />
         ) : clean ? (
           (clip?.credit ?? image?.credit) ? (
             <FootageCredit credit={(clip?.credit ?? image?.credit)!} durationFrames={len} small />

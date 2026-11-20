@@ -68,6 +68,7 @@ import {
 } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
+import { FILL_LABEL } from "../gpuvis/label.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
 import {
   buildLongPlan,
@@ -275,6 +276,8 @@ export interface LongImageProp {
   label?: string;
   /** 2.5D layers (src/render/parallax.ts): drifted at different speeds so the still moves like footage. */
   layers?: { bg: string; mid: string; fg: string; mesh?: LongMeshProp };
+  /** FILL_FRAME: a portrait picture extended to 16:9 by the PC's image model, shown full-bleed instead of the poster. */
+  fillSrc?: string;
 }
 
 /** A still's 3D photo maps as URLs (src/render/orbit.ts): the orbit and the subject pop-out use them. */
@@ -599,6 +602,8 @@ export const Still: React.FC<{
   focus?: { at: number; origin: { x: number; y: number }; zoom: number };
   /** A punch-in: from this frame the picture jumps a tenth closer, on the narrator's key word. */
   punchAt?: number;
+  /** FILL_FRAME: the portrait picture extended to 16:9 (src/gpuvis/fill.ts), shown full-bleed and labelled. */
+  fillSrc?: string;
 }> = ({
   src,
   aspect,
@@ -611,6 +616,7 @@ export const Still: React.FC<{
   dir = 1,
   focus,
   punchAt,
+  fillSrc,
 }) => {
   const frame = useCurrentFrame();
   const punch =
@@ -721,6 +727,41 @@ export const Still: React.FC<{
               filter: "contrast(1.04) saturate(0.92)",
             }}
           />
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  if (aspect < 0.9 && fillSrc) {
+    // FILL_FRAME: the portrait picture continued left and right by the PC's image model fills the frame; the
+    // original is untouched in the middle and the margins are labelled as made by AI.
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={fillSrc}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "contrast(1.03) saturate(1.05)",
+            transform: `scale(${(m.scale + 0.02) * punch}) translate(${m.x * 0.5}px, ${m.y * 0.5}px)`,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 40,
+            bottom: 26,
+            padding: "4px 10px",
+            background: "rgba(11,11,14,0.62)",
+            borderRadius: 6,
+            fontFamily: BODY,
+            fontWeight: 800,
+            fontSize: 16,
+            letterSpacing: 1.5,
+            color: "rgba(245,245,242,0.85)",
+          }}
+        >
+          {FILL_LABEL}
         </div>
       </AbsoluteFill>
     );
@@ -1560,6 +1601,7 @@ const Backdrop: React.FC<{
                           : undefined
                       }
                       src={img.src}
+                      fillSrc={img.fillSrc}
                       aspect={img.aspect}
                       durationFrames={len + (i > 0 ? xf : 0)}
                         move={camera?.moves.get(i) ?? s.move}

@@ -11,6 +11,7 @@ export interface ShortImage {
   kind: string;
   aspect: number; // width / height
   blurSrc?: string | null; // pre-blurred plate for the framed panel
+  fillSrc?: string | null; // FILL_FRAME: the picture extended to 1080x1920 by the PC's image model, shown full-bleed instead of the panel
   luma?: number;
   beatIndex?: number; // tagged for one entry of a ranking Short
   credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows

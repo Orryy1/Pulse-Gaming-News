@@ -10387,7 +10387,7 @@ export async function gatherMedia(
         const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
         for (const [beatIndex, entry] of entries.entries()) {
           if (!entry.game_title || entry.year > s.now().getFullYear() ||
-              (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
+              (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now(), entry.game_title, readLaunches(s.cfg.launchCalendarFile)))) continue;
           // LONG_INDEX_FIRST: the first pass takes the scene index's clips alone, for the chapters whose game has one;
           // the second pass searches cutscene uploads for those chapters' lines the index left (after the trailers
           // and gameplay, so the slow search never spends the gather's time first) and does the rest as before.
@@ -11710,7 +11710,7 @@ export async function gatherChapterMedia(
   // Not for a game from this year on (30 Oct 2026 review: the GTA VI chapter's "gameplay" was a fake upload full
   // of Spider-Man, Sonic and Minions mods, and re-uploads of Rockstar's trailers wrongly marked Creative Commons).
   // Before a game is out, uploaded "gameplay" can only be fake or someone else's trailer.
-  const upcoming = upcomingGame(entry.year);
+  const upcoming = upcomingGame(entry.year, s.now(), entry.game_title, readLaunches(s.cfg.launchCalendarFile));
   if (upcoming)
     log("info", "documentary gameplay skipped: the game is not out", {
       game: entry.game_title,
@@ -12025,12 +12025,28 @@ export async function gatherChapterMedia(
   }
 }
 
-/** A game from this calendar year or later: its uploaded "gameplay" is not trusted in a documentary. */
+/**
+ * A game from this calendar year or later: its uploaded "gameplay" is not trusted in a documentary. A game the launch
+ * calendar says is out (launches.json, launch day passed) is not upcoming any more: GTA VI's documentaries skipped
+ * real gameplay after its 19 Nov 2026 launch because it was still "this year's".
+ */
 export function upcomingGame(
   year: number | undefined,
   now = new Date(),
+  title?: string,
+  launches: Array<{ match: string; launch: string }> = [],
 ): boolean {
-  return !!year && year >= now.getFullYear();
+  if (!year || year < now.getFullYear()) return false;
+  const out = title
+    ? launches.find((l) => {
+        try {
+          return new RegExp(l.match, "i").test(title) && Date.parse(`${l.launch}T00:00:00Z`) <= now.getTime();
+        } catch {
+          return false;
+        }
+      })
+    : undefined;
+  return !out;
 }
 
 /** The share of a long video's sentences with a clip or still chosen for that sentence (moments[entry][k]). */

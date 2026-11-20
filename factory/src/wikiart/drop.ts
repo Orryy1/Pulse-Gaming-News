@@ -637,9 +637,9 @@ HOW TO ADD A PICTURE
 4. Optional: say what kind of picture it is by adding it in brackets at the
    end of the name: "Scooter Bros (logo).png". A name ending in the word
    logo, like "Vice City Police logo.png", counts as a logo of "Vice City
-   Police". The kinds are logo, sign,
-   artwork, render, screenshot, map, box art and icon. Without one, small or
-   see-through pictures count as logos and bigger ones as artwork.
+   Police". The kinds are logo, sign, artwork, render, screenshot, map,
+   box art and icon. Without one, small or see-through pictures count as
+   logos and bigger ones as artwork.
 
 GOOD TO KNOW
 

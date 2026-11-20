@@ -14,7 +14,7 @@
 import path from "node:path";
 import type { Config } from "./config.ts";
 import { orbitCandidates } from "./render/orbit.ts";
-import type { Layers, Mesh } from "./render/parallax.ts";
+import { LAYERED_KINDS, type Layers, type Mesh } from "./render/parallax.ts";
 import {
   UPSCALE_STILL_KINDS,
   type FootageUpscaleReport,
@@ -27,6 +27,8 @@ export type DepthConfig = Pick<
   | "parallaxPython"
   | "depthOrbit"
   | "depthOrbitMax"
+  | "parallaxDeep"
+  | "parallaxDeepMax"
   | "subjectPop"
   | "upscale"
   | "upscaleModel"
@@ -51,6 +53,7 @@ export interface DepthDeps {
     python: string,
     dir: string,
     files: string[],
+    fill?: "pushpull",
   ): Promise<Map<string, Mesh>>;
   upscaleStills(o: {
     python: string;
@@ -183,17 +186,20 @@ export async function meshStills(
   if (
     !cfg.parallax ||
     !cfg.parallaxPython ||
-    !(cfg.depthOrbit || cfg.subjectPop)
+    !(cfg.depthOrbit || cfg.subjectPop || cfg.parallaxDeep)
   )
     return 0;
-  const picks = orbitCandidates(a.images, cfg.depthOrbitMax).filter(
-    (k) => !a.images[k]!.layers?.mesh,
+  const chosen = new Set<number>(
+    cfg.depthOrbit || cfg.subjectPop ? orbitCandidates(a.images, cfg.depthOrbitMax) : [],
   );
+  if (cfg.parallaxDeep) for (const k of deepCandidates(a.images, cfg.parallaxDeepMax)) chosen.add(k);
+  const picks = [...chosen].sort((x, y) => x - y).filter((k) => !a.images[k]!.layers?.mesh);
   if (!picks.length) return 0;
   const made = await d.makeMeshes(
     cfg.parallaxPython,
     a.episodeDir,
     picks.map((k) => a.images[k]!.file),
+    cfg.parallaxDeep ? "pushpull" : undefined,
   );
   let n = 0;
   for (const k of picks) {
@@ -210,10 +216,26 @@ export async function meshStills(
       asked: picks.length,
       orbit: cfg.depthOrbit,
       pop: cfg.subjectPop,
+      deep: cfg.parallaxDeep,
     });
     await d.notify({ content: meshNotice(a.headline, n, cfg) });
   }
   return n;
+}
+
+/**
+ * The stills the depth camera films (PARALLAX_DEEP; pure): every layered wide still shown full bleed, in order,
+ * except screenshots where the local screen saw menu or HUD text (lettering reads wrongly in depth), at most max.
+ */
+export function deepCandidates(
+  images: readonly DepthImage[],
+  max: number,
+): number[] {
+  const out: number[] = [];
+  images.forEach((im, i) => {
+    if (im.layers && im.aspect >= 1.2 && LAYERED_KINDS.has(im.kind) && !im.wordy) out.push(i);
+  });
+  return out.slice(0, Math.max(0, max));
 }
 
 /**
@@ -227,9 +249,9 @@ export function depthDeps(
 ): DepthDeps {
   return {
     cfg,
-    makeMeshes: (python, dir, files) =>
+    makeMeshes: (python, dir, files, fill) =>
       import("./render/parallax.ts").then((m) =>
-        m.makeMeshes(python, dir, files),
+        m.makeMeshes(python, dir, files, undefined, fill),
       ),
     upscaleStills: (o) =>
       import("./assets/upscale.ts").then((m) => m.upscaleStills(o)),
@@ -246,13 +268,16 @@ export function depthDeps(
 export function meshNotice(
   headline: string,
   made: number,
-  cfg: Pick<Config, "depthOrbit" | "subjectPop">,
+  cfg: Pick<Config, "depthOrbit" | "subjectPop"> & Partial<Pick<Config, "parallaxDeep">>,
 ): string {
   const uses = [
+    cfg.parallaxDeep
+      ? "the depth camera (a gentle 3D move timed to the stressed word, with a focus pull and haze)"
+      : "",
     cfg.depthOrbit ? "a slow 3D camera orbit, about once a chapter" : "",
     cfg.subjectPop
       ? "the subject stepping in front of the title drop and every other chapter title where it fits"
       : "",
   ].filter(Boolean);
-  return `"${headline}": ${made} key art still${made === 1 ? "" : "s"} turned into 3D photos for ${uses.join(" and ")}. Settings: DEPTH_ORBIT, SUBJECT_POP (DEPTH_ORBIT_MAX caps the stills).`;
+  return `"${headline}": ${made} key art still${made === 1 ? "" : "s"} turned into 3D photos for ${uses.join(" and ")}. Settings: DEPTH_ORBIT, SUBJECT_POP, PARALLAX_DEEP (DEPTH_ORBIT_MAX and PARALLAX_DEEP_MAX cap the stills).`;
 }

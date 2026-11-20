@@ -375,6 +375,8 @@ const cfg = (over: Partial<DepthConfig> = {}): DepthConfig => ({
   upscaleModelDir: "/models",
   upscaleMaxHeight: 576,
   upscaleMaxSeconds: 150,
+  parallaxDeep: false,
+  parallaxDeepMax: 40,
   ...over,
 });
 

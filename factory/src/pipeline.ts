@@ -113,7 +113,7 @@ import {
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
-import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { makeMeshes, makeParallax, LAYERED_KINDS, SHORT_DEPTH_MAX, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
 import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
 import { frameTarget } from "./render/smartcrop.ts";
 import {
@@ -12685,7 +12685,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Named details written in the pictures (src/assets/ocr.ts): a sign or shop front the narrator names gets
   // a hand-drawn circle or arrow from the long video's camera (LONG_CAMERA detail). Once per video.
-  const docCamera = craft.camera;
+  // The orbit needs its own switch: the depth camera's maps (PARALLAX_DEEP) must not start orbits on their own.
+  const docCamera = s.cfg.depthOrbit ? craft.camera : craft.camera.filter((t) => t !== "orbit");
   if (docCamera.length && hasMoments && !assets.textDetails) {
     assets.textDetails = !docCamera.includes("detail")
       ? []
@@ -13292,6 +13293,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // The depth craft (src/depthstep.ts), each behind its own switch: the subject pop-out, the 3D boxes and the
+    // depth camera (SUBJECT_POP, BOX_3D, PARALLAX_DEEP).
+    subjectPop: s.cfg.subjectPop,
+    box3d: s.cfg.box3d,
+    parallaxDeep: s.cfg.parallaxDeep,
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
@@ -14378,6 +14384,26 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       }
       log("info", "short depth layers", { ep: ep.id, wanted: want.length, made: made.size });
     }
+    // PARALLAX_DEEP: the layered stills also get the depth camera's maps, painted from the background only.
+    if (s.cfg.parallaxDeep) {
+      const deep = assets.images
+        .filter((i) => i.layers && !i.layers.mesh && !i.wordy)
+        .slice(0, SHORT_DEPTH_MAX);
+      if (deep.length) {
+        const maps = await makeMeshes(
+          s.cfg.parallaxPython,
+          dir,
+          deep.map((i) => i.file),
+          undefined,
+          "pushpull",
+        );
+        for (const i of deep) {
+          const m = maps.get(i.file.split(path.sep).join("/"));
+          if (m && i.layers) i.layers.mesh = m;
+        }
+        log("info", "short depth camera maps", { ep: ep.id, wanted: deep.length, made: maps.size });
+      }
+    }
   }
   if (
     assets.suite &&
@@ -14598,7 +14624,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ...(isHardwareAsset(i) ? { noCollage: true } : {}),
         // SHORT_PARALLAX: the depth layers made above; the long render's layers ride along only when it is on.
         ...(depthArm === "depth" && i.layers
-          ? { layers: { bg: i.layers.bg, mid: i.layers.mid, fg: i.layers.fg } }
+          ? {
+              layers: {
+                bg: i.layers.bg,
+                mid: i.layers.mid,
+                fg: i.layers.fg,
+                ...(s.cfg.parallaxDeep && i.layers.mesh ? { mesh: i.layers.mesh } : {}),
+              },
+            }
           : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({

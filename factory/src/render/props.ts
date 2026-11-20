@@ -16,7 +16,13 @@ export interface ShortImage {
   credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows
   focusX?: number; // 0-1, the subject's place across a wide still, for the vertical crop
   noCollage?: boolean; // hardware or merchandise (allowed only in a story about it): never in the game collage card
-  layers?: { bg: string; mid: string; fg: string }; // SHORT_PARALLAX: depth layers, drifted at their own speeds
+  layers?: {
+    bg: string;
+    mid: string;
+    fg: string;
+    /** PARALLAX_DEEP: the 3D photo maps; with them the still is filmed by the depth camera (components/DepthCam.tsx). */
+    mesh?: { depth: string; far: string; farDepth: string; pivot: number };
+  }; // SHORT_PARALLAX: depth layers, drifted at their own speeds
 }
 
 export interface ShortClip {

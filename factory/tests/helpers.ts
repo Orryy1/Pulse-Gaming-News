@@ -616,6 +616,8 @@ export function testConfig(
     // The depth and upscaling craft (src/depthstep.ts): off in tests unless a test turns it on with fakes.
     depthOrbit: false,
     depthOrbitMax: 16,
+    parallaxDeep: false,
+    parallaxDeepMax: 40,
     subjectPop: false,
     box3d: false,
     upscale: false,

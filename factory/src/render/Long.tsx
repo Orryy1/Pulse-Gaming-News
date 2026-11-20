@@ -208,6 +208,8 @@ import {
 } from "./components/Structure.tsx";
 import { SketchShot } from "./components/SketchShot.tsx";
 import { DepthOrbit } from "./components/DepthOrbit.tsx";
+import { DepthCam } from "./components/DepthCam.tsx";
+import { depthCamPlan, stressedFrame } from "./depthcam.ts";
 import { Box3D, BoxReveal } from "./components/Box3D.tsx";
 import { PopOut } from "./components/PopOut.tsx";
 import { popPicture } from "./popout.ts";
@@ -357,6 +359,9 @@ export type LongProps = {
   /** 3D game boxes (src/render/boxart.ts, BOX_3D): a ranking entry's box turns in on its card, and a
    * documentary's "it came out" sentence turns the game's box in beside the picture. Absent: off. */
   box3d?: boolean;
+  /** The depth camera (src/render/depthcam.ts, PARALLAX_DEEP): wide stills with 3D photo maps are filmed on a
+   * gentle path timed to the stressed word, with a focus rack and haze, instead of the three-layer drift. Absent: off. */
+  parallaxDeep?: boolean;
   /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
   debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
@@ -550,7 +555,7 @@ const FOCUS_FRAMES = 26;
 const focusEase = (x: number) =>
   x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
 
-const Still: React.FC<{
+export const Still: React.FC<{
   src: string;
   aspect: number;
   durationFrames: number;
@@ -1191,6 +1196,9 @@ const Backdrop: React.FC<{
   powerOff?: Set<number>;
   /** Per shot index: the absolute frame of its punch-in. */
   punches?: Map<number, number>;
+  /** PARALLAX_DEEP: the shots the depth camera films, each with its stressed word's frame from the shot's start
+   * (undefined: no stressed word found, the move takes its natural beat). */
+  deep?: Map<number, number | undefined>;
   /** Per shot index: its game's own colour, washed softly over the picture. */
   tints?: Map<number, string>;
   /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
@@ -1221,6 +1229,7 @@ const Backdrop: React.FC<{
   looks,
   powerOff,
   punches,
+  deep,
   tints,
   sketches,
   photos,
@@ -1470,6 +1479,21 @@ const Backdrop: React.FC<{
                         dir={i % 2 ? -1 : 1}
                       />,
                     )
+                ) : deep?.has(i) && img.layers?.mesh ? (
+                  // PARALLAX_DEEP: the still as a 3D photo on a gentle path, the move and focus landing on the word.
+                  dress(
+                    <DepthCam
+                      src={img.src}
+                      mesh={img.layers.mesh}
+                      aspect={img.aspect}
+                      len={seqLen}
+                      plan={depthCamPlan(
+                        s.media.index,
+                        seqLen,
+                        deep.get(i) === undefined ? undefined : deep.get(i)! + (i > 0 ? xf : 0),
+                      )}
+                    />,
+                  )
                 ) : (
                   dress(
                     <Still
@@ -3906,6 +3930,31 @@ export const Long: React.FC<LongProps> = (props) => {
       { from: markOf(id)?.pushAt ?? d.from, origin: d.origin, zoom: d.zoom },
     ]),
   );
+  // PARALLAX_DEEP: the wide stills with 3D photo maps that nothing else claims (a detail push, an old game's
+  // hardware, a display, a camera move of its own, a photo's print), each with its stressed word: the moment the
+  // line is about (the windows' `at`), else the writer's emphasis or a figure or name the narrator leans on.
+  const deepShots = (() => {
+    const out = new Map<number, number | undefined>();
+    if (!props.parallaxDeep) return out;
+    const emphases = windows.flatMap((w) => {
+      const t = props.moments?.[w.entry]?.[w.moment]?.emphasis;
+      return t ? [{ start: w.start, end: w.end, text: t }] : [];
+    });
+    plan.shots.forEach((sh, i) => {
+      if (sh.media.type !== "image") return;
+      const im = props.images[sh.media.index];
+      if (!im?.layers?.mesh || im.aspect < 0.9 || im.kind === "photo" || im.kind === "sketch") return;
+      if (focusAt.has(i) || retro.has(i) || photoPlan.displays.has(i)) return;
+      const mv = cameraMoves?.plan.shots.get(i);
+      if (mv && ["orbit", "rack", "dolly", "freeze", "emotion"].includes(mv.kind)) return;
+      const w = windows.find((x) => {
+        const f = Math.round(x.at * fps);
+        return x.at - x.start >= 0.3 && f >= sh.start + 6 && f < sh.end - 6;
+      });
+      out.set(i, w ? Math.round(w.at * fps) - sh.start : stressedFrame(sh, fps, words, emphases));
+    });
+    return out;
+  })();
 
   const richSoundAt = new Map<number, number>();
   const soundCands: LongSoundCandidate[] = windows
@@ -4191,6 +4240,7 @@ export const Long: React.FC<LongProps> = (props) => {
         looks={periodLooks}
         powerOff={powerOff}
         punches={punches}
+        deep={deepShots}
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}

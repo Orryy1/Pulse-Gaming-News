@@ -137,6 +137,8 @@ export async function makeMeshes(
   episodeDir: string,
   files: string[],
   outDir = path.join(episodeDir, "assets", "px"),
+  /** "pushpull": the place behind the subject painted from the background only, with its grain (PARALLAX_DEEP). */
+  fill?: "pushpull",
 ): Promise<Map<string, Mesh>> {
   const out = new Map<string, Mesh>();
   if (!python || !files.length) return out;
@@ -145,6 +147,7 @@ export async function makeMeshes(
     src: path.join(episodeDir, f),
     prefix: path.join(outDir, layerName(f)),
     mesh: true,
+    ...(fill ? { fill } : {}),
   }));
   const jobsFile = path.join(outDir, "mesh_jobs.json");
   const resultFile = path.join(outDir, "mesh_result.json");

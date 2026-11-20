@@ -1,4 +1,6 @@
 import { safeScale } from "../safetransform.ts";
+import { DepthCam } from "./DepthCam.tsx";
+import { depthCamPlan } from "../depthcam.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -126,7 +128,7 @@ export function focusPosition(image: ShortImage): string | undefined {
 }
 
 /** Full-bleed cover crop with one ambient move. */
-const Still: React.FC<{
+export const Still: React.FC<{
   image: ShortImage;
   durationFrames: number;
   move: MovePreset;
@@ -135,6 +137,20 @@ const Still: React.FC<{
   const p = Math.min(1, frame / Math.max(1, durationFrames));
   const m = moveTransform(move, p);
   const punch = cutPunch(frame);
+  // PARALLAX_DEEP: the still filmed as a 3D photo, cropped round its subject (components/DepthCam.tsx).
+  if (image.layers?.mesh) {
+    const n = image.src.length;
+    return (
+      <DepthCam
+        src={image.src}
+        mesh={image.layers.mesh}
+        aspect={image.aspect}
+        len={durationFrames}
+        plan={depthCamPlan(n, durationFrames)}
+        focusX={image.focusX ?? 0.5}
+      />
+    );
+  }
   // SHORT_PARALLAX: the still's depth layers drift at their own speeds, nearer faster, so it moves like footage.
   if (image.layers) {
     const layers = image.layers;

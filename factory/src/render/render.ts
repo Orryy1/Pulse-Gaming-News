@@ -638,7 +638,8 @@ export interface RenderInput {
       credit?: string;
       focusX?: number;
       noCollage?: boolean;
-      layers?: { bg: string; mid: string; fg: string };
+      /** mesh: PARALLAX_DEEP's 3D photo maps, only when the switch is on. */
+      layers?: { bg: string; mid: string; fg: string; mesh?: import("./parallax.ts").Mesh };
     }>;
     clipFiles: Array<{
       file: string;
@@ -1187,6 +1188,16 @@ export async function renderShort(input: RenderInput): Promise<void> {
                 bg: `${files.url}/${webPath(i.layers.bg)}`,
                 mid: `${files.url}/${webPath(i.layers.mid)}`,
                 fg: `${files.url}/${webPath(i.layers.fg)}`,
+                ...(i.layers.mesh
+                  ? {
+                      mesh: {
+                        depth: `${files.url}/${webPath(i.layers.mesh.depth)}`,
+                        far: `${files.url}/${webPath(i.layers.mesh.far)}`,
+                        farDepth: `${files.url}/${webPath(i.layers.mesh.farDepth)}`,
+                        pivot: i.layers.mesh.pivot,
+                      },
+                    }
+                  : {}),
               },
             }
           : {}),

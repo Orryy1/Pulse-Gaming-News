@@ -1322,6 +1322,13 @@ export interface Config {
   depthOrbit: boolean;
   /** At most this many stills get the 3D photo maps in one video (DEPTH_ORBIT_MAX, default 16). */
   depthOrbitMax: number;
+  /** The depth camera (src/render/depthcam.ts): wide stills filmed as 3D photos on a gentle path timed to the stressed
+   * word, with a focus rack, haze on the far depths and the odd light leak, instead of the three-layer drift, in long
+   * videos and Shorts; the place behind the subject is painted from the background only (PARALLAX_DEEP, default off
+   * until proven). Needs PARALLAX. */
+  parallaxDeep: boolean;
+  /** At most this many stills a video get the depth camera's maps (PARALLAX_DEEP_MAX, default 40). */
+  parallaxDeepMax: number;
   /** The subject pop-out (src/render/popout.ts): a still's subject steps in front of the title drop and every
    * other chapter opener's title when it fits (SUBJECT_POP, default off until proven). Needs PARALLAX. */
   subjectPop: boolean;
@@ -2352,6 +2359,8 @@ export function loadConfig(): Config {
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
     depthOrbit: bool("DEPTH_ORBIT", false),
     depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
+    parallaxDeep: bool("PARALLAX_DEEP", false),
+    parallaxDeepMax: Math.max(0, int("PARALLAX_DEEP_MAX", 40)),
     subjectPop: bool("SUBJECT_POP", false),
     box3d: bool("BOX_3D", false),
     upscale: bool("UPSCALE", false),

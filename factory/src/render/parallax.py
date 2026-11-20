@@ -11,6 +11,7 @@ Usage: python parallax.py <jobs.json> <out.json>
   out.json:  {"done": [{"src", "bg", "mid", "fg"}], "skipped": [{"src", "why"}]}
 A job with "mesh": true makes the 3D photo's maps instead (src/render/orbit.ts):
   {"src", "depth", "far", "farDepth", "pivot", "grid"}
+and "fill": "pushpull" paints the place behind the subject with fill_bg (PARALLAX_DEEP) instead of fill.
 """
 import json
 import os
@@ -52,6 +53,45 @@ def fill(rgb, hole, inside):
     big = cv2.resize(painted, (w, h), interpolation=cv2.INTER_CUBIC)
     a = soft(inside, FEATHER)[..., None]
     return (big * a + rgb * (1 - a)).astype(np.uint8)
+
+
+def pushpull(rgb, known):
+    """Fills the unknown pixels from the known ones only, coarse to fine (push-pull): each level averages just the
+    known pixels, and a hole takes the coarser level's colour where it has no known pixels of its own. No pixel of
+    the cut-out subject is ever sampled, so no ghost of it shows behind the camera move."""
+    c = rgb.astype(np.float32) * known[..., None]
+    w = known.astype(np.float32)
+    pyr = []
+    while min(w.shape) > 8:
+        pyr.append((c, w))
+        c, w = cv2.pyrDown(c), cv2.pyrDown(w)
+    out = c / np.maximum(w, 1e-4)[..., None]
+    for c, w in reversed(pyr):
+        h, ww = w.shape
+        up = cv2.resize(out, (ww, h), interpolation=cv2.INTER_LINEAR)
+        a = np.clip(w * 1.6, 0, 1)[..., None]
+        out = (c / np.maximum(w, 1e-4)[..., None]) * a + up * (1 - a)
+    return out
+
+
+def fill_bg(rgb, hole, seed=7):
+    """PARALLAX_DEEP's background behind the subject (src/render/depthcam.ts): push-pull from the background only,
+    then the picture's own grain laid back over the paint, so the revealed strip reads as more of the same place
+    instead of a smooth smear. Cheap enough for the Mac (no generative model: those need this PC's GPU, and the
+    FLUX Fill weights here are licensed for non-commercial use only)."""
+    known = ~hole
+    if not known.any():
+        return rgb
+    out = pushpull(rgb, known)
+    f = rgb.astype(np.float32)
+    detail = f - cv2.GaussianBlur(f, (0, 0), 1.5)
+    ring = cv2.dilate(hole.astype(np.uint8), np.ones((41, 41), np.uint8)).astype(bool) & known
+    std = detail[ring].std(axis=0) if ring.sum() > 64 else np.array([3.0, 3.0, 3.0])
+    rng = np.random.default_rng(seed)
+    noise = cv2.GaussianBlur(rng.normal(0, 1, rgb.shape).astype(np.float32), (0, 0), 0.7) * (std * 1.6)
+    out = out + noise
+    a = soft(hole, 3)[..., None]
+    return np.clip(out * a + f * (1 - a), 0, 255).astype(np.uint8)
 
 
 def layers(pipe, src, prefix):
@@ -96,7 +136,7 @@ def grid_of(mask):
     return "".join(str(int(min(9, round(v * 9)))) for v in small.flatten())
 
 
-def mesh(pipe, src, prefix):
+def mesh(pipe, src, prefix, better=False):
     """The 3D photo's maps (src/render/orbit.ts): the depth map, sharpened so the subject's edge carries its own
     depth (a soft map paints a halo of background onto the subject when the camera turns); the picture with the
     subject painted out and that hidden place's own depth, the surface behind the cut; and the subject's
@@ -122,7 +162,7 @@ def mesh(pipe, src, prefix):
     d8 = cv2.dilate(d8, np.ones((5, 5), np.uint8))
     grow = lambda m, r: cv2.dilate(m.astype(np.uint8), np.ones((r, r), np.uint8)).astype(bool)
     hole = grow(fg, 31)
-    far_rgb = fill(rgb, hole, hole)
+    far_rgb = fill_bg(rgb, hole) if better else fill(rgb, hole, hole)
     # The hidden place's depth: the hole painted from the depth around it, so the far surface is a wall,
     # never a dent where the subject stood.
     small = cv2.resize(d8, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
@@ -153,7 +193,10 @@ def main():
     done, skipped = [], []
     for j in jobs:
         try:
-            r, why = (mesh if j.get("mesh") else layers)(pipe, j["src"], j["prefix"])
+            if j.get("mesh"):
+                r, why = mesh(pipe, j["src"], j["prefix"], better=j.get("fill") == "pushpull")
+            else:
+                r, why = layers(pipe, j["src"], j["prefix"])
             (done.append(r) if r else skipped.append({"src": j["src"], "why": why}))
         except Exception as e:  # one bad picture never stops the rest
             skipped.append({"src": j["src"], "why": str(e)[:200]})

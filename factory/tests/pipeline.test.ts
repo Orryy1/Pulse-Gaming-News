@@ -46,7 +46,7 @@ import { maybeSelectWhy } from "../src/pipeline.ts";
 import { recentShapes } from "../src/pipeline.ts";
 import { parseSkeleton } from "../src/editorial/skeletons.ts";
 import { DROP_ANGLE_RULE } from "../src/editorial/dropangle.ts";
-import { bumpForBreaking, videoMetadata } from "../src/pipeline.ts";
+import { bumpForBreaking, videoMetadata, episodeDir, retryFootageHolds } from "../src/pipeline.ts";
 import { VISION_SKIPPED } from "../src/qa/vision.ts";
 
 /** A small, valid ranking draft for the fake writer. */
@@ -3424,6 +3424,184 @@ test("pre-make: a planned Why is made days early, checked, held, uploaded two ho
     "2026-10-20T11:00:00.000Z",
     "scheduled for its slot",
   );
+});
+
+async function launchFile(launch: string): Promise<string> {
+  const d = await tmpDir();
+  const file = path.join(d, "launches.json");
+  await fs.writeFile(
+    file,
+    JSON.stringify([
+      {
+        game: "Grand Theft Auto VI",
+        match: String.raw`gta (6|vi)\b|grand theft auto (6|vi)\b`,
+        launch,
+      },
+    ]),
+  );
+  return file;
+}
+
+test("PREMAKE_REFRESH: a pre-made Short whose game came out since is made again before upload; the remake is kept", async () => {
+  const { db, f, s, setClock, cfg } = await setup({
+    whyEnabled: true,
+    whySlots: ["12:00", "18:30"],
+    shortRunFile: await runFile([NZ_WHY]),
+    newsSlots: ["03:00"],
+    breakingEnabled: false,
+    runPremakeUploadHours: 2,
+    premakeRefresh: true,
+    launchCalendarFile: await launchFile("2026-10-18"),
+  });
+  let renders = 0;
+  const render = s.render;
+  s.render = async (input) => {
+    renders++;
+    await render(input);
+    await fs.writeFile(input.outFile, `render ${renders}`);
+  };
+  await tick(s);
+  let ep = await only(db);
+  assert.equal(ep.status, "approved", ep.last_error ?? "");
+  assert.equal(renders, 1);
+  assert.equal(
+    new Date(ep.next_attempt_at!).toISOString(),
+    "2026-10-16T18:00:00.000Z",
+    "looked at again within six hours while a refresh may still come",
+  );
+  // The test database stamps rows with the real clock: made on 16 Oct, as the fake clock says.
+  await db.query(`UPDATE episodes SET created_at = '2026-10-16T11:00:00Z'`);
+  // Before the launch nothing has changed (the slot is days off, so a thin plan waits for its last 12 hours).
+  setClock(new Date("2026-10-16T18:01:00Z"));
+  await tick(s);
+  assert.equal(renders, 1, "nothing changed yet");
+  // The launch reaches New Zealand on 17 Oct (10:00 UTC): the media predates it, the slot is days off.
+  setClock(new Date("2026-10-18T06:00:00Z"));
+  await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+  await tick(s);
+  ep = await only(db);
+  assert.equal(renders, 2, "made again");
+  assert.equal(ep.status, "approved", ep.last_error ?? "");
+  assert.equal(ep.assets_json?.premadeRefresh?.state, "done");
+  assert.match(
+    ep.assets_json?.premadeRefresh?.why ?? "",
+    /came out on 2026-10-18/,
+  );
+  const dir = episodeDir(cfg, ep.id);
+  assert.equal(
+    await fs.readFile(path.join(dir, "short.mp4"), "utf8"),
+    "render 2",
+  );
+  assert.equal(
+    await fs.readFile(path.join(dir, "short.premade.mp4"), "utf8"),
+    "render 1",
+    "the made video kept beside it",
+  );
+  assert.ok(
+    f.notifications.some((n) => /being made again before it goes out/.test(n)),
+  );
+  // Once a Short: later looks change nothing.
+  await db.query(`UPDATE episodes SET next_attempt_at = NULL`);
+  setClock(new Date("2026-10-19T06:00:00Z"));
+  await tick(s);
+  assert.equal(renders, 2);
+  setClock(new Date("2026-10-20T09:01:00Z"));
+  await tick(s);
+  assert.equal(f.uploads, 1);
+});
+
+test("PREMAKE_REFRESH: a remake that is not ready shortly before the slot gives way to the made video", async () => {
+  const { db, f, s, setClock, cfg } = await setup({
+    whyEnabled: true,
+    whySlots: ["12:00", "18:30"],
+    shortRunFile: await runFile([NZ_WHY]),
+    newsSlots: ["03:00"],
+    breakingEnabled: false,
+    runPremakeUploadHours: 2,
+    premakeRefresh: true,
+    launchCalendarFile: await launchFile("2026-10-20"),
+  });
+  let renders = 0;
+  const render = s.render;
+  s.render = async (input) => {
+    renders++;
+    if (renders > 1) throw new Error("render farm down");
+    await render(input);
+    await fs.writeFile(input.outFile, "as made");
+  };
+  await tick(s);
+  let ep = await only(db);
+  assert.equal(ep.status, "approved", ep.last_error ?? "");
+  // At the upload time (09:00Z) the launch has reached New Zealand: two hours leave time to make it again.
+  setClock(new Date("2026-10-20T09:00:00Z"));
+  await tick(s);
+  ep = await only(db);
+  assert.equal(ep.status, "voiced", "the remake is under way");
+  assert.equal(ep.assets_json?.premadeRefresh?.state, "remaking");
+  assert.equal(f.uploads, 0);
+  // 10:30Z: the remake is still failing 30 minutes before the slot, so the made video goes out.
+  setClock(new Date("2026-10-20T10:30:00Z"));
+  await tick(s);
+  ep = await only(db);
+  assert.equal(ep.assets_json?.premadeRefresh?.state, "restored");
+  assert.match(
+    ep.assets_json?.premadeRefresh?.outcome ?? "",
+    /not ready in time|failed/,
+  );
+  assert.equal(
+    await fs.readFile(path.join(episodeDir(cfg, ep.id), "short.mp4"), "utf8"),
+    "as made",
+  );
+  assert.equal(f.uploads, 1, "uploaded as made");
+});
+
+test("SHORT_FOOTAGE_WAIT: a Short held for no footage is tried once more as a spare once YouTube is open", async () => {
+  const { db, f, s, setClock } = await setup({
+    whyEnabled: true,
+    whySlots: ["12:00", "18:30"],
+    shortRunFile: await runFile([NZ_WHY]),
+    newsSlots: ["03:00"],
+    breakingEnabled: false,
+    shortFootageWait: true,
+  });
+  await tick(s);
+  const ep0 = await only(db);
+  const held = `QA held: "${ep0.script_json!.headline}" is held: no moving footage of Grand Theft Auto VI on screen (footage share 0%) although footage of the game exists. The slot goes to the next ready Short.`;
+  await db.query(
+    `UPDATE episodes SET status = 'failed', last_error = $2, next_attempt_at = NULL, slot_at = '2026-10-16T11:00:00Z' WHERE id = $1`,
+    [ep0.id, held],
+  );
+  // YouTube still paused: nothing yet.
+  s.youtubePause = async () => ({
+    since: Date.parse("2026-10-16T10:00:00Z"),
+    until: Date.parse("2026-10-16T22:00:00Z"),
+  });
+  assert.equal(await retryFootageHolds(s), undefined);
+  // Open again.
+  s.youtubePause = async () => ({
+    since: Date.parse("2026-10-16T10:00:00Z"),
+    until: Date.parse("2026-10-16T11:00:00Z"),
+  });
+  setClock(new Date("2026-10-16T12:30:00Z"));
+  assert.equal(await retryFootageHolds(s), ep0.id);
+  const ep = (await getEpisode(db, ep0.id))!;
+  assert.equal(ep.status, "voiced");
+  assert.equal(ep.slot_at, null, "its slot has gone to the next ready Short");
+  assert.ok(ep.story_json.spare, "a spare for the next empty slot");
+  assert.ok(ep.assets_json?.footageWait);
+  assert.equal(
+    ep.assets_json?.images,
+    undefined,
+    "the gather starts from nothing",
+  );
+  assert.ok(ep.assets_json?.audio, "the voice is kept");
+  assert.ok(f.notifications.some((n) => /gathering again now/.test(n)));
+  // Once only.
+  await db.query(
+    `UPDATE episodes SET status = 'failed', last_error = $2 WHERE id = $1`,
+    [ep0.id, held],
+  );
+  assert.equal(await retryFootageHolds(s), undefined);
 });
 
 test("a spare is made and held with no slot, then fills a slot that would otherwise go out empty", async () => {

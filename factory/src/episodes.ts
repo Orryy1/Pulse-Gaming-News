@@ -46,6 +46,10 @@ export interface Episode {
 export interface EpisodeAssets {
   /** GRAPHICS_FRAME_CHECK faulted these cards ("card3") on a render: the next plan's audit leaves them out. */
   gfxMuted?: string[];
+  /** PREMAKE_REFRESH (src/premakerefresh.ts): a pre-made Short made again before upload, and the made one kept. */
+  premadeRefresh?: import("./premakerefresh.ts").PremakeRefresh;
+  /** SHORT_FOOTAGE_WAIT: the Short waited once for a YouTube pause to lift and gathered again. */
+  footageWait?: { at: string; why: string };
   /** Media was gathered a second time, richer, after a red media rubric. */
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */

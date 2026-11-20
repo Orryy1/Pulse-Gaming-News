@@ -466,6 +466,11 @@ export interface Config {
   runPremakeHours: number;
   /** RUN_PREMAKE_UPLOAD_HOURS: a pre-made Short is uploaded (scheduled on YouTube) this long before its slot, no earlier. */
   runPremakeUploadHours: number;
+  /** PREMAKE_REFRESH (default on): a pre-made Short whose game came out (or whose story's date passed) after its media
+   * was gathered, or with under half its screen time on moving footage, gathers its media again and is made again before
+   * it is uploaded when there is time before the slot; otherwise, or if the remake fails or is worse, it goes as made
+   * (src/premakerefresh.ts). */
+  premakeRefresh: boolean;
   /** RUN_SPARE_SLOTS: local "HH:MM" slots a ready spare from the run fills when nothing else has taken them. */
   runSpareSlots: string[];
   /** RUN_SPARE_MINUTES: a slot still empty this close to its time is given to a ready spare. */
@@ -1242,6 +1247,8 @@ export interface Config {
   mentionRealPlaces: boolean; // MENTION_REALPLACES: a free Commons photo of a real place beside its game version
   mentionPlatforms: boolean; // MENTION_PLATFORMS: a row of Pulse-drawn platform marks when platforms are listed
   mentionReceipts: boolean; // MENTION_RECEIPTS: "Bloomberg reported": the outlet and date, from the story's own sources
+  mentionOutlets: boolean; // MENTION_OUTLETS (default on): a news outlet or magazine the story cites (Edge, IGN, Bloomberg) shows its own logo or masthead on its name (Wikidata's, on Commons), cached
+  mentionInworld: boolean; // MENTION_INWORLD (default on): an in-game brand, shop, radio station or place the script names ("Scooter Bros") shows its real in-game logo, sign or a frame of it: our own frames first, then official art, then a game wiki's in-game picture; never generated
   mentionMaxPerShort: number; // MENTION_MAX_PER_SHORT: most mention insets in a Short (default 5)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
@@ -1300,6 +1307,10 @@ export interface Config {
   gameLibrary: boolean;
   /** SHORT_FOOTAGE_GATE (default on): a Short with no moving footage, or no footage to open on, is held when footage of its game exists. */
   shortFootageGate: boolean;
+  /** SHORT_FOOTAGE_WAIT (default on): a Short the footage gate would hold while YouTube downloads are paused waits for the
+   * pause to lift and gathers again from scratch, once, as a spare for the next empty slot; one already held that way is
+   * tried once more after the pause lifts (src/premakerefresh.ts footageWaitPlan). */
+  shortFootageWait: boolean;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   /**
    * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
@@ -1912,6 +1923,7 @@ export function loadConfig(): Config {
     everyGameFile: str("EVERYGAME_FILE", ""),
     runPremakeHours: Math.max(0, int("RUN_PREMAKE_HOURS", 0)),
     runPremakeUploadHours: Math.max(0, int("RUN_PREMAKE_UPLOAD_HOURS", 2)),
+    premakeRefresh: bool("PREMAKE_REFRESH", true),
     runSpareSlots: str("RUN_SPARE_SLOTS", "")
       .split(",")
       .map((x) => x.trim())
@@ -2355,6 +2367,8 @@ export function loadConfig(): Config {
   mentionRealPlaces: bool("MENTION_REALPLACES", false),
   mentionPlatforms: bool("MENTION_PLATFORMS", false),
   mentionReceipts: bool("MENTION_RECEIPTS", false),
+  mentionOutlets: bool("MENTION_OUTLETS", true),
+  mentionInworld: bool("MENTION_INWORLD", true),
   mentionMaxPerShort: Math.min(8, Math.max(0, int("MENTION_MAX_PER_SHORT", 5))),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
@@ -2385,6 +2399,7 @@ export function loadConfig(): Config {
     footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE || os.homedir(), "Videos")),
     gameLibrary: bool("GAME_LIBRARY", true),
     shortFootageGate: bool("SHORT_FOOTAGE_GATE", true),
+    shortFootageWait: bool("SHORT_FOOTAGE_WAIT", true),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
     libraryOpenverse: bool("LIBRARY_OPENVERSE", true),

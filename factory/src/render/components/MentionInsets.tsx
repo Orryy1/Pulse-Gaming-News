@@ -161,7 +161,43 @@ const Body: React.FC<{
       </div>
     );
   }
-  if (m.kind === "logo") {
+  if (m.kind === "inworld") {
+    // The in-game thing itself: its logo or sign on a light card, or the frame that shows it, named and credited.
+    const p = m.pictures[0]!;
+    if (p.logo) {
+      const aspect = Math.min(3, Math.max(0.8, p.aspect ?? 1.6));
+      const w = 340;
+      const h = Math.round(Math.min(260, Math.max(140, (w - 40) / aspect + 40)));
+      return (
+        <div style={{ width: w, opacity: Math.min(1, pop(0) * 1.4), transform: `translateY(${(1 - pop(0)) * 30}px)` }}>
+          <div
+            style={{
+              width: w,
+              height: h,
+              padding: 20,
+              boxSizing: "border-box",
+              borderRadius: 26,
+              background: "rgba(245,245,242,0.96)",
+              border: `5px solid ${accent}`,
+              boxShadow: SHADOW,
+            }}
+          >
+            <Img src={p.src} style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          </div>
+          <NameStrip p={p} width={w} />
+        </div>
+      );
+    }
+    const w = 400;
+    const aspect = Math.min(1.8, Math.max(1, p.aspect ?? 16 / 9));
+    return (
+      <div style={{ width: w, opacity: Math.min(1, pop(0) * 1.4), transform: `translateY(${(1 - pop(0)) * 30}px)` }}>
+        <Framed src={p.src} width={w} height={Math.round(w / aspect)} accent={accent} />
+        <NameStrip p={p} width={w} />
+      </div>
+    );
+  }
+  if (m.kind === "logo" || m.kind === "outlet") {
     const p = m.pictures[0]!;
     const aspect = Math.min(4, Math.max(1, p.aspect ?? 2.4));
     const h = 150;

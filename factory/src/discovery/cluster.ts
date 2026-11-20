@@ -37,6 +37,8 @@ export interface StoryCluster {
     title?: string;
     /** The Why as a numbered serial (WHY_SERIAL_ENABLED): its number, and whether the slot was a home-shelf one. */
     serial?: { number: number; home: boolean };
+    /** The story's own date (YYYY-MM-DD): a pre-made Short is made again once it passes (src/premakerefresh.ts). */
+    key_date?: string;
   };
   /** A gameplay Short: the inbox clip's id and folder, and the reviewer's verdict. */
   gameplay?: {

@@ -949,6 +949,21 @@ import { stingPlacement } from "./render/cleanframe.ts";
 import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
 import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
 import { mentionsOnWords, type MentionsFound, type MentionInput } from "./assets/mentions.ts";
+import { readLaunches } from "./discovery/launches.ts";
+import {
+  footageRetryAssets,
+  footageWaitPlan,
+  FOOTAGE_RETRY_DAYS,
+  isFootageHold,
+  keepMadeFiles,
+  planFootageShare,
+  premakeNextLook,
+  premakeRefreshDecision,
+  putMadeFilesBack,
+  refreshAssets,
+  remakeVerdict,
+  restoredAssets,
+} from "./premakerefresh.ts";
 import { mentionCap, mentionSlots, type MentionKind, type MentionLayout, type MentionInset, type MentionSlot } from "./render/mentions.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
@@ -1006,6 +1021,8 @@ export interface Services {
     dir: string,
     slot: number,
   ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
+  /** The anonymous YouTube lane's bot-check pause (src/lib/ytguard.ts), for SHORT_FOOTAGE_WAIT; absent in tests. */
+  youtubePause?(): Promise<{ since?: number; until?: number } | undefined>;
   /** MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts); absent in tests. */
   findMentions?(
     input: import("./assets/mentions.ts").MentionInput,
@@ -2766,6 +2783,7 @@ export async function selectRunWhy(
       ...(e.title ? { title: e.title } : {}),
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
+      ...(e.kind === "why" && e.key_date ? { key_date: e.key_date } : {}),
       ...(serial ? { serial } : {}),
     },
     ...(how.premade ? { premade: true } : {}),
@@ -10970,7 +10988,7 @@ async function gatherPeople(
 }
 
 /** MENTION_*: the mention kinds switched on (src/render/mentions.ts), in a fixed order. */
-export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts">): MentionKind[] {
+export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts" | "mentionOutlets" | "mentionInworld">): MentionKind[] {
   const on: Array<[MentionKind, boolean]> = [
     ["game", cfg.mentionGames],
     ["logo", cfg.mentionLogos],
@@ -10978,6 +10996,8 @@ export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" |
     ["realplace", cfg.mentionRealPlaces],
     ["platform", cfg.mentionPlatforms],
     ["receipt", cfg.mentionReceipts],
+    ["outlet", cfg.mentionOutlets],
+    ["inworld", cfg.mentionInworld],
   ];
   return on.filter(([, v]) => v).map(([k]) => k);
 }
@@ -14528,6 +14548,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
       throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
     }
+    if (verdict === "hold" && s.cfg.shortFootageWait && (await waitForYouTube(s, ep, assets))) return;
     if (verdict === "hold") {
       const why = `"${script.headline}" is held: no moving footage of ${script.game_title} on screen (footage share ${Math.round(footageShare * 100)}%${opening?.ok === false ? `, no footage to open on: ${opening.why ?? "none"}` : ""}) although footage of the game exists. The slot goes to the next ready Short.`;
       await s.notify({ level: "info", content: `🎞️ ${why}` });
@@ -15504,6 +15525,181 @@ export function choosePublishAt(
   return at;
 }
 
+/**
+ * PREMAKE_REFRESH: a held pre-made Short is made again when its game came out (or its story's date passed) after its
+ * media was gathered, or it is under half moving footage, and the slot leaves time (src/premakerefresh.ts). A remake
+ * back here is kept when it has at least the made video's footage, otherwise the made video is put back. True when
+ * the Short went back to be made again (this step is done for now).
+ */
+export async function premakeRefreshStep(s: Services, ep: Episode): Promise<boolean> {
+  const assets = (ep.assets_json ?? {}) as Record<string, unknown>;
+  const record = ep.assets_json?.premadeRefresh;
+  if (record?.state === "remaking") {
+    const verdict = remakeVerdict({
+      status: "approved",
+      now: s.now(),
+      slotAt: ep.slot_at!,
+      originalShare: record.share,
+      newShare: planFootageShare(ep.assets_json?.plan),
+    });
+    if (verdict.action === "restore") await restorePremade(s, ep, verdict.why);
+    else {
+      const { original: _drop, originalQa: _qa, ...kept } = record;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify({ ...assets, premadeRefresh: { ...kept, state: "done", outcome: verdict.why } }),
+      ]);
+      await logEvent(s.db, ep.id, "premake_refresh", { outcome: "kept", why: verdict.why }).catch(() => undefined);
+    }
+    return false;
+  }
+  if (record) return false;
+  const decision = premakeRefreshDecision({
+    now: s.now(),
+    slotAt: ep.slot_at!,
+    gatheredAt: ep.created_at ?? s.now().toISOString(),
+    launches: readLaunches(s.cfg.launchCalendarFile),
+    // The writer's game and the story's own hint (the run entry's game) both count.
+    game: [ep.script_json?.game_title, ep.story_json.gameHint].filter(Boolean).join(" | "),
+    headline: [ep.script_json?.headline, ep.story_json.headline].filter(Boolean).join(" | "),
+    keyDate: ep.story_json.why?.key_date,
+    plan: ep.assets_json?.plan,
+  });
+  if (!decision.refresh) return false;
+  const dir = episodeDir(s.cfg, ep.id);
+  const kept = await keepMadeFiles(dir);
+  if (!kept.video) return false;
+  const next = refreshAssets(assets, { at: s.now(), why: decision.why, share: decision.share, qa: ep.qa_json ?? undefined, ...kept });
+  if (!(await transition(s.db, ep.id, "approved", "voiced", { assets_json: next }))) return false;
+  await logEvent(s.db, ep.id, "premake_refresh", { outcome: "remaking", why: decision.why, share: decision.share }).catch(() => undefined);
+  log("info", "pre-made Short made again before upload", { id: ep.id, why: decision.why });
+  await s
+    .notify({
+      level: "info",
+      content: `🔁 The pre-made "${ep.script_json?.youtube?.title ?? ep.story_json.headline}" is being made again before it goes out: ${decision.why}. If the remake is not ready, or is worse, it goes out as made.`,
+    })
+    .catch(() => undefined);
+  return true;
+}
+
+/** Puts a pre-made Short's made video, poster, assets and quality record back (the remake failed, was worse or late). */
+async function restorePremade(s: Services, ep: Episode, why: string): Promise<boolean> {
+  const back = restoredAssets((ep.assets_json ?? {}) as Record<string, unknown>, why);
+  if (!back) return false;
+  if (!(await putMadeFilesBack(episodeDir(s.cfg, ep.id)))) {
+    log("warn", "pre-made Short: the made video is gone, the remake stays", { id: ep.id, why });
+    return false;
+  }
+  const qa = ep.assets_json?.premadeRefresh?.originalQa;
+  await s.db.query(
+    `UPDATE episodes SET status = 'approved', attempts = 0, next_attempt_at = NULL, last_error = NULL, updated_at = now(),
+            assets_json = $3${qa !== undefined ? ", qa_json = $4" : ""} WHERE id = $1 AND status = $2`,
+    [ep.id, ep.status, JSON.stringify(back), ...(qa !== undefined ? [JSON.stringify(qa)] : [])],
+  );
+  await logEvent(s.db, ep.id, "premake_refresh", { outcome: "restored", why }).catch(() => undefined);
+  log("info", "pre-made Short goes out as made", { id: ep.id, why });
+  return true;
+}
+
+/**
+ * SHORT_FOOTAGE_WAIT: a Short the footage gate would hold while the anonymous YouTube lane is paused (or was, during its
+ * gather) waits for the pause to lift and gathers again from nothing, once. A slot it would miss goes to the next ready
+ * Short and it becomes a spare for the next empty one. True when it was set to wait (src/premakerefresh.ts).
+ */
+async function waitForYouTube(s: Services, ep: Episode, assets: EpisodeAssets): Promise<boolean> {
+  // A pre-made Short being made again fails as before, so the made video goes back and keeps its slot.
+  if (assets.premadeRefresh?.state === "remaking") return false;
+  const pause = await s.youtubePause?.().catch(() => undefined);
+  const now = s.now().getTime();
+  const plan = footageWaitPlan({
+    now,
+    blockUntil: pause?.until,
+    // The pause ended within the last hour: the gather that just ran most likely met it.
+    metPause: Boolean(pause?.until && pause.until > now - 3_600_000),
+    waitedBefore: Boolean(assets.footageWait),
+  });
+  if (!plan.wait) return false;
+  // A slot it would miss can only be made up as a spare, and spares go out only for Why and launch run Shorts with a
+  // run file (fillSpareGaps); anything else is held as before.
+  const loses = Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < plan.at.getTime() + 45 * 60_000);
+  if (loses && !canBeSpare(s, ep)) return false;
+  await requeueForFootage(s, ep, assets as Record<string, unknown>, plan.at, "YouTube downloads were paused while its footage was gathered");
+  await s
+    .notify({
+      level: "info",
+      content: `🎞️ "${ep.script_json?.headline ?? ep.story_json.headline}" has no moving footage only because YouTube downloads are paused; it gathers again after ${plan.at.toISOString().slice(11, 16)} UTC${ep.slot_at && new Date(ep.slot_at).getTime() < plan.at.getTime() + 45 * 60_000 ? " and waits as a spare for the next empty slot (its own slot goes to the next ready Short)" : ""}.`,
+    })
+    .catch(() => undefined);
+  return true;
+}
+
+/** Whether a Short may wait as a spare: a Why or launch run Short while a run file fills empty slots (fillSpareGaps). */
+const canBeSpare = (s: Services, ep: Episode): boolean =>
+  Boolean(s.cfg.shortRunFile) && (Boolean(ep.story_json.why) || Boolean(ep.story_json.run));
+
+/**
+ * Back to "voiced" with the gathered media dropped, gathering at `at`; a slot it cannot make (or, with `spare`, any
+ * slot: a held Short's slot may have gone to another Short since) goes and it waits as a spare.
+ */
+async function requeueForFootage(s: Services, ep: Episode, assets: Record<string, unknown>, at: Date, why: string, spare = false): Promise<void> {
+  const loseSlot = spare || Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < at.getTime() + 45 * 60_000);
+  const story = loseSlot ? { ...ep.story_json, spare: ep.story_json.spare ?? {} } : ep.story_json;
+  await s.db.query(
+    `UPDATE episodes SET status = 'voiced', attempts = 0, last_error = NULL, next_attempt_at = $2, updated_at = now(),
+            assets_json = $3, story_json = $4${loseSlot ? ", slot_at = NULL" : ""} WHERE id = $1 AND status = $5`,
+    [ep.id, at, JSON.stringify(footageRetryAssets(assets, { at: s.now(), why })), JSON.stringify(story), ep.status],
+  );
+  await logEvent(s.db, ep.id, "footage_wait", { until: at.toISOString(), why, spare: loseSlot }).catch(() => undefined);
+  log("info", "Short waits for YouTube to gather footage again", { id: ep.id, at: at.toISOString(), spare: loseSlot });
+}
+
+/**
+ * SHORT_FOOTAGE_WAIT for Shorts the footage gate already held: a Why or evergreen Short held for no moving footage in the
+ * last FOOTAGE_RETRY_DAYS days is tried once more, from nothing, as a spare, once the anonymous YouTube lane is open
+ * (17 Nov 2026: two Shorts held only because every fetch met the bot-check pause). One a tick.
+ */
+export async function retryFootageHolds(s: Services): Promise<string | undefined> {
+  const pause = await s.youtubePause?.().catch(() => undefined);
+  const now = s.now();
+  if (pause?.until && pause.until > now.getTime()) return undefined;
+  const rows = await s.db.query<Episode>(
+    `SELECT * FROM episodes WHERE status = 'failed' AND updated_at > $1::timestamptz - make_interval(days => $2)
+        AND assets_json ? 'audio' AND NOT (assets_json ? 'footageWait') AND last_error LIKE 'QA held:%'
+      ORDER BY updated_at DESC`,
+    [now, FOOTAGE_RETRY_DAYS],
+  );
+  // Only Shorts that can wait as a spare: a failed Short's slot is free for others, so it never takes it back.
+  const ep = rows.find((e) => isFootageHold(e.last_error) && canBeSpare(s, e));
+  if (!ep) return undefined;
+  await requeueForFootage(s, ep, (ep.assets_json ?? {}) as Record<string, unknown>, now, "held for no moving footage while YouTube downloads were paused; tried once more", true);
+  await s
+    .notify({
+      level: "info",
+      content: `🎞️ "${ep.script_json?.headline ?? ep.story_json.headline}" was held for no moving footage while YouTube downloads were paused. It is gathering again now and waits as a spare for the next empty slot.`,
+    })
+    .catch(() => undefined);
+  return ep.id;
+}
+
+/**
+ * Every remaking pre-made Short not back at approval: the made video goes back when the remake failed or is not ready
+ * PREMAKE_FALLBACK_MINUTES before the slot (src/premakerefresh.ts remakeVerdict). Runs each tick.
+ */
+export async function settlePremakeRefreshes(s: Services): Promise<number> {
+  const rows = await s.db.query<Episode>(
+    `SELECT * FROM episodes WHERE assets_json->'premadeRefresh'->>'state' = 'remaking'
+        AND status NOT IN ('approved','uploading','uploaded','published','rejected') AND slot_at IS NOT NULL`,
+  );
+  let n = 0;
+  for (const ep of rows) {
+    const record = ep.assets_json?.premadeRefresh;
+    if (!record) continue;
+    const verdict = remakeVerdict({ status: ep.status, now: s.now(), slotAt: ep.slot_at!, originalShare: record.share });
+    if (verdict.action === "restore" && (await restorePremade(s, ep, verdict.why))) n++;
+  }
+  return n;
+}
+
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
   // A spare from the launch run waits, approved and checked, until a slot would go out empty (fillSpareGaps).
   if (ep.story_json.spare && !ep.slot_at) {
@@ -15517,13 +15713,15 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   // RUN_PREMAKE_UPLOAD_HOURS before the slot, so a slot moved by the 03:00 rule or a late correction never meets a
   // video already scheduled, and nothing that spaces uploads sees a publish time days out.
   if (ep.story_json.premade && ep.slot_at) {
+    // PREMAKE_REFRESH (src/premakerefresh.ts): made again first when its game came out since, or it is short of footage.
+    if (s.cfg.premakeRefresh && (await premakeRefreshStep(s, ep))) return;
     const holdUntil = new Date(
       new Date(ep.slot_at).getTime() - s.cfg.runPremakeUploadHours * 3600_000,
     );
     if (holdUntil > s.now()) {
       await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
         ep.id,
-        holdUntil,
+        premakeNextLook(holdUntil, s.now(), s.cfg.premakeRefresh && !ep.assets_json?.premadeRefresh),
       ]);
       return;
     }
@@ -17020,6 +17218,14 @@ export async function tick(
     await fillSpareGaps(s).catch((err) =>
       log("warn", "spare gap fill failed", { error: errorMessage(err) }),
     );
+    if (s.cfg.premakeRefresh)
+      await settlePremakeRefreshes(s).catch((err) =>
+        log("warn", "pre-made remake check failed", { error: errorMessage(err) }),
+      );
+    if (s.cfg.shortFootageWait)
+      await retryFootageHolds(s).catch((err) =>
+        log("warn", "footage hold retry failed", { error: errorMessage(err) }),
+      );
     await docUploadLate(s).catch((err) =>
       log("warn", "documentary deadline check failed", { error: errorMessage(err) }),
     );

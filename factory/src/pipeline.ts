@@ -5429,7 +5429,9 @@ export function avoidFailedTheme(
 ): EvergreenTopic | undefined {
   if (!failedThemes.length || dropFailedThemes([{ name: topic.theme }], failedThemes).length) return topic;
   const clean = new Set(dropFailedThemes(candidates, failedThemes));
-  const at = candidates.findIndex((c) => clean.has(c) && !covered.some((h) => sameSeries(h, c.name)));
+  const ok = (c: EvergreenCandidate | undefined) => !!c && clean.has(c) && !covered.some((h) => sameSeries(h, c.name));
+  // The picker's own candidate first: often only its free-text theme overlapped the failure.
+  const at = ok(candidates[topic.candidate_index]) ? topic.candidate_index : candidates.findIndex(ok);
   if (at < 0) return undefined;
   const best = candidates[at]!;
   return {

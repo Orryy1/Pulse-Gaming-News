@@ -33,4 +33,6 @@ test("a picked theme that renames a failed topic is swapped for the top clean ca
   const fine = { ...picked, theme: "Metroid" };
   assert.equal(avoidFailedTheme(fine, cands, ["Half-Life and Portal"], []), fine);
   assert.equal(avoidFailedTheme(picked, [{ name: "Portal" }] as any, ["Half-Life and Portal"], []), undefined);
+  // The picker's own clean candidate is kept when only its theme overlapped.
+  assert.equal(avoidFailedTheme({ ...picked, candidate_index: 1 }, cands, ["Half-Life and Portal"], [])?.theme, "Fallout");
 });

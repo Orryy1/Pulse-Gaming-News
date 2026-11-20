@@ -629,7 +629,9 @@ test("a sample script goes through the writer and the fact check on the search s
 test("the lane: a search slot takes the best makeable query, within the day's allowance, apart from the news cap", async () => {
   const db = await testDb();
   const dir = await tmpDir();
-  const now = new Date();
+  // A fixed pre-launch date: after GTA 6 came out (18 Nov 2026) "pre order" rightly stops ranking first, so the
+  // real clock made this test fail from that day.
+  const now = new Date("2026-11-10T10:00:00Z");
   const slotAt = new Date(now.getTime() + 60 * 60_000);
   const hhmm = slotLabel(slotAt, "Europe/London");
   const settings = {

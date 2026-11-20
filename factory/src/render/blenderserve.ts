@@ -226,7 +226,11 @@ export function createBlenderServer(opts: ServeOptions): http.Server {
         )
           return send(res, 400, { error: "bad request" });
         const known = jobs.get(b.key);
-        if (known && known.state !== "failed")
+        // A "done" job whose clip has since been removed from the cache is made again, not reported done.
+        const gone =
+          known?.state === "done" &&
+          !(await fs.stat(clipPath(b.key)).catch(() => undefined));
+        if (known && known.state !== "failed" && !gone)
           return send(res, 200, { state: known.state });
         if (await fs.stat(clipPath(b.key)).catch(() => undefined))
           return send(res, 200, { state: "done" });

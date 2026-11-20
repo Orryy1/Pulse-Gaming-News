@@ -1412,16 +1412,22 @@ export interface Config {
   footageFirstMaxMinutes: number; // the whole pass stops starting new chapters after this long; 0 = no limit
   /** Drawn concept sketches for documentary lines nothing filmed can show (src/assets/illustrate.ts); off by default. */
   illustrate: boolean;
-  /** The ComfyUI server that draws them (this PC's FLUX.1 dev). */
+  /** The server that draws them with FLUX.2 klein 4B (Apache 2.0): the Mac's sketch service (mac/sketch.sh) by default. */
   illustrateUrl: string;
+  /** "klein": the Mac's sketch service (POST /draw); "comfy": ComfyUI with the klein workflow (the PC route). */
+  illustrateBackend: "klein" | "comfy";
   /** At most this many sketches per documentary, so a run cannot take all night. */
   illustrateMax: number;
   /** Each sketch's time to queue, draw and download; past it the job is dropped. */
   illustrateTimeoutSeconds: number;
+  /** The whole video's drawing time: no sketch starts that could run past it (0 = no limit). */
+  illustrateBudgetSeconds: number;
   /** A placeholder PNG instead of the model: dry runs and the trial without the GPU. */
   illustrateStub: boolean;
   /** A few concept sketches of lines with movement brought to life by this PC's own video model (Wan 2.2 TI2V 5B through ComfyUI; src/assets/localvideo.ts); off by default. */
   illustrateVideo: boolean;
+  /** The ComfyUI server for those motion clips (the PC's); separate from the sketches' server. */
+  illustrateVideoUrl: string;
   /** At most this many AI motion clips per documentary: each holds the GPU about 3 minutes. */
   illustrateVideoMax: number;
   /** Each clip's time to upload, animate and download; past it the job is dropped from ComfyUI's queue. */
@@ -2440,11 +2446,14 @@ export function loadConfig(): Config {
     footageVisionMax: Math.max(12, int("FOOTAGE_VISION_MAX", 120)),
     footageFirstMaxMinutes: Math.max(0, int("FOOTAGE_FIRST_MAX_MINUTES", 40)),
     illustrate: bool("ILLUSTRATE_ENABLED", false),
-    illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8188"),
+    illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8798"),
+    illustrateBackend: (/^comfy/i.test(str("ILLUSTRATE_BACKEND", "klein").trim()) ? "comfy" : "klein") as "klein" | "comfy",
     illustrateMax: int("ILLUSTRATE_MAX", 24),
     illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
+    illustrateBudgetSeconds: Math.max(0, int("ILLUSTRATE_BUDGET_SECONDS", 1500)),
     illustrateStub: bool("ILLUSTRATE_STUB", false),
     illustrateVideo: bool("ILLUSTRATE_VIDEO_ENABLED", false),
+    illustrateVideoUrl: str("ILLUSTRATE_VIDEO_URL", "http://127.0.0.1:8188"),
     illustrateVideoMax: int("ILLUSTRATE_VIDEO_MAX", 6),
     illustrateVideoTimeoutSeconds: int("ILLUSTRATE_VIDEO_TIMEOUT_SECONDS", 600),
     illustrateVideoStub: bool("ILLUSTRATE_VIDEO_STUB", false),

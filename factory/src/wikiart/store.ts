@@ -43,7 +43,8 @@ export interface ArtImage {
   /** Relative to the game folder: "img/3fa2c1d0.jpg". */
   file: string;
   kind: ArtKind;
-  origin: "official" | "in-game";
+  /** "owner": saved by hand by the channel owner into the drop folder (src/wikiart/drop.ts). */
+  origin: "official" | "in-game" | "owner";
   width: number;
   height: number;
   bytes: number;

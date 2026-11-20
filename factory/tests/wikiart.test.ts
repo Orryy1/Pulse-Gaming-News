@@ -760,3 +760,402 @@ test("classify: a licence template or category named for the publisher counts as
   assert.equal(classifyFile(file({ title: "File:Moogle render.png", wikitext: "{{Square Enix image|render}}" })).keep, true);
   assert.equal(classifyFile(file({ title: "File:Moogle render.png", wikitext: "{{Square Enix image|render}}\nfan render by me" })).keep, false);
 });
+
+// ---- the owner's drop folder (src/wikiart/drop.ts)
+
+import {
+  dropAliases,
+  dropCredit,
+  dropKind,
+  importDrop,
+  parseDropName,
+  removeFromIndex,
+  scanDrop,
+  sourceFromText,
+  bigEnough,
+} from "../src/wikiart/drop.ts";
+import { execFile as execFileCb } from "node:child_process";
+import { promisify as promisifyDrop } from "node:util";
+import { FFMPEG as FFMPEG_DROP } from "../src/lib/bin.ts";
+
+const execDrop = promisifyDrop(execFileCb);
+
+test("drop: game folders map through canonicalGame, so GTA 6 and Grand Theft Auto VI are one game", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "wikidrop-scan-"));
+  await fs.mkdir(path.join(dir, "GTA 6"));
+  await fs.mkdir(path.join(dir, "Grand Theft Auto VI"));
+  await fs.mkdir(path.join(dir, "_ignored"));
+  await fs.writeFile(path.join(dir, "GTA 6", "Scooter Bros.png"), "x");
+  await fs.writeFile(
+    path.join(dir, "GTA 6", "Scooter Bros.txt"),
+    "https://gta.fandom.com/wiki/Scooter_Brothers\n",
+  );
+  await fs.writeFile(
+    path.join(dir, "Grand Theft Auto VI", "Flash FM.jpg"),
+    "x",
+  );
+  await fs.writeFile(
+    path.join(dir, "Grand Theft Auto VI", "Flash FM.jpg.txt"),
+    "from https://gta.fandom.com/wiki/Flash_FM",
+  );
+  await fs.writeFile(path.join(dir, "Grand Theft Auto VI", "notes.docx"), "x");
+  await fs.writeFile(path.join(dir, "_ignored", "a.png"), "x");
+  await fs.writeFile(path.join(dir, "README.txt"), "x");
+  const files = await scanDrop(dir);
+  assert.deepEqual(
+    files.map((f) => [f.rel, f.game]),
+    [
+      ["GTA 6/Scooter Bros.png", "Grand Theft Auto VI"],
+      ["Grand Theft Auto VI/Flash FM.jpg", "Grand Theft Auto VI"],
+    ],
+  );
+  assert.match(files[0]!.txt!, /Scooter_Brothers/);
+  assert.match(files[1]!.txt!, /Flash_FM/);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("drop: the name and kind come from the file name; a bracket that is not a kind stays in the name", () => {
+  assert.deepEqual(parseDropName("Scooter Bros.png"), { name: "Scooter Bros" });
+  assert.deepEqual(parseDropName("Scooter Bros (logo).png"), {
+    name: "Scooter Bros",
+    kind: "logo",
+  });
+  assert.deepEqual(parseDropName("Vice City (Box Art).jpg"), {
+    name: "Vice City",
+    kind: "boxart",
+  });
+  assert.deepEqual(parseDropName("Mandy (GTA 6).jpg"), {
+    name: "Mandy (GTA 6)",
+  });
+  assert.deepEqual(parseDropName("Vice City Police logo.png"), {
+    name: "Vice City Police",
+    kind: "logo",
+  });
+});
+
+test("drop: aliases are the file name and Bros/Brothers swapped both ways", () => {
+  assert.deepEqual(dropAliases("Scooter Bros", "Scooter Bros (logo).png"), [
+    "Scooter Bros (logo)",
+    "Scooter Brothers",
+  ]);
+  assert.deepEqual(dropAliases("Scooter Brothers", "Scooter Brothers.png"), [
+    "Scooter Bros",
+  ]);
+  assert.deepEqual(dropAliases("Flash FM", "Flash FM.jpg"), []);
+});
+
+test("drop: the credit names the site of the page in the .txt, else game wiki", () => {
+  assert.equal(
+    sourceFromText("saved from https://gta.fandom.com/wiki/Scooter_Brothers."),
+    "https://gta.fandom.com/wiki/Scooter_Brothers",
+  );
+  assert.equal(sourceFromText("no address here"), undefined);
+  assert.equal(dropCredit("https://www.gtabase.com/x"), "Image: gtabase.com");
+  assert.equal(
+    dropCredit("https://gta.fandom.com/wiki/Scooter_Brothers"),
+    "Image: gta.fandom.com",
+  );
+  assert.equal(dropCredit(undefined), "Image: game wiki");
+});
+
+test("drop: kind is the name's own, else logo when small or transparent, else artwork; tiny pictures are refused", () => {
+  assert.equal(dropKind("screenshot", 300, 200, true), "screenshot");
+  assert.equal(dropKind(undefined, 1920, 1080, true), "logo");
+  assert.equal(dropKind(undefined, 400, 200, false), "logo");
+  assert.equal(dropKind(undefined, 1920, 1080, false), "artwork");
+  assert.equal(bigEnough(64, 64), true);
+  assert.equal(bigEnough(400, 60), true);
+  assert.equal(bigEnough(63, 63), false);
+  assert.equal(bigEnough(2000, 20), false);
+});
+
+test("drop: the owner's picture ranks first for an exact name, and settles a tie that would give no picture", () => {
+  const img = (
+    id: string,
+    origin: ArtImage["origin"],
+    kind: ArtImage["kind"] = "logo",
+  ): ArtImage => ({
+    id,
+    file: `img/${id}.png`,
+    kind,
+    origin,
+    width: 400,
+    height: 200,
+    bytes: 1,
+    wiki: origin === "owner" ? "owner" : "GTA Wiki",
+    filePage: "",
+    fileUrl: "",
+    fileTitle: id,
+    licence: "",
+    credit: origin === "owner" ? "Image: gta.fandom.com" : "via GTA Wiki",
+    forGame: true,
+    addedAt: "",
+  });
+  const idx: ArtIndex = {
+    version: 1,
+    game: "Grand Theft Auto VI",
+    slug: "grand-theft-auto-vi",
+    wikis: [],
+    updatedAt: "",
+    images: [
+      img("aaaaaaaaaaaa", "official"),
+      img("bbbbbbbbbbbb", "owner"),
+      img("cccccccccccc", "official"),
+    ],
+    entities: [
+      {
+        name: "Scooter Brothers",
+        aliases: ["Scooter Bros"],
+        type: "brand",
+        page: "https://gta.fandom.com/wiki/Scooter_Brothers",
+        wiki: "GTA Wiki",
+        ofGame: true,
+        images: ["aaaaaaaaaaaa"],
+      },
+      {
+        name: "Scooter Bros",
+        aliases: ["Scooter Brothers"],
+        type: "brand",
+        page: "",
+        wiki: "owner",
+        ofGame: true,
+        images: ["bbbbbbbbbbbb"],
+      },
+      {
+        name: "Scooter Bros Shop",
+        aliases: ["Scooter Bros"],
+        type: "place",
+        page: "https://gta.fandom.com/wiki/Shop",
+        wiki: "GTA Wiki",
+        ofGame: true,
+        images: ["cccccccccccc"],
+      },
+    ],
+  };
+  const hit = lookupInIndex(idx, "Scooter Bros");
+  assert.equal(hit?.origin, "owner");
+  assert.equal(hit?.credit, "Image: gta.fandom.com");
+  assert.equal(lookupInIndex(idx, "Scooter Brothers")?.origin, "owner");
+  // Without his pick, the two wiki things that both answer "Scooter Bros" give no picture rather than a guess.
+  const wikiOnly = {
+    ...idx,
+    entities: idx.entities.filter((e) => e.wiki !== "owner"),
+  };
+  assert.equal(lookupInIndex(wikiOnly, "Scooter Bros"), undefined);
+});
+
+test("drop: removing a picture takes it off its entity and drops the entity, never a wiki picture it pointed at", () => {
+  const base = {
+    file: "img/x.png",
+    kind: "logo" as const,
+    width: 1,
+    height: 1,
+    bytes: 1,
+    wiki: "",
+    filePage: "",
+    fileUrl: "",
+    fileTitle: "",
+    licence: "",
+    credit: "",
+    addedAt: "",
+  };
+  const idx: ArtIndex = {
+    version: 1,
+    game: "G",
+    slug: "g",
+    wikis: [],
+    updatedAt: "",
+    images: [
+      {
+        ...base,
+        id: "111111111111",
+        origin: "owner",
+        file: "img/111111111111.png",
+      },
+      { ...base, id: "222222222222", origin: "official" },
+    ],
+    entities: [
+      {
+        name: "A",
+        aliases: [],
+        type: "brand",
+        page: "",
+        wiki: "owner",
+        ofGame: true,
+        images: ["111111111111"],
+      },
+      {
+        name: "B",
+        aliases: [],
+        type: "brand",
+        page: "",
+        wiki: "owner",
+        ofGame: true,
+        images: ["222222222222"],
+      },
+      {
+        name: "B wiki",
+        aliases: [],
+        type: "brand",
+        page: "p",
+        wiki: "GTA Wiki",
+        ofGame: true,
+        images: ["222222222222"],
+      },
+    ],
+  };
+  assert.deepEqual(
+    removeFromIndex(idx, {
+      game: "G",
+      size: 1,
+      mtimeMs: 1,
+      id: "111111111111",
+      name: "A",
+      at: "",
+    }),
+    ["img/111111111111.png"],
+  );
+  assert.deepEqual(
+    removeFromIndex(idx, {
+      game: "G",
+      size: 1,
+      mtimeMs: 1,
+      id: "222222222222",
+      name: "B",
+      at: "",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    idx.entities.map((e) => e.name),
+    ["B wiki"],
+  );
+  assert.deepEqual(
+    idx.images.map((i) => i.id),
+    ["222222222222"],
+  );
+});
+
+test("drop: import-drop brings pictures in once, refuses bad ones, and takes removed ones out", async () => {
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), "wikidrop-run-"));
+  const drop = path.join(work, "drop");
+  const root = path.join(work, "lib");
+  await fs.mkdir(path.join(drop, "GTA 6"), { recursive: true });
+  // A transparent 300x120 logo and a 1200x800 opaque picture with some detail.
+  await execDrop(FFMPEG_DROP, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red@0.0:s=300x120,format=rgba,drawbox=x=40:y=20:w=200:h=80:color=orange@1:t=fill",
+    "-frames:v",
+    "1",
+    path.join(drop, "GTA 6", "Scooter Bros.png"),
+  ]);
+  await execDrop(FFMPEG_DROP, [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=s=1200x800",
+    "-frames:v",
+    "1",
+    path.join(drop, "GTA 6", "Flash FM.jpg"),
+  ]);
+  await fs.writeFile(
+    path.join(drop, "GTA 6", "Scooter Bros.txt"),
+    "https://gta.fandom.com/wiki/Scooter_Brothers",
+  );
+  await fs.writeFile(path.join(drop, "GTA 6", "Broken.png"), "not a picture");
+  const quiet = () => {};
+  const first = await importDrop(root, drop, quiet);
+  assert.deepEqual(first.added.sort(), [
+    "GTA 6/Flash FM.jpg",
+    "GTA 6/Scooter Bros.png",
+  ]);
+  assert.deepEqual(
+    first.rejected.map((r) => r.rel),
+    ["GTA 6/Broken.png"],
+  );
+  const hit = await lookupArt("Grand Theft Auto VI", "Scooter Brothers", {
+    root,
+  });
+  assert.equal(hit?.origin, "owner");
+  assert.equal(hit?.kind, "logo");
+  assert.equal(hit?.credit, "Image: gta.fandom.com");
+  assert.equal(hit?.sourcePage, "https://gta.fandom.com/wiki/Scooter_Brothers");
+  assert.equal(hit?.forGame, true);
+  assert.match(hit!.file!, /\.png$/);
+  const flash = await lookupArt("GTA 6", "Flash FM", { root });
+  assert.equal(flash?.kind, "artwork");
+  assert.equal(flash?.credit, "Image: game wiki");
+  assert.equal(flash?.width, 1200);
+  // A second run changes nothing and stores nothing twice.
+  const again = await importDrop(root, drop, quiet);
+  assert.equal(
+    again.added.length + again.removed.length + again.turnedDown,
+    0,
+  );
+  assert.equal(again.unchanged, 2);
+  assert.deepEqual(
+    again.rejected.map((r) => r.rel),
+    ["GTA 6/Broken.png"],
+  );
+  const idx = JSON.parse(
+    await fs.readFile(
+      path.join(root, "grand-theft-auto-vi", "index.json"),
+      "utf8",
+    ),
+  ) as ArtIndex;
+  assert.equal(idx.images.length, 2);
+  // Taken out of the drop folder: out of the library, file and all.
+  await fs.rm(path.join(drop, "GTA 6", "Scooter Bros.png"));
+  const gone = await importDrop(root, drop, quiet);
+  assert.deepEqual(gone.removed, ["GTA 6/Scooter Bros.png"]);
+  const after = JSON.parse(
+    await fs.readFile(
+      path.join(root, "grand-theft-auto-vi", "index.json"),
+      "utf8",
+    ),
+  ) as ArtIndex;
+  assert.deepEqual(
+    after.entities.map((e) => e.name),
+    ["Flash FM"],
+  );
+  assert.equal(after.images.length, 1);
+  assert.equal(
+    (await fs.readdir(path.join(root, "grand-theft-auto-vi", "img"))).length,
+    1,
+  );
+  await fs.rm(work, { recursive: true, force: true });
+});
+
+test("drop: the same picture saved twice stays while either copy is in the folder; an unreadable or other folder removes nothing", async () => {
+  const work = await fs.mkdtemp(path.join(os.tmpdir(), "wikidrop-dup-"));
+  const drop = path.join(work, "drop");
+  const root = path.join(work, "lib");
+  await fs.mkdir(path.join(drop, "GTA 6"), { recursive: true });
+  const a = path.join(drop, "GTA 6", "Scooter Bros.png");
+  await execDrop(FFMPEG_DROP, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=640x360", "-frames:v", "1", a]);
+  await fs.copyFile(a, path.join(drop, "GTA 6", "Scooter Brothers.png"));
+  const quiet = () => {};
+  await importDrop(root, drop, quiet);
+  const read = async () =>
+    JSON.parse(await fs.readFile(path.join(root, "grand-theft-auto-vi", "index.json"), "utf8")) as ArtIndex;
+  assert.equal((await read()).images.length, 1);
+  // The copy goes: the original still shows.
+  await fs.rm(path.join(drop, "GTA 6", "Scooter Brothers.png"));
+  await importDrop(root, drop, quiet);
+  assert.equal((await lookupArt("GTA 6", "Scooter Bros", { root }))?.origin, "owner");
+  assert.equal((await fs.readdir(path.join(root, "grand-theft-auto-vi", "img"))).length, 1);
+  // Another folder, or one that cannot be read, removes nothing.
+  const other = path.join(work, "other");
+  await fs.mkdir(other);
+  const r1 = await importDrop(root, other, quiet);
+  const r2 = await importDrop(root, path.join(work, "missing"), quiet);
+  assert.equal(r1.removed.length + r2.removed.length, 0);
+  assert.equal((await read()).images.length, 1);
+  await fs.rm(work, { recursive: true, force: true });
+});

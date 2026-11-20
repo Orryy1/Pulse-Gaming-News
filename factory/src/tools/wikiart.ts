@@ -9,6 +9,8 @@
 //   node --import tsx src/tools/wikiart.ts lookup "<game>" "<name>"                 what lookupArt answers
 //   node --import tsx src/tools/wikiart.ts sheet "<game>" --out=<file.jpg> "<name>" ...   a contact sheet of lookups
 //   node --import tsx src/tools/wikiart.ts stats                                     games, counts and disk used
+//   node --import tsx src/tools/wikiart.ts import-drop [--dir=<folder>]   the owner's drop folder into the library
+//        (WIKIART_DROP_DIR, default D:\pulse-data\wikiart-drop; see src/wikiart/drop.ts)
 // Settings: WIKIART_DIR (default D:\pulse-data\wikiart on the PC), WIKIART_GAP_MS (1500), WIKIART_MAX_GB (40),
 // WIKIART_MAX_PAGES (4000 articles per game per run).
 
@@ -200,7 +202,9 @@ async function main(): Promise<void> {
   // Everything that writes the library takes the one lock (two scheduled turns can meet when the first waited long
   // for its turn, and a "want" or "reject" by hand must not race a crawl's in-memory copy).
   if (
-    ["crawl", "want", "reject", "import-library"].includes(command ?? "") &&
+    ["crawl", "want", "reject", "import-library", "import-drop"].includes(
+      command ?? "",
+    ) &&
     !(await takeLock())
   )
     return;
@@ -343,6 +347,24 @@ async function main(): Promise<void> {
     console.log(`rejected ${img.fileTitle}: ${why}`);
     return;
   }
+  if (command === "import-drop") {
+    // The owner's drop folder (src/wikiart/drop.ts): new and changed pictures in, removed ones out. Quick when
+    // nothing changed; windows\wikiart-drop.cmd runs it every 30 minutes and wikiart-crawl.cmd before each crawl.
+    const { DROP_README, dropRoot, importDrop, reportText } =
+      await import("../wikiart/drop.ts");
+    const dir = flag("dir") ?? dropRoot();
+    await fs.mkdir(dir, { recursive: true });
+    const readme = path.join(dir, "README.txt");
+    if (!(await fs.stat(readme).catch(() => undefined)))
+      await fs.writeFile(readme, DROP_README.replace(/\n/g, "\r\n"), "utf8");
+    const r = await importDrop(root, dir);
+    if (r.added.length || r.removed.length || r.turnedDown)
+      await fs.writeFile(path.join(dir, "_report.txt"), reportText(r), "utf8");
+    console.log(
+      `drop folder: ${r.added.length} added, ${r.removed.length} removed, ${r.rejected.length} not used, ${r.unchanged} unchanged`,
+    );
+    return;
+  }
   if (command === "import-library") {
     const { importLibrary } = await import("../wikiart/libimport.ts");
     await importLibrary(root, args[0]!);
@@ -362,7 +384,9 @@ async function main(): Promise<void> {
     );
     return;
   }
-  throw new Error("usage: wikiart.ts crawl|want|lookup|sheet|stats|index ...");
+  throw new Error(
+    "usage: wikiart.ts crawl|want|lookup|sheet|stats|index|import-drop ...",
+  );
 }
 
 await main();

@@ -5384,6 +5384,19 @@ export function longShortlist<T>(
   return { list: base, demandIgnored: true };
 }
 
+/** The shortlist without topics that failed recently: a candidate goes when its name and a failed theme overlap. */
+export function dropFailedThemes<T extends { name: string }>(list: T[], failedThemes: string[]): T[] {
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const failed = failedThemes.map(norm).filter(Boolean);
+  if (!failed.length) return list;
+  // Whole words only, so "Ys" is not left out because a failed theme says "Days Gone".
+  const has = (x: string, y: string) => ` ${x} `.includes(` ${y} `);
+  return list.filter((c) => {
+    const n = norm(c.name);
+    return !n || !failed.some((f) => has(f, n) || has(n, f));
+  });
+}
+
 export async function maybeSelectLongform(
   s: Services,
 ): Promise<string | undefined> {
@@ -5439,12 +5452,26 @@ export async function maybeSelectLongform(
   // The long version of a ranking Short that did well (SEQUEL_WINNERS, src/sequels.ts): already proven on our own
   // channel, so it joins the list whatever the demand check says, and its Short does not count as covering it.
   const sequels = s.cfg.sequelWinners ? await longSequels(s, now) : undefined;
-  const shortlist = [
-    ...(sequels?.candidates ?? []),
-    ...pool.list.filter(
-      (c) => !sequels?.candidates.some((x) => x.name === c.name),
-    ),
-  ];
+  // A topic whose long ranking failed in the last two days (fact-check, QA) is left out of this pick: chosen again,
+  // the same day's duplicate check refuses it and the slot stays empty (Half-Life and Portal, 20 Nov).
+  const failedThemes = (
+    await db.query<{ theme: string | null }>(
+      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days'`,
+      [now],
+    )
+  )
+    .map((r) => r.theme ?? "")
+    .filter(Boolean);
+  if (failedThemes.length) log("info", "long ranking: recently failed topics left out", { themes: failedThemes });
+  const shortlist = dropFailedThemes(
+    [
+      ...(sequels?.candidates ?? []),
+      ...pool.list.filter(
+        (c) => !sequels?.candidates.some((x) => x.name === c.name),
+      ),
+    ],
+    failedThemes,
+  );
   if (!shortlist.length)
     return quiet("no topic candidates: the evergreen topic pool is empty", {
       slot: due.toISOString(),

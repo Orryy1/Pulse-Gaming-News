@@ -223,6 +223,7 @@ import { launchBeats } from "./boxart.ts";
 import { KINETIC, type KineticStyle } from "./components/kinetic/index.ts";
 import { wordTimes } from "./components/kinetic/words.ts";
 import { DIAGRAMS, type DiagramStyle } from "./components/diagram/index.ts";
+import { ExplainerShot } from "./components/explainers/index.tsx";
 import { DocumentShot } from "./components/docs/DocumentShot.tsx";
 import { DrawnScene } from "./components/objects/index.ts";
 import { ReconShot } from "./components/recon/ReconShot.tsx";
@@ -233,6 +234,7 @@ import {
   reconFillRate,
   shotWords,
   type DiagramFillerData,
+  type ExplainerFillerData,
   type DocumentFillerData,
   type KineticFillerData,
   type MomentFiller,
@@ -2634,6 +2636,28 @@ export const Long: React.FC<LongProps> = (props) => {
         src: picture(d.backdrop),
         seed,
       });
+    }
+    // EXPLAINERS: the writer's explainer, its items timed to the narrator's words. An anatomy picture that cannot be
+    // found among the video's pictures drops the shot rather than fail the render.
+    if (f.family === "explainer") {
+      const d = f.data as ExplainerFillerData;
+      const pic = d.explainer.picture;
+      const served =
+        pic && !/^https?:/.test(pic)
+          ? props.images.find((im) => im.src.endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
+          : pic;
+      if (d.explainer.type === "anatomy" && !served) return null;
+      return (
+        <ExplainerShot
+          e={{ ...d.explainer, ...(served ? { picture: served } : {}) }}
+          len={len}
+          fps={fps}
+          accent={COLOUR.amber}
+          backdrop={picture(d.backdrop)}
+          seed={seed}
+          words={shotWords(words, w.start, w.end, origin)}
+        />
+      );
     }
     if (f.family === "diagram") {
       const d = f.data as DiagramFillerData;

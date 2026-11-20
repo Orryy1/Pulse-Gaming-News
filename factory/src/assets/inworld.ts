@@ -56,9 +56,11 @@ const NOT_INWORLD =
 const LEADING =
   /^(the|a|an|and|but|or|so|if|when|while|then|now|here|there|this|that|it|its|they|we|our|you|your|i|my|he|she|his|her|who|what|why|how|which|yes|no|not|just|still|even|also|after|before|since|until|for|with|from|in|on|at|to|by|of|put|have|has|does|do|did|should|could|would|can|will|is|are|was|were|be|buy|get|use|watch|keep|treat|give|try|play|installing|finding|meanwhile|plus|sources?|according|youtuber|two|one|three|as|once|every|imagine|most|fans|players|reports|many|some|all|both|each|another|still|yet|well)$/i;
 /** Title-case words inside a heading ("Claims That Fail", "Finding Your Way"): a run with one is not a name. */
-const HEADING_WORD = /^(that|your|you|this|these|those|when|why|how|what|which|who|is|are|was|were|can|will|should|could|would|does|do|did|have|has|it|its|we|our|my|i)$/i;
+const HEADING_WORD =
+  /^(that|your|you|this|these|those|when|why|how|what|which|who|is|are|was|were|can|will|should|could|would|does|do|did|have|has|it|its|we|our|my|i)$/i;
 /** A product or edition, not something inside the game. */
-const PRODUCT = /\b(edition|pack|bundle|trailer|update|patch|dlc|season pass|pre-?order)$/i;
+const PRODUCT =
+  /\b(edition|pack|bundle|trailer|update|patch|dlc|season pass|pre-?order)$/i;
 
 /**
  * The phrases in the spoken lines that could be in-game things (pure): runs of two to four capitalised words ("Scooter
@@ -81,7 +83,13 @@ export function inworldCandidates(o: {
   const push = (p: string) => {
     const k = key(p);
     if (!k || seen.has(k) || ex.has(k) || k === main || k === mainShort) return;
-    if (main && (main.includes(k) || k.includes(main) || (mainShort && k.includes(mainShort)))) return;
+    if (
+      main &&
+      (main.includes(k) ||
+        k.includes(main) ||
+        (mainShort && k.includes(mainShort)))
+    )
+      return;
     if (PRODUCT.test(p)) return;
     seen.add(k);
     out.push(p);
@@ -105,9 +113,11 @@ export function inworldCandidates(o: {
       const bare = w.replace(/[,.;:!?)”"’']+$/, "").replace(/[’']s$/, "");
       if (/^[A-Z][\p{L}\p{N}&'’+-]*$/u.test(bare)) runW.push(bare);
       else flush();
-      const coined = /^[A-Z]{4,}$/.test(bare) || /^[A-Z][a-z]+[A-Z][A-Za-z]*$/.test(bare);
+      const coined =
+        /^[A-Z]{4,}$/.test(bare) || /^[A-Z][a-z]+[A-Z][A-Za-z]*$/.test(bare);
       if (coined && !NOT_INWORLD.test(bare) && runW.length <= 1) push(bare);
-      if (/[,.;:!?)”"]$/.test(w) || /[’']s$/.test(w.replace(/[,.;:!?]+$/, ""))) flush();
+      if (/[,.;:!?)”"]$/.test(w) || /[’']s$/.test(w.replace(/[,.;:!?]+$/, "")))
+        flush();
     }
     flush();
   }
@@ -220,13 +230,23 @@ export function pageInGame(wikitext: string, code: string): boolean {
 }
 
 /** The picture a wiki page's infobox names for the thing: its sign, logo or image, with the page's caption (pure). */
-export function infoboxPicture(wikitext: string): { file: string; field: string; caption: string } | undefined {
-  const caption = wikitext.match(/\|\s*caption\s*=([^\n]*)/i)?.[1]?.trim() ?? "";
+export function infoboxPicture(
+  wikitext: string,
+): { file: string; field: string; caption: string } | undefined {
+  const caption =
+    wikitext.match(/\|\s*caption\s*=([^\n]*)/i)?.[1]?.trim() ?? "";
   for (const field of ["sign", "logo", "image"]) {
-    const m = wikitext.match(new RegExp(`\\|\\s*${field}\\s*=\\s*([^|\\n}]+)`, "i"));
+    const m = wikitext.match(
+      new RegExp(`\\|\\s*${field}\\s*=\\s*([^|\\n}]+)`, "i"),
+    );
     // A value written as a link ("[[File:X.png|thumb]]") is the same file.
-    const file = m?.[1]?.replace(/\[\[|\]\]/g, "").trim().replace(/^(file|image):/i, "").trim();
-    if (file && /\.(png|jpe?g|webp|gif|svg)$/i.test(file)) return { file, field, caption: field === "image" ? caption : "" };
+    const file = m?.[1]
+      ?.replace(/\[\[|\]\]/g, "")
+      .trim()
+      .replace(/^(file|image):/i, "")
+      .trim();
+    if (file && /\.(png|jpe?g|webp|gif|svg)$/i.test(file))
+      return { file, field, caption: field === "image" ? caption : "" };
   }
   return undefined;
 }
@@ -240,13 +260,23 @@ export function wikiFileOk(
   fileWikitext: string,
   o: { caption?: string; code?: string } = {},
 ): { ok: true; by: "file page" | "caption" } | { ok: false; why: string } {
-  if (FAN_WORK.test(fileWikitext) || FAN_WORK.test(o.caption ?? "")) return { ok: false, why: "the file page or caption describes fan work" };
+  if (FAN_WORK.test(fileWikitext) || FAN_WORK.test(o.caption ?? ""))
+    return { ok: false, why: "the file page or caption describes fan work" };
   if (GAME_PICTURE.test(fileWikitext)) return { ok: true, by: "file page" };
   if (!fileWikitext.trim() && o.caption && o.code) {
-    const inGame = new RegExp(`\\{\\{\\s*${o.code}\\s*\\}\\}|\\bin (grand theft auto|gta) ?${o.code}\\b`, "i").test(o.caption);
-    if (inGame && /\b(logo|sign|signage|screenshot|in-game)\b/i.test(o.caption)) return { ok: true, by: "caption" };
+    const inGame = new RegExp(
+      `\\{\\{\\s*${o.code}\\s*\\}\\}|\\bin (grand theft auto|gta) ?${o.code}\\b`,
+      "i",
+    ).test(o.caption);
+    if (inGame && /\b(logo|sign|signage|screenshot|in-game)\b/i.test(o.caption))
+      return { ok: true, by: "caption" };
   }
-  return { ok: false, why: fileWikitext.trim() ? "not licensed as a screenshot, logo or artwork" : "the file page says nothing to check" };
+  return {
+    ok: false,
+    why: fileWikitext.trim()
+      ? "not licensed as a screenshot, logo or artwork"
+      : "the file page says nothing to check",
+  };
 }
 
 type Fetch = typeof fetch;
@@ -300,21 +330,35 @@ export async function wikiArt(
         { signal: AbortSignal.timeout(10_000) },
       );
       if (res.ok) {
+        // The wiki art library's ArtHit (src/wikiart/lookup.ts): credit, sourcePage/filePage and forGame. The older
+        // field names (pageUrl, site, official) are still read for any other lookup service.
         const j = (await res.json()) as {
           url?: string;
           pageUrl?: string;
+          sourcePage?: string;
+          filePage?: string;
           site?: string;
+          credit?: string;
           kind?: string;
           official?: boolean;
+          forGame?: boolean;
         } | null;
-        if (j?.url && j.official !== false)
+        // A picture filed under another game of the series is not this game's thing: no inset rather than a wrong one.
+        if (j?.url && j.official !== false && j.forGame !== false) {
+          const page = j.sourcePage ?? j.pageUrl ?? j.filePage ?? j.url;
+          const credit = j.credit
+            ? j.credit.startsWith("Image")
+              ? j.credit
+              : `Image: ${j.credit}`
+            : `Image: ${j.site ?? "game wiki"}`;
           return {
             url: j.url,
-            pageUrl: j.pageUrl ?? j.url,
-            credit: `Image: ${j.site ?? "game wiki"}`,
-            provenance: `In-game picture of "${name}" from ${j.site ?? "a game wiki"} (${j.pageUrl ?? j.url}), via the wiki art library`,
+            pageUrl: page,
+            credit,
+            provenance: `In-game picture of "${name}" (${page}), via the wiki art library: ${j.credit ?? j.site ?? "a game wiki"}`,
             logo: j.kind === "logo" || j.kind === "sign",
           };
+        }
       }
     } catch {
       // The library is optional: fall through to the wiki itself.
@@ -359,7 +403,10 @@ export async function wikiArt(
       { action: "parse", page: `File:${pic.file}`, prop: "wikitext" },
       fetchFn,
     );
-    const ok = wikiFileOk(filePage?.parse?.wikitext ?? "", { caption: pic.caption, code });
+    const ok = wikiFileOk(filePage?.parse?.wikitext ?? "", {
+      caption: pic.caption,
+      code,
+    });
     if (!ok.ok) {
       log("info", "in-world inset: wiki picture refused", {
         name,
@@ -399,7 +446,11 @@ export interface InworldDeps {
   /** The game's scene index and its proxy video (absolute path), or undefined. */
   sceneIndex?: (
     game: string,
-  ) => Promise<Array<{ index: SceneIndex; proxy?: string }> | { index: SceneIndex; proxy?: string } | undefined>;
+  ) => Promise<
+    | Array<{ index: SceneIndex; proxy?: string }>
+    | { index: SceneIndex; proxy?: string }
+    | undefined
+  >;
   /** Whether a moment of the index may be shown in a Short now (src/sceneindex/spoilers.ts footageAllowed). */
   frameAllowed?: (index: SceneIndex, at: number) => boolean;
   /** The game library's items, and a readable path for one of its files. */
@@ -519,7 +570,8 @@ async function readCache(
       return now - Date.parse(j.at) < INWORLD_MISS_HOURS * 3_600_000
         ? null
         : undefined;
-    if (now - Date.parse(j.at) > INWORLD_FOUND_DAYS * 86_400_000) return undefined;
+    if (now - Date.parse(j.at) > INWORLD_FOUND_DAYS * 86_400_000)
+      return undefined;
     if (
       await fs.stat(j.file).then(
         (s) => s.isFile(),
@@ -570,27 +622,27 @@ export async function findInworldPicture(
     // The cutscene index and the gameplay index (src/sceneindex/schema.ts gameplayIndexName), each under the spoiler rule.
     for (const si of Array.isArray(found) ? found : found ? [found] : [])
       if (si.proxy)
-      for (const shot of shotsNaming(si.index, name)) {
-        const at = shot.keyframes[0] ?? (shot.start + shot.end) / 2;
-        if (deps.frameAllowed && !deps.frameAllowed(si.index, at)) continue;
-        const raw = path.join(dir, "frame_src.jpg");
-        if ((await cutCard(si.proxy!, raw, undefined, at)) === undefined)
-          continue;
-        const box = await deps.textBox?.(raw, name).catch(() => undefined);
-        const aspect = await cutCard(raw, card, box);
-        await fs.rm(raw, { force: true });
-        if (aspect === undefined) continue;
-        return await keep({
-          file: card,
-          name,
-          logo: false,
-          aspect,
-          credit: `In-game: ${game}`,
-          provenance: `Frame at ${Math.round(at)} s of the scene index source for ${game} (${si.index.source.title}, ${si.index.source.uploader}), shot ${shot.id}, whose on-screen writing reads "${shot.text || shot.desc}"`,
-          sourceUrl: `https://www.youtube.com/watch?v=${si.index.source.videoId}&t=${Math.round(at)}`,
-          from: "own",
-        });
-      }
+        for (const shot of shotsNaming(si.index, name)) {
+          const at = shot.keyframes[0] ?? (shot.start + shot.end) / 2;
+          if (deps.frameAllowed && !deps.frameAllowed(si.index, at)) continue;
+          const raw = path.join(dir, "frame_src.jpg");
+          if ((await cutCard(si.proxy!, raw, undefined, at)) === undefined)
+            continue;
+          const box = await deps.textBox?.(raw, name).catch(() => undefined);
+          const aspect = await cutCard(raw, card, box);
+          await fs.rm(raw, { force: true });
+          if (aspect === undefined) continue;
+          return await keep({
+            file: card,
+            name,
+            logo: false,
+            aspect,
+            credit: `In-game: ${game}`,
+            provenance: `Frame at ${Math.round(at)} s of the scene index source for ${game} (${si.index.source.title}, ${si.index.source.uploader}), shot ${shot.id}, whose on-screen writing reads "${shot.text || shot.desc}"`,
+            sourceUrl: `https://www.youtube.com/watch?v=${si.index.source.videoId}&t=${Math.round(at)}`,
+            from: "own",
+          });
+        }
     const lib = await deps.library?.(game).catch(() => undefined);
     const libHits = lib ? libraryNaming(lib.items, name) : [];
     for (const official of [false, true])
@@ -666,7 +718,11 @@ export async function findInworldPicture(
       // The wiki's picture server refusing us (20 Nov 2026: Fandom's image host answers 403) is not a miss either.
       if (!got) {
         wikiFailed = true;
-        log("info", "in-world inset: wiki picture could not be downloaded", { game, name, url: w.url });
+        log("info", "in-world inset: wiki picture could not be downloaded", {
+          game,
+          name,
+          url: w.url,
+        });
       }
       if (got) {
         const out = path.join(dir, w.logo ? "card.png" : "card.jpg");

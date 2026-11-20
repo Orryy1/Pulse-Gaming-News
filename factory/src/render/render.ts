@@ -1254,6 +1254,12 @@ export async function renderShort(input: RenderInput): Promise<void> {
       ...rest,
       // SHORT_* upgrades: the game map's picture and the 3D clips, staged in the episode's folder, as URLs.
       ...(upgrades ? { upgrades: shortUpgradeUrls(upgrades, files.url) } : {}),
+      // EXPLAINERS: an anatomy explainer's picture is an episode file, served like the others.
+      segments: rest.segments.map((g) =>
+        g.explainer?.picture && !/^https?:/.test(g.explainer.picture)
+          ? { ...g, explainer: { ...g.explainer, picture: `${files.url}/${webPath(g.explainer.picture)}` } }
+          : g,
+      ),
       ...(mentionFiles?.length
         ? { mentions: mentionUrls(mentionFiles, files.url) }
         : {}),

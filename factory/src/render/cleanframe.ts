@@ -321,7 +321,8 @@ export function overlaySpans(input: {
   const settled = settleMentions({ segments, words, plan, mentions: input.mentions ?? [], tracklist: input.tracklist, blockers });
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
-    if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    // EXPLAINERS: a line's explainer takes its card's place, card or not.
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
     if (input.tracklist?.segment === i) return;
     if (settled.replaced.has(i)) return;
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
@@ -361,7 +362,7 @@ export function settleMentions(input: {
   const cards: Array<{ i: number; from: number; to: number; entry: boolean }> = [];
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
-    if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
     if (input.tracklist?.segment === i) return;
     const w = cardWindow(segments, words, i, plan.fps, plan.totalFrames);
     cards.push({ i, from: w.from, to: w.from + w.len, entry: isEntryCard(s) });

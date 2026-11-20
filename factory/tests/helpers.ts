@@ -195,6 +195,7 @@ export function testConfig(
     clarityGate: [],
     clarityMin: 8,
     humanise: "off",
+    explainers: "off",
     shortPayoffGate: "off",
     shortPayoffShare: 0.5,
     scriptDesk: "off",

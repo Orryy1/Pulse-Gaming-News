@@ -64,7 +64,7 @@ test("fillGeometry: centred, portrait into wide, sideways placement, and a fit n
   const p = fillGeometry(528, 704, 1920, 1080)!;
   assert.equal(p.h, 1080);
   assert.equal(p.w, 810);
-  assert.equal(p.x, Math.round((1920 - 810) / 2));
+  assert.equal(p.x, 556); // even pixels
   const r = fillGeometry(1920, 1080, 3200, 1080, "right")!;
   assert.equal(r.x, 3200 - 1920);
   const l = fillGeometry(1920, 1080, 3200, 1080, "left")!;
@@ -116,7 +116,7 @@ test("marginProblems reads the margin check", () => {
     marginProblems({ figures: true, writing: true, broken: false }),
     ["a figure in the new margins", "writing in the new margins"],
   );
-  assert.deepEqual(marginProblems({}), []);
+  assert.deepEqual(marginProblems({}), ["the margin check gave no answer"]);
 });
 
 function solid(

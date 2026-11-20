@@ -398,7 +398,7 @@ import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
 import { prepareImages } from "./gpuvis/client.ts";
 import { thumbCandidateStep } from "./gpuvis/thumbstep.ts";
-import { askVision } from "./gpuvis/vision.ts";
+import { askRanker } from "./gpuvis/vision.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
 import { cardWindow } from "./render/shortcraft.ts";
 import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
@@ -14207,7 +14207,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       const { renderLongThumbs } = await import("./render/render.ts");
       const picked = await thumbCandidateStep(dir, mainThumb.thumb as never, ["thumb.jpg", ...thumbFiles], {
         url: s.cfg.gpuvisUrl,
-        ask: askVision,
+        ask: askRanker,
         render: (file, thumb) => renderLongThumbs({ episodeDir: dir, thumbs: [{ file, thumb: thumb as never }] }),
         // The episode's own seed, so each video's relit candidate has its own light.
         seed: [...ep.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100000,

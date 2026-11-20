@@ -17,6 +17,7 @@ import { promisify } from "node:util";
 import { FFMPEG } from "../lib/bin.ts";
 import { DEFAULT_COMFY_URL, downloadImage, runWorkflow } from "./comfy.ts";
 import { probeSize } from "./pixels.ts";
+import { stack } from "./sheet.ts";
 import type { Ask } from "./vision.ts";
 import { plateWorkflow } from "./workflows.ts";
 
@@ -109,6 +110,114 @@ export function rankScored<T extends Scored>(list: T[]): T[] {
       return a.i - b.i;
     })
     .map((x) => x.c);
+}
+
+export const GRID_PROMPT = (n: number) =>
+  `You are a YouTube thumbnail expert for a gaming channel. ${n} candidate thumbnails for the same video are shown in a grid, each with a big number in its corner. Rank them from the one most likely to win the click in a phone feed to the least likely, judging: ${RUBRIC.map((r) => `${r.key} (${r.ask})`).join("; ")}. Answer with order: every number exactly once, best first.`;
+
+/**
+ * Borda points from several rankings (pure): each ranking gives n-1 points to its first, 0 to its last; numbers a
+ * ranking leaves out get nothing from it. Returns points per index scaled to 0-10.
+ */
+export function bordaScores(rankings: number[][], n: number): number[] {
+  const pts = new Array<number>(n).fill(0);
+  let used = 0;
+  for (const r of rankings) {
+    const seen = new Set<number>();
+    const clean = r.filter(
+      (k) =>
+        Number.isInteger(k) && k >= 0 && k < n && !seen.has(k) && seen.add(k),
+    );
+    if (clean.length < Math.min(2, n)) continue;
+    used++;
+    clean.forEach((k, pos) => (pts[k]! += n - 1 - pos));
+  }
+  const max = Math.max(1, used * Math.max(1, n - 1));
+  return pts.map((p) => Math.round((p / max) * 1000) / 100);
+}
+
+/**
+ * Ranks the candidates against each other: the absolute rubric saturated (20 Nov 2026: qwen3-vl 8B gave every GTA VI
+ * poster 10/10, the 30B 9/9 on everything that was not the old grid), so the model sees them together in a numbered
+ * grid and orders them. Run `rounds` times in shuffled orders to cancel position bias; Borda points become the score.
+ */
+export async function rankByGrid<T extends Scored>(
+  list: T[],
+  ask: Ask,
+  workDir: string,
+  rounds = 2,
+): Promise<T[]> {
+  await fs.mkdir(workDir, { recursive: true });
+  const n = list.length;
+  if (n < 2) return list;
+  const rankings: number[][] = [];
+  for (let r = 0; r < rounds; r++) {
+    // Round 0 in the given order, later rounds reversed and rotated, so each candidate sits in different places.
+    const order = Array.from({ length: n }, (_, i) => i);
+    if (r % 2 === 1) order.reverse();
+    const shift = Math.floor((r * n) / Math.max(1, rounds));
+    const shown = [...order.slice(shift), ...order.slice(0, shift)];
+    const tiles: string[] = [];
+    for (const [pos, k] of shown.entries()) {
+      const tile = path.join(workDir, `r${r}_t${pos}.jpg`);
+      await ff([
+        "-i",
+        list[k]!.file,
+        "-vf",
+        `scale=480:270,drawbox=x=0:y=0:w=64:h=64:color=black@0.85:t=fill,drawtext=fontfile='C\\:/Windows/Fonts/arialbd.ttf':text='${pos + 1}':x=18:y=10:fontsize=46:fontcolor=yellow`,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        tile,
+      ]);
+      tiles.push(tile);
+    }
+    const per = n <= 4 ? 2 : 3;
+    const rows: string[] = [];
+    for (let i = 0; i < tiles.length; i += per) {
+      const chunk = tiles.slice(i, i + per);
+      const row = path.join(workDir, `r${r}_row${i}.jpg`);
+      await ff([
+        ...chunk.flatMap((c) => ["-i", c]),
+        "-filter_complex",
+        `${stack(chunk.length, "h", "pad=488:278:4:4:color=0x222222")},pad=${488 * per}:278:0:0:color=0x222222`,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        row,
+      ]);
+      rows.push(row);
+    }
+    const grid = path.join(workDir, `r${r}_grid.jpg`);
+    await ff([
+      ...rows.flatMap((x) => ["-i", x]),
+      "-filter_complex",
+      stack(rows.length, "v"),
+      "-frames:v",
+      "1",
+      "-q:v",
+      "3",
+      grid,
+    ]);
+    try {
+      const ans = await ask([grid], GRID_PROMPT(n), {
+        properties: { order: { type: "array", items: { type: "integer" } } },
+        required: ["order"],
+      });
+      const said = Array.isArray(ans?.order)
+        ? (ans.order as unknown[]).map((x) => Number(x) - 1)
+        : [];
+      rankings.push(said.map((pos) => shown[pos] ?? -1));
+    } catch {
+      /* one failed round counts for nothing */
+    }
+  }
+  if (!rankings.some((r) => r.filter((k) => k >= 0).length >= 2)) return list;
+  const scores = bordaScores(rankings, n);
+  list.forEach((c, i) => (c.score = scores[i]));
+  return list;
 }
 
 /** Scores every candidate with the vision model (feed-size and full-size copies); a failed call leaves it unscored. */

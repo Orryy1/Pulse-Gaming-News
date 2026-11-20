@@ -28,11 +28,11 @@ import {
   extendWidth,
   rankScored,
   relight,
-  scoreThumbs,
+  rankByGrid,
   type Scored,
 } from "../gpuvis/thumbs.ts";
 import { upscaleStill } from "../gpuvis/upscale.ts";
-import { askVision } from "../gpuvis/vision.ts";
+import { askRanker } from "../gpuvis/vision.ts";
 
 const run = promisify(execFile);
 const ff = (args: string[]) =>
@@ -163,7 +163,8 @@ async function main(manifestFile: string, outDir: string): Promise<void> {
         });
         let work = base;
         const size = await probeSize(path.join(home, base));
-        if (size.width < 1600) {
+        // Short of 1080p either way (the Black Ops art is 1920x620): upscaleStill decides how, or that nothing is needed.
+        if (size.width < 1920 || size.height < 1080) {
           const t = Date.now();
           const up = await upscaleStill(
             path.join(home, base),
@@ -306,7 +307,7 @@ async function main(manifestFile: string, outDir: string): Promise<void> {
   for (const v of videos) {
     const cands = all.get(v.videoId)!;
     const t = Date.now();
-    await scoreThumbs(cands, askVision, path.join(out, v.videoId, "score"));
+    await rankByGrid(cands, askRanker, path.join(out, v.videoId, "rank"), 3);
     timings.score!.push((Date.now() - t) / 1000 / Math.max(1, cands.length));
     const ranked = rankScored(cands.filter((c) => !c.old));
     const top = ranked.slice(0, 3);

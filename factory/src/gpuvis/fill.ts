@@ -64,6 +64,8 @@ export const FILL_GEN_PIXELS = 1_100_000;
 /** The Short's hero band starts here (src/render/layout.ts BANDS.hero), where the framed panel used to sit. */
 export const HERO_TOP_SHARE = 360 / 1920;
 
+/** Even pixel counts: an odd width came back one pixel narrower from the scaler and broke the paste (20 Nov 2026). */
+const ev = (v: number) => Math.round(v / 2) * 2;
 const even16 = (v: number) => Math.max(16, Math.round(v / 16) * 16);
 
 /**
@@ -84,20 +86,20 @@ export function fillGeometry(
   let w = outW;
   let h = outH;
   if (a > frame * FILL_MIN_MISMATCH) {
-    h = Math.round(outW / a);
-    const centred = Math.round((outH - h) / 2);
+    h = ev(outW / a);
+    const centred = ev((outH - h) / 2);
     y =
       place === "hero"
-        ? Math.min(Math.round(outH * HERO_TOP_SHARE), outH - h)
+        ? Math.min(ev(outH * HERO_TOP_SHARE), outH - h)
         : centred;
   } else if (a < frame / FILL_MIN_MISMATCH) {
-    w = Math.round(outH * a);
+    w = ev(outH * a);
     x =
       place === "left"
         ? 0
         : place === "right"
           ? outW - w
-          : Math.round((outW - w) / 2);
+          : ev((outW - w) / 2);
   } else return undefined;
   const k = Math.sqrt(FILL_GEN_PIXELS / (outW * outH));
   const genW = even16(outW * k);
@@ -193,6 +195,9 @@ async function ff(args: string[]): Promise<void> {
 /** The margin check's verdict from the vision model's answer (pure): a list of problems, empty when clean. */
 export function marginProblems(answer: any): string[] {
   const out: string[] = [];
+  // No answer is not a pass: an unread check rejects the fill (the blurred plate stays).
+  if (["figures", "writing", "broken"].some((k) => typeof answer?.[k] !== "boolean"))
+    return ["the margin check gave no answer"];
   if (answer?.figures === true) out.push("a figure in the new margins");
   if (answer?.writing === true) out.push("writing in the new margins");
   if (answer?.broken === true) out.push("broken texture in the new margins");

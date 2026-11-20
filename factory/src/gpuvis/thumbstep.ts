@@ -13,7 +13,7 @@ import {
   extendWidth,
   rankScored,
   relight,
-  scoreThumbs,
+  rankByGrid,
   type Scored,
 } from "./thumbs.ts";
 import type { Ask } from "./vision.ts";
@@ -152,7 +152,7 @@ export async function thumbCandidateStep(
       });
     }
   }
-  await scoreThumbs(cands, deps.ask, path.join(dir, "qa", "thumbscore"));
+  await rankByGrid(cands, deps.ask, path.join(dir, "qa", "thumbrank"), 3);
   // A failed score on the factory's own design must not demote it: no score for it, no change.
   if (cands[0]?.score === undefined) return undefined;
   const ranked = rankScored(cands);

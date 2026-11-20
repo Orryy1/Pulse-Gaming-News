@@ -21,6 +21,7 @@ import {
   type Demand,
 } from "./discovery/searchdemand.ts";
 import { guardScript } from "./writerguard.ts";
+import { spoilerProblems } from "./sceneindex/spoilers.ts";
 import {
   chapterRefusal,
   checkChapter,
@@ -319,10 +320,16 @@ export async function stepScriptExplained(
   const source = explainedSource(story, articles, narrations, background);
   const warnings: string[] = [];
   let packaging = await packageExplained(s.llm, story, source);
-  const pp = packagingProblems(packaging, story);
+  const packSpoilers = (p: typeof packaging) =>
+    spoilerProblems(
+      [p.title, p.kicker, p.youtube.title, p.youtube.description, ...(p.chapter_titles ?? [])].filter(Boolean).join(". "),
+      s.now(),
+      [story.game],
+    );
+  const pp = [...packagingProblems(packaging, story), ...packSpoilers(packaging)];
   if (pp.length) {
     packaging = await packageExplained(s.llm, story, source, pp);
-    warnings.push(...packagingProblems(packaging, story));
+    warnings.push(...packagingProblems(packaging, story), ...packSpoilers(packaging));
   }
   const year = Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4));
   const outline = explainedOutline(story, packaging, year);
@@ -366,6 +373,15 @@ export async function stepScriptExplained(
           index,
         }),
         ...(you ? [you] : []),
+        // Story spoilers go back to the writer on every draft, not to the final door (20 Nov 2026: one
+        // "how the game ends" in part 4 stopped the whole weekly explainer).
+        ...spoilerProblems(
+          chapter.paragraphs
+            .map((x) => [x.narration, x.callout?.primary, x.callout?.secondary].filter(Boolean).join(". "))
+            .join(" "),
+          s.now(),
+          games,
+        ),
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
@@ -376,6 +392,14 @@ export async function stepScriptExplained(
           ...feedback.map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
         );
     }
+    // A spoiler that survives the last rewrite: its sentences are cut, so one phrase never stops the whole video.
+    chapter = {
+      ...chapter!,
+      paragraphs: chapter!.paragraphs.map((p) => {
+        const kept = sentencesOf(p.narration).filter((x) => !spoilerProblems(x, s.now(), games).length);
+        return kept.length === sentencesOf(p.narration).length ? p : { ...p, narration: kept.join(" ") };
+      }),
+    };
     if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
       throw new FatalError(
         `explainer part "${EXPLAINED_PARTS[index]!.label}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
@@ -429,9 +453,16 @@ export async function stepScriptExplained(
   }
   const chapters = done.map((d) => d.chapter);
   let bookends = await writeExplainedBookends(s.llm, outline, chapters, story);
+  const bookendSpoilers = (b: typeof bookends) =>
+    spoilerProblems(
+      [b.intro.narration, b.intro.on_screen, b.outro.narration, b.outro.on_screen].filter(Boolean).join(" "),
+      s.now(),
+      games,
+    );
   const endProblems = [
     ...validateBookends(bookends),
     ...explainedBookendProblems(bookends, story),
+    ...bookendSpoilers(bookends),
   ];
   if (endProblems.length) {
     bookends = await writeExplainedBookends(
@@ -444,6 +475,7 @@ export async function stepScriptExplained(
     warnings.push(
       ...validateBookends(bookends),
       ...explainedBookendProblems(bookends, story),
+      ...bookendSpoilers(bookends),
     );
   }
   const words = explainedWords(chapters, bookends);

@@ -55,7 +55,7 @@ import { hasUsableIndex } from "./sceneindex/footage.ts";
 import { backgroundFor, embedderFor } from "./semantic/hook.ts";
 import { pinChapterMoments, pinShortStills, type ShortPins } from "./semantic/stills.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
-import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
+import { hasSpoilerWarning, spoilerProblems as storySpoilerProblems, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import {
   adSafeGateProblems,
   checkFirstSeconds,
@@ -4623,6 +4623,17 @@ async function stepScriptDocumentary(
         problems.push(
           ...retroChapterProblems(chapter.paragraphs.map((x) => x.narration).join(" "), source, topic.franchise),
         );
+      // A story spoiler for a game in its spoiler window goes back to the writer here, every draft, rather than
+      // stopping the finished script at the door (20 Nov 2026: one "how the game ends" stopped a whole long video).
+      problems.push(
+        ...storySpoilerProblems(
+          chapter.paragraphs
+            .map((x) => [x.narration, x.callout?.primary, x.callout?.secondary].filter(Boolean).join(". "))
+            .join(" "),
+          s.now(),
+          [topic.franchise, ...outline.chapters.map((c) => c.game_title)],
+        ),
+      );
       // A note to the editor instead of narration goes back every time (DOC_META_GUARD).
       if (s.cfg.docMetaGuard)
         problems.push(

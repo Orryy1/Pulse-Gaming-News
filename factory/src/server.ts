@@ -1057,6 +1057,19 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     if (url.pathname === "/admin/retry" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      // rewrite=1: a failed episode that never reached the voice (stopped at writing, e.g. a spoiler or fact-check
+      // door after a fix to the writer) is written again from its stored story (20 Nov 2026: the weekly explainer).
+      if (ep && ep.status === "failed" && !ep.assets_json?.audio && url.searchParams.get("rewrite") === "1") {
+        await db.query(
+          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, script_json = NULL WHERE id = $1`,
+          [ep.id],
+        );
+        await logEvent(db, ep.id, "retried", { after: ep.last_error ?? "", rewrite: true }).catch(() => undefined);
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true }));
+        return;
+      }
       if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {
         res.writeHead(400, { "content-type": "application/json" }).end(
           JSON.stringify({

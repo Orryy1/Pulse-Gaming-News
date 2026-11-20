@@ -1580,3 +1580,17 @@ test("a dropped radar game comes back when a real signal names it; the queue los
     "a started index and another lane's request stay; a revived game stays",
   );
 });
+
+test("a long chapter that never names the game still gets its ending sent back when the writer says what it is about", () => {
+  // 20 Nov 2026: part 4 of the weekly explainer said "how the game ends" and the whole video stopped at the door,
+  // because the explained and documentary chapter loops never asked; they now pass the video's game as `about`.
+  const w = gtaWindow(gtaIndex());
+  setSpoilerWindows([w]);
+  try {
+    const line = "Nobody here will tell you how the game ends, but the first hours are worth it.";
+    assert.ok(spoilerProblems(line, DURING, [w.game])[0]?.includes("the ending"));
+    assert.deepEqual(spoilerProblems("The first hours are worth it.", DURING, [w.game]), []);
+  } finally {
+    setSpoilerWindows([]);
+  }
+});

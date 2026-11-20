@@ -252,3 +252,40 @@ test("outlets: 'according to the Guardian' mid-sentence counts; a Title Case hea
     [],
   );
 });
+
+test("the wiki art library's answer is read as it is sent: its credit and page, and never another game's picture", async () => {
+  const { wikiArt } = await import("../src/assets/inworld.ts");
+  const prev = process.env.WIKIART_LOOKUP_URL;
+  process.env.WIKIART_LOOKUP_URL = "http://10.77.0.1:8793/wikiart/lookup";
+  const hit = (forGame: boolean) =>
+    (async () =>
+      new Response(
+        JSON.stringify({
+          game: "Grand Theft Auto VI",
+          name: "Vice City",
+          type: "place",
+          kind: "screenshot",
+          origin: "library",
+          forGame,
+          url: "http://10.77.0.1:8793/wikiart/gta-vi/img/abc.jpg",
+          width: 1600,
+          height: 900,
+          credit: "Rockstar Games official screenshot",
+          licence: "official",
+          sourcePage: "https://www.rockstargames.com/VI",
+          filePage: "https://www.rockstargames.com/VI",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as unknown as typeof fetch;
+  try {
+    const a = await wikiArt("Grand Theft Auto VI", "Vice City", hit(true));
+    assert.equal(a?.url, "http://10.77.0.1:8793/wikiart/gta-vi/img/abc.jpg");
+    assert.equal(a?.credit, "Image: Rockstar Games official screenshot");
+    assert.equal(a?.pageUrl, "https://www.rockstargames.com/VI");
+    const b = await wikiArt("Grand Theft Auto VI", "Vice City", hit(false));
+    assert.notEqual(b?.url, "http://10.77.0.1:8793/wikiart/gta-vi/img/abc.jpg");
+  } finally {
+    if (prev === undefined) delete process.env.WIKIART_LOOKUP_URL;
+    else process.env.WIKIART_LOOKUP_URL = prev;
+  }
+});

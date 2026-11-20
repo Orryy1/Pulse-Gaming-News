@@ -22,3 +22,4 @@ Daily record of the 30-day growth sprint (21 Nov to 20 Dec 2026), written by the
 
 - Sprint starts Sat 21 Nov; the plan has no Part 3 section for 20 Nov and no earlier Me items exist, so nothing was built or deployed in this run. No new faults.
 
+- 20 Nov ~10:30 Started three more helpers (owner: do all): claude/semantic (meaning-based picture matching MATCH_SEMANTIC plus VOD_TAGS on the owner's streams), claude/sources (press kits, achievement art incl. TrueAchievements/TrueTrophies terms check, wiki leads), claude/maplook (MAP_PINS and GAME_LOOK). Also running: claude/footage-fix, claude/wikiart, claude/gpu-visuals.

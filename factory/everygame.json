@@ -1,0 +1,23 @@
+[
+  {
+    "series": "Grand Theft Auto",
+    "short": "GTA",
+    "on": false,
+    "title": "The Story of Every GTA Game",
+    "angle": "How a top-down game about stealing cars, made by a small team in Dundee, became the biggest launch in entertainment, told one game at a time: which ones changed everything, which ones were missteps, and what each one handed to the next.",
+    "wiki": "Grand Theft Auto",
+    "roster": {
+      "years": { "Grand Theft Auto Online": 2013 }
+    },
+    "short_video": {
+      "date": "2026-11-28",
+      "slot": "20:00",
+      "title": "The Story of Every GTA Game in 60 Seconds"
+    },
+    "long_video": {
+      "date": "2026-12-05",
+      "slot": "17:00",
+      "make_hours_before": 30
+    }
+  }
+]

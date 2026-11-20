@@ -1,0 +1,70 @@
+#!/bin/bash
+# Deploy hook for the Mac's bare repo (~/PulseFactory/repo.git): a push from the PC checks the new code
+# out into ~/PulseFactory/factory-src, typechecks it, and only then switches the factory over and
+# restarts it, so a broken push never stops the channel.
+# The checks are in mac/deploy.sh too: this hook is the last word, because a code switch under a running render or
+# upload loses it. PULSE_DEPLOY_FORCE=1 (git push -o is not needed; set in the environment of the ssh command) overrides.
+# PULSE_ROOT and PULSE_SERVICE exist so the hook can be tried on a sandbox folder (tests in mac/deploy-test.sh).
+export PATH="/opt/homebrew/bin:$PATH"
+ROOT="${PULSE_ROOT:-$HOME/PulseFactory}"
+SERVICE="${PULSE_SERVICE:-com.pulse.factory}"
+PORT="${PULSE_PORT:-8080}"
+SRC="$ROOT/factory-src"
+LIVE="$ROOT/factory"
+PREV="$ROOT/factory-prev"
+busy() {
+  [ -f "$LIVE/data/admin/hold-restart" ] && { echo "the hold-restart flag is set"; return 0; }
+  pgrep -f "remotion|chrome-headless-shell" >/dev/null && { echo "a render is running"; return 0; }
+  local h
+  h=$(curl -s -m 10 "http://127.0.0.1:$PORT/health" 2>/dev/null) || return 1
+  case "$h" in
+    *'"uploads_active":0'*) return 1 ;;
+    *'"uploads_active"'*) echo "an upload is running"; return 0 ;;
+  esac
+  return 1
+}
+# A refusal puts the branch back: post-receive runs after the ref has moved, and a ref left on the refused commit made the
+# next push of that commit say "up to date" and never deploy it.
+refuse() {
+  echo "deploy refused: $1"
+  case "$old" in
+    *[!0]*) git --git-dir="$ROOT/repo.git" update-ref "$ref" "$old" ;;
+    *) git --git-dir="$ROOT/repo.git" update-ref -d "$ref" ;;
+  esac
+  exit 1
+}
+while read -r old new ref; do
+  [ "$ref" = "refs/heads/claude/epic-pasteur-7s143q" ] || continue
+  # A release that died at boot (mac/run.sh rolled it back) is not deployed again: push a newer commit.
+  if [ -f "$LIVE/data/admin/bad_release" ] && [ "$(head -1 "$LIVE/data/admin/bad_release")" = "$new" ]; then
+    refuse "$new died at boot last time; push a fix on top of it"
+  fi
+  if [ "${PULSE_DEPLOY_FORCE:-}" != 1 ] && why=$(busy); then
+    refuse "$why; nothing changed, push again when it is done (mac/deploy.sh waits for you)"
+  fi
+  mkdir -p "$SRC"
+  git --work-tree="$SRC" --git-dir="$ROOT/repo.git" checkout -f "$new"
+  cd "$SRC/factory" || exit 1
+  deps_changed=no
+  cmp -s package-lock.json "$LIVE/package-lock.json" 2>/dev/null || deps_changed=yes
+  if [ "$deps_changed" = yes ]; then
+    rm -f node_modules
+    npm ci --no-audit --no-fund >/dev/null 2>&1 || refuse "npm ci failed"
+  elif [ ! -e node_modules ]; then
+    ln -s "$LIVE/node_modules" node_modules
+  fi
+  if ! npx tsc --noEmit -p . >/tmp/pulse-tsc.log 2>&1; then
+    refuse "the new code does not typecheck (see /tmp/pulse-tsc.log)"
+  fi
+  # The running code is kept beside the live folder, so mac/run.sh can go back to it if the new code dies at boot.
+  mkdir -p "$PREV"
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules --exclude /public/music/es "$LIVE/" "$PREV/"
+  # Code only: the top-level data/, .env and node_modules in the live folder stay as they are (anchored: an
+  # unanchored "data" also dropped src/render/components/packs/data, 29 Oct 2026). public/music/es (the
+  # Epidemic Sound beds, not in git) stays too: without it every deploy deleted the beds (1 Nov 2026 audit).
+  rsync -a --delete --exclude /data --exclude /.env --exclude /node_modules --exclude /public/music/es "$SRC/factory/" "$LIVE/"
+  mkdir -p "$LIVE/data/admin"
+  echo "$new" > "$LIVE/data/admin/release"
+  if [ "$deps_changed" = yes ]; then (cd "$LIVE" && npm ci --no-audit --no-fund >/dev/null 2>&1); fi
+  launchctl kickstart -k "gui/$(id -u)/$SERVICE" 2>/dev/null && echo "deployed $new and restarted the factory" || echo "deployed $new (the factory is not running as $SERVICE, so nothing was restarted)"
+done

@@ -1,0 +1,88 @@
+{
+  "first": "2026-11-25",
+  "slot": "17:00",
+  "every_days": 7,
+  "make_hours_before": 40,
+  "minutes": 60,
+  "title_frame": "The Full Story of {short}, Spoilers and All",
+  "thumb": "THE FULL STORY",
+  "games": [
+    {
+      "key": "gta-san-andreas",
+      "on": false,
+      "game": "Grand Theft Auto: San Andreas",
+      "short": "GTA San Andreas",
+      "wiki": "Grand Theft Auto: San Andreas",
+      "year": 2004,
+      "platforms": "PS2, then PC and Xbox",
+      "steam": "Grand Theft Auto: San Andreas",
+      "angle": "How a studio in Edinburgh turned early-90s California into a whole state you could live in, and how Carl Johnson's trip home for his mother's funeral became the best-selling game of its generation, told from its making through every beat of its story to the Hot Coffee storm and the remasters.",
+      "minutes": 60,
+      "also_wiki": [
+        "Rockstar North",
+        "Hot Coffee (minigame)",
+        "Grand Theft Auto: The Trilogy – The Definitive Edition"
+      ],
+      "sources": [
+        {
+          "url": "https://www.eurogamer.net/r-gtasanandreas-ps2",
+          "source": "Eurogamer",
+          "sections": ["reception", "innovations"]
+        },
+        {
+          "url": "https://www.ign.com/articles/2004/10/23/grand-theft-auto-san-andreas-2",
+          "source": "IGN",
+          "sections": ["reception", "innovations"]
+        }
+      ]
+    },
+    {
+      "key": "gta-v",
+      "on": false,
+      "game": "Grand Theft Auto V",
+      "short": "GTA 5",
+      "wiki": "Grand Theft Auto V",
+      "year": 2013,
+      "platforms": "PS3 and Xbox 360, then PS4, Xbox One, PC, PS5 and Xbox Series X|S",
+      "steam": "Grand Theft Auto V",
+      "angle": "Three men, one city and the most profitable entertainment product ever made: how Rockstar built Los Santos, how Michael, Franklin and Trevor's story plays out to its three endings, and why a game from 2013 was still selling a decade later.",
+      "minutes": 70,
+      "also_wiki": [
+        "Development of Grand Theft Auto V",
+        "Grand Theft Auto Online",
+        "Rockstar North"
+      ],
+      "sources": []
+    },
+    {
+      "key": "zelda-ocarina-remake",
+      "on": false,
+      "game": "The Legend of Zelda: Ocarina of Time",
+      "short": "Ocarina of Time",
+      "wiki": "The Legend of Zelda: Ocarina of Time",
+      "year": 1998,
+      "platforms": "Nintendo 64, remade for Switch 2",
+      "steam": "",
+      "allowed_from": "2026-12-04",
+      "angle": "The game that taught 3D games how to fight, and the remake that rebuilt it: how Ocarina of Time was made, every beat of Link's journey from Kokiri Forest to Ganon's tower, and what the remake kept and changed.",
+      "minutes": 60,
+      "also_wiki": ["The Legend of Zelda: Ocarina of Time 3D"],
+      "sources": []
+    },
+    {
+      "key": "gta-vi",
+      "on": false,
+      "game": "Grand Theft Auto VI",
+      "short": "GTA 6",
+      "wiki": "Grand Theft Auto VI",
+      "year": 2026,
+      "platforms": "PS5 and Xbox Series X|S",
+      "steam": "",
+      "allowed_from": "2026-12-18",
+      "angle": "Thirteen years in the making: how Rockstar built Leonida, the leaks and the delays on the way, and the whole of Lucia and Jason's story, beat by beat, once everyone has had the chance to finish it.",
+      "minutes": 80,
+      "also_wiki": ["Rockstar North"],
+      "sources": []
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "note": "Pulse's own music library for ACE-Step 1.5 (ACE_BEDS, src/render/acebeds.ts): a channel theme and ident, and era and genre beds the music plan picks from (src/render/musicplan.ts moods). Same schema as briefs.json, so acegen.py makes the takes (--briefs acebeds.json) and pickace.py measures, finishes and keeps the best. Styles only: no artist, song, game, composer, soundtrack or console is named in any prompt, so nothing is asked to imitate anyone. D or E major, the two keys the soundscape's tuned sounds come in.",
+  "house": "Instrumental only, no vocals, no choir, no spoken words. Clean modern mix, warm low end that still carries on a phone speaker, no harsh highs.",
+  "series": {
+    "ace_theme": {
+      "name": "Pulse theme",
+      "key": "E",
+      "bpm": 112,
+      "identity": "Bright, confident modern electronic with a warm human feel: punchy tight drums, a round analogue-style synth bass, a glossy plucked synth hook of four notes and a wide warm pad, energetic and friendly like a favourite late-night show about video games.",
+      "pieces": {
+        "ident": {
+          "caption": "A short signature intro: the four-note plucked hook played once with a rising sweep, landing on a big warm final chord that rings out, like a channel's logo moment.",
+          "seconds": 10,
+          "takes": 8,
+          "seed": 7100
+        },
+        "theme": {
+          "caption": "The full signature theme: the four-note plucked hook stated clearly, answered, then repeated with the drums and bass driving under it, ending on a strong resolved chord.",
+          "seconds": 30,
+          "takes": 4,
+          "seed": 7200
+        }
+      }
+    },
+    "ace_retro": {
+      "name": "Retro chiptune",
+      "key": "E",
+      "mood": "retro",
+      "bpm": 120,
+      "identity": "Eight-bit chiptune: square-wave arpeggios, a bouncy triangle-wave bass and crisp noise-channel percussion, cheerful and nostalgic, the sound of a vintage home computer sound chip.",
+      "pieces": {
+        "bed": {
+          "caption": "Steady looping background tune for narration: arpeggiated chords and bass only, no lead melody, no build-ups or drops, even energy from start to finish.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 7300
+        }
+      }
+    },
+    "ace_synthwave": {
+      "name": "Synthwave",
+      "key": "D",
+      "mood": "synthwave",
+      "bpm": 104,
+      "identity": "Nineteen-eighties synthwave: gated reverb drums, a pulsing analogue arpeggio, warm detuned pads and a deep sub bass, neon night-drive atmosphere along a coastal highway.",
+      "pieces": {
+        "bed": {
+          "caption": "Steady driving background groove for narration: pulsing arpeggio and pads, no lead melody, no breaks or drops, the midrange left clear for a voice.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 7400
+        }
+      }
+    },
+    "ace_fantasy": {
+      "name": "Orchestral fantasy",
+      "key": "D",
+      "mood": "fantasy",
+      "bpm": 84,
+      "identity": "Warm cinematic fantasy orchestra: low strings ostinato, soft french horns, harp arpeggios, frame drums and a gentle celesta shimmer, the feeling of a sweeping journey across mountains and old kingdoms.",
+      "pieces": {
+        "bed": {
+          "caption": "Steady adventurous background bed for narration: string ostinato and harp, no soaring lead melody, no big crescendos or pauses, even energy throughout.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 7500
+        }
+      }
+    },
+    "ace_tense": {
+      "name": "Documentary tension",
+      "key": "D",
+      "mood": "tense",
+      "bpm": 90,
+      "identity": "Restrained investigative tension for a documentary: low pulsing synth, muted ticking percussion, sustained low strings and a soft heartbeat kick, serious and focused but never frightening.",
+      "pieces": {
+        "bed": {
+          "caption": "Steady tense background bed for narration: pulsing and sustained, no melody, no stabs, no build-ups, no silence, consistent from start to finish.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 7600
+        }
+      }
+    },
+    "ace_hype": {
+      "name": "Upbeat rankings",
+      "key": "E",
+      "mood": "hype",
+      "bpm": 118,
+      "identity": "Upbeat feel-good electronic pop instrumental: four-on-the-floor kick, offbeat open hats, bright plucked chords, a bouncy synth bass and handclaps, fun and positive like a countdown show.",
+      "pieces": {
+        "bed": {
+          "caption": "Steady upbeat background groove for narration: chords, bass and drums only, no lead melody, no build-ups or drops, consistent energy throughout.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 7700
+        }
+      }
+    }
+  }
+}

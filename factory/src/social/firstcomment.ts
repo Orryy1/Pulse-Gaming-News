@@ -1,0 +1,84 @@
+// The channel's first comment under a Short (FIRST_COMMENT_QUESTION). The stock opener "What do you make of it?" asks
+// nothing a viewer can argue about, while the video itself usually ends on a real two-sided question (53 of the 65
+// videos published 21 Oct to 4 Nov 2026). So the comment asks the same question the video just asked, and the two
+// faults seen in the 4 Nov comments are cleaned up: a verdict stamp read out as a word ("Our verdict: STEADY: a name")
+// and a ranking criterion used as a game's name ("Which 3D Super Mario games game would you move"). No model call.
+
+import type { Script } from "../editorial/schema.ts";
+import { pinnedComment } from "../editorial/seo.ts";
+
+const QUESTION_MAX = 140;
+
+/** The video's own closing question, when it is about this video (never a tease for the next one). */
+export function arguableQuestion(script: Script): string {
+  const usable = (raw: string | undefined): string => {
+    const q = (raw ?? "").replace(/—/g, ",").trim();
+    if (
+      !q.endsWith("?") ||
+      q.length > QUESTION_MAX ||
+      q.split(/\s+/).length < 4
+    )
+      return "";
+    if (/\b(next why|tomorrow|next episode|next week)\b/i.test(q)) return "";
+    if (/^(what do you think|thoughts|what do you make of it)\b/i.test(q))
+      return "";
+    return q;
+  };
+  // 19 Nov 2026: scripts now end on a verdict, so from 12 Nov 41 Shorts in a row posted no comment at all. The
+  // writer's own comment_question (one per Short, in its specifics, so never the repeated text a spam filter hides)
+  // stands in when the video does not end on a question.
+  return usable(script.loop_line) || usable(script.comment_question);
+}
+
+/** True for the plain story Shorts, whose comment opens on one general question. */
+function isStoryShort(s: Script): boolean {
+  return (
+    !s.gameplay &&
+    !s.cutdown &&
+    !s.recap &&
+    !s.evergreen_format &&
+    !s.entries?.length &&
+    s.runtime !== "long"
+  );
+}
+
+/**
+ * The channel's comment under a Short, only when the Short ends on a real question of its own, and nothing else
+ * (owner's viewer, 12 Nov 2026: "Your comment seems to be shadow banned"). The same-shaped comment under every
+ * Short ("What do you make of it? Bottom line: ... Sources are in the description.") was hidden from viewers on
+ * 33 of 33 videos, which is what a spam filter does with repeated text. Empty means: post nothing.
+ */
+export function shortComment(script: Script): string {
+  return arguableQuestion(script);
+}
+
+/** A link, a hashtag or a mention: never in the channel's first comment (item 19). */
+const LINKISH = /https?:\/\/|www\.|\.com\b|#\w|@\w/i;
+
+/**
+ * FIRST_COMMENT_STRICT: the comment under any Short, of any format, is its own closing question and nothing else;
+ * empty (post nothing) when it has none, or when the question carries a link, hashtag or mention.
+ */
+export function strictShortComment(script: Script): string {
+  const q = arguableQuestion(script);
+  return q && !LINKISH.test(q) ? q : "";
+}
+
+export function firstComment(script: Script): string {
+  let text = pinnedComment(script);
+  // "Our verdict: STEADY: a name, no date yet" reads as a machine's label, whichever words lead it.
+  text = text.replace(
+    /\b(verdict|take|line|version|read)\s*:\s*[A-Z]{3,}(?:\s+[A-Z]{3,})*\s*:\s*/,
+    "$1: ",
+  );
+  // A criterion or plural in the game slot ("Which 3D Super Mario games game"): ask without the name.
+  text = text.replace(
+    /Which ([^?]{28,}|[^?]*\bgames) game would you move up or down the list\?/,
+    "Which one would you move up or down the list?",
+  );
+  if (isStoryShort(script)) {
+    const q = arguableQuestion(script);
+    if (q) text = text.replace(/^[^?]*\?/, q);
+  }
+  return text;
+}

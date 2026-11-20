@@ -545,8 +545,8 @@ export async function segmentUsable(file: string): Promise<boolean> {
     const { promisify } = await import("node:util");
     const { FFMPEG } = await import("../lib/bin.ts");
     await promisify(execFile)(FFMPEG, ["-y", "-v", "error", "-ss", "1.5", "-i", file, "-frames:v", "1", "-q:v", "3", frame]);
-    const { stillBigText } = await import("./cliptext.ts");
-    return (await stillBigText(frame).catch(() => [] as string[])).length === 0;
+    const { clipFrameText } = await import("./cliptext.ts");
+    return (await clipFrameText(frame).catch(() => [] as string[])).length === 0;
   } catch {
     return true;
   } finally {

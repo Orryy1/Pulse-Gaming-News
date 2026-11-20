@@ -243,6 +243,8 @@ export interface IndexedOptions {
    * a link, the uploader's name, a caption fixed at the edge); the game's own signs, HUD and subtitles pass.
    */
   inWorldText?: boolean;
+  /** SHORT_CLIP_EDGE_TEXT: false for long videos, which show the whole picture with no zoom, so nothing is cut at the edge. */
+  edgeText?: boolean;
   /** LONG_WATERMARK_CROP (long videos): a clip with one small corner mark is cut again cropped clear of it. */
   watermarkCropKeep?: number;
   /** SPOILER_GUARD: whether a shot may be used for a line. */
@@ -355,7 +357,7 @@ export interface ScreenVerdict {
 async function screen(
   file: string,
   seconds: number,
-  o: { textCheck: boolean; inWorldText?: boolean; uploader?: string; cropKeep?: number },
+  o: { textCheck: boolean; inWorldText?: boolean; uploader?: string; cropKeep?: number; edgeText?: boolean },
 ): Promise<ScreenVerdict> {
   const frames = await screenFramesOf(file, seconds);
   const reason = cleanFrameReason(frames);
@@ -366,7 +368,7 @@ async function screen(
   const darkest = await darkestLuma(file);
   if (darkest !== undefined && darkest < DARK_LUMA) return { ok: false, why: "dark" };
   if (o.textCheck) {
-    const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds);
+    const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds, o.edgeText === undefined ? {} : { edge: o.edgeText });
     if (!read.clean) return { ok: false, why: `text: ${read.words.slice(0, 4).join(" ")}` };
   }
   // Every frame, not four a second: a fade or a cut to black between the samples is cut off, or the clip refused.
@@ -445,7 +447,7 @@ export async function indexedCutsceneClips(
           );
           await (o.deps?.cut ?? cut)(section, lead, c.seconds, file);
           const screenOf = (f: string, n: number) =>
-            (o.deps?.screen ?? ((x: string, y: number) => screen(x, y, { textCheck: o.textCheck !== false, inWorldText: o.inWorldText, uploader: src.uploader, cropKeep: o.watermarkCropKeep })))(f, n);
+            (o.deps?.screen ?? ((x: string, y: number) => screen(x, y, { textCheck: o.textCheck !== false, inWorldText: o.inWorldText, uploader: src.uploader, cropKeep: o.watermarkCropKeep, edgeText: o.edgeText })))(f, n);
           let verdict = verdictOf(await screenOf(file, c.seconds));
           cropped = undefined;
           // LONG_WATERMARK_CROP: one small corner mark is cropped away and the clip screened once more.
@@ -822,6 +824,7 @@ export async function indexFirstCutscenes<
         publisher: o.publisher,
         // A long video shows the whole picture: the game's own writing stays, and a small corner mark can be cropped.
         ...(o.long && cfg.longInWorldText ? { inWorldText: true } : {}),
+        ...(o.long ? { edgeText: false } : {}),
         ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep ?? 0.78 } : {}),
         // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
         ...(cfg.sceneMatch

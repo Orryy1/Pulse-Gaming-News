@@ -98,22 +98,26 @@ export function matchEntities(
       e.images.length &&
       [e.name, ...e.aliases].some((a) => normName(a) === want),
   );
-  // Spelt exactly as asked beats a match only after evening out; the game's own beats a franchise extra.
+  // Spelt exactly as asked beats a match only after evening out; then the owner's own drop-folder picture (he chose
+  // it, src/wikiart/drop.ts); the game's own beats a franchise extra.
   const exact = (e: ArtEntity) =>
     [e.name, ...e.aliases].some(
       (a) => a.trim().toLowerCase() === name.trim().toLowerCase(),
     );
+  const owner = (e: ArtEntity) => e.wiki === "owner";
   const sorted = hits.sort(
     (a, b) =>
       Number(exact(b)) - Number(exact(a)) ||
+      Number(owner(b)) - Number(owner(a)) ||
       Number(b.ofGame) - Number(a.ofGame),
   );
   // Two different things answer equally well ("Phoenix (vehicle)" and "Phoenix (character)" for "Phoenix"):
-  // no guess, no picture.
+  // no guess, no picture. The owner's pick settles it.
   const [first, second] = sorted;
   if (
     first &&
     second &&
+    owner(first) === owner(second) &&
     exact(first) === exact(second) &&
     first.ofGame === second.ofGame &&
     first.page !== second.page &&
@@ -148,7 +152,7 @@ export function bestImage(
     return (
       (i.forGame === false ? 1000 : 0) +
       (k < 0 ? 10 + (TYPE_RANK[i.kind] ?? 9) : k) * 10 +
-      (i.origin === "official" ? 0 : 1)
+      (i.origin === "official" || i.origin === "owner" ? 0 : 1)
     );
   };
   const lead = list[0]!;

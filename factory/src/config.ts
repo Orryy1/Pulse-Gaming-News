@@ -1330,6 +1330,19 @@ export interface Config {
   libraryPixabay: boolean;
   pixabayApiKey: string;
   libraryArchive: boolean;
+  /**
+   * New sources (src/sources, 20 Nov 2026), each robots.txt-polite and terms-recorded:
+   *  - pressKits (PRESS_KITS, default on): publishers' press kits indexed per game with each asset's terms (only
+   *    editorial or press use kept), ranked first among stills and put first in news Shorts' press pictures;
+   *  - achievementArt (ACHIEVEMENT_ART, default on): real achievement icons, names and unlock shares on Pulse's own
+   *    card; STEAM_API_KEY (optional, free) switches Steam's data to the official Web API schema;
+   *  - wikiLeads (WIKI_LEADS, default on): fan wiki trivia, timelines and development notes as story leads, each a
+   *    fact candidate only once its cited primary source backs it; the writers get the primary's text, never the wiki.
+   */
+  pressKits: boolean;
+  achievementArt: boolean;
+  steamApiKey: string;
+  wikiLeads: boolean;
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
   amazonMoreTags: {
@@ -2406,6 +2419,10 @@ export function loadConfig(): Config {
     shortFootageWait: bool("SHORT_FOOTAGE_WAIT", true),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
+    pressKits: bool("PRESS_KITS", true),
+    achievementArt: bool("ACHIEVEMENT_ART", true),
+    steamApiKey: str("STEAM_API_KEY"),
+    wikiLeads: bool("WIKI_LEADS", true),
     libraryOpenverse: bool("LIBRARY_OPENVERSE", true),
     libraryPixabay: bool("LIBRARY_PIXABAY", true),
     pixabayApiKey: str("PIXABAY_API_KEY"),

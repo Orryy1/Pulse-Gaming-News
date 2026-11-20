@@ -6,7 +6,8 @@
 // Only sites a publisher runs for press and editorial use, read through their stable WordPress search feeds
 // (checked 1 Nov 2026; no scraping of pages that change shape):
 //   Xbox Wire            news.xbox.com/en-us/search/<q>/feed/rss2/          images on xboxwire.thesourcemediaassets.com
-//   PlayStation Blog     blog.playstation.com/search/<q>/feed/rss2/         images on its tachyon CDN and PlayStation's Flickr
+//   PlayStation Blog     blog.playstation.com/feed/ (the main feed)          images on PlayStation's Flickr only (20 Nov 2026: the
+//                        blog's robots.txt forbids /search/ and its /tachyon/ resizer to automated readers)
 //   Sony Interactive     sonyinteractive.com/en/search/<q>/feed/rss2/       its press releases, the post's share image
 //   CD PROJEKT RED       www.cdprojekt.com/en/search/<q>/feed/rss2/         its media news, the post's share image
 //   Steam Deck press kit www.steamdeck.com/en/press                         Valve's hardware press images, for Steam Deck lines
@@ -20,7 +21,9 @@
 // local frame screen on Shorts), and carry "Image: <Publisher> press" on screen (src/assets/libraries.ts).
 
 import type { CommonsImage } from "./commons.ts";
-import { fetchWithTimeout, log, errorMessage } from "../lib/util.ts";
+import { log, errorMessage } from "../lib/util.ts";
+import { sharedPolite } from "../sources/polite.ts";
+
 
 const UA =
   "PulseGamingFactory/1.0 (https://pulse.orryy.com; documentary research)";
@@ -54,10 +57,8 @@ export const PRESS_SITES: PressSite[] = [
     id: "playstation",
     publisher: "PlayStation",
     site: "PlayStation Blog",
-    url: (q) =>
-      `https://blog.playstation.com/search/${encodeURIComponent(q)}/feed/rss2/`,
-    hosts:
-      /^https:\/\/(blog\.playstation\.com\/tachyon\/|live\.staticflickr\.com\/)/,
+    url: () => "https://blog.playstation.com/feed/",
+    hosts: /^https:\/\/live\.staticflickr\.com\//,
   },
   {
     id: "sie",
@@ -175,6 +176,8 @@ const STOP = new Set(["the", "of", "and", "a", "an", "edition", "game"]);
 /** The words a post title must carry to be about this game: "gears", "war", "e-day". */
 export function gameWords(game: string): string[] {
   return game
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // "Ghost of Yōtei" is searched and matched as "yotei"
     .toLowerCase()
     .replace(/[®™©]/g, "")
     .replace(/[:–—]/g, " ")
@@ -192,6 +195,8 @@ export function aboutGame(title: string, game: string): boolean {
   const words = gameWords(game);
   if (!words.length) return false;
   const t = ` ${title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[:–—'"’]/g, " ")
     .replace(/\s+/g, " ")} `;
@@ -273,7 +278,7 @@ export async function searchPress(
   const get = async (url: string) => {
     const res = await (opts.fetchFn
       ? opts.fetchFn(url, { headers: { "user-agent": UA } })
-      : fetchWithTimeout(url, { headers: { "user-agent": UA } }, 30_000));
+      : sharedPolite()(url));
     return res.ok ? await res.text() : "";
   };
   const query = gameWords(game).join(" ");

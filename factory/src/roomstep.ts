@@ -70,6 +70,9 @@ export interface RoomStepInput {
   feedUrls?: readonly string[];
   fetchLinks?: (url: string) => Promise<string[]>;
   fetchArticle?: (url: string) => Promise<ArticleText | undefined>;
+  /** WIKI_LEADS: primary sources that back fan wiki leads about the story's game (src/sources/wikileads.ts). The
+   * pack reads the primary's own words; the wiki itself is never a source. */
+  leadPrimaries?: ArticleText[];
 }
 
 /** The pack's input, with primary sources followed when SCRIPT_ROOM_LINKS is on (never on a host the factory doesn't read). */
@@ -79,6 +82,7 @@ export async function packInput(o: RoomStepInput): Promise<PackInput> {
     articles: o.articles,
     ...(o.vaultNote ? { vault: o.vaultNote } : {}),
     ...(o.storeData ? { storeData: o.storeData } : {}),
+    ...(o.leadPrimaries?.length ? { primaries: o.leadPrimaries } : {}),
   };
   if (!o.cfg.scriptRoomLinks || !o.fetchLinks || !o.fetchArticle) return base;
   const allowed = factoryHosts([
@@ -102,7 +106,8 @@ export async function packInput(o: RoomStepInput): Promise<PackInput> {
       links.map((l) => o.fetchArticle!(l).catch(() => undefined)),
     )
   ).filter((a): a is ArticleText => !!a);
-  return primaries.length ? { ...base, primaries } : base;
+  const all = [...(base.primaries ?? []), ...primaries.filter((p) => !(base.primaries ?? []).some((b) => b.url === p.url))];
+  return all.length ? { ...base, primaries: all } : base;
 }
 
 const wordsOf = (o: RoomStepInput) => ({

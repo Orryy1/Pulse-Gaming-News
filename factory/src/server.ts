@@ -91,6 +91,7 @@ import {
 } from "./youtube/branding.ts";
 import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
+import { outputAudit } from "./outputaudit.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import {
   consentUrl,
@@ -2769,6 +2770,17 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
+      // OUTPUT_AUDIT (src/outputaudit.ts): the week's plan against what went public, sent only when a lane is
+      // under half its plan or no long video has gone public for LONG_DROUGHT_DAYS; once a day with the summary.
+      await outputAudit(db, cfg, new Date())
+        .then(async (m) => {
+          if (!m) return;
+          await services.notify({ ...m, ping: true });
+          await logEvent(db, null, "output_audit", { text: m.content ?? "" });
+        })
+        .catch((err) =>
+          log("error", "output audit failed", { error: errorMessage(err) }),
+        );
       await sendMissReport(db, cfg, new Date(), (m) =>
         services.notify(m),
       ).catch((err) =>

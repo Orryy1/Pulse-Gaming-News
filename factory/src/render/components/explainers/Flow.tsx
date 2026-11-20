@@ -17,7 +17,7 @@ import {
   ramp,
   useClock,
 } from "./kit.tsx";
-import { flowCardHeight, flowGap } from "./layout.ts";
+import { FLOW_DISC, flowCardHeight, flowGap, tallContentUsed } from "./layout.ts";
 import type { ExplainerProps } from "./types.ts";
 
 const FlowBase: React.FC<ExplainerProps & { numbered: boolean }> = ({
@@ -34,6 +34,7 @@ const FlowBase: React.FC<ExplainerProps & { numbered: boolean }> = ({
     len={len}
     accent={accent}
     backdrop={backdrop}
+    used={tallContentUsed(e.type, "tall", e.items.length, e.title)}
   >
     {({ o, content }) => (
       <FlowBody
@@ -80,7 +81,7 @@ const FlowBody: React.FC<{
       height: h,
     };
   });
-  const disc = tall ? Math.min(118, cards[0]!.height - 36) : 132;
+  const disc = tall ? Math.min(FLOW_DISC, cards[0]!.height - 34) : 132;
   return (
     <>
       <svg
@@ -92,8 +93,8 @@ const FlowBody: React.FC<{
           const a = cards[k]!;
           const pts: Array<[number, number]> = tall
             ? [
-                [a.left + 26 + disc / 2, a.top + a.height + 4],
-                [c.left + 26 + disc / 2, c.top - 8],
+                [a.left + 28 + disc / 2, a.top + a.height + 4],
+                [c.left + 28 + disc / 2, c.top - 8],
               ]
             : [
                 [a.left + a.width + 10, a.top + a.height / 2],
@@ -163,8 +164,8 @@ const FlowBody: React.FC<{
                   flexDirection: tall ? "row" : "column",
                   alignItems: "center",
                   justifyContent: tall ? "flex-start" : "center",
-                  gap: tall ? 28 : 30,
-                  padding: tall ? "0 40px 0 26px" : "24px",
+                  gap: tall ? 32 : 30,
+                  padding: tall ? "0 40px 0 28px" : "24px",
                 }}
               >
                 <IconDisc

@@ -94,13 +94,21 @@ export const Board: React.FC<{
   len: number;
   accent: string;
   backdrop?: string;
+  /**
+   * The content height the shape really uses, when less than the board offers (layout.ts tallContentUsed): the
+   * heading and the content then sit together in the middle of the board, not at its top over an empty band.
+   */
+  used?: number;
   children: (g: { box: Box; o: Orientation; content: Box }) => React.ReactNode;
-}> = ({ type, title, len, accent, backdrop, children }) => {
+}> = ({ type, title, len, accent, backdrop, used, children }) => {
   const { frame, opacity, scale } = useBoardFade(len);
-  const { o, box, w, h } = useGeometry();
+  const { o, box: full, w, h } = useGeometry();
   const t = frame / Math.max(1, len);
   const head = title ? fitTitle(title, o) : undefined;
   const band = TITLE_BAND[o] + (head && head.lines.length > 1 ? head.size : 0);
+  const room = full.height - band;
+  const drop = o === "tall" && used !== undefined && used < room ? Math.round((room - used) / 2) : 0;
+  const box: Box = { ...full, top: full.top + drop, height: full.height - 2 * drop };
   const content: Box = {
     left: box.left,
     top: box.top + band,
@@ -147,7 +155,7 @@ export const Board: React.FC<{
             transform: `translateX(${(1 - kickIn) * -20}px)`,
             fontFamily: BODY,
             fontWeight: 800,
-            fontSize: o === "tall" ? 28 : 26,
+            fontSize: o === "tall" ? 30 : 26,
             letterSpacing: 6,
             color: COLOUR.muted,
           }}
@@ -167,7 +175,7 @@ export const Board: React.FC<{
             style={{
               position: "absolute",
               left: box.left,
-              top: box.top + (o === "tall" ? 44 : 40),
+              top: box.top + (o === "tall" ? 46 : 40),
               width: box.width,
               fontFamily: DISPLAY,
               fontSize: head.size,

@@ -19,6 +19,8 @@ import {
   useClock,
   Value,
 } from "./kit.tsx";
+import { textWidth } from "../packs/fit.ts";
+import { fitLabel, fitValue, LABEL_FACE, LINE_HEIGHT, VALUE_FACE } from "./layout.ts";
 import type { ExplainerProps } from "./types.ts";
 
 /** The running totals a build passes through: a value starting + or - adds to the last, any other value replaces it. */
@@ -39,6 +41,34 @@ export function tileUnit(max: number): number {
   const p = 10 ** Math.floor(Math.log10(raw));
   for (const m of [1, 2, 5, 10]) if (raw <= m * p) return m * p;
   return 10 * p;
+}
+
+/** The tall counter's size: the largest that keeps its widest figure clear of a total row top left (pure). */
+export function tallCounterSize(
+  items: ExplainerProps["e"]["items"],
+  totals: number[],
+  max: number,
+  width: number,
+): number {
+  const n = items.length;
+  let flatW = 0;
+  items.forEach((it, i) => {
+    if (i === 0 || Math.abs(totals[i]! - totals[i - 1]!) > 1e-9) return;
+    const v = fitValue(it.value ?? "", "howmuch", "tall", n);
+    const l = fitLabel(it.label, "howmuch", "tall", n);
+    flatW = Math.max(
+      flatW,
+      textWidth(it.value ?? "", VALUE_FACE, v.size * 0.8),
+      ...l.lines.map((x) => textWidth(x, LABEL_FACE, l.size, -0.3)),
+    );
+  });
+  // The counter is set like whichever absolute figure it last reached: measure each one at the top total.
+  const shapes = items.map((x) => x.value ?? "").filter((v) => v && !/^\s*[+\-−]/.test(v));
+  const figures = (shapes.length ? shapes : [items[0]?.value ?? "0"]).map((v) => formatLike(v, max));
+  const wide = (size: number) => Math.max(...figures.map((f) => textWidth(f, VALUE_FACE, size)));
+  for (const size of [176, 160, 150, 136, 120])
+    if (!flatW || width - wide(size) >= flatW + 30) return size;
+  return 104;
 }
 
 export const HowMuch: React.FC<ExplainerProps> = ({
@@ -76,9 +106,12 @@ const HowMuchBody: React.FC<{
   const max = Math.max(...totals, 1);
   const unit = tileUnit(max);
   // The column.
-  const colW = tall ? 250 : 300;
-  const colH = content.height - (tall ? 210 : 150);
-  const colLeft = tall ? content.left + 70 : content.left + 220;
+  const colW = tall ? 270 : 300;
+  const colH = content.height - (tall ? 250 : 150);
+  const colLeft = tall ? content.left + 40 : content.left + 220;
+  // The counter's size. On the tall board it sits top right, level with a total row set top left (a row that changes
+  // nothing on the column): the largest size whose widest figure leaves that row room.
+  const counterSize = tall ? tallCounterSize(e.items, totals, max, content.width) : 170;
   const colBottom = content.top + content.height - 30;
   const pxPer = colH / max;
   // The counter: rolls between totals as each item lands.
@@ -189,7 +222,10 @@ const HowMuchBody: React.FC<{
         const p = land(frame, fps, at[i]!);
         const lo = i === 0 ? 0 : Math.min(totals[i - 1]!, totals[i]!);
         const hi = i === 0 ? totals[0]! : Math.max(totals[i - 1]!, totals[i]!);
-        const mid = colBottom - ((lo + hi) / 2) * pxPer;
+        // Tall: a label near the top of the column keeps clear of the counter above it (its own half height below it).
+        const lab = fitLabel(it.label, "howmuch", o, n);
+        const half = (fitValue(it.value ?? "", "howmuch", o, n).size * 0.8 + lab.lines.length * lab.size * LINE_HEIGHT) / 2;
+        const mid = Math.max(colBottom - ((lo + hi) / 2) * pxPer, tall ? content.top + counterSize + 16 + half : -Infinity);
         const isActive = i === active;
         const x = colLeft + colW + 40;
         // A row that changes nothing on the column (the total a change reaches) is set by the counter, top left.
@@ -242,7 +278,7 @@ const HowMuchBody: React.FC<{
                 {it.icon ? (
                   <Icon
                     name={it.icon}
-                    size={tall ? 44 : 40}
+                    size={tall ? 54 : 40}
                     colour={isActive ? accent : COLOUR.muted}
                   />
                 ) : null}
@@ -274,7 +310,7 @@ const HowMuchBody: React.FC<{
           width: tall ? content.width : 540,
           textAlign: tall ? "right" : "right",
           fontFamily: DISPLAY,
-          fontSize: tall ? 150 : 170,
+          fontSize: counterSize,
           lineHeight: 1,
           color: COLOUR.paper,
           fontVariantNumeric: "tabular-nums",

@@ -1,12 +1,13 @@
 // Game-sound stems, made once per library video on the PC (GAME_SFX_STEMS, src/assets/gamesfx.ts).
-//   npx tsx src/tools/gamesfx.ts "Grand Theft Auto VI" [--audio-dir=DIR] [--force] [--priority=60]
-//   npx tsx src/tools/gamesfx.ts --source=<file or URL> --out=<dir> [--priority=20]   (one source, for checks)
+//   npx tsx src/tools/gamesfx.ts "Grand Theft Auto VI" [--audio-dir=DIR] [--force] [--priority=20]
+//   npx tsx src/tools/gamesfx.ts --source=<file or URL> --out=<dir>   (one source, for checks)
 // For each official video in the game's library (trailers and gameplay; never the owner's own capture): its sound
 // (from DIR/<item>.m4a when given, else read from the publisher's own file, picture skipped: the library keeps the
 // picture only), split by src/tools/gamesfx.py (Demucs htdemucs_ft from the torch cache, then the tonal part and the
 // beat taken out), written beside the item as sfxstems/<item>.sfx.m4a and sfxstems/<item>.json. Each item takes a
-// GPU turn from the PC orchestrator itself (orch.mjs, Pulse's priority 60 by default; 20 for tests), so do not also
-// wrap it in orch run. DATA_DIR or GAME_LIBRARY_DIR pick the library; DEMUCS_PYTHON the Python with Demucs.
+// GPU turn from the PC orchestrator itself (orch.mjs, priority 20 by default as batch work; --priority=60 only when the
+// pipeline runs it for a video being made), so do not also wrap it in orch run. A downloads-pack item ("<zip>#<path>")
+// needs its sound given with --audio-dir. DATA_DIR or GAME_LIBRARY_DIR pick the library; DEMUCS_PYTHON the Python with Demucs.
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -49,7 +50,8 @@ const DEMUCS_PY =
   "";
 const PRIORITY = Math.max(
   1,
-  Math.min(60, Number(flag("priority") ?? 60) || 60),
+  // Batch work runs at 20 (the orchestrator's rule for tests and batches); 60 only when the pipeline itself asks.
+  Math.min(60, Number(flag("priority") ?? 20) || 20),
 );
 
 /** One GPU turn from the orchestrator around `fn`; fails open when the orchestrator is not there. */
@@ -137,6 +139,9 @@ async function aac(src: string, dest: string): Promise<void> {
       "aac",
       "-b:a",
       "192k",
+      // The Mac reads stems by byte range from the PC: the index first.
+      "-movflags",
+      "+faststart",
       dest,
     ],
     { timeout: 600_000 },
@@ -171,9 +176,16 @@ async function main(): Promise<void> {
       console.log(`  ${item.id}: done already`);
       continue;
     }
+    const local = audioDir ? path.join(audioDir, `${item.id}.m4a`) : "";
+    // A downloads-pack item ("<zip URL>#<path inside>") cannot be read by ffmpeg: its sound must be given.
+    if (item.sourceUrl.includes("#") && !(local && fs.existsSync(local))) {
+      console.log(
+        `  ${item.id}: from a downloads pack; give its sound as --audio-dir=DIR with ${item.id}.m4a`,
+      );
+      continue;
+    }
     const work = path.join(dir, SFX_STEMS_DIR, `${item.id}_work`);
     try {
-      const local = audioDir ? path.join(audioDir, `${item.id}.m4a`) : "";
       await split(
         local && fs.existsSync(local) ? local : item.sourceUrl,
         work,

@@ -55,8 +55,9 @@ export interface SfxStemInfo {
 }
 
 /** A library video worth a stem (pure): an official video, usable, not the owner's own capture. */
-export const wantsStem = (i: Pick<LibItem, "kind" | "source" | "unusable">): boolean =>
-  i.kind === "video" && i.source !== "own" && !i.unusable;
+export const wantsStem = (
+  i: Pick<LibItem, "kind" | "source" | "unusable">,
+): boolean => i.kind === "video" && i.source !== "own" && !i.unusable;
 
 /** A stem's info file, or undefined when it is not one (pure). */
 export function parseSfxStemInfo(raw: unknown): SfxStemInfo | undefined {
@@ -149,10 +150,11 @@ async function readInfo(
 ): Promise<SfxStemInfo | undefined> {
   const at = await libraryFile(root, game, sfxStemInfoFile(item));
   if (!at) return undefined;
-  const text = at.local
-    ? await fs.readFile(at.local, "utf8")
-    : await (await fetchWithTimeout(at.url!, {}, 15_000)).text();
-  return parseSfxStemInfo(JSON.parse(text));
+  if (at.local)
+    return parseSfxStemInfo(JSON.parse(await fs.readFile(at.local, "utf8")));
+  const res = await fetchWithTimeout(at.url!, {}, 15_000);
+  // Not processed yet (the PC's server answers 404): no stem.
+  return res.ok ? parseSfxStemInfo(await res.json()) : undefined;
 }
 
 /**
@@ -166,6 +168,8 @@ export async function gameSfxFor(
     file: string;
     sourceUrl?: string;
     startSeconds?: number;
+    /** A located section's clip: its startSeconds count from the section, not the whole file. */
+    sourceSectionId?: string;
     durationSeconds: number;
   },
   dataDir: string,
@@ -173,7 +177,8 @@ export async function gameSfxFor(
   { file: string; clear: number; sound: number } | { skip: string } | undefined
 > {
   try {
-    if (!c.sourceUrl || typeof c.startSeconds !== "number") return undefined;
+    if (!c.sourceUrl || typeof c.startSeconds !== "number" || c.sourceSectionId)
+      return undefined;
     const root = libraryRoot(dataDir);
     const hit = await libraryItemByUrl(root, c.sourceUrl);
     if (!hit) return undefined;

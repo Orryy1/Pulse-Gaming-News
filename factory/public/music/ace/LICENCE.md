@@ -30,10 +30,12 @@ which is what the checks below are for.
 - Generated locally on the PC's GPU through the orchestrator (`src/tools/musiclab/acegen.py --briefs acebeds.json`).
   The prompts (`src/tools/musiclab/acebeds.json`) describe styles and instruments only: no artist, song, game,
   composer, soundtrack or console is named.
-- Every kept file passed `src/tools/musiclab/pickace.py`: artefact checks (no clipped samples, true peak under 0 dBTP,
-  no dropouts, no DC offset) and a melody screen against the openings of well-known game themes (intervals, so any
-  key matches). It was then fingerprinted against the channel's other music, the trailers it plays beside and each
-  other (`src/tools/musiclab/fingerprint.py`).
+- `src/tools/musiclab/pickace.py` keeps a file only if it passes artefact checks (no clipped samples, true peak at
+  or under 0 dBTP, no dropouts, no DC offset), a melody screen against the openings of well-known game themes
+  (intervals, so any key matches) and the landmark fingerprint check (`src/tools/musiclab/fingerprint.py`) against the
+  channel's other music and the trailers it plays beside; it refuses to write the library without that check.
+  The melody screen covers ten themes encoded by hand, so it is a screen, not proof: the private test upload below
+  is still the real check.
 - Each file's seed, prompt and SHA-256 are in `rights.json` beside this note.
 - Retire any file on a Content ID claim. Before ACE_BEDS goes on, one private test upload of a Short using an ACE bed
   is the strongest check Content ID offers.

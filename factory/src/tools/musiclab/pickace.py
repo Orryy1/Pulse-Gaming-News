@@ -15,7 +15,8 @@ A take that fails anything is never kept; a mood with nothing that passed stays 
 Writes public/music/ace/<mood>_<n>.flac, public/music/ace/theme.flac, public/sfx/ace/ident_<n>-{D,E}.mp3, their
 rights.json, src/render/acebedlib.ts and a report.
 
-Usage (from the factory dir, the audio Python): python src/tools/musiclab/pickace.py <raw dir> --report out.json
+Usage (from the factory dir, the audio Python):
+  python src/tools/musiclab/pickace.py <raw dir> --report out.json --corpus <dirs or files to fingerprint against>
 """
 import glob
 import hashlib
@@ -56,8 +57,9 @@ FAMOUS = {
 }
 
 
-def artefacts(path):
-    """Clipped samples, true peak (ffmpeg's ebur128), dropouts inside the music and DC offset."""
+def artefacts(path, dropouts_too=True):
+    """Clipped samples, true peak (ffmpeg's ebur128), dropouts inside the music (not for an ident, whose tail
+    decays) and DC offset. A true peak that cannot be measured fails."""
     y, sr = sf.read(path, always_2d=True)
     clipped = int((np.abs(y) >= CLIP_LIMIT).sum())
     mono = y.mean(axis=1)
@@ -65,7 +67,7 @@ def artefacts(path):
     m = len(mono) // n
     db = 20 * np.log10(np.sqrt((mono[: m * n].reshape(m, n) ** 2).mean(axis=1)) + 1e-9)
     inner = db[int(0.5 / 0.05): m - int(0.5 / 0.05)] if m > 40 else db
-    dropouts = int((inner < DROPOUT_DB).sum())
+    dropouts = int((inner < DROPOUT_DB).sum()) if dropouts_too else 0
     dc = float(abs(y.mean()))
     r = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-af", "ebur128=peak=true", "-f", "null", "-"],
                        capture_output=True, text=True)
@@ -77,8 +79,8 @@ def artefacts(path):
     flags = {}
     if clipped:
         flags["clipped samples"] = clipped
-    if tp > 0:
-        flags["true peak over 0 dBTP"] = round(tp, 2)
+    if not tp <= 0:
+        flags["true peak over 0 dBTP or not measured"] = tp
     if dropouts:
         flags["dropouts"] = dropouts
     if dc > DC_LIMIT:
@@ -109,6 +111,7 @@ def melody_steps(path, seconds=60):
 def famous_match(steps):
     """The closest well-known theme: its name and mismatches in the best window; flagged when close enough."""
     best = (None, 99, 0)
+    hit = None
     for name, motif in FAMOUS.items():
         k = len(motif)
         for i in range(0, max(0, len(steps) - k + 1)):
@@ -116,11 +119,13 @@ def famous_match(steps):
             if len(set(w)) < 3:  # a repeated note or a two-note trill matches too much to mean anything
                 continue
             miss = sum(1 for a, b in zip(w, motif) if a != b)
+            # Judged window by window: any theme matched closely enough flags the take.
+            if hit is None and (miss == 0 or (k >= 8 and miss <= 1)):
+                hit = (name, miss, k)
             if miss < best[1]:
                 best = (name, miss, k)
-    name, miss, k = best
-    flagged = name is not None and (miss == 0 or (k >= 8 and miss <= 1))
-    return dict(closest=name, mismatches=miss if name else None, length=k), flagged
+    name, miss, k = hit or best
+    return dict(closest=name, mismatches=miss if name else None, length=k), hit is not None
 
 
 def meta_of(p):
@@ -176,11 +181,16 @@ def main():
         for k, y in fins.items():
             tmp = os.path.join(work, f"{name}-{k}.wav")
             sf.write(tmp, y.T.astype(np.float32), SR, subtype="PCM_16")
-            art, aflags = artefacts(tmp)
+            art, aflags = artefacts(tmp, dropouts_too=False)
             row.setdefault("artefacts", {})[k] = art
             if aflags:
                 row.setdefault("dropped", []).append(f"{k}: {aflags}")
             files[k] = tmp
+        steps, notes = melody_steps(files["E"], seconds=10)
+        fam, famous = famous_match(steps)
+        row["melody_notes"], row["famous"] = notes, fam
+        if famous:
+            row.setdefault("dropped", []).append(f"melody close to {fam['closest']}")
         if row.get("dropped"):
             continue
         for k, tmp in files.items():
@@ -275,6 +285,36 @@ def main():
             rights.append(right(rel, dest, meta, row["take"], f"beat-aligned seamless loop, Rubber Band {row['shift']:+d} semitones into {key} major (tempo kept), {S.BED_LUFS} LUFS (src/tools/musiclab/pickace.py)"))
         print(f"{mood:10} {len(cands)} passed of {len(rep)}, kept {min(len(cands), BEDS_PER_MOOD)}", flush=True)
 
+    # The fingerprint check (fingerprint.py) against the channel's other music and the given corpus: a kept file that
+    # resembles a known recording is dropped. Without --corpus the library is not written at all.
+    corpus = sys.argv[sys.argv.index("--corpus") + 1:] if "--corpus" in sys.argv else []
+    corpus = [c for c in corpus if not c.startswith("--")]
+    if not corpus:
+        sys.exit("pickace: give --corpus <dirs or files> (the fingerprint check is required before anything is kept)")
+    kept = [os.path.join("public", b["file"]) for b in lib["beds"]] + ([os.path.join("public", lib["theme"]["file"])] if "theme" in lib else []) \
+        + [os.path.join("public", "sfx", f"{i['sting']}-{k}.mp3") for i in lib["idents"] for k in ("D", "E")]
+    fp_report = os.path.join(work, "fingerprint.json")
+    others = [p for p in glob.glob(os.path.join("public", "music", "*")) if os.path.isfile(p) and not p.endswith(".json")]
+    r = subprocess.run([sys.executable, os.path.join(HERE, "fingerprint.py"), "--query", *kept, "--corpus", *others, *corpus,
+                        "--report", fp_report], capture_output=True, text=True)
+    print(r.stdout[-3000:], flush=True)
+    if r.returncode or not os.path.exists(fp_report):
+        sys.exit(f"pickace: the fingerprint check failed: {(r.stderr or '')[-400:]}")
+    fp = json.load(open(fp_report, encoding="utf-8"))
+    report["fingerprint"] = fp
+    flagged = {row["file"] for row in fp.get("queries", fp.get("rows", [])) if row.get("resembles_known")}
+    if not fp.get("controls_passed", True):
+        sys.exit("pickace: the fingerprint check's controls failed, so its verdicts cannot be trusted")
+    if flagged:
+        print("dropped by the fingerprint check:", sorted(flagged), flush=True)
+        lib["beds"] = [b for b in lib["beds"] if os.path.basename(b["file"]) not in flagged]
+        if "theme" in lib and os.path.basename(lib["theme"]["file"]) in flagged:
+            del lib["theme"]
+        lib["idents"] = [i for i in lib["idents"] if not any(f"{os.path.basename(i['sting'])}-{k}.mp3" in flagged for k in ("D", "E"))]
+        rights = [x for x in rights if os.path.basename(x["file"]) not in flagged]
+        for p in kept:
+            if os.path.basename(p) in flagged:
+                os.remove(p)
     json.dump(dict(schema="pulse-audio-rights-v1", licence_record="public/music/ace/LICENCE.md", music=rights),
               open(os.path.join(out_music, "rights.json"), "w", encoding="utf-8", newline="\n"), indent=2)
     lines = [

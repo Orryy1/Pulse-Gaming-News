@@ -366,7 +366,7 @@ import {
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
 import { planPanelStep } from "./planpanelstep.ts";
 import { frameFocusStep } from "./framefocusstep.ts";
-import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
+import { leadFrames, LEVEL, MOOD_BEDS, SFX, sfxFile } from "./render/soundscape.ts";
 import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
 import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
@@ -13837,10 +13837,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   let musicFile: string | null = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) })
     : null;
-  // ACE_BEDS (src/render/acebeds.ts): a Short about an old game, Vice City or a fantasy world plays Pulse's own era or
-  // genre bed, still never one of the last few Shorts' beds; every other Short keeps the house rotation.
+  // ACE_BEDS (src/render/acebeds.ts): a Short about an old game, Vice City or a fantasy world plays an era or genre bed:
+  // Pulse's own ACE beds of that mood with the house mood beds of the same mood, by the same rotation (none of the last
+  // few Shorts' beds while the pool allows, else the one heard longest ago). A Short whose series has its own sting
+  // keeps the series music (SIGNATURE_MUSIC below), so no ACE bed is chosen for it.
+  const seriesSting =
+    s.cfg.signatureMusic &&
+    !!signatureFor(SIGNATURE_LIBRARY, signatureSeriesOf({ series: seriesTagFor(ep, script) ?? script.series ?? ep.story_json?.series }))?.sting;
   const aceMood =
-    s.cfg.aceBeds && musicFile
+    s.cfg.aceBeds && musicFile && !seriesSting
       ? aceShortMood(
           {
             text: [script.headline, ...segments.map((g) => g.text)].join(" "),
@@ -13850,7 +13855,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         )
       : undefined;
   if (aceMood) {
-    musicFile = chooseBed(s.cfg.dataDir, acePool(aceMood, ACE_LIBRARY), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) }) ?? musicFile;
+    const pool = [...acePool(aceMood, ACE_LIBRARY), ...MOOD_BEDS[aceMood].map((b) => b.file)];
+    musicFile = chooseBed(s.cfg.dataDir, pool, { ep: ep.id, lane: "short", seed: bedSeed(ep.id) }) ?? musicFile;
     await logEvent(s.db, ep.id, "ace_bed", { mood: aceMood, bed: musicFile }).catch(() => undefined);
   }
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.

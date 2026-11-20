@@ -6,6 +6,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import { handleWikiart } from "../wikiart/serve.ts";
 
 /** A Range header against a file of `size` bytes (pure): the inclusive span, "bad" when it cannot be met, undefined when absent. */
 export function parseRange(
@@ -59,6 +60,9 @@ export function createLibraryServer(root: string): http.Server {
       return res.writeHead(405).end();
     if (req.url === "/health")
       return res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+    // The wiki art library (src/wikiart/serve.ts) rides on the same port the Mac already reaches.
+    if (req.url?.startsWith("/wikiart/") && (await handleWikiart(req, res)))
+      return;
     if (req.url === "/games") {
       const dirs = (
         await fsp.readdir(root, { withFileTypes: true }).catch(() => [])

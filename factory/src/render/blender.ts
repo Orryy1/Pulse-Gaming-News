@@ -250,7 +250,8 @@ export function planBlender(input: BlenderPlanInput): BlenderRequest[] {
     if (v.kind === "rank" && v.value_a) {
       const len = s.end - s.start;
       if (len < 5 || !inShare(episodeId, `rank:${i}`, settings.share)) continue;
-      const meta = [v.items?.[0], v.items?.[1]].filter(Boolean).join(" · ");
+      // " | ", not " · ": the 3D scenes' Inter font has no middle dot and drew "2017 ? SWITCH" (20 Nov 2026).
+      const meta = [v.items?.[0], v.items?.[1]].filter(Boolean).join(" | ");
       add({
         scene: "podium",
         role: "rank",
@@ -270,8 +271,17 @@ export function planBlender(input: BlenderPlanInput): BlenderRequest[] {
       const br = breakAt(s.start);
       const pause = br ? br.end - br.start : 0;
       // Only a breather the clip can fill exactly (the card replaces the breather's own graphic).
-      const firstChapter = segments.findIndex((x) => x.kind === "beat" && x.visual?.kind === "chapter") === i;
-      if (input.documentary && chapterSet && pause >= 3 && pause <= 8 && !(input.titleDrop && firstChapter)) {
+      const firstChapter =
+        segments.findIndex(
+          (x) => x.kind === "beat" && x.visual?.kind === "chapter",
+        ) === i;
+      if (
+        input.documentary &&
+        chapterSet &&
+        pause >= 3 &&
+        pause <= 8 &&
+        !(input.titleDrop && firstChapter)
+      ) {
         add({
           scene: "chapter",
           role: "chapter",

@@ -133,7 +133,7 @@ test("a ranking gets a podium on every entry reveal and no ident over its end li
   assert.deepEqual(first.params, {
     rank: 3,
     title: "Third",
-    meta: "2018 · PS4",
+    meta: "2018 | PS4",
     kicker: "Number 3 of 3",
   });
 });

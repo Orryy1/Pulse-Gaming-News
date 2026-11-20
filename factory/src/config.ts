@@ -1317,6 +1317,28 @@ export interface Config {
   parallax: boolean;
   /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
   shortParallaxShare: number;
+  /** The 3D photo orbit (src/render/orbit.ts): the best wide key art of each chapter gets a depth mesh and the
+   * camera swings round its subject, about once a chapter (DEPTH_ORBIT, default off until proven). Needs PARALLAX. */
+  depthOrbit: boolean;
+  /** At most this many stills get the 3D photo maps in one video (DEPTH_ORBIT_MAX, default 16). */
+  depthOrbitMax: number;
+  /** The subject pop-out (src/render/popout.ts): a still's subject steps in front of the title drop and every
+   * other chapter opener's title when it fits (SUBJECT_POP, default off until proven). Needs PARALLAX. */
+  subjectPop: boolean;
+  /** 3D game boxes (src/render/boxart.ts): a ranking entry's box turns in on its card; a documentary's "it came
+   * out" sentence turns the game's box in beside the picture (BOX_3D, default off until proven). */
+  box3d: boolean;
+  /** AI upscaling of old games' footage and stills (src/assets/upscale.ts): Real-ESRGAN on this machine's GPU at
+   * gather time, cached by file hash (UPSCALE, default off until proven; also off where no model files are found). */
+  upscale: boolean;
+  /** Which model: "anime" (realesr-animevideov3, the default: flat game art), "general" or "x4plus" (UPSCALE_MODEL). */
+  upscaleModel: "anime" | "general" | "x4plus";
+  /** The folder with the Real-ESRGAN weights (UPSCALE_MODEL_DIR). */
+  upscaleModelDir: string;
+  /** Only pictures and footage at most this many lines tall are upscaled: never modern HD (UPSCALE_MAX_HEIGHT, default 576). */
+  upscaleMaxHeight: number;
+  /** Seconds of footage upscaled at most in one video, so it fits the gather budget (UPSCALE_MAX_SECONDS, default 150). */
+  upscaleMaxSeconds: number;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
   /** A long video's real-world photos (Commons photos, portraits, sketches) only on the sentence they were picked for,
@@ -2328,6 +2350,18 @@ export function loadConfig(): Config {
     hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
+    depthOrbit: bool("DEPTH_ORBIT", false),
+    depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
+    subjectPop: bool("SUBJECT_POP", false),
+    box3d: bool("BOX_3D", false),
+    upscale: bool("UPSCALE", false),
+    upscaleModel:
+      (["anime", "general", "x4plus"] as const).find(
+        (m) => m === str("UPSCALE_MODEL", "anime").toLowerCase(),
+      ) ?? "anime",
+    upscaleModelDir: str("UPSCALE_MODEL_DIR", defaultUpscaleModels()),
+    upscaleMaxHeight: Math.max(0, int("UPSCALE_MAX_HEIGHT", 576)),
+    upscaleMaxSeconds: Math.max(0, int("UPSCALE_MAX_SECONDS", 150)),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),
@@ -2575,6 +2609,15 @@ function defaultParallaxPython(): string {
     `${os.homedir()}/PulseFactory/parallax/bin/python`,
   ];
   return venvs.find((p) => fs.existsSync(p)) ?? defaultWhisperPython();
+}
+
+/** The Real-ESRGAN weights (PC: D:/pulse-tools/models/realesrgan; Mac: ~/PulseFactory/models/realesrgan). */
+function defaultUpscaleModels(): string {
+  const candidates = [
+    "D:/pulse-tools/models/realesrgan",
+    `${process.env.HOME ?? ""}/PulseFactory/models/realesrgan`,
+  ];
+  return candidates.find((p) => p && fs.existsSync(p)) ?? "";
 }
 
 function defaultWhisperPython(): string {

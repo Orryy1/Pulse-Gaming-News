@@ -22,6 +22,22 @@ export interface Layers {
   fg: string;
   /** Where the foreground subject stands across the picture, 0 (left) to 1 (right). */
   fgx?: number;
+  /** The 3D photo maps, made only for the stills the orbit and the pop-out may use (makeMeshes). */
+  mesh?: Mesh;
+}
+
+/** A still's 3D photo maps (parallax.py mesh mode; src/render/orbit.ts), paths relative to the episode folder. */
+export interface Mesh {
+  /** Depth map, near white. */
+  depth: string;
+  /** The picture with the subject painted out: the surface behind the cut. */
+  far: string;
+  /** That hidden place's own depth. */
+  farDepth: string;
+  /** The subject's depth (0 far to 1 near): the camera swings round it. */
+  pivot: number;
+  /** The subject's footprint, 32 x 18 cells row by row, one digit 0-9 each (src/render/popout.ts). */
+  grid: string;
 }
 
 /** Pictures worth layering: wide stills shown full bleed (not box art, archive prints or portraits). */
@@ -102,6 +118,63 @@ out.set(rel(d.src), { bg: rel(d.bg), mid: rel(d.mid), fg: rel(d.fg), fgx: d.fgx 
     });
   } catch (err) {
     log("warn", "parallax layers failed; stills stay flat", {
+      error: errorMessage(err),
+    });
+  } finally {
+    await fs.rm(jobsFile, { force: true }).catch(() => undefined);
+    await fs.rm(resultFile, { force: true }).catch(() => undefined);
+  }
+  return out;
+}
+
+/**
+ * The 3D photo maps for each file (paths relative to the episode folder), written under assets/px (or outDir,
+ * for a proof run that must not write into the episode). Returns only the ones made; a failure leaves the
+ * stills to their flat layers, never stops the render.
+ */
+export async function makeMeshes(
+  python: string,
+  episodeDir: string,
+  files: string[],
+  outDir = path.join(episodeDir, "assets", "px"),
+): Promise<Map<string, Mesh>> {
+  const out = new Map<string, Mesh>();
+  if (!python || !files.length) return out;
+  await fs.mkdir(outDir, { recursive: true });
+  const jobs = files.map((f) => ({
+    src: path.join(episodeDir, f),
+    prefix: path.join(outDir, layerName(f)),
+    mesh: true,
+  }));
+  const jobsFile = path.join(outDir, "mesh_jobs.json");
+  const resultFile = path.join(outDir, "mesh_result.json");
+  await fs.writeFile(jobsFile, JSON.stringify(jobs));
+  try {
+    await run(python, ["-I", SCRIPT, jobsFile, resultFile], {
+      timeout: 30 * 60_000,
+      maxBuffer: 16 * 1024 * 1024,
+      windowsHide: true,
+    });
+    const r = JSON.parse(await fs.readFile(resultFile, "utf8")) as {
+      done: Array<Mesh & { src: string }>;
+      skipped: Array<{ src: string; why: string }>;
+    };
+    const rel = (p: string) =>
+      path.relative(episodeDir, p).split(path.sep).join("/");
+    for (const d of r.done)
+      out.set(rel(d.src), {
+        depth: rel(d.depth),
+        far: rel(d.far),
+        farDepth: rel(d.farDepth),
+        pivot: d.pivot,
+        grid: d.grid,
+      });
+    log("info", "3D photo maps", {
+      made: r.done.length,
+      skipped: r.skipped.length,
+    });
+  } catch (err) {
+    log("warn", "3D photo maps failed; stills keep their flat layers", {
       error: errorMessage(err),
     });
   } finally {

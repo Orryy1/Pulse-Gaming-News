@@ -9,6 +9,8 @@ with no real depth (a menu, a logo, text) is skipped.
 Usage: python parallax.py <jobs.json> <out.json>
   jobs.json: [{"src": "path/to/image.jpg", "prefix": "path/to/image"}, ...]
   out.json:  {"done": [{"src", "bg", "mid", "fg"}], "skipped": [{"src", "why"}]}
+A job with "mesh": true makes the 3D photo's maps instead (src/render/orbit.ts):
+  {"src", "depth", "far", "farDepth", "pivot", "grid"}
 """
 import json
 import os
@@ -84,6 +86,65 @@ def layers(pipe, src, prefix):
     return {"src": src, "bg": f"{prefix}.bg.webp", "mid": f"{prefix}.mid.webp", "fg": f"{prefix}.fg.webp", "fgx": round(fgx, 3)}, None
 
 
+GRID_W, GRID_H = 32, 18  # the subject's footprint, cell by cell, for the pop-out's fit test (src/render/popout.ts)
+MESH_W = 1024  # the depth map's width for the 3D photo: the surface is cut at this map's resolution
+
+
+def grid_of(mask):
+    """The share of each cell the subject covers, one digit 0-9 a cell, row by row."""
+    small = cv2.resize(mask.astype(np.float32), (GRID_W, GRID_H), interpolation=cv2.INTER_AREA)
+    return "".join(str(int(min(9, round(v * 9)))) for v in small.flatten())
+
+
+def mesh(pipe, src, prefix):
+    """The 3D photo's maps (src/render/orbit.ts): the depth map, sharpened so the subject's edge carries its own
+    depth (a soft map paints a halo of background onto the subject when the camera turns); the picture with the
+    subject painted out and that hidden place's own depth, the surface behind the cut; and the subject's
+    footprint grid."""
+    img = Image.open(src).convert("RGB")
+    if img.width > MAX_W:
+        img = img.resize((MAX_W, round(img.height * MAX_W / img.width)), Image.LANCZOS)
+    rgb = np.array(img)
+    h, w = rgb.shape[:2]
+    d = pipe(img)["predicted_depth"].squeeze().float().cpu().numpy()
+    d = cv2.resize(d, (w, h), interpolation=cv2.INTER_CUBIC)
+    d = (d - d.min()) / max(1e-6, d.max() - d.min())
+    if d.std() < 0.08:
+        return None, "flat"
+    near_t = np.quantile(d, NEAR_Q)
+    fg = d >= near_t
+    if fg.mean() < 0.03:
+        return None, "no foreground"
+    # Edge-true depth: a median kills speckle, then the near side grows two pixels so the subject's own
+    # outline (anti-aliased in the picture) moves with the subject rather than with the wall behind it.
+    d8 = (d * 255).astype(np.uint8)
+    d8 = cv2.medianBlur(d8, 5)
+    d8 = cv2.dilate(d8, np.ones((5, 5), np.uint8))
+    grow = lambda m, r: cv2.dilate(m.astype(np.uint8), np.ones((r, r), np.uint8)).astype(bool)
+    hole = grow(fg, 31)
+    far_rgb = fill(rgb, hole, hole)
+    # The hidden place's depth: the hole painted from the depth around it, so the far surface is a wall,
+    # never a dent where the subject stood.
+    small = cv2.resize(d8, (w // 2, h // 2), interpolation=cv2.INTER_AREA)
+    sh = cv2.resize(hole.astype(np.uint8) * 255, (w // 2, h // 2), interpolation=cv2.INTER_NEAREST)
+    far_d = cv2.resize(cv2.inpaint(small, sh, 8, cv2.INPAINT_TELEA), (w, h), interpolation=cv2.INTER_LINEAR)
+    far_d = np.where(hole, np.minimum(far_d, int(near_t * 255) - 8), d8).astype(np.uint8)
+    mh = round(h * MESH_W / w)
+    Image.fromarray(cv2.resize(d8, (MESH_W, mh), interpolation=cv2.INTER_NEAREST)).save(f"{prefix}.depth.png")
+    Image.fromarray(cv2.resize(far_d, (MESH_W, mh), interpolation=cv2.INTER_AREA)).save(f"{prefix}.fardepth.png")
+    Image.fromarray(far_rgb).save(f"{prefix}.far.webp", quality=90)
+    # The subject's depth (the pivot the camera swings round) and footprint.
+    pivot = float(np.median(d[fg]))
+    return {
+        "src": src,
+        "depth": f"{prefix}.depth.png",
+        "far": f"{prefix}.far.webp",
+        "farDepth": f"{prefix}.fardepth.png",
+        "pivot": round(pivot, 3),
+        "grid": grid_of(fg),
+    }, None
+
+
 def main():
     jobs = json.load(open(sys.argv[1], encoding="utf-8"))
     from transformers import pipeline
@@ -92,7 +153,7 @@ def main():
     done, skipped = [], []
     for j in jobs:
         try:
-            r, why = layers(pipe, j["src"], j["prefix"])
+            r, why = (mesh if j.get("mesh") else layers)(pipe, j["src"], j["prefix"])
             (done.append(r) if r else skipped.append({"src": j["src"], "why": why}))
         except Exception as e:  # one bad picture never stops the rest
             skipped.append({"src": j["src"], "why": str(e)[:200]})

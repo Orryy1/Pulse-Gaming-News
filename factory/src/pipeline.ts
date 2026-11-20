@@ -116,6 +116,12 @@ export const MEDIA_RICH_TARGET = 0.85;
 import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
 import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
 import { frameTarget } from "./render/smartcrop.ts";
+import {
+  depthDeps,
+  meshStills,
+  upscaleOldFootage,
+  upscaleOldStills,
+} from "./depthstep.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -12065,6 +12071,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     });
     // A plan made before the new clips existed would never play them.
     if (assets.footageFirst.kept) delete assets.longPlan;
+    // Old games' small sources redrawn at 1080 by the local upscaler (src/depthstep.ts, UPSCALE).
+    await upscaleOldFootage(
+      depthDeps(
+        s.cfg,
+        (k, d) => logEvent(s.db, ep.id, k, d),
+        (m) => s.notify(m),
+      ),
+      { headline: script.headline, episodeDir: dir, clips: assets.clips },
+    ).catch((err) =>
+      log("warn", "footage upscaling failed; plain resize kept", {
+        error: errorMessage(err),
+      }),
+    );
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
       ep.id,
       JSON.stringify(assets),
@@ -12247,6 +12266,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const musicFile = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "long", seed: bedSeed(ep.id) })
     : null;
+  // Small old stills upscaled first, so the layers and 3D photos are cut from the sharper copy (src/depthstep.ts).
+  const depth = depthDeps(
+    s.cfg,
+    (k, d) => logEvent(s.db, ep.id, k, d),
+    (m) => s.notify(m),
+  );
+  if (assets.images?.length)
+    await upscaleOldStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch((err) =>
+      log("warn", "still upscaling failed", { error: errorMessage(err) }),
+    );
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
   if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
@@ -12268,6 +12301,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           JSON.stringify(assets),
         ]);
     }
+    // The 3D photo maps for the orbit and the subject pop-out (src/depthstep.ts; DEPTH_ORBIT, SUBJECT_POP).
+    const meshed = await meshStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch(() => 0);
+    if (meshed)
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+      ]);
   }
   // Some pictures were stored without their shape (older episodes, some entry art); measure them now, since
   // the framing and the zoom-to-detail maths need it.

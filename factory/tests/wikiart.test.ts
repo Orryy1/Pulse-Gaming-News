@@ -705,3 +705,58 @@ test("library import: only real names become entities", () => {
   assert.equal(nameTag("screenshot"), false);
   assert.equal(nameTag("VINTAGE VICE CITY WEAPON PATTERN"), false);
 });
+
+// ---- review fixes (20 Nov)
+
+import { findEntity, fileAboutPage as aboutPage } from "../src/wikiart/crawl.ts";
+
+test("review: two pages that spell alike stay two entities, and an ambiguous name gets no picture", () => {
+  const wiki = { id: "gta.fandom", name: "GTA Wiki", articles: "https://gta.fandom.com/wiki/" };
+  const ents = [
+    { name: "Phoenix (vehicle)", aliases: [], type: "vehicle", page: "https://gta.fandom.com/wiki/Phoenix_(vehicle)", wiki: "GTA Wiki", ofGame: true, images: ["aaaaaaaaaaaa"] },
+  ];
+  assert.equal(findEntity(ents, wiki, "Phoenix (character)", "Phoenix (character)"), undefined);
+  assert.equal(findEntity(ents, wiki, "Phoenix (vehicle)", "Phoenix (vehicle)"), ents[0]);
+  const idx2 = { ...index, entities: [...ents, { ...ents[0]!, name: "Phoenix (character)", type: "character", page: "https://gta.fandom.com/wiki/Phoenix_(character)", images: ["cccccccccccc"] }] };
+  assert.equal(lookupInIndex(idx2, "Phoenix"), undefined);
+  assert.equal(lookupInIndex(idx2, "Phoenix (vehicle)")?.name, "Phoenix (vehicle)");
+});
+
+test("review: file names match on whole words only", () => {
+  assert.equal(aboutPage("File:BusinessJet-GTAV-front.png", "Bus"), false);
+  assert.equal(aboutPage("File:Victor_Vance.png", "Vic"), false);
+  assert.equal(aboutPage("File:Bus-GTAV-front.png", "Bus"), true);
+});
+
+test("review: robots groups match our whole product token, not a prefix", () => {
+  assert.equal(robotsAllows(parseRobots("User-agent: pulse\nDisallow: /\n\nUser-agent: *\nAllow: /\n"), "/api.php?action=query"), true);
+  assert.equal(robotsAllows(parseRobots("User-agent: PulseWikiArt/1.0\nDisallow: /\n"), "/x"), false);
+});
+
+test("review: artwork and screenshots need more than a word in the file name; logos and maps may pass on name", () => {
+  assert.equal(classifyFile(file({ title: "File:Lucia wallpaper artwork.jpg", mime: "image/jpeg" })).keep, false);
+  assert.equal(classifyFile(file({ title: "File:Infernus-GTAV-front.png" })).keep, false);
+  assert.equal(classifyFile(file({ title: "File:Pisswasser-logo.png", width: 300, height: 120 })).keep, true);
+});
+
+test("review: redirects are followed through robots.txt and the gap, never by fetch on its own", async () => {
+  const clock = fakeClock();
+  const seen: string[] = [];
+  const c = new PoliteClient({
+    now: clock.now, sleep: clock.sleep, log: () => {},
+    fetchImpl: async (url, init) => {
+      seen.push(`${url} ${String(init.redirect ?? "")}`);
+      if (url.endsWith("/robots.txt")) return new Response(url.includes("other") ? "User-agent: *\nDisallow: /private\n" : "User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain" } });
+      if (url.includes("w.example/go")) return new Response("", { status: 302, headers: { location: "https://other.example/private/x.png" } });
+      return new Response("ok");
+    },
+  });
+  await assert.rejects(c.get("https://w.example/go"), RobotsDenied);
+  assert.ok(seen.some((s) => s.startsWith("https://w.example/go manual")));
+});
+test("classify: a licence template or category named for the publisher counts as official", () => {
+  const se = "\n== Licensing ==\n{{Square Enix image|concept art}}";
+  assert.equal(classifyFile(file({ title: "File:ARR Limsa Lominsa Art.jpg", mime: "image/jpeg", wikitext: se, categories: ["Category:Square Enix concept art"] })).keep, true);
+  assert.equal(classifyFile(file({ title: "File:Moogle render.png", wikitext: "{{Square Enix image|render}}" })).keep, true);
+  assert.equal(classifyFile(file({ title: "File:Moogle render.png", wikitext: "{{Square Enix image|render}}\nfan render by me" })).keep, false);
+});

@@ -164,21 +164,35 @@ export function entityType(categories: string[]): string {
   return "thing";
 }
 
-/** Squashed lower-case letters and digits, for "does this file name carry the page's name" (pure). */
-const squash = (s: string) => normName(s).replace(/ /g, "");
+/**
+ * A name as plain lower-case words (pure): CamelCase split, accents and apostrophes dropped, no short forms spelt
+ * out ("ScooterBro'sRacer" is "scooter bros racer", never "scooter brothers racer").
+ */
+export function plainWords(s: string): string[] {
+  return s
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/['’`]/g, "")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
 
-/** Whether a file is about the page's subject: its name carries the page's name (pure). */
+/**
+ * Whether a file is about the page's subject (pure): the page's words appear in the file name's words, in order
+ * and side by side ("Bus" never takes "BusinessJet.png", "Vic" never takes "Victor_Vance.png").
+ */
 export function fileAboutPage(fileTitle: string, pageTitle: string): boolean {
-  const page = squash(pageTitle.replace(/\s*\([^)]*\)\s*$/, ""));
-  if (page.length < 3) return false;
-  const file = squash(
+  const page = plainWords(pageTitle.replace(/\s*\([^)]*\)\s*$/, ""));
+  if (!page.length || page.join("").length < 3) return false;
+  const file = plainWords(
     fileTitle.replace(/^File:/i, "").replace(/\.[a-z0-9]+$/i, ""),
   );
-  const raw = fileTitle
-    .replace(/^File:/i, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-  return file.includes(page) || raw.includes(page);
+  for (let i = 0; i + page.length <= file.length; i++)
+    if (page.every((w, k) => file[i + k] === w)) return true;
+  return false;
 }
 
 /**
@@ -214,9 +228,33 @@ const GALLERY =
 
 /** A page whose pictures each show something different, named by their file names (pure). */
 export function isGallery(wiki: Pick<Wiki, "id">, pageTitle: string): boolean {
+  // On StrategyWiki only the subpages that list named things (never walkthroughs, whose pictures are scenes).
   return (
     GALLERY.test(pageTitle) ||
-    (wiki.id === STRATEGYWIKI.id && pageTitle.includes("/"))
+    (wiki.id === STRATEGYWIKI.id &&
+      /\/(table of contents|characters?|cast|vehicles?|weapons?|items?|bosses|enemies|locations?|places|radio stations|artwork|gallery|maps?)$/i.test(
+        pageTitle,
+      ))
+  );
+}
+
+/**
+ * The entity a picture use belongs to (pure). An article's entity is keyed by its own page, never by a spelling
+ * that two pages share ("Phoenix (vehicle)" and "Phoenix (character)" stay apart); a gallery's named things by
+ * their exact name on that wiki.
+ */
+export function findEntity(
+  entities: ArtEntity[],
+  wiki: Pick<Wiki, "id" | "name" | "articles">,
+  pageTitle: string,
+  name: string,
+): ArtEntity | undefined {
+  if (!isGallery(wiki, pageTitle)) {
+    const page = `${wiki.articles}${encodeURIComponent(pageTitle.replace(/ /g, "_"))}`;
+    return entities.find((e) => e.wiki === wiki.name && e.page === page);
+  }
+  return entities.find(
+    (e) => e.wiki === wiki.name && e.name.toLowerCase() === name.toLowerCase(),
   );
 }
 
@@ -447,7 +485,8 @@ async function articlesFor(
       },
       4,
     );
-    for (const s of subs.list) articles.set(String(s.title), true);
+    for (const s of subs.list)
+      if (isGallery(wiki, String(s.title))) articles.set(String(s.title), true);
     return { articles, root: main };
   }
   if (wiki.scope === "franchise") {
@@ -583,6 +622,7 @@ async function pageFacts(
     prop: "pageimages|redirects|categories|images",
     piprop: "name",
     rdlimit: "max",
+    rdprop: "title|fragment",
     cllimit: "max",
     clshow: "!hidden",
     imlimit: "max",
@@ -592,7 +632,10 @@ async function pageFacts(
     .map((p) => ({
       title: String(p.title),
       ...(p.pageimage ? { lead: `File:${p.pageimage}` } : {}),
-      redirects: (p.redirects ?? []).map((r: any) => String(r.title)),
+      // A redirect to a section ("LCPD" to "Police#Liberty City") names part of the page, not its subject.
+      redirects: (p.redirects ?? [])
+        .filter((r: any) => !r.fragment)
+        .map((r: any) => String(r.title)),
       categories: (p.categories ?? []).map((c: any) => String(c.title)),
       images: (p.images ?? []).map((i: any) => String(i.title)),
     }));
@@ -764,17 +807,19 @@ export async function crawlGame(
           api: wiki.api,
           ...(root ? { root } : {}),
         });
+      // The game's own article first, then the rest (game's own categories before franchise extras); sorted
+      // before the cap so the cap never drops the game's own pages for franchise extras.
       const todo = [...queue.entries()]
         .filter(([t]) => !pagesDone.has(t))
+        .sort(
+          (a, b) =>
+            Number(gameNames.includes(b[0])) -
+              Number(gameNames.includes(a[0])) ||
+            Number(b[1].ofGame) - Number(a[1].ofGame),
+        )
         .slice(0, maxPages);
       log(
         `${title} on ${wiki.name}: ${queue.size} articles, ${todo.length} to visit${root ? ` (from ${root})` : ""}`,
-      );
-      // The game's own article first, then the rest (game's own categories before franchise extras).
-      todo.sort(
-        (a, b) =>
-          Number(gameNames.includes(b[0])) - Number(gameNames.includes(a[0])) ||
-          Number(b[1].ofGame) - Number(a[1].ofGame),
       );
       for (let i = 0; i < todo.length; i += 25) {
         if (Date.now() > o.deadline) {
@@ -820,18 +865,16 @@ export async function crawlGame(
           if (gallery) {
             // StrategyWiki's contents page carries the game's logo: that is the game's own entity.
             const contents = /\/Table of Contents$/i.test(p.title);
-            for (const f of p.images.slice(0, 200))
-              addWant(
-                f,
-                p,
-                false,
-                contents
-                  ? title
-                  : nameFromFile(
-                      withoutGameNames(f, [title, ...gameNames]),
-                      fileCodes,
-                    ) || p.title.replace(/\/.*$/, ""),
-              );
+            for (const f of p.images.slice(0, 200)) {
+              // A file whose name names nothing is left out, never filed under the game.
+              const named = contents
+                ? title
+                : nameFromFile(
+                    withoutGameNames(f, [title, ...gameNames]),
+                    fileCodes,
+                  );
+              if (named.length >= 3) addWant(f, p, false, named);
+            }
             continue;
           }
           if (p.lead) addWant(p.lead, p, true, p.title);
@@ -884,7 +927,10 @@ export async function crawlGame(
               let tmp = "";
               try {
                 const res = await client.get(src, "image/*");
-                if (!res.ok) throw new Error(`answered ${res.status}`);
+                if (!res.ok) {
+                  await res.body?.cancel().catch(() => undefined);
+                  throw new Error(`answered ${res.status}`);
+                }
                 tmp = path.join(tmpDir, `${id}.src`);
                 await fs.writeFile(tmp, Buffer.from(await res.arrayBuffer()));
                 const alpha =
@@ -901,9 +947,11 @@ export async function crawlGame(
                 );
                 if (!out) throw new Error("could not read the picture");
                 const hash = await pictureHash(out.file);
-                const entityName = uses[0]!.entityName;
-                const ent = idx.entities.find(
-                  (e) => normName(e.name) === normName(entityName),
+                const ent = findEntity(
+                  idx.entities,
+                  wiki,
+                  uses[0]!.page.title,
+                  uses[0]!.entityName,
                 );
                 const dup = duplicateOf(
                   hash,
@@ -975,10 +1023,7 @@ export async function crawlGame(
           for (const u of uses) {
             const q = queue.get(u.page.title);
             const name = u.entityName;
-            let ent = idx.entities.find(
-              (e) =>
-                normName(e.name) === normName(name) && e.wiki === wiki.name,
-            );
+            let ent = findEntity(idx.entities, wiki, u.page.title, name);
             if (!ent) {
               ent = {
                 name,
@@ -1020,7 +1065,18 @@ export async function crawlGame(
             }
           }
         }
-        for (const [t] of batch) pagesDone.add(t);
+        // A page is done only when every file it wants has been decided; a deadline, a failed lookup or a failed
+        // download leaves the page for the next run.
+        const unfinished = new Set<string>();
+        for (const [file, uses] of wantFiles)
+          if (!st.files[`${wiki.id}|${file}`])
+            for (const u of uses) unfinished.add(u.page.title);
+        for (const [t] of batch)
+          if (!unfinished.has(t) && facts.some((p) => p.title === t))
+            pagesDone.add(t);
+        // A title the wiki no longer has (missing page) is done too, so it is not asked for again and again.
+        for (const [t] of batch)
+          if (!facts.some((p) => p.title === t)) pagesDone.add(t);
         report.pages += batch.length;
         st.pages[wiki.id] = [...pagesDone];
         await save();

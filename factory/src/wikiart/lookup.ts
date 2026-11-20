@@ -98,7 +98,29 @@ export function matchEntities(
       e.images.length &&
       [e.name, ...e.aliases].some((a) => normName(a) === want),
   );
-  return hits.sort((a, b) => Number(b.ofGame) - Number(a.ofGame));
+  // Spelt exactly as asked beats a match only after evening out; the game's own beats a franchise extra.
+  const exact = (e: ArtEntity) =>
+    [e.name, ...e.aliases].some(
+      (a) => a.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+  const sorted = hits.sort(
+    (a, b) =>
+      Number(exact(b)) - Number(exact(a)) ||
+      Number(b.ofGame) - Number(a.ofGame),
+  );
+  // Two different things answer equally well ("Phoenix (vehicle)" and "Phoenix (character)" for "Phoenix"):
+  // no guess, no picture.
+  const [first, second] = sorted;
+  if (
+    first &&
+    second &&
+    exact(first) === exact(second) &&
+    first.ofGame === second.ofGame &&
+    first.page !== second.page &&
+    first.name !== second.name
+  )
+    return [];
+  return sorted;
 }
 
 /** The best picture of an entity (pure): its lead picture unless a better kind for its type is there; official first. */

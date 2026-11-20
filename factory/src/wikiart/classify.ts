@@ -99,6 +99,15 @@ export const FAN_SIGNS: Array<[RegExp, string]> = [
   ],
 ];
 
+/** Publishers and studios, for licence templates and categories named after them. */
+const PUBLISHERS =
+  "square enix|nintendo|rockstar games|rockstar|capcom|sega|konami|bandai namco|ubisoft|bethesda|cd projekt|fromsoftware|activision|blizzard|electronic arts|game freak|the pok[eé]mon company|sony|microsoft|xbox game studios|bungie|mojang|larian|valve";
+
+const PUBLISHER_FILED = new RegExp(
+  `\\{\\{\\s*(${PUBLISHERS})\\b[^}]*\\}\\}|category:\\s*(${PUBLISHERS})\\b`,
+  "i",
+);
+
 /** A source link to a publisher's or platform's own site: the strongest sign a picture is official. */
 const OFFICIAL_SITE =
   /https?:\/\/(?:[a-z0-9-]+\.)*(?:nintendo|rockstargames|playstation|xbox|bethesda|capcom|capcom-games|square-enix|square-enix-games|bandainamco|bandainamcoent|fromsoftware|cdprojekt|cdprojektred|ubisoft|ea|activision|blizzard|sega|konami|bungie|minecraft|mojang|pokemon|larian|teamcherry|insomniacgames|santamonicastudio|naughtydog|bioware|sonicthehedgehog|store\.steampowered|steamcommunity)\.(?:com|net|co\.jp|jp|co\.uk|eu)\b/i;
@@ -151,6 +160,9 @@ const OFFICIAL_SIGNS: Array<[RegExp, "official" | "in-game"]> = [
     "official",
   ],
   [/\|\s*licens(e|ing)\s*=\s*(copyright|fair ?use|non-?free)/i, "official"],
+  // A licence template or category named for the publisher ({{Square Enix image|concept art}}, "Square Enix concept
+  // art"): the wiki files it as that publisher's own picture.
+  [PUBLISHER_FILED, "official"],
   [OFFICIAL_SITE, "official"],
 ];
 
@@ -229,14 +241,15 @@ export function classifyFile(f: FileFacts): Verdict {
       origin = origin === "official" ? origin : o;
       if (origin === "official") break;
     }
-  if (!origin && kind && kind !== "render")
-    origin =
-      kind === "screenshot" ||
-      kind === "map" ||
-      kind === "icon" ||
-      kind === "sign"
-        ? "in-game"
-        : "official";
+  // A name alone vouches only for the game's own marks (logos, signs, maps, icons). Artwork, renders, box art and
+  // screenshots also need a licence template, a category or a source that says so: "wallpaper" or "front" in a
+  // file name is as often a user's edit as the publisher's picture.
+  if (
+    !origin &&
+    kind &&
+    (kind === "logo" || kind === "sign" || kind === "map" || kind === "icon")
+  )
+    origin = kind === "logo" ? "official" : "in-game";
   if (!origin)
     return {
       keep: false,
@@ -247,6 +260,7 @@ export function classifyFile(f: FileFacts): Verdict {
   if (
     kind === "render" &&
     !OFFICIAL_SITE.test(f.wikitext) &&
+    !PUBLISHER_FILED.test(text) &&
     !OFFICIAL_SIGNS.slice(2, 4).some(([re]) => re.test(text))
   )
     return {

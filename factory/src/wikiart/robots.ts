@@ -59,9 +59,8 @@ export function parseRobots(body: string, source = "robots.txt"): Robots {
   const mine = groups.filter((g) =>
     g.agents.some(
       (a) =>
-        a !== "*" &&
-        ROBOTS_TOKEN.startsWith(a.replace(/\/.*$/, "")) &&
-        a.length > 2,
+        // RFC 9309: the whole product token, case-insensitively (agents are lower-cased above).
+        a.replace(/\/.*$/, "").trim() === ROBOTS_TOKEN,
     ),
   );
   const chosen = mine.length
@@ -104,8 +103,9 @@ export function robotsAllows(robots: Robots, pathAndQuery: string): boolean {
   let best: RobotsRule | undefined;
   for (const r of robots.rules) {
     if (!patternRegex(norm(r.path)).test(target)) continue;
-    const len = r.path.replace(/\$$/, "").length;
-    const bestLen = best ? best.path.replace(/\$$/, "").length : -1;
+    // Lengths on the decoded path, the same form the match used.
+    const len = norm(r.path).replace(/\$$/, "").length;
+    const bestLen = best ? norm(best.path).replace(/\$$/, "").length : -1;
     if (len > bestLen || (len === bestLen && r.allow && !best!.allow)) best = r;
   }
   return best ? best.allow : true;

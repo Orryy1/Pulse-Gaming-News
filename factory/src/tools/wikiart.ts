@@ -157,34 +157,65 @@ async function sheet(
   console.log(`sheet: ${out} (${n} of ${names.length})`);
 }
 
-async function main(): Promise<void> {
-  const client = new PoliteClient();
-  if (command === "crawl") {
-    // One crawl at a time (two scheduled turns can meet when the first waited long for its turn).
-    const lock = path.join(root, "crawl.lock");
-    await fs.mkdir(root, { recursive: true });
-    const held = Number(await fs.readFile(lock, "utf8").catch(() => "0"));
-    if (held && held !== process.pid) {
-      let alive = true;
+/** Takes the library's write lock (created atomically; a lock left by a process that has gone is taken over). */
+async function takeLock(): Promise<boolean> {
+  const lock = path.join(root, "write.lock");
+  await fs.mkdir(root, { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const h = await fs.open(lock, "wx");
+      await h.writeFile(String(process.pid), "utf8");
+      await h.close();
+      process.on("exit", () => {
+        try {
+          if (Number(fsSync.readFileSync(lock, "utf8")) === process.pid)
+            fsSync.rmSync(lock, { force: true });
+        } catch {
+          /* a stale lock is taken over by the next run */
+        }
+      });
+      return true;
+    } catch {
+      const held = Number(await fs.readFile(lock, "utf8").catch(() => "0"));
+      let alive = false;
       try {
-        process.kill(held, 0);
+        if (held) (process.kill(held, 0), (alive = true));
       } catch {
         alive = false;
       }
       if (alive) {
-        console.log(`another crawl is running (pid ${held}); nothing to do`);
-        return;
+        console.log(
+          `the wiki art library is being written by pid ${held}; try again when it finishes`,
+        );
+        return false;
       }
+      await fs.rm(lock, { force: true });
     }
-    await fs.writeFile(lock, String(process.pid), "utf8");
-    process.on("exit", () => {
-      try {
-        if (Number(fsSync.readFileSync(lock, "utf8")) === process.pid)
-          fsSync.rmSync(lock, { force: true });
-      } catch {
-        /* the lock is stale-checked by pid anyway */
-      }
-    });
+  }
+  return false;
+}
+
+async function main(): Promise<void> {
+  const client = new PoliteClient();
+  // Everything that writes the library takes the one lock (two scheduled turns can meet when the first waited long
+  // for its turn, and a "want" or "reject" by hand must not race a crawl's in-memory copy).
+  if (
+    ["crawl", "want", "reject", "import-library"].includes(command ?? "") &&
+    !(await takeLock())
+  )
+    return;
+  if (command === "crawl") {
+    // The publisher's own named stills first (no web), inside the same lock and orchestrator turn.
+    if (flag("import")) {
+      const { importLibrary } = await import("../wikiart/libimport.ts");
+      for (const g of flag("import")!
+        .split(";")
+        .map((x) => x.trim())
+        .filter(Boolean))
+        await importLibrary(root, g).catch((e) =>
+          console.log(`import ${g}: ${e instanceof Error ? e.message : e}`),
+        );
+    }
     const games = flag("games")
       ? flag("games")!
           .split(";")

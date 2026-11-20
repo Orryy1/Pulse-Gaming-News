@@ -31,7 +31,11 @@ export function wikiartRoot(): string {
 
 /** A game's folder name: the same slug the game library uses ("grand-theft-auto-vi"). */
 export function artSlug(canonicalTitle: string): string {
-  return sceneSlug(canonicalTitle);
+  // A title with no Latin letters slugs to nothing: a short hash keeps it out of the library root.
+  return (
+    sceneSlug(canonicalTitle) ||
+    `game-${createHash("sha1").update(canonicalTitle).digest("hex").slice(0, 10)}`
+  );
 }
 
 export interface ArtImage {

@@ -118,8 +118,17 @@ export class PoliteClient {
     return robotsAllows(r, u.pathname + u.search);
   }
 
+  /** Keeps every caller off a host for a backoff wait, not only the one that was told to wait. */
+  private holdHost(host: string, ms: number): void {
+    this.last.set(host, Math.max(this.last.get(host) ?? 0, this.now() + ms));
+  }
+
   /** A polite GET: robots first, the host's gap, backoff on 429/5xx. Throws RobotsDenied or HostRested. */
-  async get(url: string, accept = "application/json"): Promise<Response> {
+  async get(
+    url: string,
+    accept = "application/json",
+    hops = 0,
+  ): Promise<Response> {
     const u = new URL(url);
     const host = u.host;
     const why = this.rested.get(host);
@@ -137,8 +146,10 @@ export class PoliteClient {
         res = await this.timed(
           host,
           () =>
+            // Redirects are followed here, not by fetch, so the new host's robots.txt and gap apply too.
             this.fetchImpl(url, {
               headers: { "user-agent": USER_AGENT, accept },
+              redirect: "manual",
             }),
           extra,
         );
@@ -151,6 +162,7 @@ export class PoliteClient {
           throw new HostRested(this.rested.get(host));
         }
         this.log(`  ${host}: ${errorMessage(err)}; waiting ${backoff / 1000}s`);
+        this.holdHost(host, backoff);
         await this.sleep(backoff);
         backoff *= 2;
         continue;
@@ -174,9 +186,23 @@ export class PoliteClient {
         this.log(
           `  ${host}: ${res.status}; waiting ${Math.round(wait / 1000)}s`,
         );
+        this.holdHost(host, wait);
         await this.sleep(wait);
         backoff *= 2;
         continue;
+      }
+      if (
+        res.status >= 300 &&
+        res.status < 400 &&
+        res.headers.get("location")
+      ) {
+        await res.body?.cancel().catch(() => undefined);
+        if (hops >= 5) throw new Error(`${host}: too many redirects`);
+        return this.get(
+          new URL(res.headers.get("location")!, url).href,
+          accept,
+          hops + 1,
+        );
       }
       return res;
     }
@@ -198,6 +224,7 @@ export class PoliteClient {
       const json = (await res.json()) as any;
       if (json?.error?.code === "maxlag") {
         this.log(`  ${new URL(apiUrl).host}: the wiki is lagging; waiting 30s`);
+        this.holdHost(new URL(apiUrl).host, 30_000);
         await this.sleep(30_000);
         continue;
       }

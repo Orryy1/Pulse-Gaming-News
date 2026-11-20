@@ -21,7 +21,9 @@ import {
   normalisePicture,
   pictureHash,
   readIndex,
+  readState,
   writeIndex,
+  writeState,
   type ArtImage,
 } from "./store.ts";
 
@@ -52,6 +54,7 @@ export async function importLibrary(
   const dir = gameDir(root, title);
   await fs.mkdir(path.join(dir, "img"), { recursive: true });
   const images = new Map(idx.images.map((i) => [i.id, i]));
+  const st = await readState(root, title);
   let kept = 0;
   for (const item of lib.items) {
     if (item.kind !== "still" || item.unusable) continue;
@@ -60,10 +63,15 @@ export async function importLibrary(
       !/^Official /.test(item.provenance)
     )
       continue;
+    // One subject per picture only: a still filed under two names would answer for each of them.
     const names = item.named.filter(nameTag);
-    if (!names.length) continue;
-    const id = imageId(`library:${item.source}`, item.sourceUrl);
-    if (!images.has(id)) {
+    if (names.length !== 1) continue;
+    const key = `library|${item.sourceUrl}`;
+    const decided = /^(kept|dup):(.+)$/.exec(st.files[key] ?? "")?.[2];
+    if (st.files[key]?.startsWith("rejected")) continue;
+    let id = imageId(`library:${item.source}`, item.sourceUrl);
+    if (decided && images.has(decided)) id = decided;
+    else if (!images.has(id)) {
       const out = await normalisePicture(
         path.join(src, item.file),
         path.join(dir, "img", id),
@@ -77,8 +85,11 @@ export async function importLibrary(
       const dup = duplicateOf(hash, undefined, [], idx.images);
       if (dup) {
         await fs.rm(out.file, { force: true });
-        images.set(id, dup);
+        // Remembered, so the repeat is not decoded and hashed again on every run.
+        st.files[key] = `dup:${dup.id}`;
+        id = dup.id;
       } else {
+        st.files[key] = `kept:${id}`;
         const img: ArtImage = {
           id,
           file: `img/${path.basename(out.file)}`,
@@ -103,9 +114,14 @@ export async function importLibrary(
         kept++;
       }
     }
-    const imgId = images.get(id)!.id;
+    const imgId = images.get(id)?.id;
+    if (!imgId) continue;
     for (const n of names) {
-      let ent = idx.entities.find((e) => normName(e.name) === normName(n));
+      let ent = idx.entities.find(
+        (e) =>
+          e.wiki === `${item.source} (publisher's site)` &&
+          normName(e.name) === normName(n),
+      );
       if (!ent) {
         // The pack's own folders say what it shows: "#People/Jason Duval/...", "#Places/Vice City/...".
         const folder = item.sourceUrl.split("#")[1] ?? "";
@@ -125,12 +141,12 @@ export async function importLibrary(
         };
         idx.entities.push(ent);
       }
-      // The publisher's own picture goes before wiki pictures of the same thing.
       // In the publisher's own order (its first picture of each thing leads).
       if (!ent.images.includes(imgId)) ent.images.push(imgId);
     }
   }
   await writeIndex(root, idx);
+  await writeState(root, title, st);
   log(
     `${title}: ${kept} publisher pictures added, ${idx.entities.length} named things in the index`,
   );

@@ -365,3 +365,5 @@ In progress, owned by the improvement engine. `ELEVENLABS_BALANCE_STALE_HOURS` (
 
 - Follow-up (small): narrations running at the same time are each checked against the full balance. Add an in-process reservation, so open jobs come off `left` before the check. Only matters near the month's end.
 - Follow-up (small): with VOICE_PROVIDER=elevenlabs and an unknown balance, long scripts still get unlimited re-voices (`revoiceChars` undefined means no limit in elevenlabsLong.ts). Pass 0 there too.
+
+- 20 Nov 16:20 (hourly watch, small): in `maybeSelectLongform` (src/pipeline.ts ~5513), after `chooseLongformTopic`, run `dropFailedThemes([{ name: topic.theme }], failedThemes)`; if it comes back empty, drop that candidate and ask once more (or skip quietly with an event), so a reworded theme ("Valve's Half-Life and Portal games") cannot bring back a topic that failed in the last 2 days. Add a case to tests/longfailed.test.ts. Also worth a look: three different fact-check fails on one long ranking in a day suggests the long writer needs the fact pack used by the Shorts writers' room.

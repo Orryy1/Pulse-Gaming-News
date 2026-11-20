@@ -139,3 +139,94 @@ test("a bare Roman numeral standing in for a game is sent back; one after its se
   assert.ok(voiceProblems("V let you swap between three leads.").some((p) => /"V" stands alone/.test(p)));
   assert.deepEqual(voiceProblems("GTA V let you swap. Grand Theft Auto IV is darker. Chapter II: the rise."), []);
 });
+
+import { resetElevenLabsCreditsCache } from "../src/voice/index.ts";
+
+test("a restart during an ElevenLabs balance blip: the reading kept on disk lets the narrator speak (ELEVENLABS_BALANCE_STALE_HOURS)", async () => {
+  const dir = await tmpDir();
+  const srv = await fakeVoiceServer(dir);
+  const realFetch = globalThis.fetch;
+  // The subscription check never answers (18 Nov); voicing itself works.
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/v1/user/subscription")) throw new Error("This operation was aborted");
+    return realFetch(url.replace("https://api.elevenlabs.io", srv.url), init);
+  }) as typeof fetch;
+  try {
+    const line = "Starfield's second expansion has slipped to early next year.";
+    const base = { voiceProvider: "elevenlabs-first" as const, elevenLabsApiKey: "k", localTtsUrl: "http://127.0.0.1:9" };
+    // Setting at 0: the old behaviour, no balance means no narrator.
+    resetElevenLabsCreditsCache();
+    await assert.rejects(
+      narrate(testConfig(dir, { ...base, elevenLabsBalanceStaleHours: 0 }), line, path.join(dir, "a.mp3")),
+      /balance unknown/,
+    );
+    // Setting on, with a reading from 3 hours ago on disk: ElevenLabs speaks, and the spend comes off the file.
+    resetElevenLabsCreditsCache();
+    const file = path.join(dir, "elevenlabs_balance.json");
+    const at = Date.now() - 3 * 60 * 60 * 1000;
+    await fs.writeFile(file, JSON.stringify({ left: 619_268, at }));
+    const events: string[] = [];
+    const n = await narrate(
+      testConfig(dir, { ...base, elevenLabsBalanceStaleHours: 24 }),
+      line,
+      path.join(dir, "b.mp3"),
+      undefined,
+      { onEvent: (kind) => void events.push(kind) },
+    );
+    assert.equal(n.voice.provider, "elevenlabs");
+    assert.equal(srv.requests.length, 1);
+    assert.deepEqual(events, ["elevenlabs_balance_stale"]);
+    assert.deepEqual(JSON.parse(await fs.readFile(file, "utf8")), { left: 619_268 - line.length, at });
+    // A reading too small for the job and the reserve still refuses: never into overage.
+    resetElevenLabsCreditsCache();
+    await fs.writeFile(file, JSON.stringify({ left: 12_000, at }));
+    await assert.rejects(
+      narrate(testConfig(dir, { ...base, elevenLabsBalanceStaleHours: 24 }), line, path.join(dir, "c.mp3")),
+      /characters left this month/,
+    );
+    assert.equal(srv.requests.length, 1);
+  } finally {
+    globalThis.fetch = realFetch;
+    srv.close();
+  }
+});
+
+test("a long script voiced on a disk balance gets no re-voices, and its upper-bound spend comes off the file", async () => {
+  const dir = await tmpDir();
+  const srv = await fakeVoiceServer(dir);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/v1/user/subscription")) throw new Error("This operation was aborted");
+    return realFetch(url.replace("https://api.elevenlabs.io", srv.url), init);
+  }) as typeof fetch;
+  try {
+    resetElevenLabsCreditsCache();
+    const file = path.join(dir, "elevenlabs_balance.json");
+    const at = Date.now() - 60 * 60 * 1000;
+    await fs.writeFile(file, JSON.stringify({ left: 619_268, at }));
+    const sentence = "Pulse checks every story before it ships, and this line runs long on purpose.";
+    const text = Array(50).fill(sentence).join(" ");
+    const { LONG_TEXT_CHARS } = await import("../src/voice/elevenlabsLong.ts");
+    assert.ok(text.length > LONG_TEXT_CHARS);
+    const cfg = testConfig(dir, {
+      voiceProvider: "elevenlabs-first",
+      elevenLabsApiKey: "k",
+      localTtsUrl: "http://127.0.0.1:9",
+      elevenLabsBalanceStaleHours: 12,
+      voiceTakeCheck: true,
+    });
+    const n = await narrate(cfg, text, path.join(dir, "long.mp3"));
+    assert.equal(n.voice.provider, "elevenlabs");
+    const takes = srv.requests.length;
+    assert.ok(takes >= 2, `spoken in takes (${takes})`);
+    // Every request is a first take: the joined takes are exactly the script, so nothing was voiced twice.
+    assert.equal(srv.requests.map((r) => r.text).join(" ").length, text.length);
+    // A disk balance allows no re-voices, so only the script's own characters come off.
+    assert.deepEqual(JSON.parse(await fs.readFile(file, "utf8")), { left: 619_268 - text.length, at });
+  } finally {
+    globalThis.fetch = realFetch;
+    srv.close();
+  }
+});

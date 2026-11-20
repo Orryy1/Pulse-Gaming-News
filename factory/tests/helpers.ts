@@ -469,6 +469,7 @@ export function testConfig(
     searchGapsFile: "",
     elevenLabsMonthlyCredits: 500_000,
     elevenLabsReserve: 10_000,
+    elevenLabsBalanceStaleHours: 0,
     surplusDocDays: ["tue", "thu", "sat"],
     surplusDocChars: 35_000,
     bankWindow: "23:45-03:00",

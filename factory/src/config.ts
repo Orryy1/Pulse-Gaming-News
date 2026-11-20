@@ -586,6 +586,8 @@ export interface Config {
   /** ElevenLabs: the plan's monthly credits (Pro: 500,000); unused credits above two months' worth are lost at the reset. */
   elevenLabsMonthlyCredits: number;
   elevenLabsReserve: number; // credits never spent, a cushion against overage
+  /** ELEVENLABS_BALANCE_STALE_HOURS: how old a balance kept on disk may be and still stand in when the check goes unanswered (0: never). */
+  elevenLabsBalanceStaleHours: number;
   surplusDocDays: string[]; // extra documentary days while credits would otherwise be lost
   surplusDocChars: number; // what one documentary costs in credits, roughly
   bankWindow: string; // local "HH:MM-HH:MM" when a banked documentary may start (it holds the factory for hours)
@@ -2037,6 +2039,7 @@ export function loadConfig(): Config {
     docEnabled: bool("DOC_ENABLED", true),
     elevenLabsMonthlyCredits: int("ELEVENLABS_MONTHLY_CREDITS", 500_000),
     elevenLabsReserve: int("ELEVENLABS_RESERVE", 10_000),
+    elevenLabsBalanceStaleHours: int("ELEVENLABS_BALANCE_STALE_HOURS", 12),
     surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat")
       .toLowerCase()
       .split(",")

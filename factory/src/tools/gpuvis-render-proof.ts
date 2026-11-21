@@ -28,6 +28,11 @@ import { SAMPLE_LONG_PROPS } from "../render/Long.tsx";
 import { LONG_FPS } from "../render/longplan.ts";
 
 const run = promisify(execFile);
+/**
+ * The picture three times over: the plan uses a still at most twice and never twice in a row, so with one picture the
+ * quiet lines (dates, prices, scores) sit on the plate; three copies let them frame it, which is where a fill shows.
+ */
+const thrice = <T>(x: T): T[] => [x, x, x];
 const ff = (args: string[]) =>
   run(FFMPEG, ["-v", "error", "-y", ...args], { maxBuffer: 64 * 1024 * 1024 });
 const stem = (f: string) => f.replace(/\.[a-z0-9]+$/i, "");
@@ -162,13 +167,11 @@ async function main(
             ...SAMPLE_PROPS,
             audioSrc: null,
             musicSrc: null,
-            images: [
-              {
-                ...base,
-                src: url(pic),
-                ...(withFill ? { fillSrc: url(`${stem(pic)}.fill.jpg`) } : {}),
-              },
-            ],
+            images: thrice({
+              ...base,
+              src: url(pic),
+              ...(withFill ? { fillSrc: url(`${stem(pic)}.fill.jpg`) } : {}),
+            }),
           };
           await stills("PulseShort", props, mids, (f) => {
             const p = path.join(
@@ -306,12 +309,10 @@ async function main(
             ...SAMPLE_PROPS,
             audioSrc: null,
             musicSrc: null,
-            images: [
-              {
-                ...base,
-                ...(withFill ? { fillSrc: url(firstWide.fill) } : {}),
-              },
-            ],
+            images: thrice({
+              ...base,
+              ...(withFill ? { fillSrc: url(firstWide.fill) } : {}),
+            }),
           },
           o,
         );

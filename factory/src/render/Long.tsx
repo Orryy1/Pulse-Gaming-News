@@ -751,16 +751,18 @@ export const Still: React.FC<{
         <div
           style={{
             position: "absolute",
-            left: 40,
-            bottom: 26,
+            // Top right, under the footage credit: the lower part of the frame sits under the titles' dark shade,
+            // which left the label unreadable (21 Nov 2026 proof render).
+            right: 40,
+            top: 64,
             padding: "4px 10px",
-            background: "rgba(11,11,14,0.62)",
+            background: "rgba(11,11,14,0.78)",
             borderRadius: 6,
             fontFamily: BODY,
             fontWeight: 800,
             fontSize: 16,
             letterSpacing: 1.5,
-            color: "rgba(245,245,242,0.85)",
+            color: "rgba(245,245,242,0.96)",
           }}
         >
           {FILL_LABEL}

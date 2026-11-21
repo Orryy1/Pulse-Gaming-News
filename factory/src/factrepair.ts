@@ -96,7 +96,7 @@ const SOFTER: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bnever\b/i, "rarely"],
 ];
 const ABSOLUTE_PROBLEM =
-  /\babsolutes?\b|\b(?:universal|sweeping)\b|["'“‘]\s*(?:always|never)\s*["'”’]|\buse\s+["'“‘]?(?:usually|often|rarely|seldom|mostly)\b/i;
+  /\b(?:an|this|that|the) absolute\b(?!\s+(?:number|terms|figures?|sales|value|amount|count|total)\b)|\babsolute (?:claim|statement|language|wording|assertion)\b|\babsolutes\b|\b(?:universal|sweeping) (?:claim|statement|assertion)\b|["'“‘]\s*(?:always|never)\s*["'”’]|\buse\s+["'“‘]?(?:usually|often|rarely|seldom|mostly)\b/i;
 
 /** The sentence with its one quoted absolute softened, or undefined when there is not exactly one to soften. */
 function softenAbsolute(sentence: string, quote: string): string | undefined {
@@ -111,6 +111,16 @@ function softenAbsolute(sentence: string, quote: string): string | undefined {
   // The absolute inside the quoted part of the sentence, and only there.
   const at = lower(sentence).indexOf(q);
   const part = sentence.slice(at, at + q.length);
+  if (lower(part) !== q) return undefined;
+  // Only a bare "always"/"never": "almost always", "as always", "never once", "never-ending" would read wrongly.
+  const m = re.exec(part);
+  if (!m) return undefined;
+  const pre = part.slice(0, m.index);
+  const post = part.slice(m.index + m[0].length);
+  if (/\b(?:almost|nearly|virtually|practically|as|like|quite|not)\s*$/i.test(pre)) return undefined;
+  if (/^(?:-|\s+(?:once|ever|again|mind)\b)/i.test(post)) return undefined;
+  // Shouted "ALWAYS" would come back as "Usually": leave it to the cut.
+  if (m[0] === m[0].toUpperCase()) return undefined;
   const softened = part.replace(re, (w) => (w[0] === w[0]!.toUpperCase() ? to[0]!.toUpperCase() + to.slice(1) : to));
   if (softened === part) return undefined;
   return sentence.slice(0, at) + softened + sentence.slice(at + q.length);

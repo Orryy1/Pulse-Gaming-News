@@ -395,3 +395,27 @@ test("a long video may mend up to four lines; a Short still stops at two", () =>
   assert.equal(short.fixes.length, 0);
   assert.equal(short.unrepaired.length, 3);
 });
+
+test("softening never writes broken English: 'almost always', 'as always', 'never once', 'never-ending', 'ALWAYS'", () => {
+  const p = "“Always” is inaccurate. Use “usually.”";
+  for (const line of [
+    "The marker almost always shows you the way.",
+    "As always, the boss waits at the top.",
+    "The game has never once crashed on me.",
+    "The never-ending grind wears you down.",
+    "The marker ALWAYS shows you the way.",
+  ]) {
+    const r = repairBlockers([HOOK, `${PAD} ${line}`], [`Fact-check: "${line}" - ${p}`], speak);
+    assert.ok(r.repairs.every((x) => x.kind !== "soften"), line);
+  }
+});
+
+test("'absolute' as an adjective is not an objection to an absolute", () => {
+  const line = "You never get a second chance at the final boss.";
+  const r = repairBlockers(
+    [HOOK, `${PAD} ${line}`],
+    [`Fact-check: "${line}" - The absolute number of retries is three, so this is wrong.`],
+    speak,
+  );
+  assert.ok(r.repairs.every((x) => x.kind !== "soften"));
+});

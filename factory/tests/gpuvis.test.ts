@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -24,17 +25,8 @@ import {
   RUBRIC,
   rubricScore,
 } from "../src/gpuvis/thumbs.ts";
-import { thumbOrder } from "../src/gpuvis/thumbstep.ts";
-import { derivedName, MAX_PICTURES, prepareImages, wantsFill, type PreparedImage } from "../src/gpuvis/client.ts";
-import {
-  frameLikeness,
-  notesOverlap,
-  pairSeconds,
-  placeWords,
-  shortlist,
-  usable,
-  type Scene,
-} from "../src/gpuvis/framematch.ts";
+import { thumbCandidateStep, thumbOrder } from "../src/gpuvis/thumbstep.ts";
+import { derivedName, framedStills, gpuvisUp, MAX_PICTURES, prepareImages, wantsFill, type PreparedImage } from "../src/gpuvis/client.ts";
 import { stack } from "../src/gpuvis/sheet.ts";
 import {
   fillWorkflow,
@@ -42,7 +34,6 @@ import {
   upscaleWorkflow,
   KLEIN,
 } from "../src/gpuvis/workflows.ts";
-import { wipeAt } from "../src/render/MatchWipe.tsx";
 
 test("fillGeometry: a 16:9 still in a Short spans the width at the hero band", () => {
   const g = fillGeometry(1920, 1080, 1080, 1920, "hero")!;
@@ -293,8 +284,10 @@ test("thumbOrder: the best passing candidate leads, the next two are the Test & 
   );
 });
 
-test("wantsFill: wide pictures in Shorts, tall ones in long videos", () => {
+test("wantsFill: square to wide pictures in Shorts, tall ones in long videos", () => {
   assert.equal(wantsFill("short", 16 / 9), true);
+  assert.equal(wantsFill("short", 1), true);
+  assert.equal(wantsFill("short", 4 / 3), true);
   assert.equal(wantsFill("short", 0.75), false);
   assert.equal(wantsFill("long", 0.75), true);
   assert.equal(wantsFill("long", 16 / 9), false);
@@ -371,114 +364,6 @@ test("prepareImages: off does nothing, a silent or busy service stops the episod
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-const scene = (over: Partial<Scene>): Scene => ({
-  file: "a.mp4",
-  at: 0,
-  end: 4,
-  tags: [],
-  seen: "",
-  ...over,
-});
-
-test("framematch: place words skip generic tags; day and night never match; unusable scenes stay out", () => {
-  const w = placeWords({
-    tags: ["beach", "character", "day"],
-    seen: "Beach at sunset with a lifeguard tower.",
-  });
-  assert.ok(w.has("beach") && w.has("sunset") && w.has("lifeguard"));
-  assert.ok(!w.has("character") && !w.has("with"));
-  const night = scene({
-    tags: ["city", "night", "aerial"],
-    seen: "Night city skyline from the air",
-  });
-  const day = scene({
-    tags: ["city", "day", "aerial"],
-    seen: "City skyline from the air, daytime",
-  });
-  const night2 = scene({
-    file: "b.mp4",
-    tags: ["city", "night", "aerial", "skyline"],
-    seen: "Aerial night skyline of the city",
-  });
-  assert.equal(notesOverlap(night, day), 0);
-  assert.ok(notesOverlap(night, night2) > 0.3);
-  assert.equal(
-    usable(scene({ seen: "unusable: large lettering", tags: ["city"] })),
-    false,
-  );
-  assert.equal(usable(scene({ end: 1, tags: ["city"] })), false);
-});
-
-test("framematch: the shortlist uses each scene once, best overlap first", () => {
-  const a1 = scene({
-    at: 0,
-    end: 4,
-    tags: ["beach", "sunset", "ocean"],
-    seen: "Beach at sunset",
-  });
-  const a2 = scene({
-    at: 10,
-    end: 14,
-    tags: ["city", "night", "skyline"],
-    seen: "Night skyline",
-  });
-  const b1 = scene({
-    file: "b.mp4",
-    at: 0,
-    end: 4,
-    tags: ["beach", "sunset", "ocean"],
-    seen: "Beach at sunset with palms",
-  });
-  const b2 = scene({
-    file: "b.mp4",
-    at: 5,
-    end: 9,
-    tags: ["city", "night", "skyline", "aerial"],
-    seen: "Night skyline aerial",
-  });
-  const s = shortlist([a1, a2], [b1, b2], 5);
-  assert.equal(s.length, 2);
-  assert.equal(s[0]!.a, a1);
-  assert.equal(s[0]!.b, b1);
-  assert.equal(s[1]!.b, b2);
-});
-
-test("framematch: a frame is most like itself, and pairSeconds stays between 3 and 5", () => {
-  const f = solid(64, 36, (x, y) => [
-    (x * 4) % 255,
-    (y * 7) % 255,
-    ((x + y) * 3) % 255,
-  ]);
-  const g = solid(64, 36, (x, y) => [
-    255 - ((x * 4) % 255),
-    40,
-    (y * 11) % 255,
-  ]);
-  assert.ok(frameLikeness(f, f) > 0.95);
-  assert.ok(frameLikeness(f, g) < frameLikeness(f, f));
-  assert.equal(
-    pairSeconds({ a: scene({ at: 0, end: 1.5 }), b: scene({ at: 0, end: 9 }) }),
-    3,
-  );
-  assert.equal(
-    pairSeconds({ a: scene({ at: 0, end: 2.5 }), b: scene({ at: 0, end: 9 }) }),
-    4,
-  );
-  assert.equal(
-    pairSeconds({ a: scene({ at: 0, end: 8 }), b: scene({ at: 0, end: 9 }) }),
-    5,
-  );
-});
-
-test("wipeAt: the older game alone, a sweep across, then a held split", () => {
-  const n = 150;
-  assert.equal(wipeAt(0, n), 0);
-  assert.equal(wipeAt(30, n), 0);
-  assert.ok(wipeAt(60, n) > 0 && wipeAt(60, n) < 1);
-  assert.ok(Math.abs(wipeAt(87, n) - 1) < 0.01);
-  assert.equal(wipeAt(140, n), 0.5);
-});
-
 test("stack converts every input to RGB before stacking (the 6.1.1 crash)", () => {
   assert.equal(stack(1, "h"), "[0]format=rgb24");
   assert.equal(
@@ -509,4 +394,85 @@ test("workflows: klein everywhere, Real-ESRGAN for upscaling, and never a FLUX.1
   assert.match(String(KLEIN.unet), /klein/);
   assert.equal(fill.mask!.inputs.channel, "red");
   assert.match(String(up.model!.inputs.model_name), /esrgan/i);
+});
+
+test("framedStills: only stills the plan shows in the framed panel, never clips or full-bleed stills", () => {
+  const plan = {
+    shots: [
+      { framed: true, media: { type: "image", index: 2 } },
+      { framed: false, media: { type: "image", index: 0 } },
+      { framed: true, media: { type: "clip", index: 1 } },
+      { framed: true, media: { type: "image", index: 2 } },
+      { framed: true, media: { type: "plate", index: 0 } },
+    ],
+  };
+  assert.deepEqual([...framedStills(plan)], [2]);
+});
+
+test("prepareImages: fillOnly limits the fills to the framed stills; the game's year reaches the upscaler", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gpuvis-test-"));
+  const images: PreparedImage[] = [
+    { file: "a.jpg", aspect: 16 / 9 },
+    { file: "b.jpg", aspect: 1 },
+    { file: "c.jpg", aspect: 16 / 9, year: 2015 },
+  ];
+  const filled: string[] = [];
+  const years: Array<number | undefined> = [];
+  await prepareImages(
+    { fillFrame: true, upscaleStills: true, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    {
+      up: async () => true,
+      fill: async (_u, src, d) => (filled.push(path.basename(src)), await fs.writeFile(d, "x"), "ok" as const),
+      upscale: async (_u, _s, _d, o) => (years.push(o.year), "none" as const),
+    },
+    { fillOnly: new Set([1]), year: 2004 },
+  );
+  assert.deepEqual(filled, ["b.jpg"]);
+  assert.equal(images[0]!.fillFile, undefined);
+  assert.ok(images[1]!.fillFile);
+  assert.deepEqual(years, [2004, 2004, 2015]);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+/** A local port with nothing listening on it (the Mac today: the PC's port 8797 is not relayed). */
+async function closedPort(): Promise<number> {
+  const srv = net.createServer();
+  await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));
+  const port = (srv.address() as net.AddressInfo).port;
+  await new Promise<void>((r) => srv.close(() => r()));
+  return port;
+}
+
+test("where nothing answers (the Mac), every feature skips at once and changes nothing", async () => {
+  const url = `http://127.0.0.1:${await closedPort()}`;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gpuvis-test-"));
+  const t0 = Date.now();
+  assert.equal(await gpuvisUp(url), false);
+  const images: PreparedImage[] = [
+    { file: "a.jpg", aspect: 16 / 9 },
+    { file: "b.jpg", aspect: 0.7 },
+  ];
+  const before = JSON.stringify(images);
+  const r = await prepareImages({ fillFrame: true, upscaleStills: true, gpuvisUrl: url }, dir, images, "short");
+  assert.equal(r.skipped, "service down");
+  assert.equal(JSON.stringify(images), before);
+  let rendered = 0;
+  const t = await thumbCandidateStep(dir, { layout: "poster", imageFile: "art.jpg" }, ["thumb.jpg"], {
+    url,
+    ask: async () => {
+      throw new Error("must not be asked");
+    },
+    render: async () => {
+      rendered++;
+    },
+    check: async () => [],
+  });
+  assert.equal(t, undefined);
+  assert.equal(rendered, 0);
+  assert.deepEqual(await fs.readdir(dir), []);
+  assert.ok(Date.now() - t0 < 3000, `gave up in ${Date.now() - t0} ms`);
+  await fs.rm(dir, { recursive: true, force: true });
 });

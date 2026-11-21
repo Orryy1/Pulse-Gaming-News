@@ -396,7 +396,7 @@ import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
-import { prepareImages } from "./gpuvis/client.ts";
+import { framedStills, prepareImages } from "./gpuvis/client.ts";
 import { thumbCandidateStep } from "./gpuvis/thumbstep.ts";
 import { askRanker } from "./gpuvis/vision.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
@@ -14412,12 +14412,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   for (const clip of assets.clips ?? [])
     if (!clip.blurFile)
       clip.blurFile = await blurPlate(dir, clip.file).catch(() => undefined);
-  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts): wide stills extended to fill the frame and low-resolution ones
-  // enlarged on the PC's GPU; anything the service cannot do keeps its blurred plate and its own size.
-  {
-    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "short");
-    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
-  }
   const steamLite = assets.steam?.facts
     ? {
         currentPlayers: assets.steam.facts.currentPlayers,
@@ -14842,6 +14836,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts), once the plan is final: only the stills the plan shows in the
+  // framed panel are extended (a still shown full-bleed is cover-cropped, so a fill would never show), and
+  // low-resolution and old games' stills are enlarged; anything the service cannot do keeps its blurred plate and size.
+  {
+    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "short", {}, {
+      fillOnly: framedStills(plan),
+      year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    });
+    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
+  }
   // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
   // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
   const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;

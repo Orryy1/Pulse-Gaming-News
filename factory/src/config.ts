@@ -1284,9 +1284,6 @@ export interface Config {
    * usual designs, all ranked by the local vision model; the top three become the thumbnail and the Test & compare
    * variants (src/gpuvis/thumbs.ts). */
   thumbCandidates: boolean;
-  /** MATCH_WIPE (off until switched on): the same place in two games, matched by the vision model and wiped one
-   * into the other (src/gpuvis/framematch.ts, src/render/MatchWipe.tsx). */
-  matchWipe: boolean;
   /** The PC's GPU picture service (src/gpuvis/server.ts); on the Mac the PC's address over the cable. */
   gpuvisUrl: string;
   ytdlpPath: string;
@@ -2434,7 +2431,6 @@ export function loadConfig(): Config {
   fillFrame: bool("FILL_FRAME", false),
   upscaleStills: bool("UPSCALE_STILLS", false),
   thumbCandidates: bool("THUMB_CANDIDATES", false),
-  matchWipe: bool("MATCH_WIPE", false),
   gpuvisUrl: str("GPUVIS_URL", "http://127.0.0.1:8797"),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
   docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),

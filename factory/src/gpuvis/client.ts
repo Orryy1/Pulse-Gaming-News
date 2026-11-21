@@ -117,10 +117,28 @@ export interface PreparedImage {
   year?: number;
 }
 
-/** Which pictures a lane fills (pure): wide ones in a Short (1.2 and wider), tall ones in a long video (under 0.9). */
+/**
+ * Which pictures a lane fills (pure): in a Short anything from square to wide (0.9 and over; the framed panel shows
+ * square and 4:3 stills as well as 16:9 ones), tall ones in a long video (under 0.9).
+ */
 export function wantsFill(lane: "short" | "long", aspect: number): boolean {
   if (!Number.isFinite(aspect) || aspect <= 0) return false;
-  return lane === "short" ? aspect >= 1.2 : aspect < 0.9;
+  return lane === "short" ? aspect >= 0.9 : aspect < 0.9;
+}
+
+/**
+ * The stills a Short's plan shows in the framed panel (pure), by index: the only ones a fill can show on (a still
+ * shown full-bleed is cover-cropped to the frame and keeps the original). Filling the others would spend a minute of
+ * the PC's GPU each for nothing.
+ */
+export function framedStills(plan: {
+  shots: Array<{ framed: boolean; media: { type: string; index: number } }>;
+}): Set<number> {
+  return new Set(
+    plan.shots
+      .filter((s) => s.framed && s.media.type === "image")
+      .map((s) => s.media.index),
+  );
 }
 
 /** Most pictures sent per episode: a bound on how long one episode can hold the PC's GPU. */
@@ -151,6 +169,12 @@ export async function prepareImages(
     fill?: typeof remoteFill;
     upscale?: typeof remoteUpscale;
   } = {},
+  opts: {
+    /** Only these pictures (indices into images) are filled: a Short's framed stills (framedStills). */
+    fillOnly?: Set<number>;
+    /** The game's release year, for pictures without their own: before 2010 they are always upscaled. */
+    year?: number;
+  } = {},
 ): Promise<{ filled: number; upscaled: number; skipped?: string }> {
   if (!cfg.fillFrame && !cfg.upscaleStills) return { filled: 0, upscaled: 0 };
   // Copies recorded but gone from disk (a pruned folder) are made again rather than pointing the render at nothing.
@@ -165,7 +189,10 @@ export async function prepareImages(
       i.fillFile = undefined;
   }
   const wantFill = (i: PreparedImage) =>
-    cfg.fillFrame && !i.fillFile && wantsFill(lane, i.aspect);
+    cfg.fillFrame &&
+    !i.fillFile &&
+    wantsFill(lane, i.aspect) &&
+    (!opts.fillOnly || opts.fillOnly.has(images.indexOf(i)));
   const wantUp = (i: PreparedImage) => cfg.upscaleStills && !i.upFile;
   const todo = [
     ...images.filter(wantFill),
@@ -193,7 +220,7 @@ export async function prepareImages(
           {
             frameW: 1920,
             frameH: 1080,
-            year: img.year,
+            year: img.year ?? opts.year,
           },
         );
         if (a === "busy") return { filled, upscaled, skipped: "service busy" };

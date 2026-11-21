@@ -1085,58 +1085,6 @@ export async function renderEraFrame(input: {
   }
 }
 
-/**
- * MATCH_WIPE: renders matched pairs of two games' clips (files inside clipDir) as one wipe comparison
- * (src/render/MatchWipe.tsx), wide (1920x1080) or tall (1080x1920 for a Short). Silent: the caller lays sound under it.
- */
-export async function renderMatchWipe(input: {
-  clipDir: string;
-  outFile: string;
-  aName: string;
-  bName: string;
-  pairs: Array<{ aFile: string; aFrom: number; bFile: string; bFrom: number; label: string }>;
-  secondsPerPair: number;
-  tall?: boolean;
-  gl?: LongRenderInput["gl"];
-  browserExecutable?: string;
-}): Promise<void> {
-  const serveUrl = await getBundle();
-  const files = await serveDir(input.clipDir);
-  const browserExecutable = input.browserExecutable || undefined;
-  try {
-    const inputProps = {
-      aName: input.aName,
-      bName: input.bName,
-      secondsPerPair: input.secondsPerPair,
-      pairs: input.pairs.map((p) => ({
-        aSrc: `${files.url}/${webPath(p.aFile)}`,
-        aFrom: p.aFrom,
-        bSrc: `${files.url}/${webPath(p.bFile)}`,
-        bFrom: p.bFrom,
-        label: p.label,
-      })),
-    };
-    const composition = await selectComposition({
-      serveUrl,
-      id: input.tall ? "PulseMatchWipeTall" : "PulseMatchWipe",
-      inputProps,
-      browserExecutable,
-    });
-    await renderMedia({
-      composition,
-      serveUrl,
-      codec: "h264",
-      outputLocation: input.outFile,
-      inputProps,
-      muted: true,
-      browserExecutable,
-      chromiumOptions: { gl: input.gl ?? "swangle" },
-    });
-  } finally {
-    await files.close();
-  }
-}
-
 export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
   const serveUrl = await getBundle();
   const files = await serveDir(input.episodeDir);

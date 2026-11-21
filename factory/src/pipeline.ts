@@ -396,9 +396,8 @@ import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
-import { framedStills, prepareImages } from "./gpuvis/client.ts";
+import { framedStills, prepareImages, remoteAsk } from "./gpuvis/client.ts";
 import { thumbCandidateStep } from "./gpuvis/thumbstep.ts";
-import { askRanker } from "./gpuvis/vision.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
 import { cardWindow } from "./render/shortcraft.ts";
 import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
@@ -12725,8 +12724,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     moment: i.moment,
     label: i.label,
     layers: i.layers,
-    fillFile: i.fillFile,
-    upFile: i.upFile,
+    // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+    fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+    upFile: s.cfg.upscaleStills ? i.upFile : undefined,
   }));
   // The shot list per entry, in on-screen order (lowest rank first), for sentence-level pictures and graphics.
   const moments = [...(script.entries ?? [])]
@@ -14207,7 +14207,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       const { renderLongThumbs } = await import("./render/render.ts");
       const picked = await thumbCandidateStep(dir, mainThumb.thumb as never, ["thumb.jpg", ...thumbFiles], {
         url: s.cfg.gpuvisUrl,
-        ask: askRanker,
+        // The judge runs through the GPU service, inside its orchestrator turn (a 30B model on the shared 4090).
+        ask: remoteAsk(s.cfg.gpuvisUrl),
         render: (file, thumb) => renderLongThumbs({ episodeDir: dir, thumbs: [{ file, thumb: thumb as never }] }),
         // The episode's own seed, so each video's relit candidate has its own light.
         seed: [...ep.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100000,
@@ -14836,12 +14837,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // The clean frame (SHORTS_CLEAN) shows every shot full-bleed, so under it no still is framed and none is filled.
+  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
   // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts), once the plan is final: only the stills the plan shows in the
   // framed panel are extended (a still shown full-bleed is cover-cropped, so a fill would never show), and
   // low-resolution and old games' stills are enlarged; anything the service cannot do keeps its blurred plate and size.
   {
     const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "short", {}, {
-      fillOnly: framedStills(plan),
+      fillOnly: shortClean ? new Set<number>() : framedStills(plan),
       year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
     });
     if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
@@ -15085,7 +15088,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
-  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
   // The word stamp, and an every-game Short's year stamps: one at the first game and at each change of era.
   const shownStamps = [
     ...stampsFor(script, words),
@@ -15267,8 +15269,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         kind: i.kind,
         aspect: i.aspect,
         blurFile: i.blurFile,
-        fillFile: i.fillFile,
-        upFile: i.upFile,
+        // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+        fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+        upFile: s.cfg.upscaleStills ? i.upFile : undefined,
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
         focusX: i.focusX,

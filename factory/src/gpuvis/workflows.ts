@@ -7,10 +7,27 @@
 
 import type { Workflow } from "./comfy.ts";
 
+/**
+ * A model file named by a setting, refused when it names a non-commercial model (FLUX.1 dev or Fill dev, FLUX.2 dev,
+ * the klein 9B variants): the licensed default is used instead, so a setting can never put one into a video (pure).
+ */
+export function permittedModel(
+  name: string | undefined,
+  fallback: string,
+): string {
+  if (!name) return fallback;
+  return /flux[._-]?1|flux[._-]?2[._-]?dev|9b|fill[._-]?dev/i.test(name)
+    ? fallback
+    : name;
+}
+
 export const KLEIN = {
-  unet: process.env.KLEIN_UNET || "flux-2-klein-4b.safetensors",
-  clip: process.env.KLEIN_CLIP || "qwen3-4b-flux2-klein.safetensors",
-  vae: process.env.KLEIN_VAE || "flux2-klein-vae.safetensors",
+  unet: permittedModel(process.env.KLEIN_UNET, "flux-2-klein-4b.safetensors"),
+  clip: permittedModel(
+    process.env.KLEIN_CLIP,
+    "qwen3-4b-flux2-klein.safetensors",
+  ),
+  vae: permittedModel(process.env.KLEIN_VAE, "flux2-klein-vae.safetensors"),
   /** The distilled klein 4B samples in 4 steps at guidance 1; the base model wants about 20 at 4 to 5. */
   steps: Number(process.env.KLEIN_STEPS || 4),
   cfg: Number(process.env.KLEIN_CFG || 1),

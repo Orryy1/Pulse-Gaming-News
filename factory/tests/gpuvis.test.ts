@@ -26,13 +26,22 @@ import {
   rubricScore,
 } from "../src/gpuvis/thumbs.ts";
 import { thumbCandidateStep, thumbOrder } from "../src/gpuvis/thumbstep.ts";
-import { derivedName, framedStills, gpuvisUp, MAX_PICTURES, prepareImages, wantsFill, type PreparedImage } from "../src/gpuvis/client.ts";
+import {
+  derivedName,
+  framedStills,
+  gpuvisUp,
+  MAX_PICTURES,
+  prepareImages,
+  wantsFill,
+  type PreparedImage,
+} from "../src/gpuvis/client.ts";
 import { stack } from "../src/gpuvis/sheet.ts";
 import {
   fillWorkflow,
   plateWorkflow,
   upscaleWorkflow,
   KLEIN,
+  permittedModel,
 } from "../src/gpuvis/workflows.ts";
 
 test("fillGeometry: a 16:9 still in a Short spans the width at the hero band", () => {
@@ -215,8 +224,25 @@ test("upscalePlan: none when it covers, pixel for pixel art, esrgan when it must
     "lanczos",
   );
   // An old game takes the network for any growth, but nothing beyond the frame: a 1080p shot needs nothing.
-  assert.equal(upscalePlan({ width: 1920, height: 1080, frameW: 1920, frameH: 1080, pixel: false, year: 2004 }).method, "none");
-  const old = upscalePlan({ width: 1700, height: 956, frameW: 1920, frameH: 1080, pixel: false, year: 2004 });
+  assert.equal(
+    upscalePlan({
+      width: 1920,
+      height: 1080,
+      frameW: 1920,
+      frameH: 1080,
+      pixel: false,
+      year: 2004,
+    }).method,
+    "none",
+  );
+  const old = upscalePlan({
+    width: 1700,
+    height: 956,
+    frameW: 1920,
+    frameH: 1080,
+    pixel: false,
+    year: 2004,
+  });
   assert.equal(old.method, "esrgan");
   assert.ok(Math.abs(old.scale - 1080 / 956) < 0.001);
 });
@@ -302,64 +328,109 @@ test("prepareImages: off does nothing, a silent or busy service stops the episod
     { file: "c.jpg", aspect: 16 / 9 },
   ];
   let asked = 0;
-  const off = await prepareImages({ fillFrame: false, upscaleStills: false, gpuvisUrl: "x" }, dir, fresh(), "short", {
-    up: async () => (asked++, true),
-  });
+  const off = await prepareImages(
+    { fillFrame: false, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    fresh(),
+    "short",
+    {
+      up: async () => (asked++, true),
+    },
+  );
   assert.deepEqual(off, { filled: 0, upscaled: 0 });
   assert.equal(asked, 0);
-  const down = await prepareImages({ fillFrame: true, upscaleStills: false, gpuvisUrl: "x" }, dir, fresh(), "short", {
-    up: async () => (asked++, false),
-    fill: async () => {
-      throw new Error("must not be called");
+  const down = await prepareImages(
+    { fillFrame: true, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    fresh(),
+    "short",
+    {
+      up: async () => (asked++, false),
+      fill: async () => {
+        throw new Error("must not be called");
+      },
     },
-  });
+  );
   assert.equal(down.skipped, "service down");
   assert.equal(asked, 1);
   // Busy on the first picture: the rest are not sent.
   let sent = 0;
-  const busy = await prepareImages({ fillFrame: true, upscaleStills: false, gpuvisUrl: "x" }, dir, fresh(), "short", {
-    up: async () => true,
-    fill: async () => (sent++, "busy" as const),
-  });
+  const busy = await prepareImages(
+    { fillFrame: true, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    fresh(),
+    "short",
+    {
+      up: async () => true,
+      fill: async () => (sent++, "busy" as const),
+    },
+  );
   assert.equal(busy.skipped, "service busy");
   assert.equal(sent, 1);
   const calls: string[] = [];
   const images = fresh();
   const write = async (d: string) => fs.writeFile(d, "x");
-  const on = await prepareImages({ fillFrame: true, upscaleStills: true, gpuvisUrl: "x" }, dir, images, "short", {
-    up: async () => true,
-    upscale: async (_u, src, d) => {
-      calls.push(`up:${path.basename(src)}`);
-      if (path.basename(src) === "c.jpg") return "none";
-      await write(d);
-      return "ok";
+  const on = await prepareImages(
+    { fillFrame: true, upscaleStills: true, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    {
+      up: async () => true,
+      upscale: async (_u, src, d) => {
+        calls.push(`up:${path.basename(src)}`);
+        if (path.basename(src) === "c.jpg") return "none";
+        await write(d);
+        return "ok";
+      },
+      fill: async (_u, src, d, o) => {
+        calls.push(`fill:${path.basename(src)}:${o.outW}x${o.outH}:${o.place}`);
+        await write(d);
+        return "ok";
+      },
     },
-    fill: async (_u, src, d, o) => {
-      calls.push(`fill:${path.basename(src)}:${o.outW}x${o.outH}:${o.place}`);
-      await write(d);
-      return "ok";
-    },
-  });
+  );
   assert.deepEqual(on, { filled: 2, upscaled: 2 });
   // Fill candidates first; each fill made from the enlarged copy; "nothing needed" remembered as the file itself.
-  assert.deepEqual(calls, ["up:a.jpg", "fill:a_jpg.up.png:1080x1920:hero", "up:c.jpg", "fill:c.jpg:1080x1920:hero", "up:b.jpg"]);
+  assert.deepEqual(calls, [
+    "up:a.jpg",
+    "fill:a_jpg.up.png:1080x1920:hero",
+    "up:c.jpg",
+    "fill:c.jpg:1080x1920:hero",
+    "up:b.jpg",
+  ]);
   assert.equal(images[0]!.fillFile, "a_jpg.fill.jpg");
   assert.equal(images[2]!.upFile, "c.jpg");
-  const again = await prepareImages({ fillFrame: true, upscaleStills: true, gpuvisUrl: "x" }, dir, images, "short", {
-    up: async () => {
-      throw new Error("nothing left to do, so no call");
+  const again = await prepareImages(
+    { fillFrame: true, upscaleStills: true, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    {
+      up: async () => {
+        throw new Error("nothing left to do, so no call");
+      },
     },
-  });
+  );
   assert.deepEqual(again, { filled: 0, upscaled: 0 });
   // A copy gone from disk is made again.
   await fs.rm(path.join(dir, "a_jpg.fill.jpg"));
   let refilled = 0;
-  await prepareImages({ fillFrame: true, upscaleStills: true, gpuvisUrl: "x" }, dir, images, "short", {
-    up: async () => true,
-    fill: async (_u, _s, d) => (refilled++, await write(d), "ok" as const),
-  });
+  await prepareImages(
+    { fillFrame: true, upscaleStills: true, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    {
+      up: async () => true,
+      fill: async (_u, _s, d) => (refilled++, await write(d), "ok" as const),
+    },
+  );
   assert.equal(refilled, 1);
-  assert.equal(derivedName("entry_1/assets/x.png", "fill"), "entry_1/assets/x_png.fill.jpg");
+  assert.equal(
+    derivedName("entry_1/assets/x.png", "fill"),
+    "entry_1/assets/x_png.fill.jpg",
+  );
   assert.ok(MAX_PICTURES >= 20);
   await fs.rm(dir, { recursive: true, force: true });
 });
@@ -425,7 +496,11 @@ test("prepareImages: fillOnly limits the fills to the framed stills; the game's 
     "short",
     {
       up: async () => true,
-      fill: async (_u, src, d) => (filled.push(path.basename(src)), await fs.writeFile(d, "x"), "ok" as const),
+      fill: async (_u, src, d) => (
+        filled.push(path.basename(src)),
+        await fs.writeFile(d, "x"),
+        "ok" as const
+      ),
       upscale: async (_u, _s, _d, o) => (years.push(o.year), "none" as const),
     },
     { fillOnly: new Set([1]), year: 2004 },
@@ -456,23 +531,83 @@ test("where nothing answers (the Mac), every feature skips at once and changes n
     { file: "b.jpg", aspect: 0.7 },
   ];
   const before = JSON.stringify(images);
-  const r = await prepareImages({ fillFrame: true, upscaleStills: true, gpuvisUrl: url }, dir, images, "short");
+  const r = await prepareImages(
+    { fillFrame: true, upscaleStills: true, gpuvisUrl: url },
+    dir,
+    images,
+    "short",
+  );
   assert.equal(r.skipped, "service down");
   assert.equal(JSON.stringify(images), before);
   let rendered = 0;
-  const t = await thumbCandidateStep(dir, { layout: "poster", imageFile: "art.jpg" }, ["thumb.jpg"], {
-    url,
-    ask: async () => {
-      throw new Error("must not be asked");
+  const t = await thumbCandidateStep(
+    dir,
+    { layout: "poster", imageFile: "art.jpg" },
+    ["thumb.jpg"],
+    {
+      url,
+      ask: async () => {
+        throw new Error("must not be asked");
+      },
+      render: async () => {
+        rendered++;
+      },
+      check: async () => [],
     },
-    render: async () => {
-      rendered++;
-    },
-    check: async () => [],
-  });
+  );
   assert.equal(t, undefined);
   assert.equal(rendered, 0);
   assert.deepEqual(await fs.readdir(dir), []);
   assert.ok(Date.now() - t0 < 3000, `gave up in ${Date.now() - t0} ms`);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
+test("permittedModel: a setting naming a non-commercial model falls back to klein 4B", () => {
+  const d = "flux-2-klein-4b.safetensors";
+  assert.equal(permittedModel(undefined, d), d);
+  assert.equal(permittedModel("flux1-dev.safetensors", d), d);
+  assert.equal(permittedModel("flux1-fill-dev.safetensors", d), d);
+  assert.equal(permittedModel("flux-2-klein-9b.safetensors", d), d);
+  assert.equal(permittedModel("flux2-dev.safetensors", d), d);
+  assert.equal(
+    permittedModel("flux-2-klein-4b-fp8.safetensors", d),
+    "flux-2-klein-4b-fp8.safetensors",
+  );
+});
+
+test("prepareImages: a refused fill is not asked again; a step past its time stops", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "gpuvis-test-"));
+  const images: PreparedImage[] = [{ file: "a.jpg", aspect: 16 / 9 }];
+  let asked = 0;
+  const deps = {
+    up: async () => true,
+    fill: async () => (asked++, "rejected" as const),
+  };
+  await prepareImages(
+    { fillFrame: true, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    deps,
+  );
+  await prepareImages(
+    { fillFrame: true, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    images,
+    "short",
+    deps,
+  );
+  assert.equal(asked, 1);
+  assert.equal(images[0]!.fillRejected, true);
+  const late = await prepareImages(
+    { fillFrame: true, upscaleStills: false, gpuvisUrl: "x" },
+    dir,
+    [{ file: "b.jpg", aspect: 16 / 9 }],
+    "short",
+    deps,
+    { until: Date.now() - 1 },
+  );
+  assert.equal(late.skipped, "time limit");
+  assert.equal(asked, 1);
   await fs.rm(dir, { recursive: true, force: true });
 });

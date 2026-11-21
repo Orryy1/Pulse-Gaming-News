@@ -95,11 +95,7 @@ export function fillGeometry(
   } else if (a < frame / FILL_MIN_MISMATCH) {
     w = ev(outH * a);
     x =
-      place === "left"
-        ? 0
-        : place === "right"
-          ? outW - w
-          : ev((outW - w) / 2);
+      place === "left" ? 0 : place === "right" ? outW - w : ev((outW - w) / 2);
   } else return undefined;
   const k = Math.sqrt(FILL_GEN_PIXELS / (outW * outH));
   const genW = even16(outW * k);
@@ -196,7 +192,11 @@ async function ff(args: string[]): Promise<void> {
 export function marginProblems(answer: any): string[] {
   const out: string[] = [];
   // No answer is not a pass: an unread check rejects the fill (the blurred plate stays).
-  if (["figures", "writing", "broken"].some((k) => typeof answer?.[k] !== "boolean"))
+  if (
+    ["figures", "writing", "broken"].some(
+      (k) => typeof answer?.[k] !== "boolean",
+    )
+  )
     return ["the margin check gave no answer"];
   if (answer?.figures === true) out.push("a figure in the new margins");
   if (answer?.writing === true) out.push("writing in the new margins");

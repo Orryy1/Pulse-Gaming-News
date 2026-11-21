@@ -96,6 +96,8 @@ export async function ensureComfy(
 
 /** Asks ComfyUI to drop its loaded models (frees the 4090's memory for the next job); never throws. */
 export async function freeComfy(url = DEFAULT_COMFY_URL): Promise<void> {
+  // Also a ComfyUI someone else started: our models must not sit in the 4090's memory once our GPU turn is given
+  // back (another project's next job reloads its own, which costs it seconds; our 15 GB left behind costs it the card).
   try {
     await fetchWithTimeout(
       `${url}/free`,
@@ -222,9 +224,17 @@ export async function runWorkflow(
     },
     10_000,
   ).catch(() => undefined);
-  await fetchWithTimeout(`${url}/interrupt`, { method: "POST" }, 10_000).catch(
-    () => undefined,
-  );
+  // Only our own job is stopped: ComfyUI interrupts just the named prompt when it is the one running (a shared
+  // ComfyUI may be drawing another project's picture).
+  await fetchWithTimeout(
+    `${url}/interrupt`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt_id: id }),
+    },
+    10_000,
+  ).catch(() => undefined);
   throw new Error(
     `comfyui job ${id} took longer than ${Math.round(timeoutMs / 1000)}s`,
   );

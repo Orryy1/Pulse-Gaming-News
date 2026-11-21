@@ -7,6 +7,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
+import type { Ask } from "./vision.ts";
 
 export interface GpuvisSwitches {
   fillFrame: boolean;
@@ -108,12 +109,37 @@ export function remotePlate(
   return call(url, `/plate?seed=${seed}&variant=${variant}`, undefined, dest);
 }
 
+/**
+ * The thumbnail judge through the GPU service (POST /ask): the service runs the big vision model inside its own
+ * orchestrator GPU turn, so a 30B model never lands on the PC's 4090 without one. Throws when the service cannot.
+ */
+export function remoteAsk(url: string): Ask {
+  return async (files, prompt, schema) => {
+    const images = await Promise.all(
+      files.map(async (f) => (await fs.readFile(f)).toString("base64")),
+    );
+    const res = await fetchWithTimeout(
+      `${url.replace(/\/$/, "")}/ask?maxWait=${FACTORY_MAX_WAIT}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt, schema, images }),
+      },
+      CALL_MS,
+    );
+    if (!res.ok) throw new Error(`GPU service ask ${res.status}`);
+    return res.json();
+  };
+}
+
 export interface PreparedImage {
   file: string;
   aspect: number;
   fillFile?: string;
   /** The enlarged copy; the file itself when the service said it needs nothing (so a retry does not ask again). */
   upFile?: string;
+  /** The fill was refused by its own margin check: not asked again on a retry. */
+  fillRejected?: boolean;
   year?: number;
 }
 
@@ -141,8 +167,11 @@ export function framedStills(plan: {
   );
 }
 
-/** Most pictures sent per episode: a bound on how long one episode can hold the PC's GPU. */
+/** Most pictures sent per episode: a bound on how long one episode can hold the PC's GPU (a Short has fewer). */
 export const MAX_PICTURES = 40;
+export const MAX_PICTURES_SHORT = 12;
+/** The whole step's time per episode, minutes: past it the rest of the pictures keep their usual look. */
+export const STEP_MINUTES = { short: 6, long: 15 } as const;
 
 /** A derived file's name (pure): the picture's own name with its extension kept, so x.jpg and x.png never collide. */
 export const derivedName = (file: string, kind: "up" | "fill"): string =>
@@ -174,6 +203,8 @@ export async function prepareImages(
     fillOnly?: Set<number>;
     /** The game's release year, for pictures without their own: before 2010 they are always upscaled. */
     year?: number;
+    /** The step's own deadline (epoch ms); STEP_MINUTES from now by default. */
+    until?: number;
   } = {},
 ): Promise<{ filled: number; upscaled: number; skipped?: string }> {
   if (!cfg.fillFrame && !cfg.upscaleStills) return { filled: 0, upscaled: 0 };
@@ -191,13 +222,14 @@ export async function prepareImages(
   const wantFill = (i: PreparedImage) =>
     cfg.fillFrame &&
     !i.fillFile &&
+    !i.fillRejected &&
     wantsFill(lane, i.aspect) &&
     (!opts.fillOnly || opts.fillOnly.has(images.indexOf(i)));
   const wantUp = (i: PreparedImage) => cfg.upscaleStills && !i.upFile;
   const todo = [
     ...images.filter(wantFill),
     ...images.filter((i) => !wantFill(i) && wantUp(i)),
-  ].slice(0, MAX_PICTURES);
+  ].slice(0, lane === "short" ? MAX_PICTURES_SHORT : MAX_PICTURES);
   if (!todo.length) return { filled: 0, upscaled: 0 };
   if (!(await (deps.up ?? gpuvisUp)(cfg.gpuvisUrl))) {
     log(
@@ -209,7 +241,18 @@ export async function prepareImages(
   }
   let filled = 0;
   let upscaled = 0;
+  const until = opts.until ?? Date.now() + STEP_MINUTES[lane] * 60_000;
+  // The frame the picture is shown in: a Short's still is cover-cropped into 1080x1920, a long video's into 1920x1080.
+  const [frameW, frameH] = lane === "short" ? [1080, 1920] : [1920, 1080];
   for (const img of todo) {
+    if (Date.now() > until) {
+      log(
+        "info",
+        "GPU picture step out of time; the rest keep their usual look",
+        { lane },
+      );
+      return { filled, upscaled, skipped: "time limit" };
+    }
     try {
       if (wantUp(img)) {
         const up = derivedName(img.file, "up");
@@ -218,8 +261,8 @@ export async function prepareImages(
           path.join(dir, img.file),
           path.join(dir, up),
           {
-            frameW: 1920,
-            frameH: 1080,
+            frameW,
+            frameH,
             year: img.year ?? opts.year,
           },
         );
@@ -247,7 +290,7 @@ export async function prepareImages(
         if (a === "ok") {
           img.fillFile = fill;
           filled++;
-        }
+        } else if (a === "rejected") img.fillRejected = true;
       }
     } catch (err) {
       // A timeout or a dropped connection: the service cannot help this episode.

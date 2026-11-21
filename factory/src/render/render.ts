@@ -880,6 +880,7 @@ export function longProps(
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
     images: imageFiles.map((i) => ({
       src: `${filesUrl}/${webPath(i.upFile ?? i.file)}`,
+      ...(i.upFile ? { origSrc: `${filesUrl}/${webPath(i.file)}` } : {}),
       ...(i.fillFile ? { fillSrc: `${filesUrl}/${webPath(i.fillFile)}` } : {}),
       kind: i.kind,
       aspect: i.aspect,

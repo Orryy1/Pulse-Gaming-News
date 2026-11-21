@@ -18,6 +18,7 @@ import { FFMPEG } from "../lib/bin.ts";
 import { DEFAULT_COMFY_URL, downloadImage, runWorkflow } from "./comfy.ts";
 import { probeSize } from "./pixels.ts";
 import { stack } from "./sheet.ts";
+import { systemFont } from "../assets/linevisuals.ts";
 import type { Ask } from "./vision.ts";
 import { plateWorkflow } from "./workflows.ts";
 
@@ -150,58 +151,64 @@ export async function rankByGrid<T extends Scored>(
   await fs.mkdir(workDir, { recursive: true });
   const n = list.length;
   if (n < 2) return list;
+  // The tile numbers are drawn in a font this machine has (macOS, Windows or Linux); with none the grid cannot be
+  // numbered, so the factory's order stands.
+  const sys = systemFont();
+  if (!sys) return list;
+  const font = sys.replace(/:/g, "\\:");
   const rankings: number[][] = [];
   for (let r = 0; r < rounds; r++) {
-    // Round 0 in the given order, later rounds reversed and rotated, so each candidate sits in different places.
-    const order = Array.from({ length: n }, (_, i) => i);
-    if (r % 2 === 1) order.reverse();
-    const shift = Math.floor((r * n) / Math.max(1, rounds));
-    const shown = [...order.slice(shift), ...order.slice(0, shift)];
-    const tiles: string[] = [];
-    for (const [pos, k] of shown.entries()) {
-      const tile = path.join(workDir, `r${r}_t${pos}.jpg`);
-      await ff([
-        "-i",
-        list[k]!.file,
-        "-vf",
-        `scale=480:270,drawbox=x=0:y=0:w=64:h=64:color=black@0.85:t=fill,drawtext=fontfile='C\\:/Windows/Fonts/arialbd.ttf':text='${pos + 1}':x=18:y=10:fontsize=46:fontcolor=yellow`,
-        "-frames:v",
-        "1",
-        "-q:v",
-        "3",
-        tile,
-      ]);
-      tiles.push(tile);
-    }
-    const per = n <= 4 ? 2 : 3;
-    const rows: string[] = [];
-    for (let i = 0; i < tiles.length; i += per) {
-      const chunk = tiles.slice(i, i + per);
-      const row = path.join(workDir, `r${r}_row${i}.jpg`);
-      await ff([
-        ...chunk.flatMap((c) => ["-i", c]),
-        "-filter_complex",
-        `${stack(chunk.length, "h", "pad=488:278:4:4:color=0x222222")},pad=${488 * per}:278:0:0:color=0x222222`,
-        "-frames:v",
-        "1",
-        "-q:v",
-        "3",
-        row,
-      ]);
-      rows.push(row);
-    }
-    const grid = path.join(workDir, `r${r}_grid.jpg`);
-    await ff([
-      ...rows.flatMap((x) => ["-i", x]),
-      "-filter_complex",
-      stack(rows.length, "v"),
-      "-frames:v",
-      "1",
-      "-q:v",
-      "3",
-      grid,
-    ]);
+    // A round whose grid cannot be built (ffmpeg failed) counts for nothing, like a round the model did not answer.
     try {
+      // Round 0 in the given order, later rounds reversed and rotated, so each candidate sits in different places.
+      const order = Array.from({ length: n }, (_, i) => i);
+      if (r % 2 === 1) order.reverse();
+      const shift = Math.floor((r * n) / Math.max(1, rounds));
+      const shown = [...order.slice(shift), ...order.slice(0, shift)];
+      const tiles: string[] = [];
+      for (const [pos, k] of shown.entries()) {
+        const tile = path.join(workDir, `r${r}_t${pos}.jpg`);
+        await ff([
+          "-i",
+          list[k]!.file,
+          "-vf",
+          `scale=480:270,drawbox=x=0:y=0:w=64:h=64:color=black@0.85:t=fill,drawtext=fontfile='${font}':text='${pos + 1}':x=18:y=10:fontsize=46:fontcolor=yellow`,
+          "-frames:v",
+          "1",
+          "-q:v",
+          "3",
+          tile,
+        ]);
+        tiles.push(tile);
+      }
+      const per = n <= 4 ? 2 : 3;
+      const rows: string[] = [];
+      for (let i = 0; i < tiles.length; i += per) {
+        const chunk = tiles.slice(i, i + per);
+        const row = path.join(workDir, `r${r}_row${i}.jpg`);
+        await ff([
+          ...chunk.flatMap((c) => ["-i", c]),
+          "-filter_complex",
+          `${stack(chunk.length, "h", "pad=488:278:4:4:color=0x222222")},pad=${488 * per}:278:0:0:color=0x222222`,
+          "-frames:v",
+          "1",
+          "-q:v",
+          "3",
+          row,
+        ]);
+        rows.push(row);
+      }
+      const grid = path.join(workDir, `r${r}_grid.jpg`);
+      await ff([
+        ...rows.flatMap((x) => ["-i", x]),
+        "-filter_complex",
+        stack(rows.length, "v"),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        grid,
+      ]);
       const ans = await ask([grid], GRID_PROMPT(n), {
         properties: { order: { type: "array", items: { type: "integer" } } },
         required: ["order"],

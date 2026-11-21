@@ -37,10 +37,28 @@ export function makeAsk(
   numPredict = 4096,
   timeoutMs = 300_000,
 ): Ask {
-  return async (files, prompt, schema) => {
-    const images = await Promise.all(
-      files.map(async (f) => (await fs.readFile(f)).toString("base64")),
+  const ask = askImages(model, numPredict, timeoutMs);
+  return async (files, prompt, schema) =>
+    ask(
+      await Promise.all(
+        files.map(async (f) => (await fs.readFile(f)).toString("base64")),
+      ),
+      prompt,
+      schema,
     );
+}
+
+/** The same question with the pictures already in base64 (the GPU service's /ask route). */
+export function askImages(
+  model: string,
+  numPredict = 4096,
+  timeoutMs = 300_000,
+): (
+  images: string[],
+  prompt: string,
+  schema: Record<string, unknown>,
+) => Promise<any> {
+  return async (images, prompt, schema) => {
     const res = await fetchWithTimeout(
       `${GPUVIS_VISION_URL}/api/chat`,
       {

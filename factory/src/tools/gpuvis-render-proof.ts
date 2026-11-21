@@ -138,8 +138,7 @@ async function main(
       Math.round(((g.start + g.end) / 2) * FPS),
     );
     let firstWide:
-      | { pic: string; aspect: number; blur: string; fill: string }
-      | undefined;
+      { pic: string; aspect: number; blur: string; fill: string } | undefined;
     for (const pic of pics) {
       const fill = path.join(fillDir, `${stem(pic)}.fill.jpg`);
       if (!(await exists(fill))) continue;

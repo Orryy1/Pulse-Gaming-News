@@ -12,6 +12,7 @@
 //   POST /fill?outW=1080&outH=1920&place=hero            200 JPEG (X-Gpuvis: JSON of the geometry), 204 fits already, 422 rejected
 //   POST /upscale?frameW=1920&frameH=1080&year=2004      200 JPEG or PNG (X-Gpuvis: method), 204 needs nothing
 //   POST /plate?seed=1&variant=0                          200 PNG (no body needed)
+//   POST /ask   {prompt, schema, images: [base64]}        200 JSON: the thumbnail judge (GPUVIS_RANK_MODEL), in the turn
 // The Mac reaches it over the cable the way it reaches the PC's vision and voice: through the orchestrator's
 // lan_relay.py, once port 8797 is added to its PORTS (a one-line change in the Master orchestrator's area).
 
@@ -32,6 +33,7 @@ import {
 import { fillFrame, type FillPlace } from "./fill.ts";
 import { drawPlate } from "./thumbs.ts";
 import { upscaleStill } from "./upscale.ts";
+import { askImages, GPUVIS_RANK_MODEL } from "./vision.ts";
 
 export const GPUVIS_PORT = Number(process.env.GPUVIS_PORT || 8797);
 const IDLE_MS = Number(process.env.GPUVIS_IDLE_SECONDS || 90) * 1000;
@@ -160,7 +162,8 @@ export function createGpuvisServer(): http.Server {
       });
       const gone = () => closed;
       const input = path.join(work, "in");
-      if (url.pathname !== "/plate") await fs.writeFile(input, await body(req));
+      if (url.pathname !== "/plate" && url.pathname !== "/ask")
+        await fs.writeFile(input, await body(req));
       if (url.pathname === "/fill") {
         const place = (PLACES as string[]).includes(q("place") ?? "")
           ? (q("place") as FillPlace)
@@ -226,6 +229,37 @@ export function createGpuvisServer(): http.Server {
           }),
         });
         res.end(await fs.readFile(r.file));
+        return;
+      }
+      if (url.pathname === "/ask") {
+        const q2 = JSON.parse((await body(req)).toString("utf8")) as {
+          prompt?: string;
+          schema?: Record<string, unknown>;
+          images?: string[];
+        };
+        if (!q2.prompt || !Array.isArray(q2.images) || !q2.images.length) {
+          res.writeHead(400).end();
+          return;
+        }
+        const answer = await serial(
+          "Pulse thumbnail ranking",
+          () =>
+            askImages(GPUVIS_RANK_MODEL)(
+              q2.images!,
+              q2.prompt!,
+              q2.schema ?? {},
+            ),
+          maxWait,
+          gone,
+        ).catch((e) => e as Error);
+        if (answer instanceof Error) {
+          res
+            .writeHead(503, { "content-type": "text/plain" })
+            .end(answer.message);
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(answer ?? {}));
         return;
       }
       if (url.pathname === "/plate") {

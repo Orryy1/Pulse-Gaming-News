@@ -134,6 +134,8 @@ export interface EpisodeAssets {
     fillFile?: string;
     /** UPSCALE_STILLS: the picture enlarged by Real-ESRGAN, or by whole pixels for pixel art (src/gpuvis/upscale.ts). */
     upFile?: string;
+    /** FILL_FRAME: the fill failed its own margin check; not asked for again on a retry. */
+    fillRejected?: boolean;
     beatIndex?: number;
     moment?: number;
     label?: string;

@@ -278,6 +278,8 @@ export interface LongImageProp {
   layers?: { bg: string; mid: string; fg: string; mesh?: LongMeshProp };
   /** FILL_FRAME: a portrait picture extended to 16:9 by the PC's image model, shown full-bleed instead of the poster. */
   fillSrc?: string;
+  /** UPSCALE_STILLS: the original picture's URL when src is its enlarged copy, so a lookup by file name still finds it. */
+  origSrc?: string;
 }
 
 /** A still's 3D photo maps as URLs (src/render/orbit.ts): the orbit and the subject pop-out use them. */
@@ -2686,7 +2688,7 @@ export const Long: React.FC<LongProps> = (props) => {
       const pic = d.explainer.picture;
       const served =
         pic && !/^https?:/.test(pic)
-          ? props.images.find((im) => im.src.endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
+          ? props.images.find((im) => (im.origSrc ?? im.src).endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
           : pic;
       if (d.explainer.type === "anatomy" && !served) return null;
       return (

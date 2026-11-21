@@ -110,7 +110,10 @@ export async function thumbCandidateStep(
   // Relit: a light plate (atmosphere only) screened over the words' side of the art (or of the extended art).
   const plate = path.join(dir, `${stem}.plate.png`);
   const seed = deps.seed ?? 1100;
-  if ((await remotePlate(deps.url, plate, seed, seed % 2).catch(() => "busy")) === "ok") {
+  if (
+    (await remotePlate(deps.url, plate, seed, seed % 2).catch(() => "busy")) ===
+    "ok"
+  ) {
     const file = `${stem}.thumbrelit.jpg`;
     await relight(
       path.join(dir, relitArt),
@@ -129,7 +132,21 @@ export async function thumbCandidateStep(
       },
     });
   }
-  if (!made.length) return undefined;
+  // The art the candidates were drawn from is not needed once they are drawn (or failed); unchosen candidates go too.
+  const scratch = [
+    plate,
+    ...made.map((m) => path.join(dir, String(m.thumb.imageFile))),
+  ].filter((f) => f !== path.join(dir, art));
+  const tidy = async (keep: string[]) => {
+    for (const f of scratch) await fs.rm(f, { force: true });
+    for (const m of made)
+      if (!keep.includes(m.name))
+        await fs.rm(path.join(dir, m.name), { force: true });
+  };
+  if (!made.length) {
+    await tidy([]);
+    return undefined;
+  }
   const cands: Array<Scored & { name: string }> = existing.map((name) => ({
     name,
     file: path.join(dir, name),
@@ -152,15 +169,29 @@ export async function thumbCandidateStep(
       });
     }
   }
+  // Only a new candidate that passed every check may change the order: with none, the factory's own order stands
+  // (the ranking is not run just to reshuffle the designs that were already chosen).
+  if (
+    !cands.some(
+      (c) => made.some((m) => m.name === c.name) && !c.problems?.length,
+    )
+  ) {
+    await tidy([]);
+    return undefined;
+  }
   await rankByGrid(cands, deps.ask, path.join(dir, "qa", "thumbrank"), 3);
   // A failed score on the factory's own design must not demote it: no score for it, no change.
-  if (cands[0]?.score === undefined) return undefined;
+  if (cands[0]?.score === undefined) {
+    await tidy([]);
+    return undefined;
+  }
   const ranked = rankScored(cands);
   const order = thumbOrder(ranked, {
     main: existing[0]!,
     variants: existing.slice(1, 3),
   });
   const scores = Object.fromEntries(cands.map((c) => [c.name, c.score]));
+  await tidy([order.main, ...order.variants]);
   if (
     order.main === existing[0] &&
     order.variants.join() === existing.slice(1, 3).join()

@@ -19,7 +19,7 @@ export interface RepairFix {
 
 export interface Repair {
   quote: string;
-  kind: "rounding" | "drop_sentence" | "drop_clause";
+  kind: "rounding" | "soften" | "drop_sentence" | "drop_clause";
   from: string;
   to: string;
 }
@@ -32,7 +32,11 @@ export interface RepairResult {
 }
 
 export interface RepairOptions {
-  /** More blockers than this and nothing is repaired: the draft has deeper problems than a line or two. */
+  /**
+   * More blockers than this and nothing is repaired: the draft has deeper problems than a line or two.
+   * Default 2 for a Short; 4 for a long video (LONG_SCRIPT_WORDS or more spoken words), where four lines are a
+   * small share of the whole (21 Nov 2026: six long rankings in a night were lost on 3 to 7 lines each).
+   */
   maxBlockers?: number;
   /** The most of the narration's words the cuts may remove (0-1). */
   maxCutShare?: number;
@@ -78,6 +82,39 @@ const RANK_LINE = new RegExp(
   ].join("|"),
   "i",
 );
+
+/** A script this long (spoken words) is a long video, and more of its lines may be mended. */
+export const LONG_SCRIPT_WORDS = 600;
+
+/**
+ * An absolute the checker objects to, and its softer word: "The quest marker always shows you where to go" ->
+ * "usually shows you" (21 Nov 2026: the checker itself wrote 'Use "usually."'). Only when the problem calls the
+ * claim an absolute, quotes the word, or offers the softer word, so a plainly wrong line is never just softened.
+ */
+const SOFTER: ReadonlyArray<readonly [RegExp, string]> = [
+  [/\balways\b/i, "usually"],
+  [/\bnever\b/i, "rarely"],
+];
+const ABSOLUTE_PROBLEM =
+  /\babsolutes?\b|\b(?:universal|sweeping)\b|["'“‘]\s*(?:always|never)\s*["'”’]|\buse\s+["'“‘]?(?:usually|often|rarely|seldom|mostly)\b/i;
+
+/** The sentence with its one quoted absolute softened, or undefined when there is not exactly one to soften. */
+function softenAbsolute(sentence: string, quote: string): string | undefined {
+  const q = lower(core(quote));
+  if (!lower(sentence).includes(q)) return undefined;
+  const found = SOFTER.flatMap(([re, to]) => {
+    const all = [...q.matchAll(new RegExp(re.source, "gi"))];
+    return all.length ? [{ re, to, n: all.length }] : [];
+  });
+  if (found.length !== 1 || found[0]!.n !== 1) return undefined;
+  const { re, to } = found[0]!;
+  // The absolute inside the quoted part of the sentence, and only there.
+  const at = lower(sentence).indexOf(q);
+  const part = sentence.slice(at, at + q.length);
+  const softened = part.replace(re, (w) => (w[0] === w[0]!.toUpperCase() ? to[0]!.toUpperCase() + to.slice(1) : to));
+  if (softened === part) return undefined;
+  return sentence.slice(0, at) + softened + sentence.slice(at + q.length);
+}
 
 /** "but I put Vice City first": what is left after the cut clause must still be a sentence of its own. */
 const LEADING_JOIN = /^\s*[,;:]\s*(?:but|yet|though|although|still)\b[\s,]*/i;
@@ -207,13 +244,13 @@ export function repairBlockers(
   speak: (t: string) => string = (t) => t,
   opts: RepairOptions = {},
 ): RepairResult {
-  const maxBlockers = opts.maxBlockers ?? 2;
+  const total = words(fields.join(" "));
+  const maxBlockers = opts.maxBlockers ?? (total >= LONG_SCRIPT_WORDS ? 4 : 2);
   const maxCutShare = opts.maxCutShare ?? 0.15;
   const out: RepairResult = { fixes: [], repairs: [], unrepaired: [] };
   if (!blockers.length) return out;
   if (blockers.length > maxBlockers)
     return { ...out, unrepaired: [...blockers] };
-  const total = words(fields.join(" "));
   let cut = 0;
   const firstField = fields.findIndex((f) => f.trim());
   const touched = new Set<string>();
@@ -247,6 +284,16 @@ export function repairBlockers(
         to,
       });
       continue;
+    }
+    // An absolute the checker objects to is softened in place (nothing is cut, so the hook and rank lines may take it).
+    if (ABSOLUTE_PROBLEM.test(parsed.problem)) {
+      const to = softenAbsolute(at.sentence, parsed.quote);
+      if (to) {
+        touched.add(at.sentence);
+        out.fixes.push({ from: at.sentence, to });
+        out.repairs.push({ quote: parsed.quote, kind: "soften", from: at.sentence, to });
+        continue;
+      }
     }
     // Anything else is cut, but never the hook, a rank announcement or a whole field.
     const isHook = at.fieldIndex === firstField && at.index === 0;

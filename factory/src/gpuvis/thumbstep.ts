@@ -37,12 +37,26 @@ export interface ThumbOrder {
 
 /** The release's thumbnail order from the ranked candidates (pure): the best first, then the next two. */
 export function thumbOrder(
-  ranked: Array<{ name: string; problems?: string[] }>,
+  ranked: Array<{ name: string; problems?: string[]; family?: string }>,
   fallback: ThumbOrder,
 ): ThumbOrder {
-  const ok = ranked.filter((r) => !r.problems?.length).map((r) => r.name);
+  const ok = ranked.filter((r) => !r.problems?.length);
   if (!ok.length) return fallback;
-  return { main: ok[0]!, variants: ok.slice(1, 3) };
+  // Test & compare learns most from different pictures: a variant drawn from the same art as one already chosen
+  // (the poster and its extended or relit copy look almost alike) waits until no different design is left.
+  const picked = [ok[0]!];
+  const seen = new Set([ok[0]!.family ?? ok[0]!.name]);
+  for (const r of ok.slice(1))
+    if (picked.length < 3 && !seen.has(r.family ?? r.name)) {
+      picked.push(r);
+      seen.add(r.family ?? r.name);
+    }
+  for (const r of ok.slice(1))
+    if (picked.length < 3 && !picked.includes(r)) picked.push(r);
+  return {
+    main: picked[0]!.name,
+    variants: picked.slice(1).map((r) => r.name),
+  };
 }
 
 export interface ThumbStepDeps {
@@ -147,11 +161,15 @@ export async function thumbCandidateStep(
     await tidy([]);
     return undefined;
   }
-  const cands: Array<Scored & { name: string }> = existing.map((name) => ({
-    name,
-    file: path.join(dir, name),
-    label: name,
-  }));
+  // The main design and the GPU candidates share one art (their family); every other design is its own.
+  const cands: Array<Scored & { name: string; family: string }> = existing.map(
+    (name, k) => ({
+      name,
+      file: path.join(dir, name),
+      label: name,
+      family: k === 0 ? art : name,
+    }),
+  );
   for (const m of made) {
     const file = path.join(dir, m.name);
     try {
@@ -160,6 +178,7 @@ export async function thumbCandidateStep(
         name: m.name,
         file,
         label: m.name,
+        family: art,
         problems: await deps.check(file, m.thumb),
       });
     } catch (err) {

@@ -611,3 +611,17 @@ test("prepareImages: a refused fill is not asked again; a step past its time sto
   assert.equal(asked, 1);
   await fs.rm(dir, { recursive: true, force: true });
 });
+
+test("thumbOrder: a variant from the same art as a chosen one waits until no different design is left", () => {
+  const ranked = [
+    { name: "thumb_gpu_ext.jpg", family: "art.jpg" },
+    { name: "thumb.jpg", family: "art.jpg" },
+    { name: "thumb_b.jpg", family: "thumb_b.jpg" },
+    { name: "thumb_gpu_relit.jpg", family: "art.jpg" },
+  ];
+  const fb = { main: "thumb.jpg", variants: [] };
+  assert.deepEqual(thumbOrder(ranked, fb), {
+    main: "thumb_gpu_ext.jpg",
+    variants: ["thumb_b.jpg", "thumb.jpg"],
+  });
+});

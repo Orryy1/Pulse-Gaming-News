@@ -2059,7 +2059,7 @@ test("the claim guard: a name, a figure or an event word no pack field and no so
         ["playtesters"],
       ],
       ["Half-Life 2's Steam lock went to court.", [], [], ["court"]],
-      ["Gabe Newell signed off on it personally.", ["Gabe", "Newell"], [], []],
+      ["Gabe Newell signed off on it personally.", ["Newell"], [], []],
       ["It sold 9 million copies.", [], ["9"], []],
     ],
   );
@@ -2093,7 +2093,7 @@ test("the claim guard: a name, a figure or an event word no pack field and no so
   assert.equal(u.length, 1);
   assert.match(
     u[0]!.problem,
-    /"Phil Spencer reportedly blocked that date in a meeting\." says the name Phil, the name Spencer/,
+    /"Phil Spencer reportedly blocked that date in a meeting\." says the name Spencer, which no pack field/,
   );
   // The fixture story itself is clean.
   assert.ok(
@@ -2308,5 +2308,134 @@ test("the record carries both critics' marks and the desk's, and the weekly line
   assert.match(
     lines[4]!,
     /average marks where the room wrote: editor critic 6\.0 \(5\), viewer critic 6\.0 \(5\), editor's desk 4\.0 \(5\); editor's desk on the control arm 3\.3 \(6\)/,
+  );
+});
+
+test("the verdict check leaves premises alone: possessives, compounds, deals, moves with no one judged, late launches", () => {
+  for (const p of [
+    "Nintendo's best game just got a sequel.",
+    "Elden Ring's best boss was almost cut.",
+    "Sony's worst-kept secret is out.",
+    "It's the best price Switch 2 has ever had.",
+    "Baldur's Gate 3 is the best-reviewed game of 2023.",
+    "That boss is the worst-rated fight on Steam.",
+    "One wrong move in Elden Ring deletes your save.",
+    "Valve's smart move on Steam Deck pricing just paid off.",
+    "Silksong should have launched in 2019.",
+    "GTA 6 should have arrived this autumn.",
+  ])
+    assert.equal(verdictIn(p), undefined, p);
+  for (const v of [
+    "Valve should've kept that Portal 2 puzzle.",
+    "Sony made a smart move keeping Kratos.",
+    "Keeping Kratos was the right call.",
+    "It's the best God of War there is.",
+  ])
+    assert.ok(verdictIn(v), v);
+  // A premise that shares two of the answer's words is not a giveaway; three of them at half the keys is.
+  const angle = {
+    question: "Why did Sony delay Ghost of Yotei?",
+    answer: "The multiplayer mode needed more time",
+  };
+  assert.equal(
+    firstGivesAway("Ghost of Yotei's multiplayer mode is late. More follows.", {
+      game: "Ghost of Yotei",
+      company: "Sony",
+      angle,
+    }),
+    undefined,
+  );
+});
+
+test("the claim guard leaves good lines alone: acronyms, openers, the game's numeral, outlets, rounding, plain meanings", () => {
+  const sources = [
+    "Rockstar confirmed Grand Theft Auto VI for November. Over 346,258 people signed the list. IGN reported it first.",
+  ];
+  const lines = [
+    "Imagine Rockstar's open-world RPG with NPC routines.",
+    "GTA 6 lands in November.",
+    "Almost 350,000 people signed up.",
+    "Bloomberg said the same thing.",
+    "The dust settled after the free trial.",
+    "You fired the first shot at the basketball court.",
+    "It is a band, not a ban.",
+  ];
+  const found = unsourcedSentences(lines.join(" "), sources, {
+    game: "Grand Theft Auto VI",
+    company: "Rockstar Games",
+    outlets: ["IGN"],
+  });
+  assert.deepEqual(
+    found.map((u) => [u.sentence, u.names, u.figures, u.claims]),
+    [
+      // "court" and "ban" keep their claim meaning; the rest are plain.
+      ["You fired the first shot at the basketball court.", [], [], ["court"]],
+      ["It is a band, not a ban.", [], [], ["ban"]],
+    ],
+  );
+  // "ban" is not found inside "band" or "urban" in the sources either.
+  assert.deepEqual(
+    unsourcedSentences("Sony banned the mod.", ["An urban band played."]).map(
+      (u) => u.claims,
+    ),
+    [["banned"]],
+  );
+  // A pack field's line break does not hide the word after it.
+  assert.deepEqual(
+    unsourcedSentences(
+      "Cory Barlog fought for it.",
+      claimCorpus(
+        pack({ what_happened: "Sony wanted a new hero.\nBarlog fought." }),
+        [],
+      ),
+    ),
+    [],
+  );
+});
+
+test("a cleared pick that opens on a verdict gets the edit on its first sentence only; an edit that keeps it is refused", async () => {
+  const opener = NARRATION.replace(
+    S[0]!,
+    "Bethesda made the right call delaying Starfield.",
+  );
+  const instructions: string[] = [];
+  const { steps } = loopSteps({
+    editor: [
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 8), ed("E", 8)], pick: "E" },
+    ],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: opener })),
+    }),
+  });
+  const run = await runRoom({
+    ...steps,
+    edit: async (draft, instruction) => {
+      instructions.push(instruction);
+      return { ...draft, narration: NARRATION };
+    },
+  });
+  assert.equal(run.calls.edit, 1);
+  assert.match(
+    instructions[0]!,
+    /^The pick states a verdict in its first sentence \("made the right call"\) before the story has asked its question: rewrite only the first sentence/,
+  );
+  assert.ok(!instructions[0]!.includes("Biggest weakness"));
+  assert.equal(run.won, "edited");
+  assert.ok(run.final!.narration.startsWith(S[0]!));
+
+  const kept = loopSteps({
+    editor: [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: opener })),
+    }),
+  });
+  const r2 = await runRoom({
+    ...kept.steps,
+    edit: async (draft) => ({ ...draft, narration: `${draft.narration} ` }),
+  });
+  assert.match(
+    r2.edit!.refused!.join(" "),
+    /The edited version states a verdict/,
   );
 });

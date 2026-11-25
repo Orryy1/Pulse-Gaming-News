@@ -168,7 +168,17 @@ export async function roomRun(
           }
         : {}),
       accept: (before, after) =>
-        roomEditProblems(after, { ...corpora, claims, game, company }, before),
+        roomEditProblems(
+          after,
+          {
+            ...corpora,
+            claims,
+            game,
+            company,
+            outlets: o.cluster.items.map((i) => i.source),
+          },
+          before,
+        ),
       game: () => game,
       company: () => company,
       ...(o.recent ? { recent: o.recent } : {}),

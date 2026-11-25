@@ -77,8 +77,10 @@ export const ROOM = {
    * A first sentence that shares at least this many of the angle's own answer words (the answer's content words the
    * question, the game and the company do not already have), and at least this share of them, gives the answer away.
    */
-  firstAnswerWords: 2,
-  firstAnswerShare: 0.4,
+  firstAnswerWords: 3,
+  firstAnswerShare: 0.5,
+  /** Unsourced sentences one edit instruction names at most. */
+  unsourcedMax: 4,
   /**
    * Output room for the two long answers (thinking included): four angles and three drafts at high effort ran out of
    * the default 16,000 on 21 and 22 Nov 2026 (one cut mid-string, one at max_tokens) and the Short fell back.
@@ -894,11 +896,12 @@ export async function voiceRoom(
  * A sentence that passes judgement (pure): "made the right call", "was right to", "should have kept", "is the best",
  * "was a mistake" and the like. The room's verdict comes after the answer, so a first sentence never states one: on
  * 24 Nov 2026 a voiced Short on why Kratos was almost replaced opened "God of War made the right call keeping
- * Kratos." and went on air. Plain news and premises ("is the best-selling", "should have the update by Friday", "could have
- * been replaced") are not verdicts.
+ * Kratos." and went on air. Plain news and premises are not verdicts: a possessive ("Nintendo's best game"), a
+ * compound ("the best-reviewed"), a deal ("the best price"), a move with no one judged ("one wrong move deletes your
+ * save") or a late launch ("should have launched in 2019", "should have the update by Friday").
  */
 export const VERDICT_PHRASE =
-  /\b(?:made|makes|making|make)\s+the\s+(?:right|wrong|correct|smart|best|worst)\s+(?:call|choice|decision|move)\b|\b(?:the\s+)?(?:right|wrong|correct|smart)\s+(?:call|choice|decision|move)\b|\b(?:was|were|is|are|'s|'re)\s+(?:absolutely\s+|completely\s+|totally\s+|so\s+)?(?:right|wrong)\s+to\b|\b(?:should|shouldn't|should\s+not)\s+(?:never\s+)?have\s+(?:been|known|kept|left|stayed|waited|listened|gone|done|made|cut|[a-z]+ed)\b|\b(?:is|was|are|were|'s)\s+(?:still\s+|easily\s+|honestly\s+)?(?:the\s+)?(?:best|worst)\b(?![- ]sell)|\b(?:was|is|were|are|'s)\s+(?:a|the)\s+(?:huge\s+|big\s+|massive\s+|terrible\s+|real\s+)?mistake\b|\b(?:got|gets|get|had)\s+it\s+(?:right|wrong)\b|\bnailed\s+it\b|\bdodged\s+a\s+bullet\b|\b(?:was|is)\s+(?:worth\s+it|the\s+right\s+thing)\b/i;
+  /\b(?:made|makes|making|make|is|was|are|were|it's|that's|he's|she's|they're)\s+(?:the|a)\s+(?:right|wrong|correct|smart|best|worst)\s+(?:call|choice|decision|move)\b|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:absolutely\s+|completely\s+|totally\s+|so\s+)?(?:right|wrong)\s+to\b|\b(?:should|shouldn't|should\s+not)\s+(?:never\s+)?have\s+(?:known|kept|left|stayed|waited|listened|done|made|cut|scrapped|cancell?ed|changed|fixed|ignored|trusted|picked|chosen|stuck|stopped|dropped|replaced|removed|added|asked|told|been\s+(?:cut|scrapped|cancell?ed|kept|left|better|bigger|smaller|cheaper|free|a\s+[a-z]+|the\s+[a-z]+))\b|\bshould(?:n't)?'ve\s+(?:never\s+)?(?:known|kept|left|stayed|waited|listened|done|made|cut|scrapped|cancell?ed|changed|fixed|ignored|trusted|picked|chosen|stuck|stopped|dropped|replaced|removed|added|asked|told|been\s+(?:cut|scrapped|cancell?ed|kept|left|better|bigger|smaller|cheaper|free|a\s+[a-z]+|the\s+[a-z]+))\b|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:still\s+|easily\s+|honestly\s+)?(?:the\s+)?(?:best|worst)\b(?!-|\s+(?:price|deal|sale|discount|time|part|way|place|chance)\b)|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:a|the)\s+(?:huge\s+|big\s+|massive\s+|terrible\s+|real\s+)?mistake\b|\b(?:got|gets|get|had)\s+it\s+(?:right|wrong)\b|\bnailed\s+it\b|\bdodged\s+a\s+bullet\b|\b(?:was|is)\s+(?:worth\s+it|the\s+right\s+thing)\b/i;
 
 /** The verdict phrase a sentence states, or undefined (pure). */
 export function verdictIn(sentence: string): string | undefined {
@@ -1563,8 +1566,13 @@ export function roomInstruction(o: {
   viewer?: Pick<ViewerRead, "fix" | "lost_me" | "overall">;
   findings: readonly RoomFinding[];
   point?: string;
-  /** The pick cleared the bar and only its unsourced sentences need fixing: the edit is told nothing else. */
-  unsourcedOnly?: boolean;
+  /** Why the pick's first sentence gives the answer away (firstGivesAway), when it does. */
+  opening?: string;
+  /**
+   * The pick cleared the bar and only its unsourced sentences and its opening need fixing: the edit is told nothing
+   * else.
+   */
+  fixesOnly?: boolean;
 }): string {
   const parts: string[] = [];
   // A claim no pack field supports would be blocked by the fact check later: it is fixed before anything else.
@@ -1572,11 +1580,18 @@ export function roomInstruction(o: {
   const rest = o.findings.filter((f) => f.rule !== "unsourced");
   if (unsourced.length)
     parts.push(
-      `First, the facts: ${unsourced.map((f) => f.problem).join(" ")} Never add background the pack does not hold, not even with "reportedly".`,
+      `First, the facts: ${unsourced
+        .slice(0, ROOM.unsourcedMax)
+        .map((f) => f.problem)
+        .join(" ")} Never add background the pack does not hold, not even with "reportedly".`,
     );
-  if (o.unsourcedOnly && unsourced.length) {
+  if (o.opening)
     parts.push(
-      "Edits only: change these sentences and keep every other line word for word.",
+      `The pick ${o.opening}: rewrite only the first sentence as a plain concrete surprise that names the game, and keep the answer and the verdict for later.`,
+    );
+  if (o.fixesOnly && (unsourced.length || o.opening)) {
+    parts.push(
+      "Edits only: change these sentences and keep every other line word for word. Use only facts already in the draft or in the fact pack.",
     );
     return parts.join(" ");
   }
@@ -2035,33 +2050,34 @@ export async function runRoom(o: {
         company: o.company?.() ?? "",
         ...(w.angles[picked.angle] ? { angle: w.angles[picked.angle]! } : {}),
       });
-    // A claim no pack field supports is cut before the fact check sees it, even in a pick that cleared the bar.
+    // A claim no pack field supports is cut before the fact check sees it, and an opening that gives the answer or
+    // the verdict away is rewritten, even in a pick that cleared the bar.
     const unsourcedPick = firstCheck.findings.some(
       (f) => f.rule === "unsourced",
     );
-    // One edit, when the pick misses the bar or says something the pack does not hold.
+    const opening = giveAway(picked.narration, [picked.answer_line]);
+    // One edit, when the pick misses the bar, says something the pack does not hold or opens on its answer.
     let edited: Candidate | undefined;
-    if ((!cleared || unsourcedPick) && calls.edit < caps.edit) {
+    if ((!cleared || unsourcedPick || opening) && calls.edit < caps.edit) {
       const instruction = roomInstruction({
         editor: pickedRead,
         viewer: pickedView,
         findings: firstCheck.findings,
         point: w.point,
-        unsourcedOnly: cleared,
+        ...(opening ? { opening } : {}),
+        fixesOnly: cleared,
       });
       calls.edit++;
       const after = await o
         .edit(original.text, instruction, p.pack)
         .catch(() => undefined);
+      // The edit is there to fix the opening when the pick gave it away; it may never introduce one either.
       const opened = after
         ? giveAway(after.narration, [picked.answer_line])
         : undefined;
       const refused = after
         ? [
-            ...(opened &&
-            !giveAway(original.text.narration, [picked.answer_line])
-              ? [`The edited version ${opened}.`]
-              : []),
+            ...(opened ? [`The edited version ${opened}.`] : []),
             ...(o.accept?.(original.text, after) ?? []),
           ]
         : ["The edits did not apply."];
@@ -2223,17 +2239,16 @@ export async function runRoom(o: {
  */
 export const CLAIM_WORDS: ReadonlyArray<{ re: RegExp; roots: string[] }> = [
   {
-    re: /\b(?:courts?|judges?|ruling|ruled|trial)\b/i,
-    roots: ["court", "judge", "ruling", "ruled", "trial", "lawsuit"],
+    re: /\b(?:courts?|ruling)\b/i,
+    roots: ["court", "ruling", "lawsuit", "legal", "sued", "judge"],
   },
   {
     re: /\b(?:lawsuits?|sued|sues|suing|legal action)\b/i,
     roots: ["lawsuit", "sued", "sues", "suing", "legal", "court"],
   },
-  { re: /\bsettle(?:d|ment)\b/i, roots: ["settle"] },
   {
-    re: /\b(?:fired|layoffs?|laid off)\b/i,
-    roots: ["fired", "layoff", "laid off", "job cuts", "redundan", "let go"],
+    re: /\b(?:layoffs?|laid off)\b/i,
+    roots: ["layoff", "laid off", "job cuts", "redundan", "let go", "fired"],
   },
   {
     re: /\b(?:cancell?ed|scrapped|axed|shelved)\b/i,
@@ -2246,18 +2261,28 @@ export const CLAIM_WORDS: ReadonlyArray<{ re: RegExp; roots: string[] }> = [
   { re: /\brefund(?:s|ed)?\b/i, roots: ["refund"] },
   {
     re: /\b(?:acquired|acquisition|buyout)\b/i,
-    roots: ["acqui", "buyout", "bought", "purchase"],
+    roots: [
+      "acquir",
+      "acquisition",
+      "buyout",
+      "bought",
+      "purchase",
+      "takeover",
+    ],
   },
   {
     re: /\b(?:resigned|stepped down)\b/i,
-    roots: ["resign", "stepped down", "step down", "depart", "left"],
+    roots: ["resign", "stepped down", "step down", "steps down", "departure"],
   },
   {
     re: /\b(?:petition|boycott|review[- ]bomb\w*)\b/i,
     roots: ["petition", "boycott", "review bomb", "review - bomb"],
   },
   { re: /\b(?:patent|trademark)(?:s|ed)?\b/i, roots: ["patent", "trademark"] },
-  { re: /\bbann?(?:ed|s)?\b/i, roots: ["ban"] },
+  {
+    re: /\b(?:banned|bans?|banning)\b/i,
+    roots: ["ban", "bans", "banned", "banning"],
+  },
   { re: /\bleak(?:ed|s|er)?\b/i, roots: ["leak"] },
 ];
 
@@ -2271,64 +2296,100 @@ export interface UnsourcedSentence {
   claims: string[];
 }
 
+/** Every string a value holds, its unverified list left out (pure). */
+function packStrings(x: unknown): string[] {
+  if (typeof x === "string") return [x];
+  if (Array.isArray(x)) return x.flatMap(packStrings);
+  if (x && typeof x === "object")
+    return Object.entries(x).flatMap(([k, v]) =>
+      k === "unverified" ? [] : packStrings(v),
+    );
+  return [];
+}
+
 /**
- * The texts a draft's claims may come from (pure): the pack as the writer reads it, without its unverified list,
- * and the source texts (the number corpus: the articles, the primaries, the feed's summaries, the vault and the store).
+ * The texts a draft's claims may come from (pure): every field of the pack but its unverified list, and the source
+ * texts (the number corpus: the articles, the primaries, the feed's summaries, the vault and the store).
  */
 export function claimCorpus(
   pack: FactPack | undefined,
   sources: readonly string[],
 ): string[] {
-  return [
-    ...(pack ? [JSON.stringify({ ...pack, unverified: [] })] : []),
-    ...sources,
-  ].filter(Boolean);
+  return [...(pack ? packStrings(pack) : []), ...sources].filter(Boolean);
 }
+
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The sentences of a narration that carry a claim from nowhere (pure): a capitalised name, a figure or an event word
- * (CLAIM_WORDS) that appears in no pack field and no source text. A sentence's first word counts as a name only as
- * part of a run of capitalised words; the game's and the company's own words never count.
+ * (CLAIM_WORDS) that appears in no pack field and no source text. Never counted: a sentence's first word, a short
+ * all-capitals word (RPG, NPC, GOTY), the game's, the company's and the outlets' own words, the game's numeral, and a
+ * figure within 5% of one the texts give (a rounded "almost 350,000").
  */
 export function unsourcedSentences(
   narration: string,
   texts: readonly string[],
-  o: { game?: string; company?: string } = {},
+  o: { game?: string; company?: string; outlets?: readonly string[] } = {},
 ): UnsourcedSentence[] {
   const corpus = normaliseForMatch(texts.join("\n"));
   const has = (w: string) => {
-    const n = normaliseForMatch(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const n = escapeRe(normaliseForMatch(w));
     return !!n && new RegExp(`(?:^|[^a-z0-9])${n}(?:$|[^a-z0-9])`).test(corpus);
   };
+  // An event word's root: at the start of a word, and a whole word when it is short ("ban" is not "band").
+  const rootIn = (r: string) =>
+    new RegExp(
+      `(?:^|[^a-z0-9])${escapeRe(r)}${r.length >= 5 ? "" : "(?:$|[^a-z0-9])"}`,
+    ).test(corpus);
   const own = new Set([
     ...gameAliases(o.game ?? ""),
     ...contentTokens(o.company ?? ""),
+    ...[...KNOWN_OUTLETS, ...(o.outlets ?? [])].flatMap((x) =>
+      contentTokens(x),
+    ),
+  ]);
+  const gameFigures = new Set([
+    ...figuresIn(o.game ?? ""),
+    ...[...gameAliases(o.game ?? "")].filter((t) => /^\d+$/.test(t)),
   ]);
   const pool = new Set(texts.flatMap((t) => figuresIn(t)));
+  const poolNumbers = [...pool].map(Number).filter((n) => n > 0);
+  const near = (f: string) => {
+    const x = Number(f);
+    return (
+      Number.isFinite(x) &&
+      [1, 1e3, 1e6, 1e9].some((k) => {
+        const v = x * k;
+        return v >= 100 && poolNumbers.some((p) => Math.abs(v - p) / p <= 0.05);
+      })
+    );
+  };
   const { sentences } = spokenSentences([stripVoiceTags(narration)]);
   const out: UnsourcedSentence[] = [];
   for (const s of sentences) {
     const words = s.text.match(/[A-Za-z0-9][A-Za-z0-9'’-]*/g) ?? [];
     const names: string[] = [];
     words.forEach((raw, i) => {
+      if (i === 0) return;
       const w = raw.replace(/['’]s$/, "").replace(/['’-]+$/, "");
-      if (!/^[A-Z]/.test(w) || NOT_NAMES.has(w)) return;
-      if (i === 0 && !/^[A-Z]/.test(words[1] ?? "")) return;
+      if (!/^[A-Z]/.test(w) || NOT_NAMES.has(w) || /^[A-Z0-9]{2,5}$/.test(w))
+        return;
       const toks = contentTokens(w);
       if (!toks.length || toks.every((t) => own.has(t))) return;
       if (!has(w) && !names.includes(w)) names.push(w);
     });
-    const figures = [...new Set(figuresIn(s.text))].filter((f) => !pool.has(f));
+    const figures = [...new Set(figuresIn(s.text))].filter(
+      (f) => !pool.has(f) && !gameFigures.has(f) && !near(f),
+    );
     const claims = CLAIM_WORDS.flatMap((c) => {
       const m = s.text.match(c.re);
-      return m && !c.roots.some((r) => corpus.includes(r)) ? [m[0]] : [];
+      return m && !c.roots.some(rootIn) ? [m[0]] : [];
     });
     if (names.length || figures.length || claims.length)
       out.push({ sentence: s.text, names, figures, claims });
   }
   return out;
 }
-
 /** One unsourced sentence as an instruction (pure). */
 export function unsourcedProblem(u: UnsourcedSentence): string {
   const what = [
@@ -2352,24 +2413,29 @@ export function roomEditProblems(
     claims?: readonly string[];
     game?: string;
     company?: string;
+    outlets?: readonly string[];
   },
   before?: RoomText,
 ): string[] {
   const out: string[] = [];
   if (corpora.claims?.length) {
-    const o = { game: corpora.game, company: corpora.company };
-    const was = new Set(
-      before
-        ? unsourcedSentences(before.narration, corpora.claims, o).flatMap(
-            (u) => [...u.names, ...u.claims.map((c) => c.toLowerCase())],
-          )
-        : [],
-    );
+    const o = {
+      game: corpora.game,
+      company: corpora.company,
+      outlets: corpora.outlets,
+    };
+    // A name or event word the old narration already says, wherever it stood, is inherited, not added.
+    const old = normaliseForMatch(before?.narration ?? "");
+    const inherited = (w: string) =>
+      !!old &&
+      new RegExp(
+        `(?:^|[^a-z0-9])${normaliseForMatch(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|[^a-z0-9])`,
+      ).test(old);
     for (const u of unsourcedSentences(after.narration, corpora.claims, o)) {
       const added = {
         ...u,
-        names: u.names.filter((n) => !was.has(n)),
-        claims: u.claims.filter((c) => !was.has(c.toLowerCase())),
+        names: u.names.filter((n) => !inherited(n)),
+        claims: u.claims.filter((c) => !inherited(c)),
         figures: [],
       };
       if (added.names.length || added.claims.length)

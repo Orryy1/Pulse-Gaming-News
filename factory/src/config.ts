@@ -629,6 +629,9 @@ export interface Config {
   shortSpeed: number;
   /** Share of news and Why Shorts written in the personal, opinionated voice (VOICE_TEST_SHARE; owner's test, 6 Nov 2026). */
   voiceTestShare: number;
+  /** Share of Pulse Check Shorts whose take ends on a varied closing form instead of a spoken "My verdict:" line
+   * (ENDING_FORMS_SHARE, frontier check 25 Nov 2026, src/editorial/endingforms.ts); 0, the default, changes nothing. */
+  endingFormsShare: number;
   /** Buffer's API key and its Pulse TikTok channel (BUFFER_API_KEY, BUFFER_TIKTOK_CHANNEL): TikTok posts go out with no tap. */
   bufferApiKey: string;
   bufferTiktokChannel: string;
@@ -2166,6 +2169,7 @@ export function loadConfig(): Config {
     bufferApiKey: str("BUFFER_API_KEY", ""),
     bufferTiktokChannel: str("BUFFER_TIKTOK_CHANNEL", ""),
     voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
+    endingFormsShare: Math.min(1, Math.max(0, Number(str("ENDING_FORMS_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     // Not a number keeps the default rather than 0, the most erratic delivery.

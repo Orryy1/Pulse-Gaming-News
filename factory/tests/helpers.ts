@@ -537,6 +537,7 @@ export function testConfig(
     minWordsPerMinute: 0,
     shortSpeed: 1,
     voiceTestShare: 0,
+    endingFormsShare: 0,
     bufferApiKey: "",
     bufferTiktokChannel: "",
     voiceTakeCheck: true,

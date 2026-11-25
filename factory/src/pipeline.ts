@@ -84,6 +84,7 @@ import {
   selectLongformTopic,
   validateLongform,
   narrationOfLongform,
+  rankingRules,
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
@@ -189,7 +190,10 @@ import {
   longRuleWarnings,
   scriptMeasures,
 } from "./editorial/longrules.ts";
-import { structureLine, structureSummary } from "./render/structure.ts";
+import { openingPace, structureLine, structureSummary } from "./render/structure.ts";
+import { contractRules, openingQuotes, recordLongChecks, type LongRecord } from "./longcontractstep.ts";
+import { stockOpenerProblems, takeProblems, takesGuard } from "./editorial/longcontract.ts";
+import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
   longCraft,
@@ -4054,6 +4058,7 @@ export async function maybeSelectDocumentary(
     now,
     await takenSlots(db),
     cfg.timezone,
+    cfg.longArgues,
   );
   // The weekly guide (src/longguide.ts, GUIDE_WEEKLY): this week's guide, planned by date as a run's documentary is,
   // so a guide built on our own tests goes through the same evidence check just below.
@@ -4204,19 +4209,22 @@ export async function maybeSelectDocumentary(
         return undefined;
       })
     : undefined;
+  // LONG_ARGUES=fix: the picker sees no franchise list (a franchise history needs a brief it cannot write), and if that
+  // finds nothing it asks again with the full list rather than leave the month empty.
+  const pickDocTopic = async () => {
+    const demand = await topicDemand(s, "doc");
+    const stories =
+      s.cfg.longArgues === "fix"
+        ? await selectDocTopic(s.llm, covered, inTheNews, [], undefined, demand)
+        : undefined;
+    return stories ?? selectDocTopic(s.llm, covered, inTheNews, undefined, undefined, demand);
+  };
   const topic =
     plannedDoc?.topic ??
     everyTopic ??
     whyDied?.topic ??
     breakout?.topic ??
-    (await selectDocTopic(
-    s.llm,
-    covered,
-    inTheNews,
-    undefined,
-    undefined,
-    await topicDemand(s, "doc"),
-    ));
+    (await pickDocTopic());
   if (!topic) {
     log("info", "no documentary topic this month");
     return undefined;
@@ -4446,10 +4454,14 @@ async function stepScriptDocumentary(
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
   // The Inspiration rules (src/editorial/longrules.ts), all off by default; a guide is a planned entry's own format.
-  const rules = {
-    ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
-    ...(retro ? { retro: true } : {}),
-  };
+  // LONG_OPENING_CONTRACT=fix and a "claims" entry under LONG_ARGUES add their rules (src/longcontractstep.ts).
+  const rules = contractRules(
+    {
+      ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
+      ...(retro ? { retro: true } : {}),
+    },
+    { contract: s.cfg.longOpeningContract, argues: s.cfg.longArgues, format: topic.format },
+  );
   // A planned entry's own sources, beside each chapter's article, so a verdict can name who said it.
   const runSources = await readRunSources(s, topic);
   // A retrospective's press goes only to the sections it belongs to (a review to reception), not to every chapter.
@@ -4496,13 +4508,22 @@ async function stepScriptDocumentary(
   const held = applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise);
   const outline = held.outline;
   if (held.changed.length) await logEvent(s.db, ep.id, "planned_chapters", { changed: held.changed });
+  // Only outlineDoc's outline can carry a finish line, and only with DOC_OPEN_LOOPS on: a retrospective or every-game
+  // outline has no such mark, so the contract neither asks for one nor counts its absence there.
+  const finishCarried = s.cfg.docOpenLoops && !retro && !(topic.format === "everygame" && topic.roster);
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
-  const openLoops = s.cfg.docOpenLoops
+  const openLoops: { loops: OpenLoop[]; removed: string[] } = s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
         max: rules.loopsMax,
         coldOpen: rules.loopsMax ? Math.max(2, rules.hookStack) : 0,
       })
     : { loops: [], removed: [] };
+  // LONG_OPENING_CONTRACT=fix: one loop keeps the finish-line mark, raised in the cold open and paid in the last chapter.
+  if (rules.contract && finishCarried && openLoops.loops.length) {
+    const finish = groundFinishLine(openLoops.loops, outline.chapters.length);
+    openLoops.loops = finish.loops;
+    openLoops.removed.push(...finish.removed);
+  }
   // A rule-led revision is one call; a video gets a few at most, then a miss is a style warning (longRuleWarnings).
   let ruleRevisions = LONG_RULE_REVISIONS;
   // An earlier documentary on the same franchise: its wording and opening are not reused.
@@ -4674,6 +4695,18 @@ async function stepScriptDocumentary(
           problems.push(...misses);
         }
       }
+      // LONG_OPENING_CONTRACT=fix: two honest takes a chapter, asked once, on the first draft.
+      if (attempt === 0 && rules.takesMin) {
+        const said = chapter.paragraphs.map((x) => x.narration).join(" ");
+        problems.push(
+          ...takeProblems(said, rules.takesMin),
+          // No stock opener ("I think", "Honestly") opens more than two takes in the whole video.
+          ...stockOpenerProblems(
+            chapters.map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" ")).join(" "),
+            said,
+          ),
+        );
+      }
       let unsupported: string[];
       if (strict) {
         const items = await checkChapterItems(s.llm, chapter, source).catch(
@@ -4821,6 +4854,15 @@ async function stepScriptDocumentary(
           },
         )
       : [];
+    // LONG_OPENING_CONTRACT=fix: a later pass that leaves the chapter with fewer takes than it had and needs (takesGuard).
+    const takesLost = (before: { paragraphs: Array<{ narration: string }> }, after: typeof before): string[] =>
+      rules.takesMin
+        ? takesGuard(
+            before.paragraphs.map((x) => x.narration).join(" "),
+            after.paragraphs.map((x) => x.narration).join(" "),
+            rules.takesMin,
+          )
+        : [];
     // The friend pass (FRIEND_PASS) on a chapter the fact check passed clean: the delivery only, kept when no figure,
     // name or quote moved, no chapter rule newly breaks and the fact check passes it again.
     if (clean && friendPassOn(s.cfg, "documentary")) {
@@ -4838,6 +4880,7 @@ async function stepScriptDocumentary(
           friendChapter(s.llm, before, {
             tier: s.cfg.friendPassTier,
             credits,
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         guard: (after) => [
           ...friendChapterProblems(before, after),
@@ -4849,6 +4892,8 @@ async function stepScriptDocumentary(
               )
             : []),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          // LONG_OPENING_CONTRACT=fix: the pass may reword a take, never cut the chapter below its takes.
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         check: (after) => checkChapter(s.llm, after, source),
@@ -4898,6 +4943,7 @@ async function stepScriptDocumentary(
                 )
               : []),
             ...newProblems(rulesFor(before), rulesFor(after)),
+            ...takesLost(before, after),
             ...chapterRefusal(after),
           ];
           return guard.length ? guard : checkChapter(s.llm, after, source);
@@ -4940,6 +4986,7 @@ async function stepScriptDocumentary(
             { removedFigures: removed },
           ),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         rewrite: (v, notes) =>
@@ -4947,6 +4994,7 @@ async function stepScriptDocumentary(
             tier: s.cfg.friendPassTier,
             humanNotes: notes,
             site: "humanise.rewrite",
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         check: (after) => checkChapter(s.llm, after, source),
       });
@@ -5025,6 +5073,17 @@ async function stepScriptDocumentary(
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources${droppedRefused.length ? ` (chapter${droppedRefused.length === 1 ? "" : "s"} ${droppedRefused.join(", ")} dropped after refusals)` : ""}`,
     );
+  // LONG_OPENING_CONTRACT and LONG_ARGUES: with both off nothing below reads, measures or calls anything new, so an
+  // older or mocked outline (no youtube block, no sources) runs exactly as before.
+  const longOn = s.cfg.longOpeningContract !== "off" || s.cfg.longArgues !== "off";
+  const sourceTexts = () => [franchise?.text ?? "", ...chapters.map((c) => c.source?.text ?? "")];
+  // The title the opening serves, as it will go out, and the source's dated quotes (contract "fix" only).
+  const finalTitle = rules.contract
+    ? topic.format === "everygame" || topic.why_died
+      ? topic.title_idea
+      : (retro?.title ?? topic.planned?.title ?? outline.youtube?.title ?? outline.title ?? topic.title_idea)
+    : "";
+  const quotes = s.cfg.longOpeningContract === "off" ? [] : openingQuotes(sourceTexts());
   const ends = {
     priorDoc,
     loops: openLoops.loops,
@@ -5033,6 +5092,17 @@ async function stepScriptDocumentary(
     chapters: chapters.map((c) =>
       c.chapter.paragraphs.map((x) => x.narration).join(" "),
     ),
+    ...(rules.contract
+      ? {
+          quotes,
+          contract: {
+            title: finalTitle,
+            quotes,
+            sources: sourceTexts(),
+            finishLine: finishCarried,
+          },
+        }
+      : {}),
   };
   let bookends = await writeBookends(
     s.llm,
@@ -5042,6 +5112,8 @@ async function stepScriptDocumentary(
     ends,
   );
   const endProblems = validateBookends(bookends, ends);
+  // LONG_OPENING_CONTRACT=fix: what the opening missed, sent back with the rest once; then it stands, with a note.
+  const contractSentBack = rules.contract ? endProblems : [];
   if (endProblems.length)
     bookends = await writeBookends(
       s.llm,
@@ -5152,6 +5224,37 @@ async function stepScriptDocumentary(
     script.sources = [franchise.url, ...(script.sources ?? [])];
   for (const u of runSources.urls)
     if (!script.sources?.includes(u)) (script.sources ??= []).push(u);
+  // LONG_OPENING_CONTRACT and LONG_ARGUES on the record (check and fix); off, nothing is measured or called.
+  // A finish line the outline planned but placement dropped (findFinishPlant, findFinishPayoff): a finding.
+  const finishGone = longOn
+    ? warnings.find((w) => /^finish line ".*": never (raised|answered)$/.test(w))
+    : undefined;
+  const finishQuestion = longOn ? openLoops.loops.find((l) => l.finish_line)?.question : undefined;
+  const longChecks: LongRecord = longOn
+    ? await recordLongChecks(s, ep.id, script, {
+        // A "claims" entry is measured as one under check too; only fix writes it as one.
+        kind: topic.format === "claims" ? "claims" : rules.guide ? "guide" : "documentary",
+        quotes,
+        topic,
+        fixed: contractSentBack,
+        finishLine: finishCarried,
+        sources: sourceTexts(),
+        sourceUrls: [
+          franchise?.url ?? "",
+          ...chapters.map((c) => c.source?.url ?? ""),
+          ...(runSources.urls ?? []),
+        ],
+        ...(finishQuestion && finishGone
+          ? {
+              finishMissing: {
+                question: finishQuestion,
+                why: finishGone.endsWith("never answered") ? ("not paid" as const) : ("not planted" as const),
+              },
+            }
+          : {}),
+      })
+    : { warnings: [] };
+  if (longChecks.warnings.length) warnings.push(...longChecks.warnings);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -5161,6 +5264,8 @@ async function stepScriptDocumentary(
       words,
       sources: script.sources,
       warnings,
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
     },
   });
 }
@@ -5171,7 +5276,8 @@ async function readRunSources(
   topic: DocTopic,
 ): Promise<{ text: string; urls: string[]; read: number; missed: string[]; parts: Array<{ url: string; text: string }> }> {
   const list = topic.sources ?? [];
-  if (!list.length || (topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
+  const claims = topic.format === "claims" && s.cfg.longArgues === "fix";
+  if (!list.length || (!claims && topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
     return { text: "", urls: [], read: 0, missed: [], parts: [] };
   const got = await Promise.all(
     list.map((u) =>
@@ -7443,15 +7549,24 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
   const lessons = await longLessons(s.db, s.now()).catch(() => "");
   // The Inspiration rules (src/editorial/longrules.ts): measured while it's written, so they never force a whole new draft.
-  const rules = longRulesFor(s.cfg, "ranking");
+  // Under the contract's 90-word opening the stacked hook gives way (rankingRules); off, these are the rules as before.
+  const rules = rankingRules(longRulesFor(s.cfg, "ranking"), {
+    argues: s.cfg.longArgues,
+    contract: s.cfg.longOpeningContract,
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons, {
       punchyHook: s.cfg.longPunchyHook,
       soundBeats: s.cfg.docSoundBeats,
       rules,
+      argues: s.cfg.longArgues,
+      contract: s.cfg.longOpeningContract,
     });
     const problems = [
-      ...validateLongform(draft, rules),
+      ...validateLongform(draft, rules, {
+        argues: s.cfg.longArgues === "fix",
+        openingCap: s.cfg.longArgues === "fix" || s.cfg.longOpeningContract === "fix",
+      }),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
       // RANKING_STANCE (src/stance.ts): the ranking's title takes a side, and nothing past Part 2.
       ...(s.cfg.rankingStance
@@ -7503,12 +7618,18 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "style_warnings", { problems: missed });
   }
   const script = await quoteLongStep(s, ep, withSpoilerWarning(longformToScript(draft)));
+  // LONG_ARGUES and LONG_OPENING_CONTRACT on the record (check and fix); off, nothing is measured.
+  const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
+  if (longChecks.warnings.length)
+    await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
       topic,
       facts: facts.map((f) => ({ title: f.title, facts: f.facts })),
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
     },
   });
 }
@@ -12867,9 +12988,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       clipRemainders: s.cfg.longClipRemainders,
       // A retrospective is one game: its opening and closing may play footage from its chapters (LONG_MOVING_FIRST).
       oneGame: isRetrospective(ep.factcheck_json),
+      // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast as the body (src/render/structure.ts).
+      twoSpeed: s.cfg.longOpeningContract === "fix",
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();
+  // LONG_OPENING_CONTRACT check or fix: the plan's two speeds go on the record (openingPace), the plan unchanged by it.
+  if (freshPlan && s.cfg.longOpeningContract !== "off")
+    await logEvent(s.db, ep.id, "long_contract_pace", {
+      mode: s.cfg.longOpeningContract,
+      ...openingPace(plan),
+    });
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
     const withheld =

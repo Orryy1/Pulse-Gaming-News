@@ -88,6 +88,12 @@ export function whySlotsFrom(list: string, single: string): string[] {
   return one.length ? one : ["12:00", "18:30"];
 }
 
+/** An off|check|fix setting: anything unknown is "off". */
+function modeOf(v: string): "off" | "check" | "fix" {
+  const m = v.trim().toLowerCase();
+  return m === "check" || m === "fix" ? m : "off";
+}
+
 /**
  * The channels the download account subscribes to for the trend feed (TREND_FEED), by handle: big gaming news,
  * platform and documentary channels, picked 19 Nov 2026. src/tools/trendchannels.ts prints them as links to follow.
@@ -1538,6 +1544,30 @@ export interface Config {
   longHookStack: number;
   /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
   longOpenLoopsMax: number;
+  /**
+   * The long-video opening contract (src/editorial/longcontract.ts, top creator gap plan gap 3, 18 Nov 2026: San Andreas
+   * kept 63% at 36 s and 32% at 3 minutes; its opening began on "a familiar city can mislead your next purchase"):
+   * the first sentence serves the title (no buyer framing unless it's a buyer's guide), the title's question by word 40,
+   * one finish line planted before 1:30 and paid in the last 15% (an open loop marked finish_line), at most 90 words
+   * before the first chapter (140 with a quoted primary source), a dated source quote in the first 30 s where the
+   * sources hold one, chapters handed over by contrast, two honest "I" takes a documentary chapter, and the first two
+   * minutes of the edit cut about twice as fast as the body (twoSpeedCap). LONG_OPENING_CONTRACT=off (default), "check"
+   * (measure and record on the episode, change nothing) or "fix" (the writers get the rules, a missed opening goes back
+   * once and is then accepted with a note, and the edit gets its two speeds). Supersedes LONG_HOOK_STACK's stakes line
+   * in "fix". Its judge step is "long.judge" (CODEX_CALLS can route it).
+   */
+  longOpeningContract: "off" | "check" | "fix";
+  /**
+   * Rankings and commentary as arguments (src/editorial/argues.ts, gap 4: "Every Mainline GTA Game, Ranked" got 2 views
+   * with no "I", equal entries and a title restated on the thumbnail): every ranking entry ends on an "I" verdict, the
+   * contested placement and the fight inside 30 s, unequal time (bottom third under 60 s, top three twice the rest),
+   * "I" at 20 per 1,000 words and a verdict thumbnail; a run entry with format "claims" is a "claims tested"
+   * commentary (verdict by 2:15, three to six numbered claims ruled true, half true or wrong, rumours flagged); and the
+   * documentary picker leaves franchise histories alone unless a brief names a thesis, something exclusive and a
+   * finish line. LONG_ARGUES=off (default), "check" (record, change nothing) or "fix" (rules to the writers, one
+   * send-back each, then accepted with a note; the picker sticks to single stories).
+   */
+  longArgues: "off" | "check" | "fix";
   /** LOOP_NAME_PAYOFF: a payoff says out loud that it's the promise being kept. */
   loopNamePayoff: boolean;
   /** LONG_VERDICT_STAMPS: confirmed, reported and busted, spoken and stamped in a guide, under the rumour rules. */
@@ -2564,6 +2594,8 @@ export function loadConfig(): Config {
     longHookStack: int("LONG_HOOK_STACK", 0),
     longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),
     longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
+    longOpeningContract: modeOf(str("LONG_OPENING_CONTRACT", "off")),
+    longArgues: modeOf(str("LONG_ARGUES", "off")),
     loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
     longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
     longGuideFormat: bool("LONG_GUIDE_FORMAT", false),

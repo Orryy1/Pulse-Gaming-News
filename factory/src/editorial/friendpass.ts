@@ -690,6 +690,8 @@ export async function friendChapter(
     humanNotes?: string[];
     /** The step name for routing; "friend.doc" unless a caller asks otherwise. */
     site?: string;
+    /** LONG_OPENING_CONTRACT=fix: the chapter keeps at least this many first-person takes, so no "I once" note. */
+    takesMin?: number;
   } = {},
 ): Promise<DocChapter & { voice_tags?: VoiceTagMark[] }> {
   const texts = voiceTexts(
@@ -700,7 +702,7 @@ export async function friendChapter(
   const words = wordsIn(chapterText(chapter));
   const notes = [
     `This is one chapter of a long documentary, told by someone who knows the whole story and cares about it. Edit the paragraphs; each keeps telling what it told (its on-screen callout and footage stay with it).`,
-    `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out. At most one dry aside, two in a long chapter, and only where it follows straight from the line before and a viewer gets it with no context; cut any line a listener would have to decode (a metaphor, a pun, a quip about something not said). Every sentence follows from the one before. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
+    `Across the chapter: the judgement goes in plain verdict words on the decisions ("a reckless bet"), and ${opts.takesMin ? `the chapter keeps its first-person takes, at least ${opts.takesMin}, each on its own point, never more than once per hundred words; where takes open the same way ("I think", "honestly"), reword the openings rather than cut the takes.` : `the narrator steps forward as "I" once, for the one take the chapter turns on, never more than once per hundred words; where the chapter stacks "I think" and "honestly", take some out.`} At most one dry aside, two in a long chapter, and only where it follows straight from the line before and a viewer gets it with no context; cut any line a listener would have to decode (a metaphor, a pun, a quip about something not said). Every sentence follows from the one before. The chapter's last sentence keeps its job (a look ahead or a plain consequence). Where the chapter already has its take, change little.`,
     `Delivery tags: at most ${tagLimit(sentences, CHAPTER_TAGS_MOST)} in the chapter, at least four sentences apart.`,
     `Length: the chapter has ${words} words; your edits together add or remove at most ${Math.round(words * 0.1)}.`,
     ...(opts.credits?.length

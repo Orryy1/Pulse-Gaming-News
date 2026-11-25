@@ -710,6 +710,8 @@ export function testConfig(
     longHookStack: 0,
     longHookYouMin: 0,
     longOpenLoopsMax: 0,
+    longOpeningContract: "off",
+    longArgues: "off",
     loopNamePayoff: false,
     longVerdictStamps: false,
     longGuideFormat: false,

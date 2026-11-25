@@ -6,7 +6,7 @@
 import type { Segment } from "./timeline.ts";
 import type { MovePreset } from "./motion.ts";
 import { speakable } from "../voice/speakable.ts";
-import { bookendEcho, rhythmBursts, shotCap } from "./structure.ts";
+import { bookendEcho, rhythmBursts, shotCap, twoSpeedCap } from "./structure.ts";
 import {
   FILLER_MIN_FRAMES,
   fillerMaxFrames,
@@ -345,6 +345,11 @@ export interface LongPlanInput {
   rhythm?: boolean;
   /** With the rhythm, a burst of quicker cuts inside every ranking entry (src/render/structure.ts entryBursts). */
   entryPace?: boolean;
+  /**
+   * LONG_OPENING_CONTRACT=fix (src/render/structure.ts twoSpeedCap): the first two minutes cut about twice as fast as
+   * the body, no still over 3 s and no footage over 4 s there. The body's pace is untouched. Off: the plan as it was.
+   */
+  twoSpeed?: boolean;
   /** A documentary's bookend ending (src/render/structure.ts bookendEcho): the last shot is the cold open's first. */
   bookend?: boolean;
   /** Frames of the signature opening card, which the bookend's source picture comes after. */
@@ -613,10 +618,13 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   const bursts = input.rhythm
     ? rhythmBursts(segments, totalFrames, LONG_FPS, input.entryPace).all
     : [];
-  const cap = (at: number) =>
-    input.rhythm
+  const cap = (at: number) => {
+    const base = input.rhythm
       ? shotCap(at, LONG_FPS, bursts)
       : { still: Number.POSITIVE_INFINITY, clip: Number.POSITIVE_INFINITY };
+    // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast; off, the cap is as it was.
+    return input.twoSpeed ? twoSpeedCap(at, LONG_FPS, base) : base;
+  };
   /** Fills [from, to) with a queue of media, never stretching a clip and never leaving a sliver. */
   const fill = (
     seg: number,

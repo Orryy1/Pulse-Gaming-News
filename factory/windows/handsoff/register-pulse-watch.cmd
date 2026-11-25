@@ -19,6 +19,9 @@ if not exist "%HIDDEN%" (echo The hidden launcher is not at %HIDDEN%. & goto :fa
 if not exist "%FACTORY%\src\tools\pulse-watch.ts" (echo No pulse-watch.ts in %FACTORY%. & goto :fail)
 set "RUNNER=%FACTORY%\windows\handsoff\pulse-watch-run.cmd"
 schtasks /Create /F /TN "Pulse watch" /SC MINUTE /MO 15 /TR "wscript.exe \"%HIDDEN%\" \"%RUNNER%\" %MODE%" >nul || goto :fail
+rem Normal priority (Task Scheduler's default 7 is throttled on a busy PC: runs started up to 9 minutes late),
+rem a 20-minute limit and no overlapping copies.
+powershell -NoProfile -Command "$t = Get-ScheduledTask -TaskName 'Pulse watch'; $t.Settings.Priority = 4; $t.Settings.ExecutionTimeLimit = 'PT20M'; $t.Settings.MultipleInstances = 'IgnoreNew'; $t.Settings.StartWhenAvailable = $true; Set-ScheduledTask -InputObject $t | Out-Null" || goto :fail
 call "%RUNNER%" %MODE%
 echo.
 echo Done: "Pulse watch" runs every 15 minutes in %MODE% mode from %FACTORY%.

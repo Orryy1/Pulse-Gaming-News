@@ -91,8 +91,11 @@ export function sequenceOf(
     .join(">");
 }
 
-/** The house sounds the sparse plan owns and replaces; anything else (a signature sting, say) is left as it was. */
-const OWN_SOUND = /^sfx\/(v3|retro)\//;
+/**
+ * The house sounds the sparse plan owns and replaces, the Pulse ident (ACE_BEDS, src/render/acebeds.ts: it stands in
+ * for the house sting on the first frame) among them; anything else (a series' signature sting, say) is left as it was.
+ */
+const OWN_SOUND = /^sfx\/(v3|retro|ace)\//;
 
 /** Most effects a sparse Short plays, whatever its length. */
 export const SPARSE_MAX = 4;
@@ -198,6 +201,12 @@ export function arrivalsOf(input: {
   tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
   /** MENTION_*: the scheduled mention insets, overlays like any other; each stands in for its beat's card. */
   mentions?: Parameters<typeof overlaySpans>[0]["mentions"];
+  /**
+   * The new look's game collage card where the render step placed it (src/render/cleanframe.ts stingPlacement, the
+   * Short's motifSting): on a clean frame it gives way to the cards and stamps it meets (cleanframe.ts PRIORITY) and,
+   * where it shows from its own first frame, arrives like a card. Absent, no collage card.
+   */
+  sting?: false | { from: number; frames: number };
 }): Arrival[] {
   const { plan, segments } = input;
   const layout = shortLayout(
@@ -212,7 +221,7 @@ export function arrivalsOf(input: {
     plan,
     layout,
     stamps: input.stamps,
-    sting: false,
+    sting: input.sting ?? false,
     shape: input.shape,
     people: input.people,
     tracklist: input.tracklist,
@@ -244,7 +253,8 @@ export function arrivalsOf(input: {
       sp.kind === "freeze" ||
       sp.kind === "people" ||
       sp.kind === "tracklist" ||
-      sp.kind === "mention"
+      sp.kind === "mention" ||
+      sp.kind === "sting"
     )
       out.push({ frame: sp.from, kind: "card" });
   }
@@ -292,6 +302,12 @@ export function planSparseSfx(input: {
   tracklist?: Parameters<typeof overlaySpans>[0]["tracklist"];
   /** MENTION_*: the scheduled mention insets, overlays like any other; each stands in for its beat's card. */
   mentions?: Parameters<typeof overlaySpans>[0]["mentions"];
+  /**
+   * The new look's game collage card where the render step placed it (src/render/cleanframe.ts stingPlacement, the
+   * Short's motifSting): on a clean frame it gives way to the cards and stamps it meets (cleanframe.ts PRIORITY) and,
+   * where it shows from its own first frame, arrives like a card. Absent, no collage card.
+   */
+  sting?: false | { from: number; frames: number };
 }): SparseResult {
   const { plan, id } = input;
   const fps = plan.fps;
@@ -503,11 +519,13 @@ const SECOND_SHOT_KEEP = 30;
  * frames (src/render/plan.ts STING_FRAMES, the brand sting over the hero still): 0.4 s, a flicker. The first shot
  * takes the frames from the start of the second (a clip starts that much further in), so no shot is added or
  * removed and the craft's shot numbers stay right. Unchanged when the first shot is long enough, or when the second
- * would be left under a second.
+ * would be left under a second, or when either is a code scene.
  */
 export function holdFirstShot(shots: Shot[], min = FIRST_SHOT_MIN): Shot[] {
   const [a, b] = shots;
   if (!a || !b) return shots;
+  // A code scene is drawn by its own frames (plan.scenes[].from/to), which a moved cut would leave behind.
+  if (a.media.type === "scene" || b.media.type === "scene") return shots;
   const delta = min - (a.end - a.start);
   if (delta <= 0) return shots;
   if (b.end - (b.start + delta) < SECOND_SHOT_KEEP) return shots;

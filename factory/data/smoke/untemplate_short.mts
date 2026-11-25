@@ -3,7 +3,8 @@
 //   props <db copy> <episode id> <episode copy dir> <out json> <old|new>
 //     rebuilds the Short's render props from its stored plan, script and words (as shortdepth_short.mts does). "old" is
 //     the stored plan as it rendered; "new" runs the render step's SHORT_LAYOUTS (share 1, first shot 1.5 s) and the
-//     sparse sound plan (share 1) on it, with the copy's newest 30 Shorts as the memory. Writes the graphics audit of
+//     sparse sound plan (share 1) on it, with the copy's newest 30 Shorts as the memory. Both arms carry the collage
+//     card where stage's render step places it (motifSting), and the sparse plan hears it. Writes the graphics audit of
 //     what will be drawn beside the props (<out json>.gfx.json).
 //   render <props json> <episode copy dir> <out mp4>
 //     renders those props with the real PulseShort composition, then the factory's loudness pass.
@@ -45,6 +46,8 @@ if (mode === "props") {
   const { readShortMemory, shapeShort, soundShort } = await import("../../src/untemplatestep.ts");
   const { auditShortGraphics } = await import("../../src/qa/gfxaudit.ts");
   const { gfxInputOf } = await import("../../src/qa/gfxgate.ts");
+  const { stingPlacement } = await import("../../src/render/cleanframe.ts");
+  const { namesGame, isHardwareAsset } = await import("../../src/assets/linevisuals.ts");
   const db = await createEmbeddedDb(dbDir!);
   const [e] = (await db.query<any>("select * from episodes where id=$1", [id])) as any[];
   if (!e) throw new Error(`no episode ${id} in the copy`);
@@ -58,6 +61,17 @@ if (mode === "props") {
   const stamps = pipeline.stampsFor(script, words);
   const clean = true;
   let shape: any;
+  // The game collage card's place, as stage's render step works it out (pipeline.ts stingAt) and hands the render.
+  const stingAt = assets.suite
+    ? (stingPlacement({
+        segments,
+        words,
+        fps: plan.fps,
+        totalFrames: plan.totalFrames,
+        names: (t: string) => namesGame(t, script.game_title),
+        pictures: (assets.images ?? []).filter((i: any) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
+      }) ?? null)
+    : undefined;
   const missing = [...(assets.images ?? []), ...(assets.clips ?? [])].filter((m: any) => !fs.existsSync(`${dir}/${m.file}`));
   if (missing.length) console.log(`warning: ${missing.length} media files missing in the copy, first ${missing[0].file}`);
   const before = { sequence: (plan.sfx ?? []).map((c: any) => c.file.split("/").pop()).join(">"), firstShot: plan.shots[0].end - plan.shots[0].start };
@@ -68,7 +82,7 @@ if (mode === "props") {
     shape = shapeShort({ cfg, id: id!, plan, clean, rumour: Boolean(script.is_rumour), headline: script.headline, thumbText: script.youtube?.thumb_text, memory, assets });
     const stampSound = wordSoundCue(plan.wordLook);
     sound = soundShort({
-      cfg, id: id!, plan, segments, words, stamps, clean, stampSound, shape, memory, assets,
+      cfg, id: id!, plan, segments, words, stamps, clean, stampSound, shape, memory, assets, sting: stingAt ?? false,
       v3: () => planSfx(segments, plan.totalFrames),
     });
   }
@@ -101,6 +115,7 @@ if (mode === "props") {
       clean,
       heroCutFile: assets.heroCut,
       renderDate: String(e.created_at instanceof Date ? e.created_at.toISOString() : e.created_at).slice(0, 10),
+      ...(stingAt !== undefined ? { motifSting: stingAt } : {}),
       ...(shape ? { shape } : {}),
     }),
   );

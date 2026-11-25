@@ -382,8 +382,8 @@ import {
   type Segment,
   type SegmentInput,
 } from "./render/timeline.ts";
-import { buildPlan, planSfx, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
-import { readShortMemory, shapeShort, soundShort } from "./untemplatestep.ts";
+import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { readShortMemory, restoreV3Sound, shapeShort, soundShort, soundStepDue } from "./untemplatestep.ts";
 import { planPanelStep } from "./planpanelstep.ts";
 import { frameFocusStep } from "./framefocusstep.ts";
 import { leadFrames, LEVEL, MOOD_BEDS, SFX, sfxFile } from "./render/soundscape.ts";
@@ -14552,6 +14552,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       wpmMax: shortWpmMax(s.cfg),
     });
   let plan = assets.plan ?? buildPlan(planInput);
+  // SHORT_SOUND_PLAN (src/untemplatestep.ts): a stored sparse plan now on the v3 side gets its v3 cues back here, so the
+  // word stamp, the series sting and the ident below land on it as on any v3 plan.
+  if (assets.plan) restoreV3Sound({ cfg: s.cfg, id: ep.id, plan, assets, v3: () => buildPlan(planInput).sfx });
   let rubric = rubricFor(plan);
   // SHOT_PLAN_PANEL (src/planpanelstep.ts, off by default): a blind picture editor critic reads the plan as text before
   // any render; under "on" up to three plans from the same media are marked and the best kept. A red plan is never
@@ -14709,14 +14712,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     )
       plan.sfx.push({ file: sfxFile(name), frame: f, volume: cue.volume });
   }
-  // The opening stings laid over the v3 cues below, kept so SHORT_SOUND_PLAN can rebuild the v3 plan exactly.
-  const v3Stings: { signature?: string; ident?: string } = {};
   // SIGNATURE_MUSIC: a named series opens and closes on its own sting over its own bed (src/render/signature.ts).
   if (s.cfg.signatureMusic && musicFile) {
     const id = signatureSeriesOf({ series: seriesTagFor(ep, script) ?? script.series ?? ep.story_json?.series });
     const sig = signatureFor(SIGNATURE_LIBRARY, id);
     if (sig?.sting) {
-      v3Stings.signature = sig.sting;
       plan.sfx = withSignatureSting(plan.sfx, sig.sting);
       musicFile = shortMusic(sig, musicFile, (k) => BEDS.find((b) => b.key === k)?.file ?? null, (f) => BEDS.find((b) => b.file === f)?.key);
       await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
@@ -14725,10 +14725,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // ACE_BEDS: the Pulse ident on the opening sting, in the bed's key (src/render/acebeds.ts); a series sting stays.
   if (s.cfg.aceBeds) {
     const ident = aceIdent(ACE_LIBRARY, bedSeed(ep.id));
-    if (ident) {
-      v3Stings.ident = ident.sting;
-      plan.sfx = withIdent(plan.sfx, sfxFile(SFX.sting), sfxFile(ident.sting));
-    }
+    if (ident) plan.sfx = withIdent(plan.sfx, sfxFile(SFX.sting), sfxFile(ident.sting));
   }
   // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's predicted curve for this plan, its weakest moments
   // and, under "fix", the safe fixes (fresh footage for stills, the strongest picture first, shorter card text), before
@@ -15147,7 +15144,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }).catch(() => undefined);
   }
   // SHORT_SOUND_PLAN (src/untemplatestep.ts): on the sparse side, effects only where the gated cards and stamps land.
-  if (s.cfg.shortSoundPlan === "sparse" || plan.soundPlan === "sparse") {
+  if (soundStepDue(s.cfg, plan)) {
     const stampSound = wordSoundCue(plan.wordLook);
     const sound = soundShort({
       cfg: s.cfg,
@@ -15162,21 +15159,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
       tracklist,
       mentions,
+      // The game collage card, where the render draws it (motifSting below): it arrives like a card where it shows.
+      sting: stingAt ?? false,
       memory: untemplateMemory,
       assets,
-      // A plan stored by a sparse render, now on the v3 side: the v3 cues as the steps above lay them (the word
-      // stamp's landing, then the series sting and the ident).
-      v3: () => {
-        let cues = planSfx(segments, plan.totalFrames);
-        for (const st of stampsFor(script, words)) {
-          const f = Math.max(0, Math.round(st.at * plan.fps) - leadFrames(stampSound.name, plan.fps));
-          if (cues.length < MAX_SFX && cues.every((c) => Math.abs(c.frame - f) >= 60))
-            cues.push({ file: sfxFile(stampSound.name), frame: f, volume: stampSound.volume });
-        }
-        if (v3Stings.signature) cues = withSignatureSting(cues, v3Stings.signature);
-        if (v3Stings.ident) cues = withIdent(cues, sfxFile(SFX.sting), sfxFile(v3Stings.ident));
-        return cues;
-      },
+      // A stored sparse plan on the v3 side was given its v3 cues back where the plan was loaded (restoreV3Sound).
+      v3: () => plan.sfx,
     });
     await logEvent(s.db, ep.id, "short_sound", sound);
   }

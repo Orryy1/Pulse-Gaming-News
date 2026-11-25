@@ -86,6 +86,8 @@ export function shapeShort(o: {
 }): ShortShape | undefined {
   const arm = layoutArm(o.id, o.cfg.shortLayouts, o.cfg.shortLayoutsShare);
   let shape: ShortShape | undefined;
+  // A re-render with the test off draws today's card: an arm recorded by an earlier render no longer says what shows.
+  if (!o.cfg.shortLayouts) delete o.assets.shortShape;
   if (o.cfg.shortLayouts) {
     if (arm === "on" && o.clean) {
       shape = pickShape({
@@ -147,6 +149,8 @@ export function soundShort(o: {
   people?: Parameters<typeof planSparseSfx>[0]["people"];
   tracklist?: Parameters<typeof planSparseSfx>[0]["tracklist"];
   mentions?: Parameters<typeof planSparseSfx>[0]["mentions"];
+  /** The game collage card where the render step placed it (pipeline.ts stingAt); absent, none. */
+  sting?: Parameters<typeof planSparseSfx>[0]["sting"];
   memory: ShortMemory | undefined;
   assets: { shortSoundArm?: "sparse" | "v3" };
   v3: () => SfxCue[];
@@ -157,6 +161,7 @@ export function soundShort(o: {
 } {
   const arm = soundArm(o.id, o.cfg.shortSoundPlan, o.cfg.shortSoundSparseShare);
   if (o.cfg.shortSoundPlan === "sparse") o.assets.shortSoundArm = arm;
+  else delete o.assets.shortSoundArm;
   if (arm !== "sparse") {
     if (o.plan.soundPlan === "sparse") {
       o.plan.sfx = o.v3();
@@ -178,10 +183,43 @@ export function soundShort(o: {
     people: o.people,
     tracklist: o.tracklist,
     mentions: o.mentions,
+    sting: o.sting,
   });
   o.plan.sfx = r.sfx;
   o.plan.soundPlan = "sparse";
   if (r.silence) o.plan.silences = [r.silence];
   else delete o.plan.silences;
   return { arm, sequence: r.sequence, silence: r.silence };
+}
+
+/** Whether the render step runs the sound step at all (pure): only with SHORT_SOUND_PLAN=sparse or a stored sparse plan. */
+export function soundStepDue(
+  cfg: Pick<Config, "shortSoundPlan">,
+  plan: Pick<RenderPlan, "soundPlan">,
+): boolean {
+  return cfg.shortSoundPlan === "sparse" || plan.soundPlan === "sparse";
+}
+
+/**
+ * A plan stored by a sparse render but now on the v3 side (the test switched off, or the share changed), right where
+ * the render step loads it: `v3` gives the plan's own cues as buildPlan makes them, before the word stamp, the series
+ * sting and the ident, which the render step then lays on top as for any v3 plan. Clears the sparse marks and the arm.
+ * Returns whether it changed anything.
+ */
+export function restoreV3Sound(o: {
+  cfg: Pick<Config, "shortSoundPlan" | "shortSoundSparseShare">;
+  id: string;
+  plan: RenderPlan;
+  assets: { shortSoundArm?: "sparse" | "v3" };
+  v3: () => SfxCue[];
+}): boolean {
+  if (o.plan.soundPlan !== "sparse") return false;
+  const arm = soundArm(o.id, o.cfg.shortSoundPlan, o.cfg.shortSoundSparseShare);
+  if (arm === "sparse") return false;
+  o.plan.sfx = o.v3();
+  delete o.plan.soundPlan;
+  delete o.plan.silences;
+  if (o.cfg.shortSoundPlan === "sparse") o.assets.shortSoundArm = arm;
+  else delete o.assets.shortSoundArm;
+  return true;
 }

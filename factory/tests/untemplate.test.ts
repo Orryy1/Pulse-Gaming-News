@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  arrivalsOf,
   FIRST_SHOT_MIN,
   holdFirstShot,
   idHash,
@@ -24,7 +25,7 @@ import {
 import { planSfx, type RenderPlan, type Shot } from "../src/render/plan.ts";
 import { arbitrate, overlaySpans, shortLayout } from "../src/render/cleanframe.ts";
 import type { Segment } from "../src/render/timeline.ts";
-import { memoryOf, shapeShort, soundShort } from "../src/untemplatestep.ts";
+import { memoryOf, restoreV3Sound, shapeShort, soundShort, soundStepDue } from "../src/untemplatestep.ts";
 import { recordOf, samenessScore, samenessTable } from "../src/qa/sameness.ts";
 import { loadConfig } from "../src/config.ts";
 import { LEVEL } from "../src/render/soundscape.ts";
@@ -723,7 +724,12 @@ test("with every setting off, a stored Short's plan, effects and overlays are ex
   assert.equal(JSON.stringify(arbitrate(spans)), JSON.stringify(fx.stage.kept));
   // The pipeline skips the sound step unless SHORT_SOUND_PLAN=sparse or the stored plan is sparse; called anyway, it
   // leaves a v3 plan alone.
-  assert.ok(!((cfg.shortSoundPlan as string) === "sparse" || plan.soundPlan === "sparse"));
+  assert.equal(soundStepDue(cfg, plan), false, "the pipeline's own guard");
+  assert.equal(
+    restoreV3Sound({ cfg, id: "ep_20261105_3658bb74", plan, assets, v3: () => [] }),
+    false,
+    "a v3 plan is never rebuilt where it is loaded",
+  );
   soundShort({
     cfg,
     id: "ep_20261105_3658bb74",
@@ -749,4 +755,96 @@ test("with every setting off, a stored Short's plan, effects and overlays are ex
   );
   // The render's music level: no silence dip on any frame of a plan with no silences.
   for (let f = 0; f < plan.totalFrames; f++) assert.equal(silenceDipAt(plan.silences, f), 1);
+});
+
+test("the sparse plan drops the Pulse ident with the house sting and keeps a series sting", () => {
+  const { segments, words, plan } = short();
+  const ident = { file: "sfx/ace/ident_1-D.mp3", frame: 0, volume: 0.4 };
+  const series = { file: "sfx/signature/gta-D.mp3", frame: 0, volume: 0.4 };
+  for (let n = 0; n < 40; n++) {
+    const r = planSparseSfx({
+      id: `ep_ace${n}`,
+      plan: { ...plan, sfx: [ident, ...plan.sfx.slice(1), series] },
+      segments,
+      words,
+      stamps: [],
+      clean: true,
+      stampSound,
+      recent: [],
+    });
+    assert.ok(!r.sfx.some((c) => c.file.startsWith("sfx/ace/")), "no ident on a sparse Short");
+    assert.ok(r.sfx.some((c) => c.file === series.file), "a series' own sting stays");
+  }
+});
+
+test("the game collage card arrives like a card where it is drawn, and yields to a card it meets", () => {
+  const { segments, words, plan } = short();
+  const without = arrivalsOf({ plan, segments, words, stamps: [], clean: true });
+  // A free stretch on the clean frame (cards and stamps win over the collage card in arbitrate).
+  const layout = shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames);
+  const kept = arbitrate(overlaySpans({ segments, words, plan, layout, stamps: [], sting: false }))
+    .filter((x) => x.kind !== "shelf")
+    .sort((a, b) => a.from - b.from);
+  let free: { from: number; frames: number } | undefined;
+  for (let k = 1; k < kept.length && !free; k++)
+    if (kept[k]!.from - kept[k - 1]!.to >= 30) free = { from: kept[k - 1]!.to, frames: 24 };
+  assert.ok(free, "the test Short has a free stretch");
+  const drawn = arrivalsOf({ plan, segments, words, stamps: [], clean: true, sting: free });
+  assert.ok(drawn.some((a) => a.frame === free!.from && a.kind === "card"), "the collage card arrives");
+  // Over a card it is cut (it arrives late or not at all) and the card still arrives on its own frame.
+  const card = without.find((a) => a.kind === "card" || a.kind === "number")!;
+  const over = { from: card.frame, frames: 40 };
+  const met = arrivalsOf({ plan, segments, words, stamps: [], clean: true, sting: over });
+  assert.ok(met.some((a) => a.frame === card.frame), "the card keeps its arrival");
+  assert.equal(met.filter((a) => a.frame === card.frame).length, 1, "one arrival, not two, on that frame");
+  assert.deepEqual(arrivalsOf({ plan, segments, words, stamps: [], clean: true, sting: false }), without);
+});
+
+test("an arm recorded by an earlier render goes when its test is off", () => {
+  const { plan } = short();
+  const fx = JSON.parse(
+    fs.readFileSync(new URL("./fixtures/plan_open_04s.json", import.meta.url), "utf8"),
+  ) as { shots: Shot[] };
+  const assets: { shortShape?: unknown; shortSoundArm?: "sparse" | "v3" } = {
+    shortShape: { arm: "on", open: "lower", close: "hold" },
+    shortSoundArm: "sparse",
+  };
+  shapeShort({
+    cfg: { shortLayouts: false, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0 },
+    id: "ep_stale",
+    plan: { fps: FPS, shots: fx.shots.map((x) => ({ ...x })) },
+    clean: true,
+    rumour: false,
+    headline: "GTA 6 slips",
+    memory: undefined,
+    assets,
+  });
+  assert.equal(assets.shortShape, undefined);
+  const v3 = plan.sfx;
+  const stored: RenderPlan = { ...plan, sfx: [{ file: "sfx/v3/air-1.mp3", frame: 300, volume: 0.2 }], soundPlan: "sparse", silences: [{ from: 900, to: 930 }] };
+  const cfg = { shortSoundPlan: "v3" as const, shortSoundSparseShare: 1 };
+  assert.equal(soundStepDue(cfg, stored), true, "a stored sparse plan still runs the step");
+  assert.equal(restoreV3Sound({ cfg, id: "ep_stale", plan: stored, assets, v3: () => v3 }), true);
+  assert.deepEqual(stored.sfx, v3);
+  assert.equal(stored.soundPlan, undefined);
+  assert.equal(stored.silences, undefined);
+  assert.equal(assets.shortSoundArm, undefined);
+  assert.equal(soundStepDue(cfg, stored), false, "and then it is an ordinary v3 plan");
+  // Still on the sparse side: left for the sound step.
+  const keep: RenderPlan = { ...plan, soundPlan: "sparse" };
+  assert.equal(
+    restoreV3Sound({ cfg: { shortSoundPlan: "sparse", shortSoundSparseShare: 1 }, id: "ep_stale", plan: keep, assets, v3: () => v3 }),
+    false,
+  );
+  assert.equal(keep.soundPlan, "sparse");
+});
+
+test("the first shot is never held across a code scene", () => {
+  const fx = JSON.parse(
+    fs.readFileSync(new URL("./fixtures/plan_open_04s.json", import.meta.url), "utf8"),
+  ) as { shots: Shot[] };
+  const scene: Shot[] = [fx.shots[0]!, { ...fx.shots[1]!, media: { type: "scene", index: 0 } }, ...fx.shots.slice(2)];
+  assert.equal(holdFirstShot(scene), scene);
+  const opening: Shot[] = [{ ...fx.shots[0]!, media: { type: "scene", index: 0 } }, ...fx.shots.slice(1)];
+  assert.equal(holdFirstShot(opening), opening);
 });

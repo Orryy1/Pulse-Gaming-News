@@ -278,6 +278,9 @@ export function createServices(db: Db, cfg: Config): Services {
     concurrency: cfg.maxConcurrency,
     week: cfg.maxUsageUrl ? weekReader(cfg.maxUsageUrl) : undefined,
     viaCodex: routed !== claude,
+    // CODEX_CALLS steps stay on Codex unless MAX_FOR_CODEX_SITES.
+    codexSites: cfg.codexCalls,
+    forCodexSites: cfg.maxForCodexSites,
     bin: cfg.claudeBin,
     tmpRoot: path.join(cfg.dataDir, "tmp", "max"),
     onState: (text) => {

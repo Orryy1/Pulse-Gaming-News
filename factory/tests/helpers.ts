@@ -161,6 +161,7 @@ export function testConfig(
     codexRunnerDir: "",
     claudeViaMax: false,
     maxWeekCapPercent: 60,
+    maxForCodexSites: false,
     maxTimeoutMinutes: 15,
     maxConcurrency: 2,
     claudeBin: "claude",

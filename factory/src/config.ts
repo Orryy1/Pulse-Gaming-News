@@ -245,6 +245,11 @@ export interface Config {
    * calls are routed as before.
    */
   claudeViaMax: boolean;
+  /**
+   * MAX_FOR_CODEX_SITES (default off): the CODEX_CALLS steps go to Max first too. Off: they stay on Codex (its weekly
+   * allowance is lost if unused) and Max is kept for the unlisted writing.
+   */
+  maxForCodexSites: boolean;
   /** MAX_WEEK_CAP_PERCENT (default 60): Max stops when Claude's week reaches this, so the owner's own chats keep the rest. */
   maxWeekCapPercent: number;
   /** MAX_TIMEOUT_MINUTES (default 15): one `claude -p` run is killed after this (a Short's Codex cap bounds it too). */
@@ -1831,6 +1836,7 @@ export function loadConfig(): Config {
     ),
     claudeViaMax: bool("CLAUDE_VIA_MAX", false),
     maxWeekCapPercent: int("MAX_WEEK_CAP_PERCENT", 60),
+    maxForCodexSites: bool("MAX_FOR_CODEX_SITES", false),
     maxTimeoutMinutes: Math.max(1, int("MAX_TIMEOUT_MINUTES", 15)),
     maxConcurrency: Math.max(1, int("MAX_CONCURRENCY", 2)),
     claudeBin: str(
@@ -2840,6 +2846,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexGrammarFallback: c.codexGrammarFallback,
     claudeViaMax: c.claudeViaMax,
     maxWeekCapPercent: c.maxWeekCapPercent,
+    maxForCodexSites: c.maxForCodexSites,
     factRepair: c.factRepair,
     longFactDiscipline: c.longFactDiscipline,
     visionPaidFallback: c.visionPaidFallback,

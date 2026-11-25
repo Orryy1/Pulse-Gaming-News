@@ -34,6 +34,7 @@ import {
   imagesOf,
   LIMIT_HOLD_MS,
   routeHintNow,
+  siteListed,
   siteOf,
   textOf,
   withRoute,
@@ -450,6 +451,10 @@ export interface MaxOptions {
   week?: () => Promise<WeekReading | undefined>;
   /** True when Codex's router sits below: a failed or skipped call then goes Codex first, the API key last. */
   viaCodex?: boolean;
+  /** CODEX_CALLS: with Codex below and forCodexSites off, these steps skip Max and stay on Codex as today. */
+  codexSites?: string[];
+  /** MAX_FOR_CODEX_SITES (default off): Max answers the CODEX_CALLS steps too, before Codex. */
+  forCodexSites?: boolean;
   /** CLAUDE_BIN: the CLI (default "claude"). */
   bin?: string;
   tmpRoot?: string;
@@ -544,6 +549,14 @@ export function createMaxLlm(next: Llm, opts: MaxOptions): Llm {
       if (imagesOf(o.content).length > 0 || routeHintNow() === "codex")
         return next.structured(o);
       const site = siteOf(o.site);
+      // A CODEX_CALLS step stays on Codex (its weekly allowance is lost if unused), unless MAX_FOR_CODEX_SITES. Without
+      // Codex below it would only reach the API key, so Max takes it then.
+      if (
+        opts.viaCodex &&
+        !opts.forCodexSites &&
+        siteListed(site, opts.codexSites ?? [])
+      )
+        return next.structured(o);
       const why = await closed();
       say(why);
       if (why) return pass(o);

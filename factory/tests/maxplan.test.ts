@@ -716,3 +716,35 @@ test("mergeWeek keeps an earlier weekly figure and limit when a run's stream lac
   assert.deepEqual(mergeWeek(old, { weekly: 72, resets_at: "2026-12-02T11:00:00Z", read_at: 3 }), { ...old, weekly: 72, read_at: 3 });
   assert.deepEqual(mergeWeek(undefined, { weekly: 5, read_at: 4 }), { weekly: 5, read_at: 4 });
 });
+
+test("CODEX_CALLS steps stay on Codex and skip Max unless MAX_FOR_CODEX_SITES", async () => {
+  const sites = ["doc", "factcheck"];
+  // off (the default): a listed step goes straight to the router, untouched; an unlisted one goes to Max
+  const next = fakeNext();
+  const cli = fakeRun([ok({ title: "max", score: 1 })]);
+  const off = createMaxLlm(next.llm, { ...base, run: cli.run, viaCodex: true, codexSites: sites });
+  assert.deepEqual(await off.structured(call), { title: "next", score: 0 });
+  assert.equal(next.calls[0]!.hint, undefined, "routed as today: the router's own CODEX_CALLS sends it to Codex");
+  assert.equal(cli.seen.length, 0);
+  assert.equal((await off.structured({ ...call, site: "search.write" })).title, "max");
+  // on: Max takes listed steps too
+  const on = createMaxLlm(fakeNext().llm, {
+    ...base,
+    run: fakeRun([ok({ title: "max", score: 2 })]).run,
+    viaCodex: true,
+    codexSites: sites,
+    forCodexSites: true,
+  });
+  assert.equal((await on.structured(call)).title, "max");
+  // without Codex below, a listed step would only reach the API key: Max takes it
+  const noCodex = createMaxLlm(fakeNext().llm, {
+    ...base,
+    run: fakeRun([ok({ title: "max", score: 3 })]).run,
+    viaCodex: false,
+    codexSites: sites,
+  });
+  assert.equal((await noCodex.structured(call)).title, "max");
+  assert.equal(loadConfig().maxForCodexSites, false);
+  const services = fs.readFileSync(path.join(import.meta.dirname, "../src/services.ts"), "utf8");
+  assert.match(services, /codexSites: cfg\.codexCalls,\s*forCodexSites: cfg\.maxForCodexSites,/);
+});

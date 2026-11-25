@@ -580,7 +580,15 @@ async function storiesFromSightings(
     `SELECT hash, cluster_json FROM cluster_sightings WHERE last_seen > $1::timestamptz - ($2 || ' hours')::interval`,
     [now, String(hours)],
   );
-  return sizeStories(rows, now, hours);
+  // Trend leads are not outlets: a story's size is measured on the press alone.
+  const press = rows.map((r) => ({
+    ...r,
+    cluster_json: {
+      ...r.cluster_json,
+      items: (r.cluster_json.items ?? []).filter((i) => i.sourceKind !== "lead"),
+    },
+  }));
+  return sizeStories(press.filter((r) => r.cluster_json.items.length), now, hours);
 }
 
 async function readChatterSignal(db: Db): Promise<ChatterSignal | undefined> {

@@ -1,6 +1,10 @@
 // Production wiring for the pipeline's service seam.
 
-import { libraryRoot, libraryTrailers } from "./assets/gamelib.ts";
+import { libraryRoot, libraryTrailers, readLibrary } from "./assets/gamelib.ts";
+import { sourceOf, storeSettings } from "./assets/gamelibstore.ts";
+import { readText, textBox } from "./assets/ocr.ts";
+import { gameplayIndexName, loadSceneIndex, sceneIndexDir } from "./sceneindex/schema.ts";
+import { footageAllowed, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
 import fs from "node:fs/promises";
@@ -66,6 +70,9 @@ import {
   searchPixabayImages,
 } from "./assets/libraries.ts";
 import { searchPress } from "./assets/press.ts";
+import { pressKitRoot, pressWithKits } from "./sources/presskits.ts";
+import { ensurePressIndex } from "./sources/refresh.ts";
+import { steamAchievements } from "./sources/achievementart.ts";
 import { breaker } from "./lib/breaker.ts";
 import { rankStills } from "./assets/stillscore.ts";
 import path from "node:path";
@@ -80,7 +87,7 @@ import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
-import { onYtGuardAlert } from "./lib/ytguard.ts";
+import { guardActive, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { personPortrait } from "./assets/people.ts";
@@ -219,6 +226,15 @@ export function createServices(db: Db, cfg: Config): Services {
               text: `Claude hit its usage limit, so ${site} is being written by Codex for now. Worth checking those videos.`,
             }).catch(() => undefined);
           })(new Set<string>()),
+          // CODEX_GRAMMAR_FALLBACK: a format too big for Claude goes to Codex instead of failing the step; noted once a step.
+          grammarFallback: cfg.codexGrammarFallback,
+          onGrammarRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `${site}'s answer format is too big for Claude, so Codex answered it instead of the step failing. Its schema wants slimming.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
         })
       : claude;
   // SCENE_MATCH_CODEX: while the local vision model is down, Codex makes the named-moment picture check. Its client
@@ -268,8 +284,12 @@ export function createServices(db: Db, cfg: Config): Services {
           process.env.ROCKSTAR_NEWSWIRE_LIST_HASH || undefined,
         ),
       ]);
+      // TREND_FEED: the download account's subscriptions, read every 3 hours and kept as labelled leads (no call here).
+      const leads = cfg.trendFeed
+        ? (await import("./discovery/trendfeed.ts")).readTrendItems(cfg.dataDir, new Date())
+        : [];
       return clusterItems(
-        [...rss, ...rockstar],
+        [...rss, ...rockstar, ...leads],
         new Date(),
         // After a day or two down, a big story is still in the feeds: keep it long enough to be made late.
         cfg.bigStoryMode === "off"
@@ -329,18 +349,68 @@ export function createServices(db: Db, cfg: Config): Services {
         },
         q,
       ),
-    searchPress: (game) => (cfg.libraryPress ? searchPress(game) : Promise.resolve([])),
+    // PRESS_KITS: the game's indexed press kit pictures first, then the live press feeds (LIBRARY_PRESS).
+    searchPress: (game) =>
+      (cfg.pressKits ? ensurePressIndex(pressKitRoot(cfg.dataDir), game).catch(() => false) : Promise.resolve(false)).then(() =>
+      pressWithKits({
+        root: pressKitRoot(cfg.dataDir),
+        game,
+        kits: cfg.pressKits,
+        ...(cfg.libraryPress ? { live: () => searchPress(game) } : {}),
+      })),
     // PEOPLE_INSETS: a named person's own Wikidata photo, under a clear free licence, cut square on the face (Apple
     // Vision's face finder on the Mac mini).
     personPortrait: (c, dir, slot) =>
       personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
+    // SHORT_FOOTAGE_WAIT: the anonymous YouTube lane's bot-check pause, as the guard's state file has it.
+    youtubePause: async () => {
+      if (!guardActive()) return undefined;
+      const st = await ytGuard.state();
+      return st.block ? { since: st.block.since, until: st.block.until } : undefined;
+    },
     // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
     // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    // Outlet logos and in-world pictures are cached between videos under <data>/mentioncache; in-world pictures come
+    // from our scene index frames (spoiler rule) and game library first, then official stills, then a game wiki.
     findMentions: (input) =>
       findMentions(input, {
         findSteamApp,
         siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
         faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [],
+        cacheDir: path.join(cfg.dataDir, "mentioncache"),
+        inworld: {
+          siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
+          // The cutscene index and the gameplay index, each with its local proxy (never a YouTube pull here).
+          sceneIndex: async (game) => {
+            const out: Array<{ index: import("./sceneindex/schema.ts").SceneIndex; proxy?: string }> = [];
+            for (const name of [game, gameplayIndexName(game)]) {
+              const index = await loadSceneIndex(cfg.dataDir, name).catch(() => undefined);
+              if (!index) continue;
+              const proxy = path.join(sceneIndexDir(cfg.dataDir, name), index.proxy?.file || "proxy.mp4");
+              out.push({ index, proxy: (await fs.stat(proxy).catch(() => undefined)) ? proxy : undefined });
+            }
+            return out;
+          },
+          frameAllowed: (index, at) =>
+            footageAllowed(windowFor(spoilerWindows(), index.game, new Date()), index, at, "short", new Date()).ok,
+          library: async (game) => {
+            const root = libraryRoot(cfg.dataDir);
+            const lib = await readLibrary(root, game);
+            if (!lib) return undefined;
+            const st = storeSettings();
+            return {
+              items: lib.items,
+              file: async (item) => {
+                const src = await sourceOf(root, game, item.file, st);
+                return src?.local ?? src?.url;
+              },
+            };
+          },
+          textBox: async (file, phrase) => {
+            const page = (await readText([file])).get(file);
+            return page ? textBox(page, phrase) : undefined;
+          },
+        },
       }),
     gameplayClips: async (
       game,
@@ -420,7 +490,11 @@ export function createServices(db: Db, cfg: Config): Services {
       trailerFrames({ episodeDir: dir, gameTitle, ytdlp: cfg.ytdlpPath }, trailer, count, textCheck),
     releaseRadar: (from) => releaseRadar(from),
     freeGames: (now) => freeGames(now),
-    achievements: (appId) => fetchAchievements(appId),
+    // ACHIEVEMENT_ART with STEAM_API_KEY: Steam's official Web API schema; otherwise the public community page.
+    achievements: (appId) =>
+      cfg.achievementArt && cfg.steamApiKey
+        ? steamAchievements(appId, { apiKey: cfg.steamApiKey }).then((r) => r.list)
+        : fetchAchievements(appId),
     steamClimbers: (now) => steamClimbers(now),
     steamDeals: (exclude) => steamDeals(exclude),
     verdictCandidates: (exclude) => verdictCandidates(exclude),
@@ -429,6 +503,9 @@ export function createServices(db: Db, cfg: Config): Services {
         ytdlp: cfg.ytdlpPath,
         // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
         llm: cfg.clipRanking === "llm" ? llm : undefined,
+        // Old games' small sources keep a native-size copy for the upscaling pass (src/assets/upscale.ts).
+        sdMaxHeight:
+          cfg.upscale && cfg.upscaleModelDir ? cfg.upscaleMaxHeight : 0,
       });
       return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
     },
@@ -524,6 +601,8 @@ export function createServices(db: Db, cfg: Config): Services {
       soundTags: cfg.appleSoundTags,
           // LONG_WATERMARK_CROP: a long video's section with one small corner mark is cropped clear of it.
           ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep } : {}),
+          // SHORT_CLIP_EDGE_TEXT is for the Short's zoomed crop; a long video shows the whole picture.
+          ...(o.long ? { edgeText: false } : {}),
           llm: cfg.clipRanking === "llm" ? llm : undefined,
         }),
       ),

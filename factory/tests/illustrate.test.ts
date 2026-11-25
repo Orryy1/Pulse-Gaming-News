@@ -14,6 +14,7 @@ import {
   sketchPrompt,
   sketchSeed,
   sketchWorkflow,
+  withoutNames,
 } from "../src/assets/illustrate.ts";
 import { fillSentencePictures } from "../src/assets/fill.ts";
 import { tmpDir } from "./helpers.ts";
@@ -209,11 +210,14 @@ test("the prompt is the writer's scene, the sentence, the period and the fixed s
   );
   assert.ok(
     prompt.startsWith(
-      "Concept sketch of a scene: DMA Design team at work. The moment: The team crammed into a two-room office above a shop, working through the night.",
+      "Concept sketch of a scene: The studio team at work. Setting: around 1997;",
     ),
     prompt,
   );
-  assert.ok(prompt.includes("Setting: in Dundee, around 1997"));
+  // The year sets the period; no name (studio or city) reaches the prompt, or the model letters it onto a sign.
+  assert.ok(prompt.includes("Setting: around 1997;"));
+  assert.ok(!/Dundee|DMA/.test(prompt), prompt);
+  assert.ok(prompt.includes("No speech bubbles"));
   assert.ok(prompt.includes("Pencil and ink concept sketch"));
   assert.ok(
     prompt.includes(
@@ -243,6 +247,48 @@ test("the prompt is the writer's scene, the sentence, the period and the fixed s
   );
 });
 
+test("names are taken out of the scene so none can be lettered onto the drawing", () => {
+  assert.equal(
+    withoutNames("A small team at DMA Design starts work on a game called Race'n'Chase."),
+    "A small team at the studio starts work on a game.",
+  );
+  assert.equal(
+    withoutNames("Rockstar's New York research team gathered thousands of photographs"),
+    "The studio's research team gathered thousands of photographs",
+  );
+  assert.equal(
+    withoutNames("In 1999, a small group at DMA Design in Edinburgh built a tech demo"),
+    "In 1999, a small group at the studio in the city built a tech demo",
+  );
+  assert.equal(
+    withoutNames("Inside Rockstar, work on Grand Theft Auto 2 had begun"),
+    "Inside the studio, work on the game had begun",
+  );
+  // A name opening the sentence, places after words of movement, a lone "I" and months.
+  assert.equal(
+    withoutNames("Rockstar sent a small team to New York"),
+    "The studio sent a small team to the city",
+  );
+  assert.equal(
+    withoutNames("Nintendo staff worked late in Kyoto"),
+    "The studio staff worked late in the city",
+  );
+  assert.equal(
+    withoutNames("The team flew from London to Los Angeles"),
+    "The team flew from the city to the city",
+  );
+  assert.equal(
+    withoutNames("By March 1998 I could see the office"),
+    "By March 1998 I could see the office",
+  );
+  // Ordinary opening words stay.
+  assert.equal(
+    withoutNames("Developers regularly voted on which areas belonged"),
+    "Developers regularly voted on which areas belonged",
+  );
+  assert.equal(withoutNames("Team pitching to managers"), "Team pitching to managers");
+});
+
 test("seeds are deterministic per episode and sentence", () => {
   const a = sketchSeed("ep_1", "The team crammed into an office.");
   assert.equal(a, sketchSeed("ep_1", "The team crammed into an office."));
@@ -256,8 +302,10 @@ test("the workflow gets only the prompt, negative and seed substituted", async (
   const wf = await sketchWorkflow("a sketch", "no photo", 42);
   assert.equal(wf["6"]!.inputs.text, "a sketch");
   assert.equal(wf["7"]!.inputs.text, "no photo");
-  assert.equal(wf["3"]!.inputs.seed, 42);
-  assert.equal(wf["12"]!.inputs.unet_name, "flux1-dev.safetensors");
+  assert.equal(wf["25"]!.inputs.noise_seed, 42);
+  assert.equal(wf["12"]!.inputs.unet_name, "flux-2-klein-4b.safetensors");
+  assert.equal(wf["17"]!.inputs.steps, 4);
+  assert.equal(wf["22"]!.inputs.cfg, 1.0);
   assert.equal(wf["5"]!.inputs.width, 1280);
   assert.ok(!("_comment" in wf));
   // Every node reference points at a node that exists.
@@ -355,7 +403,8 @@ test("the run draws the qualifying bare lines, keeps what the judge passes and h
   assert.equal(drawn.length, 3, "the cap holds");
   assert.ok(
     drawn[0]!.includes("two-room office") &&
-      drawn[0]!.includes("in Dundee, around 1997"),
+      drawn[0]!.includes("around 1997") &&
+      !drawn[0]!.includes("Dundee"),
     drawn[0] ?? "",
   );
   assert.deepEqual(

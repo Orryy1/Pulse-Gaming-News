@@ -239,6 +239,45 @@ export function evergreenDue(
   return undefined;
 }
 
+/**
+ * Why evergreenDue found no slot (pure), for the log line a lane writes when it goes quiet: the next slot on one of
+ * the plan's days that is not yet missed, and whether it is taken or not open yet. The reason text stays the same
+ * while the state holds, so a rate-limited log does not repeat it every tick.
+ */
+export function evergreenWhyNot(
+  now: Date,
+  plan: {
+    days: string[];
+    slot: string;
+    leadMinutes: number;
+    graceMinutes: number;
+    timeZone: string;
+  },
+  taken: Date[],
+): { reason: string; slot?: Date; opensAt?: Date } {
+  if (!plan.days.length) return { reason: "no days set for this lane" };
+  const today = dayKey(now, plan.timeZone);
+  for (let d = 0; d <= 7; d++) {
+    const slot = localTime(addDays(today, d), plan.slot, plan.timeZone);
+    if (!plan.days.includes(weekday(slot, plan.timeZone))) continue;
+    const ms = slot.getTime() - now.getTime();
+    if (ms < -plan.graceMinutes * 60_000) continue;
+    if (taken.some((t) => t.getTime() === slot.getTime()))
+      return {
+        reason: "the next slot is already taken by another episode",
+        slot,
+      };
+    if (ms > plan.leadMinutes * 60_000)
+      return {
+        reason: "the next slot is not open yet",
+        slot,
+        opensAt: new Date(slot.getTime() - plan.leadMinutes * 60_000),
+      };
+    return { reason: "the next slot is due", slot };
+  }
+  return { reason: "no slot day in the next week" };
+}
+
 // --------------------------------------------------------------------- breaking
 
 export interface BreakingRule {
@@ -417,7 +456,11 @@ export async function lastPublishAt(
 }
 
 /** Every publish time on the channel from two hours ago on, done or scheduled, for spacing a new upload. */
-export async function publishTimes(db: Db, now: Date, twin = false): Promise<Date[]> {
+export async function publishTimes(
+  db: Db,
+  now: Date,
+  twin = false,
+): Promise<Date[]> {
   const rows = await db.query<{ t: string }>(
     `SELECT greatest(coalesce(publish_at, updated_at), updated_at) AS t FROM episodes
       WHERE status IN ('uploading','uploaded','published') AND youtube_status IS DISTINCT FROM 'dry_run'

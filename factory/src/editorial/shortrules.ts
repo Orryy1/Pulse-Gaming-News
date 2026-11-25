@@ -231,8 +231,20 @@ export interface ShortRuleSettings {
   shortEndPayoff: boolean;
   shortTightScript: boolean;
   shortArgumentShare: number;
+  shortCraftRules?: boolean;
   shortEraMatch?: boolean;
 }
+
+/**
+ * The writers' room test (19 Nov 2026, two blind judges, 24 published stories): what the best-marked scripts did,
+ * usable by one writer with no extra calls. Its last-line rule overrides ENDING_RULE's loop-back option.
+ */
+export const CRAFT_RULE = `Craft, from blind tests of our own Shorts against top creators':
+- At most two spoken names besides the game and its maker, and at most two numbers. Outlets and job titles go in the on-screen credit, not the voice ("reportedly" is enough).
+- One twist you could say in one sentence, one thread. If it needs explaining, pick a simpler angle.
+- Never add words to hold back an answer; keep it late by cutting what comes after it. Shorter is fine: the best scripts ran 57 to 95 words.
+- The last line is plain: the reveal itself, what it means for the player, or one dry line. No slogan, no echo of the first line, no question. Do not end every Short on "I think X because Y".
+- Let the story choose the form (told in order, a tiny story with a person in it, one contradiction left to hang, a blunt opinion then proven). Avoid stock set-ups such as "You'd assume...", "It sounds like... but", "Pulse check" and "My verdict:".`;
 
 /** The rules the news and Why writers read last, for this episode. */
 export function shortRuleNote(
@@ -246,6 +258,7 @@ export function shortRuleNote(
     cfg.shortTightScript ? TIGHT_RULE : "",
     cfg.shortEraMatch ? ERA_RULE : "",
     argumentArm(cfg, ep) ? ARGUMENT_RULE : "",
+    cfg.shortCraftRules ? CRAFT_RULE : "",
   ]
     .filter(Boolean)
     .join("\n\n");

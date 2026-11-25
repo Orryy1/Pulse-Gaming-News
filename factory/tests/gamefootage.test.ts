@@ -912,12 +912,12 @@ test("a planned game's turn asks for the most complete upload from its release d
     calls[0]!,
     /build Grand Theft Auto VI --steps=3 --recent --complete --released=2026-11-18$/,
   );
-  // Under the free-space floor (the Mac keeps 40 GB): no turn.
+  // Under the free-space floor (the Mac keeps 40 GB, a launch turn 3 GB above it): no turn.
   assert.equal(
     await sceneIndexTick(cfg, [], {
       now: () => new Date("2026-11-18T16:00:00Z"),
       run,
-      freeGb: async () => 44,
+      freeGb: async () => 42,
     }),
     undefined,
   );
@@ -965,7 +965,10 @@ test("the pass files every game, plans the queue and registers the spoiler windo
       q.games.map((g) => [g.game, g.fetch?.priority]),
       [
         [GTA, 50],
+        // Out on 18 Nov: its gameplay index is planned beside the movie (20 Nov 2026).
+        [`${GTA} (gameplay)`, 45],
         ["Another Big One", 40],
+        ["Another Big One (gameplay)", 35],
       ],
     );
     assert.equal((await readFiled(dir)).games.length, 2);
@@ -1576,4 +1579,18 @@ test("a dropped radar game comes back when a real signal names it; the queue los
     ],
     "a started index and another lane's request stay; a revived game stays",
   );
+});
+
+test("a long chapter that never names the game still gets its ending sent back when the writer says what it is about", () => {
+  // 20 Nov 2026: part 4 of the weekly explainer said "how the game ends" and the whole video stopped at the door,
+  // because the explained and documentary chapter loops never asked; they now pass the video's game as `about`.
+  const w = gtaWindow(gtaIndex());
+  setSpoilerWindows([w]);
+  try {
+    const line = "Nobody here will tell you how the game ends, but the first hours are worth it.";
+    assert.ok(spoilerProblems(line, DURING, [w.game])[0]?.includes("the ending"));
+    assert.deepEqual(spoilerProblems("The first hours are worth it.", DURING, [w.game]), []);
+  } finally {
+    setSpoilerWindows([]);
+  }
 });

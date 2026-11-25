@@ -10,6 +10,7 @@
 import { MOODS, type Mood } from "./musicplan.ts";
 import { LIBRARY_BEDS, LIBRARY_GRID, LIBRARY_MOODS } from "./bedlibrary.ts";
 import { SIGNATURE_LIBRARY } from "./signaturelib.ts";
+import { ACE_LIBRARY } from "./acebedlib.ts";
 
 /** The series-signature beds (src/render/signature.ts), by file name: their key and bar grid. */
 const SIGNATURE_BEDS = Object.values(SIGNATURE_LIBRARY).flatMap((e) =>
@@ -114,7 +115,12 @@ export const BED_GRID: Record<
 };
 export const bedGridOf = (src: string | null | undefined) => {
   const name = (src ?? "").split(/[\\/]/).pop() ?? "";
-  return BED_GRID[name] ?? SIGNATURE_BEDS.find((b) => b.name === name)?.grid;
+  return (
+    BED_GRID[name] ??
+    SIGNATURE_BEDS.find((b) => b.name === name)?.grid ??
+    // ACE_BEDS (src/render/acebeds.ts): Pulse's own beds carry their grid.
+    ACE_LIBRARY.beds.find((b) => b.file.split("/").pop() === name)?.grid
+  );
 };
 
 // ---------------------------------------------------------------- era beds (30 Oct 2026)
@@ -214,6 +220,7 @@ const MUSIC_KEY: Record<string, "D" | "E"> = {
   "music_3.mp3": "E",
   "music_4.mp3": "E",
   ...Object.fromEntries(SIGNATURE_BEDS.map((b) => [b.name, b.key])),
+  ...Object.fromEntries(ACE_LIBRARY.beds.map((b) => [b.file.split("/").pop()!, b.key])),
 };
 const TUNED = new Set<string>([
   SFX.sting,
@@ -226,6 +233,8 @@ const TUNED = new Set<string>([
   "foley/bars",
   "foley/riser",
   "foley/button",
+  // ACE_BEDS: the Pulse idents, made in both keys (src/tools/musiclab/pickace.py).
+  ...ACE_LIBRARY.idents.map((i) => i.sting),
 ]);
 
 /** The version of a sound tuned to the music playing under it ("v3/sting" or "sfx/v3/sting.mp3" alike). */

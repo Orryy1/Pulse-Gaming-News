@@ -152,8 +152,11 @@ import {
 import { hudYield, type HudSpan } from "./hudyield.ts";
 import { storyYear } from "./components/packs/screen/OldWeb.tsx";
 import { CAPTION_STYLES } from "./components/Captions.tsx";
-import { QuoteMoment as CharacterQuote, inQuote } from "./components/QuoteMoment.tsx";
+import { QuoteMoment as CharacterQuote, inQuote, quoteBedFactor } from "./components/QuoteMoment.tsx";
 import { motifsFor } from "./components/motifs/index.ts";
+import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
+import { GameLookFrame } from "./components/GameLookFrame.tsx";
+import { lookMotif } from "./components/GameLookCard.tsx";
 import type { Motif } from "./components/motifs/types.ts";
 import {
   ArcadeCabinet,
@@ -207,10 +210,20 @@ import {
   YearCounter,
 } from "./components/Structure.tsx";
 import { SketchShot } from "./components/SketchShot.tsx";
+import { DepthOrbit } from "./components/DepthOrbit.tsx";
+import { DepthCam } from "./components/DepthCam.tsx";
+import { depthCamPlan, stressedFrame } from "./depthcam.ts";
+import { CompareWipe, DepthType, ScreenshotWall } from "./components/BoldIdeas.tsx";
+import { compareWipePlan, depthTypePlan, wallPictures } from "./boldideas.ts";
+import { Box3D, BoxReveal } from "./components/Box3D.tsx";
+import { PopOut } from "./components/PopOut.tsx";
+import { popPicture } from "./popout.ts";
+import { launchBeats } from "./boxart.ts";
 // The filler visuals for lines nothing filmed can show (src/assets/fillers.ts chooses, ./fillerplan.ts times).
 import { KINETIC, type KineticStyle } from "./components/kinetic/index.ts";
 import { wordTimes } from "./components/kinetic/words.ts";
 import { DIAGRAMS, type DiagramStyle } from "./components/diagram/index.ts";
+import { ExplainerShot } from "./components/explainers/index.tsx";
 import { DocumentShot } from "./components/docs/DocumentShot.tsx";
 import { DrawnScene } from "./components/objects/index.ts";
 import { ReconShot } from "./components/recon/ReconShot.tsx";
@@ -221,6 +234,7 @@ import {
   reconFillRate,
   shotWords,
   type DiagramFillerData,
+  type ExplainerFillerData,
   type DocumentFillerData,
   type KineticFillerData,
   type MomentFiller,
@@ -260,7 +274,16 @@ export interface LongImageProp {
   moment?: number;
   label?: string;
   /** 2.5D layers (src/render/parallax.ts): drifted at different speeds so the still moves like footage. */
-  layers?: { bg: string; mid: string; fg: string };
+  layers?: { bg: string; mid: string; fg: string; mesh?: LongMeshProp };
+}
+
+/** A still's 3D photo maps as URLs (src/render/orbit.ts): the orbit and the subject pop-out use them. */
+export interface LongMeshProp {
+  depth: string;
+  far: string;
+  farDepth: string;
+  pivot: number;
+  grid: string;
 }
 
 export interface LongClipProp {
@@ -275,9 +298,24 @@ export interface LongClipProp {
   label?: string;
 }
 
+/** A Blender 3D clip (src/render/blender.ts): full frame over the picture at its time, in place of the flat graphic. */
+export interface LongBlenderProp {
+  src: string;
+  at: number; // seconds
+  seconds: number;
+  role: "rank" | "chapter" | "desk" | "data" | "globe" | "sting";
+  segment?: number;
+  entry?: number;
+  moment?: number;
+}
+
 export type LongProps = {
+  /** BLENDER_SCENES: the 3D clips, each replacing the graphic of its beat; absent or empty, the usual graphics. */
+  blender?: LongBlenderProp[];
   /** Code scenes join the graphic rotation (src/render/codescene.ts, CODE_SCENES). */
   codeScenes?: boolean;
+  /** GAME_LOOK (src/render/gamelook.ts): each game's graphics in its own look, where it has a profile. */
+  gameLook?: boolean;
   title: string; // on-screen title
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
@@ -337,6 +375,21 @@ export type LongProps = {
   camera?: CameraTechnique[];
   /** Previews only (data/smoke/camera.mts): print the camera's chosen moves to the browser console. */
   debugCamera?: boolean;
+  /** The subject pop-out (src/render/popout.ts, SUBJECT_POP): a still's subject steps in front of the title drop
+   * and of every other chapter opener when its footprint fits. Absent: off. */
+  subjectPop?: boolean;
+  /** 3D game boxes (src/render/boxart.ts, BOX_3D): a ranking entry's box turns in on its card, and a
+   * documentary's "it came out" sentence turns the game's box in beside the picture. Absent: off. */
+  box3d?: boolean;
+  /** The depth camera (src/render/depthcam.ts, PARALLAX_DEEP): wide stills with 3D photo maps are filmed on a
+   * gentle path timed to the stressed word, with a focus rack and haze, instead of the three-layer drift. Absent: off. */
+  parallaxDeep?: boolean;
+  /** CHAPTER_WALL (src/render/boldideas.ts): a chapter's title breather over a 3D wall of its own stills. Absent: off. */
+  chapterWall?: boolean;
+  /** DEPTH_TYPE: a line's stressed phrase set huge behind a still's subject, in place of its caption. Absent: off. */
+  depthType?: boolean;
+  /** COMPARE_WIPE: a line comparing two chapters' games shows both pictures behind a sliding wipe. Absent: off. */
+  compareWipe?: boolean;
   /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
   debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
@@ -530,7 +583,7 @@ const FOCUS_FRAMES = 26;
 const focusEase = (x: number) =>
   x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
 
-const Still: React.FC<{
+export const Still: React.FC<{
   src: string;
   aspect: number;
   durationFrames: number;
@@ -1171,6 +1224,11 @@ const Backdrop: React.FC<{
   powerOff?: Set<number>;
   /** Per shot index: the absolute frame of its punch-in. */
   punches?: Map<number, number>;
+  /** PARALLAX_DEEP: the shots the depth camera films, each with its stressed word's frame from the shot's start
+   * (undefined: no stressed word found, the move takes its natural beat). */
+  deep?: Map<number, number | undefined>;
+  /** DEPTH_TYPE: the shots that set their line's stressed phrase behind the subject (the word's frame from the shot's start). */
+  typed?: Map<number, { phrase: string; at: number }>;
   /** Per shot index: its game's own colour, washed softly over the picture. */
   tints?: Map<number, string>;
   /** Per shot index: how a concept sketch arrives (src/render/sketchplan.ts); absent, the static framed print. */
@@ -1201,6 +1259,8 @@ const Backdrop: React.FC<{
   looks,
   powerOff,
   punches,
+  deep,
+  typed,
   tints,
   sketches,
   photos,
@@ -1421,9 +1481,20 @@ const Backdrop: React.FC<{
                         aspect={img.aspect}
                         durationFrames={len + (i > 0 ? xf : 0)}
                           move={camera?.moves.get(i) ?? s.move}
-                      />
-                    </DisplayShot>,
-                  )
+                        />
+                      </DisplayShot>,
+                    )
+                  ) : move?.kind === "orbit" && img.layers?.mesh ? (
+                    // The 3D photo: the still as a real surface, the camera swinging round its subject.
+                    dress(
+                      <DepthOrbit
+                        src={img.src}
+                        mesh={img.layers.mesh}
+                        aspect={img.aspect}
+                        len={seqLen}
+                        dir={move.dir}
+                      />,
+                    )
                   ) : depth ? (
                     // A rack focus or a vertigo push from the still's depth layers (components/CameraMoves.tsx).
                     dress(
@@ -1439,6 +1510,32 @@ const Backdrop: React.FC<{
                         dir={i % 2 ? -1 : 1}
                       />,
                     )
+                ) : typed?.has(i) && img.layers ? (
+                  // DEPTH_TYPE: the stressed phrase rises behind the picture's subject on its word.
+                  dress(
+                    <DepthType
+                      layers={img.layers}
+                      phrase={typed.get(i)!.phrase}
+                      at={typed.get(i)!.at + (i > 0 ? xf : 0)}
+                      len={seqLen}
+                      dir={i % 2 ? -1 : 1}
+                    />,
+                  )
+                ) : deep?.has(i) && img.layers?.mesh ? (
+                  // PARALLAX_DEEP: the still as a 3D photo on a gentle path, the move and focus landing on the word.
+                  dress(
+                    <DepthCam
+                      src={img.src}
+                      mesh={img.layers.mesh}
+                      aspect={img.aspect}
+                      len={seqLen}
+                      plan={depthCamPlan(
+                        s.media.index,
+                        seqLen,
+                        deep.get(i) === undefined ? undefined : deep.get(i)! + (i > 0 ? xf : 0),
+                      )}
+                    />,
+                  )
                 ) : (
                   dress(
                     <Still
@@ -1759,6 +1856,8 @@ const EntryCard: React.FC<{
   capsuleSrc: string | null;
   durationFrames: number;
   chapter?: string; // documentary: the game, shown in the meta line; the badge reads CHAPTER
+  /** The game's 3D box in place of the flat cover (src/render/boxart.ts): its cover, or key art for a made front. */
+  box?: { src: string; portrait: boolean } | null;
 }> = ({
   rank,
   total,
@@ -1769,6 +1868,7 @@ const EntryCard: React.FC<{
   capsuleSrc,
   durationFrames,
   chapter,
+  box,
 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -1845,7 +1945,26 @@ const EntryCard: React.FC<{
             {chapter !== undefined ? "CHAPTER" : `OF ${total}`}
           </div>
         </div>
-        {capsuleSrc ? (
+        {box ? (
+          <div
+            style={{
+              opacity: card,
+              transform: `translateY(${(1 - card) * 20}px)`,
+              marginBottom: -12,
+            }}
+          >
+            <Box3D
+              src={box.src}
+              portrait={box.portrait}
+              title={chapter ?? title}
+              year={year}
+              platforms={platforms}
+              height={236}
+              len={durationFrames}
+              startAt={5}
+            />
+          </div>
+        ) : capsuleSrc ? (
           <div
             style={{
               width: 140,
@@ -2112,7 +2231,9 @@ export const ChapterInterlude: React.FC<{
   frames: number;
   bg?: BackgroundKind;
   variant?: number;
-}> = ({ number, title, game, year, quote, frames, bg, variant }) => {
+  /** CHAPTER_WALL: the chapter's stills on a 3D wall behind the title, in place of the texture. */
+  wall?: string[];
+}> = ({ number, title, game, year, quote, frames, bg, variant, wall }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const out = interpolate(frame, [frames - 12, frames], [1, 0], {
@@ -2135,7 +2256,11 @@ export const ChapterInterlude: React.FC<{
   });
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
-      {bg ? (
+      {wall?.length ? (
+        <AbsoluteFill style={{ opacity: dim }}>
+          <ScreenshotWall pictures={wall} frames={frames} seed={number} />
+        </AbsoluteFill>
+      ) : bg ? (
         <AbsoluteFill style={{ opacity: dim }}>
           <TextureBackground kind={bg} variant={variant} />
         </AbsoluteFill>
@@ -2385,6 +2510,23 @@ const Credit: React.FC<{ text: string }> = ({ text }) =>
     </div>
   ) : null;
 
+/** A Blender 3D clip full frame (BLENDER_SCENES), easing in and out over a few frames unless it fills a breather. */
+const Blender3D: React.FC<{ src: string; len: number; fadeIn: boolean }> = ({ src, len, fadeIn }) => {
+  const frame = useCurrentFrame();
+  // Strictly rising stops for any length (blenderPlaced keeps only clips of 12 frames or more).
+  const ease = Math.max(1, Math.min(fadeIn ? 6 : 1, Math.floor(len / 3)));
+  const out = Math.max(1, Math.min(6, Math.floor(len / 3)));
+  const opacity = interpolate(frame, [0, ease, len - out, len], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill style={{ opacity, backgroundColor: COLOUR.ink }}>
+      <OffthreadVideo src={src} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    </AbsoluteFill>
+  );
+};
+
 export const Long: React.FC<LongProps> = (props) => {
   const frame = useCurrentFrame();
   const { fps, durationInFrames } = useVideoConfig();
@@ -2431,6 +2573,31 @@ export const Long: React.FC<LongProps> = (props) => {
         : [],
     [props.moments, props.segments, words],
   );
+  // BLENDER_SCENES (src/render/blender.ts): each 3D clip at its frames, the beats it stands in for.
+  const blenderPlaced = useMemo(
+    () =>
+      (props.blender ?? [])
+        .map((c) => ({
+          ...c,
+          from: Math.max(0, Math.round(c.at * fps)),
+          len: Math.max(1, Math.round(c.seconds * fps)),
+        }))
+        .filter((c) => c.from < durationInFrames)
+        .map((c) => ({ ...c, len: Math.min(c.len, durationInFrames - c.from) }))
+        .filter((c) => c.len >= 12),
+    [props.blender, fps, durationInFrames],
+  );
+  const clipFrames = (role: LongBlenderProp["role"], segment: number): number =>
+    blenderPlaced.find((c) => c.role === role && c.segment === segment)?.len ?? 0;
+  const blenderMoments = useMemo(
+    () =>
+      new Set(
+        blenderPlaced
+          .filter((c) => c.entry !== undefined && c.moment !== undefined)
+          .map((c) => `${c.entry}:${c.moment}`),
+      ),
+    [blenderPlaced],
+  );
   // The sentences the plan gives a filler shot ("entry:moment" to the shot): those draw their filler and
   // nothing else of theirs (no caption, pop-in or name tag over a kinetic card or a document).
   const fillerShots = useMemo(() => {
@@ -2469,6 +2636,28 @@ export const Long: React.FC<LongProps> = (props) => {
         src: picture(d.backdrop),
         seed,
       });
+    }
+    // EXPLAINERS: the writer's explainer, its items timed to the narrator's words. An anatomy picture that cannot be
+    // found among the video's pictures drops the shot rather than fail the render.
+    if (f.family === "explainer") {
+      const d = f.data as ExplainerFillerData;
+      const pic = d.explainer.picture;
+      const served =
+        pic && !/^https?:/.test(pic)
+          ? props.images.find((im) => im.src.endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
+          : pic;
+      if (d.explainer.type === "anatomy" && !served) return null;
+      return (
+        <ExplainerShot
+          e={{ ...d.explainer, ...(served ? { picture: served } : {}) }}
+          len={len}
+          fps={fps}
+          accent={COLOUR.amber}
+          backdrop={picture(d.backdrop)}
+          seed={seed}
+          words={shotWords(words, w.start, w.end, origin)}
+        />
+      );
     }
     if (f.family === "diagram") {
       const d = f.data as DiagramFillerData;
@@ -2624,7 +2813,7 @@ export const Long: React.FC<LongProps> = (props) => {
         bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.07,
         0.42 * lift,
       ) *
-      (inQuote(quoteSpans, f) ? 0.45 : 1)
+      quoteBedFactor(quoteSpans, f)
     );
   };
   // The music changes bed at the first chapter or entry after MUSIC_SECTION_SECONDS on one bed: a 30-minute
@@ -2732,6 +2921,64 @@ export const Long: React.FC<LongProps> = (props) => {
   const drop = props.titleDrop
     ? titleDropWindow(props.segments, words, fps, breakFrames)
     : undefined;
+  // The title drop's subject pop-out: the video's own key art first, else any wide picture whose subject fits.
+  const dropPop =
+    drop && props.subjectPop
+      ? (popPicture(props.images, undefined) ??
+        popPicture(props.images, undefined, true))
+      : undefined;
+  if (props.debugCamera && drop)
+    console.log(`DEPTH ${JSON.stringify({ drop, pop: dropPop ?? null })}`);
+  // A documentary's "it came out" sentences, where the game's box turns in (BOX_3D, src/render/boxart.ts).
+  const boxBeats =
+    props.box3d && props.segments.some((s) => s.visual?.kind === "chapter")
+      ? launchBeats({
+          windows,
+          words,
+          fps,
+          busy: (e, m) => {
+            const mo = props.moments?.[e]?.[m];
+            return !!mo && (usefulGraphic(mo.graphic) || !!mo.person);
+          },
+          filler: (f) =>
+            plan.shots.some(
+              (s) => s.media.type === "filler" && f >= s.start && f < s.end,
+            ),
+        }).flatMap((bb) => {
+          const cover =
+            props.images.find(
+              (im) => im.beatIndex === bb.entry && im.kind === "capsule",
+            ) ??
+            props.images.find(
+              (im) => im.beatIndex === bb.entry && im.aspect < 0.9,
+            );
+          const art = cover
+            ? undefined
+            : props.images.find(
+                (im) => im.beatIndex === bb.entry && im.kind === "hero",
+              );
+          const seg = props.segments.find(
+            (x, k) =>
+              x.visual?.kind === "chapter" &&
+              entryOf(props.segments, k) === bb.entry,
+          );
+          const pic = cover ?? art;
+          return pic && seg?.visual
+            ? [
+                {
+                  ...bb,
+                  src: pic.src,
+                  portrait: !!cover,
+                  title: seg.visual.secondary || seg.visual.primary,
+                  year: seg.visual.items?.[0],
+                  platforms: seg.visual.items?.[1],
+                },
+              ]
+            : [];
+        })
+      : [];
+  if (props.debugCamera && boxBeats.length)
+    console.log(`DEPTH ${JSON.stringify({ boxBeats })}`);
   const marks = props.chapterIndex
     ? chapterMarks(props.segments, starts, durationInFrames, breakFrames)
     : [];
@@ -3262,6 +3509,15 @@ export const Long: React.FC<LongProps> = (props) => {
   // The suite (src/render/components/packs): each graphic kind rotates through the house design and every
   // pack style that can draw it, so two stats or two headlines in a video never look the same. A figure
   // or date keeps its small card half the time, so footage still carries most of the video.
+  // GAME_LOOK (src/render/gamelook.ts): an entry's game's style profile, else the video's game's, else Pulse's own.
+  const lookCache = new Map<number | undefined, GameLook>();
+  const lookFor = (e: number | undefined): GameLook => {
+    if (!props.gameLook) return PULSE_LOOK;
+    if (lookCache.has(e)) return lookCache.get(e)!;
+    const look = gameLookFor(entryTitle(e).title) ?? gameLookFor(props.theme) ?? PULSE_LOOK;
+    lookCache.set(e, look);
+    return look;
+  };
   // Motifs (src/render/components/motifs): the look of a game's series, console or genre, most specific first.
   const motifCache = new Map<number, Motif | undefined>();
   const motifOf = (e: number | undefined): Motif | undefined => {
@@ -3274,7 +3530,7 @@ export const Long: React.FC<LongProps> = (props) => {
         entryOf(props.segments, i) === e,
     );
     const v = k >= 0 ? props.segments[k]!.visual : undefined;
-    const m = v
+    const base = v
       ? motifsFor({
           title: displayText(
             (v.kind === "rank" ? v.primary : v.secondary) ?? "",
@@ -3284,14 +3540,19 @@ export const Long: React.FC<LongProps> = (props) => {
           theme: props.theme,
         })[0]
       : undefined;
+    // GAME_LOOK: a game with a style profile takes its look's chapter card (and keeps its motif's styles).
+    const look = lookFor(e);
+    const m = look !== PULSE_LOOK ? lookMotif(look, base) : base;
     motifCache.set(e, m);
     return m;
   };
-  const videoMotif = motifsFor({
+  const videoMotifBase = motifsFor({
     title: props.title,
     platforms: "",
     theme: props.theme,
   })[0];
+  const videoLook = props.gameLook ? gameLookFor(props.theme) : undefined;
+  const videoMotif = videoLook ? lookMotif(videoLook, videoMotifBase) : videoMotifBase;
   /** Wide pictures for a motif's panels, tiles and screens: an entry's own, or the topic's for the opening. */
   // Panel-shaped pictures first, logo banners last (src/render/motifpictures.ts), as on the thumbnail.
   const motifPictures = (e: number | undefined) =>
@@ -3795,6 +4056,69 @@ export const Long: React.FC<LongProps> = (props) => {
       { from: markOf(id)?.pushAt ?? d.from, origin: d.origin, zoom: d.zoom },
     ]),
   );
+  // PARALLAX_DEEP: the wide stills with 3D photo maps that nothing else claims (a detail push, an old game's
+  // hardware, a display, a camera move of its own, a photo's print), each with its stressed word: the moment the
+  // line is about (the windows' `at`), else the writer's emphasis or a figure or name the narrator leans on.
+  const deepShots = (() => {
+    const out = new Map<number, number | undefined>();
+    if (!props.parallaxDeep) return out;
+    const emphases = windows.flatMap((w) => {
+      const t = props.moments?.[w.entry]?.[w.moment]?.emphasis;
+      return t ? [{ start: w.start, end: w.end, text: t }] : [];
+    });
+    plan.shots.forEach((sh, i) => {
+      if (sh.media.type !== "image") return;
+      const im = props.images[sh.media.index];
+      if (!im?.layers?.mesh || im.aspect < 0.9 || im.kind === "photo" || im.kind === "sketch") return;
+      // The opening shot keeps its fade from black and a punched shot its punch-in (the plain Still draws both).
+      if (i === 0 || punches.has(i) || focusAt.has(i) || retro.has(i) || photoPlan.displays.has(i)) return;
+      const mv = cameraMoves?.plan.shots.get(i);
+      if (mv && ["orbit", "rack", "dolly", "freeze", "emotion"].includes(mv.kind)) return;
+      const w = windows.find((x) => {
+        const f = Math.round(x.at * fps);
+        return x.at - x.start >= 0.3 && f >= sh.start + 6 && f < sh.end - 6;
+      });
+      out.set(i, w ? Math.round(w.at * fps) - sh.start : stressedFrame(sh, fps, words, emphases));
+    });
+    return out;
+  })();
+  // DEPTH_TYPE: lines whose plain caption is a short stressed phrase, landing on a wide layered still, set it behind
+  // the subject instead (src/render/boldideas.ts); their caption is then not drawn.
+  const typedPlan = props.depthType
+    ? depthTypePlan(
+        windows,
+        (w) => {
+          const raw = props.moments?.[w.entry]?.[w.moment];
+          if (!raw?.emphasis || usefulGraphic(raw.graphic)) return undefined;
+          return usefulEmphasis(raw.emphasis) ? raw.emphasis : undefined;
+        },
+        plan.shots,
+        props.images,
+        fps,
+        // Shots something else draws (a detail push, an old game's hardware, a display, a camera move of their own).
+        new Set([
+          ...focusAt.keys(),
+          ...retro.keys(),
+          ...photoPlan.displays.keys(),
+          ...(cameraMoves?.plan.shots.keys() ?? []),
+          ...punches.keys(),
+          0,
+        ]),
+      )
+    : new Map<number, { phrase: string; window: number; at: number }>();
+  const typedWindows = new Set([...typedPlan.values()].map((x) => x.window));
+  // COMPARE_WIPE: a line comparing this chapter's game with another chapter's shows both games' pictures.
+  const wipes = (() => {
+    if (!props.compareWipe) return [];
+    const games = new Map<number, string>();
+    props.segments.forEach((x, k) => {
+      const e = entryOf(props.segments, k);
+      if (x.kind === "beat" && x.visual?.kind === "chapter" && e !== undefined && x.visual.secondary)
+        games.set(e, x.visual.secondary);
+    });
+    // A line already set behind its subject (DEPTH_TYPE) keeps that: a wipe over it would hide both.
+    return compareWipePlan(windows, words, games, props.images, fps).filter((w) => !typedWindows.has(w.window));
+  })();
 
   const richSoundAt = new Map<number, number>();
   const soundCands: LongSoundCandidate[] = windows
@@ -4080,6 +4404,8 @@ export const Long: React.FC<LongProps> = (props) => {
         looks={periodLooks}
         powerOff={powerOff}
         punches={punches}
+        deep={deepShots}
+        typed={typedPlan}
         sketches={sketches}
         photos={photoPlan.photos}
         displays={photoPlan.displays}
@@ -4090,6 +4416,17 @@ export const Long: React.FC<LongProps> = (props) => {
         gameLevel={gameLevel}
         audioOnly={props.audioOnly}
       />
+      {wipes.map((w, k) => (
+        <Sequence key={`wipe${k}`} from={w.from} durationInFrames={w.len} layout="none">
+          <CompareWipe
+            left={props.images[w.left]!.src}
+            right={props.images[w.right]!.src}
+            leftLabel={displayText(w.leftGame)}
+            rightLabel={displayText(w.rightGame)}
+            len={w.len}
+          />
+        </Sequence>
+      ))}
       {accents.map((a, k) => (
         <Sequence
           key={`acc${k}`}
@@ -4291,16 +4628,33 @@ export const Long: React.FC<LongProps> = (props) => {
         }
         if (s.kind === "beat" && s.visual?.kind === "rank") {
           const b = entryOf(props.segments, i);
+          // A 3D podium reveal opens the entry: the lower third waits for it.
+          const lead = Math.min(len - 60, clipFrames("rank", i));
           const capsule =
             props.images.find(
               (im) => im.beatIndex === b && im.kind === "capsule",
             ) ??
             props.images.find((im) => im.beatIndex === b && im.aspect < 0.9);
+          // The entry's box turns in (BOX_3D): its cover, else a front made from its key art.
+          const boxArt = props.box3d
+            ? capsule
+              ? { src: capsule.src, portrait: true }
+              : (() => {
+                  const art = props.images.find(
+                    (im) => im.beatIndex === b && im.kind === "hero",
+                  );
+                  return art ? { src: art.src, portrait: false } : null;
+                })()
+            : null;
+          if (props.debugCamera)
+            console.log(
+              `DEPTH ${JSON.stringify({ rank: s.visual.value_a, from: starts[i], len, box: !!boxArt, portrait: boxArt?.portrait })}`,
+            );
           return (
             <Sequence
               key={i}
-              from={starts[i]!}
-              durationInFrames={len}
+              from={starts[i]! + Math.max(0, lead)}
+              durationInFrames={len - Math.max(0, lead)}
               layout="none"
             >
               <EntryCard
@@ -4311,7 +4665,8 @@ export const Long: React.FC<LongProps> = (props) => {
                 year={s.visual.items?.[0]}
                 platforms={s.visual.items?.[1]}
                 capsuleSrc={capsule?.src ?? null}
-                durationFrames={len}
+                durationFrames={len - Math.max(0, lead)}
+                box={boxArt}
               />
             </Sequence>
           );
@@ -4379,9 +4734,27 @@ export const Long: React.FC<LongProps> = (props) => {
           const sameMotif =
             !!motif?.card &&
             chapterEntries.every((e) => motifOf(e)?.id === motif.id);
-          const look: string =
+          const baseLook: string =
             sameMotif && !(props.quietBreaks ?? []).length ? "motif" : "title";
+          // SUBJECT_POP: on every other title opener (never a quiet break or the motif card), the chapter's subject
+          // steps in front of its title when a picture's footprint lets it overlap the words a little without hiding
+          // them (src/render/popout.ts). The pop-out is the title interlude with depth, so the one-look rule holds.
+          const pop =
+            props.subjectPop &&
+            baseLook === "title" &&
+            !(props.quietBreaks ?? []).includes(breakIndex) &&
+            ((b ?? 0) + props.variant) % 2 === 1
+              ? popPicture(props.images, b)
+              : undefined;
+          const look: string = pop ? "pop" : baseLook;
           const board = look === "board";
+          if (props.debugCamera)
+            console.log(
+              `DEPTH ${JSON.stringify({ chapter: b, look, from: starts[i], pause, card: starts[i]! + pause })}`,
+            );
+          // BLENDER_SCENES: the 3D chapter card fills the breather; the case-file desk opens the chapter's body.
+          const card3d = clipFrames("chapter", i) > 0;
+          const desk = Math.min(Math.max(0, span - 60), clipFrames("desk", i));
           const interlude = {
             number: s.visual.value_a ?? (b ?? 0) + 1,
             title: s.visual.primary,
@@ -4394,7 +4767,7 @@ export const Long: React.FC<LongProps> = (props) => {
           return (
             <React.Fragment key={i}>
               {/* The title drop fills the first chapter's breather instead of its interlude. */}
-              {drop?.breakSegment === i ? null : pause && board ? (
+              {drop?.breakSegment === i || card3d ? null : pause && board ? (
                 <Sequence
                   from={starts[i]!}
                   durationInFrames={pause}
@@ -4409,6 +4782,32 @@ export const Long: React.FC<LongProps> = (props) => {
                     frames={pause}
                     variant={props.variant + i}
                   />
+                </Sequence>
+              ) : pause && look === "pop" && pop ? (
+                <Sequence
+                  from={starts[i]!}
+                  durationInFrames={pause}
+                  layout="none"
+                >
+                  {(() => {
+                    const im = props.images[pop.index]!;
+                    const mesh = im.layers!.mesh!;
+                    return (
+                      <PopOut
+                        src={im.src}
+                        far={mesh.far}
+                        fg={im.layers!.fg}
+                        grid={mesh.grid}
+                        len={pause}
+                        align={pop.layout.align}
+                        kicker={`CHAPTER ${s.visual.value_a ?? (b ?? 0) + 1}`}
+                        title={s.visual.primary}
+                        sub={[s.visual.secondary, s.visual.items?.[0]]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      />
+                    );
+                  })()}
                 </Sequence>
               ) : pause && look === "motif" && motif?.card ? (
                 <Sequence
@@ -4455,6 +4854,11 @@ export const Long: React.FC<LongProps> = (props) => {
                       props.variant,
                     )}
                     variant={props.variant}
+                    wall={
+                      props.chapterWall
+                        ? wallPictures(props.images, b).map((k) => props.images[k]!.src)
+                        : undefined
+                    }
                     number={s.visual.value_a ?? (b ?? 0) + 1}
                     title={s.visual.primary}
                     game={s.visual.secondary}
@@ -4477,8 +4881,8 @@ export const Long: React.FC<LongProps> = (props) => {
                 </Sequence>
               ) : null}
               <Sequence
-                from={starts[i]! + pause}
-                durationInFrames={span}
+                from={starts[i]! + pause + desk}
+                durationInFrames={span - desk}
                 layout="none"
               >
                 <EntryCard
@@ -4490,7 +4894,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   year={s.visual.items?.[0]}
                   platforms={s.visual.items?.[1]}
                   capsuleSrc={capsule?.src ?? null}
-                  durationFrames={span}
+                  durationFrames={span - desk}
                 />
               </Sequence>
             </React.Fragment>
@@ -4550,6 +4954,8 @@ export const Long: React.FC<LongProps> = (props) => {
       {windows.map((w, k) => {
         const raw = props.moments?.[w.entry]?.[w.moment];
         if (!raw) return null;
+        // Its 3D version is on screen instead (BLENDER_SCENES).
+        if (blenderMoments.has(`${w.entry}:${w.moment}`)) return null;
         // The sentence's filler shot is its whole picture: nothing of its own is drawn over it.
         if (fillerShots.has(`${w.entry}:${w.moment}`)) return null;
         // A rank graphic repeats the rank card and a fragment ("SERIES AT") reads as a glitch: both are left out.
@@ -4563,7 +4969,7 @@ export const Long: React.FC<LongProps> = (props) => {
             ? raw.graphic
             : { ...raw.graphic, kind: "none" as const },
           emphasis:
-            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k)
+            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k)
               ? raw.emphasis
               : "",
         };
@@ -4619,6 +5025,7 @@ export const Long: React.FC<LongProps> = (props) => {
             durationInFrames={len}
             layout="none"
           >
+            <LookContext.Provider value={lookFor(w.entry)}>
             {packFor.get(k) && m.graphic.kind !== "none" ? (
               React.createElement(packFor.get(k)!.component, {
                 g: m.graphic,
@@ -4728,6 +5135,11 @@ export const Long: React.FC<LongProps> = (props) => {
                 ) : null}
               </Sequence>
             ) : null}
+            {/* GAME_LOOK: the look's corners and HUD over a full-screen pack graphic. */}
+            {packFor.get(k) && m.graphic.kind !== "none" && lookFor(w.entry) !== PULSE_LOOK ? (
+              <GameLookFrame len={len} variant={props.variant + k} />
+            ) : null}
+            </LookContext.Provider>
           </Sequence>
         );
       })}
@@ -4901,6 +5313,24 @@ export const Long: React.FC<LongProps> = (props) => {
           </React.Fragment>
         ) : null,
       )}
+      {/* A documentary's launch beats: the game's box turns in beside the picture as the narrator says it came out. */}
+      {boxBeats.map((bb) => (
+        <Sequence
+          key={`box${bb.entry}`}
+          from={bb.from}
+          durationInFrames={bb.len}
+          layout="none"
+        >
+          <BoxReveal
+            src={bb.src}
+            portrait={bb.portrait}
+            title={bb.title}
+            year={bb.year}
+            platforms={bb.platforms}
+            len={bb.len}
+          />
+        </Sequence>
+      ))}
       {/* Open-loop recalls: the earlier shot, held, with its question, as the answer is spoken. */}
       {cues.map((c, k) => (
         <Sequence
@@ -4922,13 +5352,48 @@ export const Long: React.FC<LongProps> = (props) => {
           <Sfx name={SFX.air[k % SFX.air.length]!} volume={LEVEL.airLong} />
         </Sequence>
       ))}
+      {/* BLENDER_SCENES: the 3D clips, full frame over the picture and its callouts, cues and insets at their beats
+          (only the title drop is drawn over them, and a 3D card never takes the title drop's breather). */}
+      {blenderPlaced
+        .filter((c) => !(c.role === "chapter" && c.segment === drop?.breakSegment))
+        .map((c) => (
+          <Sequence key={`b3d${c.from}`} from={c.from} durationInFrames={c.len} layout="none">
+            <Blender3D src={resolveSrc(c.src)!} len={c.len} fadeIn={c.role !== "chapter"} />
+          </Sequence>
+        ))}
       {/* The title drop: the title lands on the cold open's last beat, with a swell peaking as it lands (in a
           breather the first chapter's own swell already lands there, so it gets no second one). */}
       {drop ? (
         <Sequence from={drop.from} durationInFrames={drop.len} layout="none">
           {/* A video with a series look (the GTA cover grid and the like) lands its title on that look's own
               card, as the opening did before the title drop; the plain drop is for the rest. */}
-          {videoMotif?.card && drop.len - drop.landAt >= 60 ? (
+          {dropPop && drop.len >= 90 ? (
+            // The key art's subject steps in front of the title (SUBJECT_POP, src/render/popout.ts).
+            (() => {
+              const im = props.images[dropPop.index]!;
+              return (
+                <PopOut
+                  src={im.src}
+                  far={im.layers!.mesh!.far}
+                  fg={im.layers!.fg}
+                  grid={im.layers!.mesh!.grid}
+                  len={drop.len}
+                  align={dropPop.layout.align}
+                  landAt={Math.max(12, drop.landAt)}
+                  kicker={
+                    props.recap
+                      ? "THIS WEEK"
+                      : documentary
+                        ? "DOCUMENTARY"
+                        : "RANKED"
+                  }
+                  title={props.title}
+                  sub={props.kicker}
+                  fromBlack={false}
+                />
+              );
+            })()
+          ) : videoMotif?.card && drop.len - drop.landAt >= 60 ? (
             <Sequence
               from={Math.max(0, drop.landAt - MOTIF_LEAD)}
               durationInFrames={drop.len - Math.max(0, drop.landAt - MOTIF_LEAD)}

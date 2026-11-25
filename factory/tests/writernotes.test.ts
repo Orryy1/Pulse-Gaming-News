@@ -409,12 +409,16 @@ test("a chapter short of evidence gets more articles, credited, and not a tighte
 
 // ---------------------------------------------------------------- the whole writing step, on a fake model
 
-async function writeDoc(chapterAnswer: (no: number, content: string) => unknown) {
+async function writeDoc(
+  chapterAnswer: (no: number, content: string) => unknown,
+  overrides: Partial<Services["cfg"]> = {},
+) {
   const db = await testDb();
   const cfg = testConfig(await tmpDir(), {
     longformEnabled: true,
     docEnabled: true,
     docOpenLoops: false,
+    ...overrides,
   });
   const plans = [1, 2, 3, 4, 5, 6, 7].map((n) => ({
     chapter_title: `Chapter ${n}`,
@@ -462,8 +466,11 @@ async function writeDoc(chapterAnswer: (no: number, content: string) => unknown)
   );
   await advance(s, (await getEpisode(db, "ep_doc"))!);
   const ep = (await getEpisode(db, "ep_doc"))!;
+  const events = await db.query<{ kind: string; detail: Record<string, unknown> }>(
+    `SELECT kind, detail FROM events WHERE episode_id = 'ep_doc' ORDER BY id`,
+  );
   await db.close();
-  return { ep, told, researched, asked: () => no };
+  return { ep, told, researched, events, asked: () => no };
 }
 
 const storyChapter = () =>
@@ -512,18 +519,74 @@ test("the first refusal on the last try still gets its go with the wider sources
   assert.doesNotMatch(JSON.stringify(ep.script_json), /SOURCE/);
 });
 
-test("a writer that keeps refusing stops the video with a loud alert, and it never gets to the voice", async () => {
+test("a writer that keeps refusing stops the video with a loud alert when dropping is off, and it never gets to the voice", async () => {
   let asked = 0;
   const { ep, told } = await writeDoc((_no, content) => {
     if (!isChapter(2, content)) return storyChapter();
     asked++;
     return chapter(fixture.bad_beats[3]!);
-  });
+  }, { docDropRefusedChapter: false });
   assert.equal(ep.status, "failed");
   assert.match(ep.last_error ?? "", /refused/);
   assert.equal(asked, 3);
   assert.ok(told.some((m) => m.ping && /Stopped the documentary/.test(m.content ?? "")));
   assert.equal(ep.script_json, null);
+});
+
+// 18 Nov 2026: chapter 7 of "GTA 6 Map Explained: Leonida" was refused after widening and the whole documentary,
+// six chapters already written, was lost. DOC_DROP_REFUSED_CHAPTER drops the chapter and goes on.
+const chapterCards = (ep: { script_json: unknown }) =>
+  ((ep.script_json as { beats?: Array<{ visual?: { kind?: string; title?: string } }> })?.beats ?? []).filter(
+    (b) => b.visual?.kind === "chapter",
+  );
+
+test("a chapter the writer keeps refusing is dropped, with its chapter card, and the documentary goes on", async () => {
+  const { ep, told, events } = await writeDoc((_no, content) =>
+    isChapter(7, content) ? chapter(fixture.bad_beats[3]!) : storyChapter(),
+  );
+  assert.notEqual(ep.status, "failed", ep.last_error ?? "");
+  assert.ok(ep.script_json, "the script was written");
+  const cards = chapterCards(ep);
+  assert.equal(cards.length, 6, "six chapters go out");
+  assert.doesNotMatch(JSON.stringify(ep.script_json), /SOURCE|recorded or published/);
+  const dropped = events.filter((e) => e.kind === "doc_chapter_dropped");
+  assert.equal(dropped.length, 1);
+  assert.equal(dropped[0]!.detail.chapter, 7);
+  assert.ok(told.some((m) => /dropped chapter 7/.test(m.content ?? "")), "a notice says so");
+  assert.ok(!told.some((m) => /Stopped the documentary/.test(m.content ?? "")));
+});
+
+test("a middle chapter is dropped too while five can still be written", async () => {
+  const { ep, events } = await writeDoc((_no, content) =>
+    isChapter(2, content) || isChapter(5, content) ? chapter(fixture.bad_beats[3]!) : storyChapter(),
+  );
+  assert.notEqual(ep.status, "failed", ep.last_error ?? "");
+  assert.equal(chapterCards(ep).length, 5);
+  assert.deepEqual(
+    events.filter((e) => e.kind === "doc_chapter_dropped").map((e) => e.detail.chapter),
+    [2, 5],
+  );
+});
+
+test("the first chapter is never dropped: a refusal there still stops the video", async () => {
+  const { ep, told } = await writeDoc((_no, content) =>
+    isChapter(1, content) ? chapter(fixture.bad_beats[3]!) : storyChapter(),
+  );
+  assert.equal(ep.status, "failed");
+  assert.match(ep.last_error ?? "", /chapter 1 refused/);
+  assert.ok(told.some((m) => m.ping && /Stopped the documentary.*first chapter/.test(m.content ?? "")));
+});
+
+test("once dropping would leave fewer than DOC_MIN_CHAPTERS, the refusal stops the video", async () => {
+  const { ep, told, events } = await writeDoc((_no, content) =>
+    isChapter(2, content) || isChapter(3, content) || isChapter(4, content)
+      ? chapter(fixture.bad_beats[3]!)
+      : storyChapter(),
+  );
+  assert.equal(ep.status, "failed");
+  assert.match(ep.last_error ?? "", /chapter 4 refused/);
+  assert.equal(events.filter((e) => e.kind === "doc_chapter_dropped").length, 2);
+  assert.ok(told.some((m) => m.ping && /under the minimum of 5/.test(m.content ?? "")));
 });
 
 // ---------------------------------------------------------------- the empty slate, and what stands in for people

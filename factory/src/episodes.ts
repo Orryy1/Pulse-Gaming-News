@@ -46,6 +46,10 @@ export interface Episode {
 export interface EpisodeAssets {
   /** GRAPHICS_FRAME_CHECK faulted these cards ("card3") on a render: the next plan's audit leaves them out. */
   gfxMuted?: string[];
+  /** PREMAKE_REFRESH (src/premakerefresh.ts): a pre-made Short made again before upload, and the made one kept. */
+  premadeRefresh?: import("./premakerefresh.ts").PremakeRefresh;
+  /** SHORT_FOOTAGE_WAIT: the Short waited once for a YouTube pause to lift and gathered again. */
+  footageWait?: { at: string; why: string };
   /** Media was gathered a second time, richer, after a red media rubric. */
   rich?: boolean;
   /** A long video's sentences without a picture of their own were topped up, one search each (fillSentencePictures). */
@@ -119,6 +123,10 @@ export interface EpisodeAssets {
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
   heroCut?: { fg: string; x?: number };
   plan?: import("./render/plan.ts").RenderPlan; // the render plan, persisted so a retried render is identical
+  /** SHOT_PLAN_PANEL: the panel's arm, its candidate plans with their measurements and marks, the pick and the fix. */
+  plan_panel?: import("./render/planpanel.ts").PlanPanelRecord;
+  /** FRAME_FOCUS: the arm, and for the check arm each spoken line's focus verdict and the summary. */
+  frame_focus?: import("./qa/framefocus.ts").FrameFocusRecord;
   images?: Array<{
     file: string;
     kind: string;
@@ -140,7 +148,15 @@ export interface EpisodeAssets {
     role?: "hook";
     /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
     libKey?: string;
-    layers?: { bg: string; mid: string; fg: string; fgx?: number }; // 2.5D depth layers (src/render/parallax.ts)
+    layers?: {
+      bg: string;
+      mid: string;
+      fg: string;
+      fgx?: number;
+      mesh?: import("./render/parallax.ts").Mesh; // the 3D photo maps (src/render/orbit.ts)
+    }; // 2.5D depth layers (src/render/parallax.ts)
+    /** The picture before it was upscaled (src/assets/upscale.ts); `file` is then the upscaled copy. */
+    upscaledFrom?: string;
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;

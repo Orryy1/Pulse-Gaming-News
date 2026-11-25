@@ -350,8 +350,11 @@ export const FactCard: React.FC<{
   quickFigures?: boolean;
   /** A series in release order: the rank cards show the year in the badge. */
   chrono?: boolean;
+  /** SHORT_BOX_3D: a rank card's cover turns in as the game's box. */
+  box3d?: boolean;
 }> = ({
   chrono = false,
+  box3d = false,
   quickFigures = false,
   segment,
   accent,
@@ -548,6 +551,7 @@ export const FactCard: React.FC<{
         date={v.date_to}
         requirement={requirement}
         chrono={chrono}
+        box3d={box3d && capsule?.kind === "capsule"}
       />
     ) : v.kind === "timeline" && v.date_from && v.date_to ? (
       <Timeline

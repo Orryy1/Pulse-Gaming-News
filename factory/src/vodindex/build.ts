@@ -31,6 +31,9 @@ import {
   type SceneShot,
   type TimedWord,
 } from "../sceneindex/schema.ts";
+import type { Embedder } from "../semantic/embed.ts";
+import { embedShots, loadFailedShots, loadShotVectors, unembedded, vectorFile } from "../semantic/shots.ts";
+import { loadVodTags, tagVodStretches, untagged, type TagDeps } from "./tags.ts";
 import {
   asSceneIndex,
   emptyVodIndex,
@@ -65,6 +68,11 @@ export interface VodBuildSettings {
   chunkSeconds: number;
   /** Shots looked at in one piece of work. */
   describeBatch: number;
+  /**
+   * VOD_TAGS: stretches tagged in one piece of work (src/vodindex/tags.ts) once every shot is described, then the
+   * shots' meaning vectors; unset: no tags.
+   */
+  tags?: { batch: number; places: string[]; embedder?: Embedder; model?: string; embedBatch?: number };
 }
 
 export interface VodBuildDeps {
@@ -74,6 +82,8 @@ export interface VodBuildDeps {
   visionUp?: () => Promise<boolean>;
   duration?: (file: string) => Promise<number>;
   now?: () => Date;
+  /** VOD_TAGS: stand-ins for the tagger's frame grab and model (tests). */
+  tag?: TagDeps;
 }
 
 export async function probeDuration(file: string): Promise<number> {
@@ -367,7 +377,7 @@ export async function describeVodShots(
   return { index: await persist(), described, failed };
 }
 
-export type VodStep = "stretch" | "described" | "waiting" | "done";
+export type VodStep = "stretch" | "described" | "tagged" | "embedded" | "waiting" | "done";
 
 /** One bounded piece of work on a recording's index. Call again until it answers "done". */
 export async function vodIndexStep(
@@ -387,6 +397,30 @@ export async function vodIndexStep(
       return { index: v, did: "waiting" };
     const r = await describeVodShots(v, s, s.describeBatch, deps);
     return { index: r.index, did: r.described ? "described" : "waiting" };
+  }
+  if (s.tags) {
+    if (untagged(v, await loadVodTags(s.dataDir, v.vodId)).length) {
+      if (!(await (deps.visionUp ?? visionUp)()))
+        return { index: v, did: "waiting" };
+      const r = await tagVodStretches(v, { dataDir: s.dataDir, places: s.tags.places, limit: s.tags.batch }, deps.tag);
+      return { index: v, did: r.tagged ? "tagged" : "waiting" };
+    }
+    if (s.tags.embedder && s.tags.model) {
+      const file = vectorFile(vodIndexDir(s.dataDir, v.vodId), s.tags.model);
+      if (unembedded(v.shots, await loadShotVectors(file), await loadFailedShots(file)).length) {
+        const r = await embedShots({
+          shots: v.shots,
+          video: v.file,
+          vectorsFile: file,
+          embedder: s.tags.embedder,
+          model: s.tags.model,
+          work: vodIndexDir(s.dataDir, v.vodId),
+          limit: s.tags.embedBatch ?? 600,
+          ...(deps.tag?.grab ? { grab: deps.tag.grab } : {}),
+        });
+        return { index: v, did: r.added ? "embedded" : "waiting" };
+      }
+    }
   }
   return { index: v, did: "done" };
 }

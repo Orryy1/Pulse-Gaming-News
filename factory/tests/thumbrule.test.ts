@@ -13,7 +13,14 @@ import {
   artVerdict,
   cutoutFaceProblems,
   cutoutProblems,
+  cutOffProblems,
+  designProblems,
+  echoWords,
   edgeDensity,
+  MAX_PANELS,
+  panelCount,
+  posterCapPx,
+  titleEchoProblems,
   MAX_EDGE_DENSITY,
   heroRuleDesigns,
   heroRuleFallback,
@@ -53,21 +60,20 @@ const shot = (
   aspect = 1.78,
 ): HeroArtImage => ({ file, kind, aspect, beatIndex, provenance });
 
-test("the words: 2-4 that mean something to a stranger", () => {
+test("the words: 2-5 that mean something to a stranger", () => {
   for (const ok of [
     "HALO 3 ISN'T #1",
     "BLACK OPS IS #1",
     "GTA 5 STILL #1",
     "13 YEARS OF SILENCE",
     "THE COMEBACK",
+    "THE CITY CAME BACK",
+    "NOBODY SAW THIS ONE COMING",
   ])
     assert.deepEqual(thumbWordProblems(ok), [], ok);
-  // One giant word is allowed, even the title's own promise (GrandGecko's EVERYTHING).
-  assert.deepEqual(thumbWordProblems("EVERYTHING"), []);
-  assert.match(
-    thumbWordProblems("EVERY HALO GAME RANKED AGAIN")[0]!,
-    /5 words/,
-  );
+  // 19 Nov 2026: 2-5 words, so one word alone no longer passes.
+  assert.match(thumbWordProblems("EVERYTHING")[0]!, /1 words/);
+  assert.match(thumbWordProblems("ONE TWO THREE FOUR FIVE SIX")[0]!, /6 words/);
   assert.match(thumbWordProblems("HALO 2 AT 5?")[0]!, /means nothing/);
   assert.match(thumbWordProblems("IT STARTED IN DUNDEE")[0]!, /ruled out/);
   assert.match(
@@ -89,17 +95,21 @@ test("the words a video gets: the writer's when they pass, plain ones when they 
   // The rejected "HALO 2 AT 5?" never reaches the thumbnail.
   assert.equal(
     heroThumbWords({ ...ranking, youtube: { thumb_text: "HALO 2 AT 5?" } }),
-    "HALO RANKED",
+    "ONLY ONE IS #1",
+  );
+  // Words that repeat the title give way too.
+  assert.equal(
+    heroThumbWords({ ...ranking, youtube: { thumb_text: "HALO CAMPAIGNS RANKED" } }),
+    "ONLY ONE IS #1",
   );
   assert.equal(
     heroThumbWords({ headline: "x", game_title: "Grand Theft Auto VI" }),
-    "THE GRAND THEFT AUTO VI STORY".length > 26
-      ? "THE REAL STORY"
-      : "THE GRAND THEFT AUTO VI STORY",
+    "WHAT REALLY HAPPENED",
   );
+  // A fallback that would echo the title moves to the next one.
   assert.equal(
-    heroThumbWords({ headline: "x", game_title: "Halo" }),
-    "THE HALO STORY",
+    heroThumbWords({ headline: "What Really Happened to Halo Infinite", game_title: "Halo" }),
+    "THE REAL STORY",
   );
   assert.equal(
     heroThumbWords({ headline: "x", game_title: "This week", recap: true }),
@@ -266,7 +276,7 @@ test("a ranking's words name the game on the thumbnail, or its winner is", () =>
   );
 });
 
-test("frames and panels are off the route; the GTA grid is the one approved exception", () => {
+test("frames and panels are off the route, the GTA grid too since the 19 Nov review", () => {
   for (const l of [
     "split",
     "hero",
@@ -280,10 +290,11 @@ test("frames and panels are off the route; the GTA grid is the one approved exce
   ])
     assert.ok(layoutProblem(l), l);
   assert.equal(layoutProblem("poster"), undefined);
-  assert.equal(layoutProblem("motif", "gta"), undefined);
+  // The GTA cover grid failed on GTA 6 Before You Buy (66 views) and Vice City (141).
+  assert.ok(layoutProblem("motif", "gta"));
   // The rejected Halo visor frame.
   assert.ok(layoutProblem("motif", "scifi"));
-  assert.ok(approvedGrid("gta"));
+  assert.ok(!approvedGrid("gta"));
   assert.ok(!approvedGrid("military"));
 });
 
@@ -411,7 +422,7 @@ test("the check on a real file fails a flat picture; an unreadable one is never 
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("the designs: posters on different pictures, the GTA grid first, and nothing when there is no picture", async () => {
+test("the designs: posters on different pictures, never a grid, and nothing when there is no picture", async () => {
   const images = [
     shot("a.jpg", 1, igdb("Halo 3"), "hero"),
     shot("b.jpg", 1, igdb("Halo 3")),
@@ -446,7 +457,7 @@ test("the designs: posters on different pictures, the GTA grid first, and nothin
         motifId: "gta",
       })
     )[0]!.layout,
-    "motif",
+    "poster",
   );
   // Any other motif's card stays off the route.
   assert.equal(
@@ -562,17 +573,126 @@ test("a cut-out that removes part of a face is caught, and a poster never draws 
   assert.ok(!("fgFile" in out[0]!.thumb), "the art is drawn whole");
 });
 
-test("with no usable picture the plain design carries the release, legal words, never the wrong game", () => {
+test("with no ranked picture a poster still carries the release: legal words, no subtitle, never the wrong game", () => {
   const split = {
     layout: "split",
-    thumb: { headline: "HALO 2 AT 5?", imageFile: "rdr.jpg" },
+    thumb: {
+      headline: "HALO 2 AT 5?",
+      kicker: "DOCUMENTARY",
+      game: "WORLD, STORY AND",
+      imageFile: "rdr.jpg",
+    },
   };
   const script = { headline: "x", game_title: "Halo" };
   const [wrong] = heroRuleFallback(split, script, steam("Red Dead Redemption 2"));
+  assert.equal(wrong!.layout, "poster");
   assert.equal(wrong!.thumb.imageFile, null);
-  assert.equal(wrong!.thumb.headline, "THE HALO STORY");
+  assert.equal(wrong!.thumb.headline, "WHAT REALLY HAPPENED");
   const [right] = heroRuleFallback(split, script, igdb("Halo 3"));
   assert.equal(right!.thumb.imageFile, "rdr.jpg");
+  assert.equal(right!.thumb.kicker, "");
+  assert.equal(right!.thumb.game, "");
+  assert.deepEqual(designProblems(right!.thumb, script), []);
+});
+
+// ------------------------------------------------------------------------------------------------ 19 Nov review
+
+test("words that repeat the title are caught; words that open a question pass", () => {
+  // The failing thumbnails' words.
+  assert.equal(
+    titleEchoProblems("WHY GTA 6 TOOK THIRTEEN YEARS", "Why GTA 6 Took Thirteen Years | Documentary").length,
+    1,
+  );
+  assert.equal(titleEchoProblems("VICE CITY", "Why GTA 6 Had to Go Back to Vice City").length, 1);
+  assert.equal(
+    titleEchoProblems("EVERY MAINLINE GTA GAME RANKED", "Every Mainline GTA Game, Ranked Worst to Best").length,
+    1,
+  );
+  assert.equal(titleEchoProblems("HALO RANKED", "Every Halo Campaign Ranked Worst to Best").length, 1);
+  // Grand Theft Auto, roman numerals and number words count as the same words.
+  assert.equal(
+    titleEchoProblems("GRAND THEFT AUTO VI 13 YEARS", "Why GTA 6 Took Thirteen Years").length,
+    1,
+  );
+  assert.deepEqual(echoWords("Why GTA VI Took Thirteen Years"), ["gta", "6", "took", "13", "years"]);
+  // The passing ones.
+  assert.deepEqual(titleEchoProblems("THE CITY CAME BACK", "Why San Andreas Never Got a Sequel"), []);
+  assert.deepEqual(titleEchoProblems("HALO 3 ISN'T #1", "Every Halo Campaign Ranked Worst to Best"), []);
+  assert.deepEqual(titleEchoProblems("13 YEARS OF SILENCE", "Why GTA 6 Took Thirteen Years"), []);
+  // One shared word is never an echo, and no title means nothing to compare.
+  assert.deepEqual(titleEchoProblems("HALO", "Every Halo Campaign Ranked"), []);
+  assert.deepEqual(titleEchoProblems("VICE CITY", undefined, ""), []);
+});
+
+test("cut-off text is caught", () => {
+  assert.equal(cutOffProblems("WORLD, STORY AND").length, 1);
+  assert.equal(cutOffProblems("THE STORY OF THE").length, 1);
+  assert.equal(cutOffProblems("EVERYTHING WE KNOW...").length, 1);
+  assert.equal(cutOffProblems("EVERYTHING WE KNOW…").length, 1);
+  assert.equal(cutOffProblems("WORLD, STORY,").length, 1);
+  assert.deepEqual(cutOffProblems("THE CITY CAME BACK"), []);
+  assert.deepEqual(cutOffProblems("HALO 3 ISN'T #1"), []);
+  assert.deepEqual(cutOffProblems(""), []);
+});
+
+test("more than three pictures is a collage", () => {
+  assert.equal(MAX_PANELS, 3);
+  assert.equal(panelCount({ imageFile: "a.jpg", fgFile: "a_fg.png" }), 1);
+  assert.equal(panelCount({ imageFile: "a.jpg", image2File: "b.jpg" }), 2);
+  const grid = {
+    layout: "motif",
+    headline: "THE CITY CAME BACK",
+    imageFile: "a.jpg",
+    pictureFiles: ["a.jpg", "b.jpg", "c.jpg", "d.jpg", "e.jpg", "f.jpg", "g.jpg", "h.jpg"],
+  };
+  assert.equal(panelCount(grid), 8);
+  assert.ok(
+    designProblems(grid, { headline: "GTA 6 Before You Buy" }).some((p) => /8 pictures/.test(p)),
+  );
+  assert.ok(
+    !designProblems(
+      { ...grid, layout: "poster", pictureFiles: ["a.jpg", "b.jpg", "c.jpg"] },
+      { headline: "x" },
+    ).some((p) => /pictures/.test(p)),
+  );
+});
+
+test("secondary lines too small for 168 px are caught, and a poster's words are always big enough", () => {
+  // The old split template: label pill, the whole title as the headline and a cut subtitle.
+  const split = {
+    layout: "split",
+    headline: "WHY GTA 6 TOOK THIRTEEN YEARS",
+    kicker: "DOCUMENTARY",
+    game: "WORLD, STORY AND",
+    imageFile: "a.jpg",
+  };
+  const problems = designProblems(split, {
+    headline: "Why GTA 6 Took Thirteen Years",
+    youtube: { title: "Why GTA 6 Took Thirteen Years | Documentary" },
+  });
+  assert.ok(problems.some((p) => /split design/.test(p)), "layout");
+  assert.ok(problems.some((p) => /repeats the title/.test(p)), "echo");
+  assert.ok(problems.some((p) => /"DOCUMENTARY" is .* too small/.test(p)), "kicker");
+  assert.ok(problems.some((p) => /"WORLD, STORY AND" is cut off/.test(p)), "cut");
+  assert.ok(problems.some((p) => /words, the rule|too long/.test(p)), "length");
+  // Every legal poster headline stays readable in the feed.
+  for (const h of ["GO", "THE CITY CAME BACK", "ABCDEFGHIJKLM NOPQRSTUVWXY"])
+    assert.ok(posterCapPx(h) >= MIN_CAP_PX, h);
+  // The two passing thumbnails, as posters, have nothing wrong.
+  assert.deepEqual(
+    designProblems(
+      { layout: "poster", headline: "THE CITY CAME BACK", kicker: "", game: "", imageFile: "cj.jpg" },
+      { headline: "Why San Andreas Never Got a Sequel" },
+    ),
+    [],
+  );
+  assert.deepEqual(
+    designProblems(
+      { layout: "poster", headline: "HALO 3 ISN'T #1", kicker: "", game: "", imageFile: "chief.jpg" },
+      { headline: "Every Halo Campaign Ranked Worst to Best" },
+    ),
+    [],
+  );
 });
 
 test("a failed poster gives way to the reserve, then a variant, and with none left stays as rendered", () => {

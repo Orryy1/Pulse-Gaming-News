@@ -55,6 +55,7 @@ import { findSteamApp } from "../assets/steam.ts";
 import { libraryFiles, recordingsOf } from "../assets/library.ts";
 import { gameplayIndexName } from "../sceneindex/schema.ts";
 import { queueGame, readQueue, writeQueue } from "../sceneindex/job.ts";
+import { isLibraryTrailer, voicelinesFile } from "../assets/trailerlines.ts";
 
 const exec = promisify(execFile);
 const [command, game0, ...rest] = process.argv.slice(2);
@@ -495,7 +496,13 @@ async function main(): Promise<void> {
             if (await fs.stat(dest).catch(() => undefined)) continue;
             if (await download(store.remoteUrl(s.remote, dir, item.file), dest)) pulled++;
           }
-          console.log(`${lib.game}: ${lib.items.length} items in the index, ${pulled} media files pulled`);
+          // Trailer voice lines (src/assets/trailerlines.ts) are made on the PC: their small lines files come over
+          // every sync, so a Short on the Mac can quote them (the voice mix itself is read from the PC when needed).
+          let lines = 0;
+          for (const item of lib.items.filter(isLibraryTrailer)) {
+            if (await download(store.remoteUrl(s.remote, dir, voicelinesFile(item.id).split(path.sep).join("/")), path.join(dir, voicelinesFile(item.id)))) lines++;
+          }
+          console.log(`${lib.game}: ${lib.items.length} items in the index, ${pulled} media files pulled, ${lines} trailer lines files`);
         }
       }
     }

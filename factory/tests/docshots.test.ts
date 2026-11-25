@@ -647,3 +647,10 @@ test("without shot lists photos stay in the rotation (nothing to pin them to)", 
   });
   assert.ok(plan.shots.some((x) => x.media.type === "image" && x.media.index === 1));
 });
+
+test("a game the launch calendar says is out is not upcoming any more (GTA VI after 19 Nov 2026)", () => {
+  const launches = [{ match: "gta (6|vi)($|[^a-z0-9])|grand theft auto (6|vi)($|[^a-z0-9])", launch: "2026-11-19" }];
+  assert.equal(upcomingGame(2026, new Date("2026-11-18T12:00:00Z"), "Grand Theft Auto VI", launches), true);
+  assert.equal(upcomingGame(2026, new Date("2026-11-20T12:00:00Z"), "Grand Theft Auto VI", launches), false);
+  assert.equal(upcomingGame(2026, new Date("2026-11-20T12:00:00Z"), "Some Other 2026 Game", launches), true);
+});

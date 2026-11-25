@@ -52,6 +52,11 @@ export interface FillDeps {
   ): Promise<VisualAsset[]>;
   searchPhotos(query: string): Promise<CommonsImage[]>;
   downloadPhoto(img: CommonsImage, dest: string): Promise<boolean>;
+  /**
+   * MATCH_SEMANTIC (src/semantic/stills.ts): pins the chapter's own unpinned pictures and clips to the bare sentences
+   * they clearly show, before the editor's pass over the bin; absent: the editor alone.
+   */
+  semanticPin?(ch: FillChapter, open: number[], images: Image[], clips: Clip[]): Promise<number>;
   /** Publishers' press pictures of a game (src/assets/press.ts); absent: none are asked for. */
   searchPress?(game: string): Promise<CommonsImage[]>;
   fetchStock(
@@ -509,6 +514,8 @@ async function fillChapter(
         shown[p.image]!.moment = Number(p.key.slice(1));
   }
 
+  // 3c. MATCH_SEMANTIC: what the meaning model is sure of is pinned first; the editor sees only what is left.
+  if (deps.semanticPin) await deps.semanticPin(ch, open(), images, clips).catch(() => 0);
   // 4. The editor's pass over the bin: what is left uncovered gets the best fitting shot the chapter already has
   //    (the way an editor cuts "the demand was real" to a queue, or "the wait didn't hurt" to a sunset over the city).
   await assignFromBin(deps.llm, ch, open(), images, clips);

@@ -210,6 +210,12 @@ export const ScriptSchema = z.object({
     .describe(
       "One rubber-stamp moment on the word that carries the news; omit when nothing deserves it",
     ),
+  comment_question: z
+    .string()
+    .optional()
+    .describe(
+      "The question the channel posts as its own comment under this Short, to start the comments: one two-sided question about this story's specifics that a viewer can answer with their own opinion or choice, 6-18 words, ends with '?'. Never generic ('What do you think?', 'Thoughts?'), never a link, hashtag or mention, and not the same words as the loop line",
+    ),
   desk_question: z
     .string()
     .optional()
@@ -263,11 +269,20 @@ export const ScriptSchema = z.object({
   ),
 });
 export type Script = z.infer<typeof ScriptSchema> & {
+  /** EXPLAINERS (src/explainerstep.ts): the animated explainers on its beats or take, set at render; [] means none fit. */
+  explainers?: import("./explainers.ts").ShortExplainer[];
   /** The series the Short belongs to (format redesign plan, src/series.ts): "why", "gta_file", "verdict" or
    * "news_control". Set by the pipeline, never by the writer; the weekly report sums subscribers by it. */
   series?: import("../series.ts").SeriesTag;
   /** The next-part line test (SERIES_NEXT_LINE): the day's arm, whether the line was said, and the part it named. */
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
+  /** The Why length test (WHY_LENGTH_AB, src/shortlengths.ts): the day's arm and the band the writer was given. */
+  length_arm?: { arm: import("../shortlengths.ts").LengthArm; band: string };
+  /**
+   * Who wrote the script (always recorded, src/editorial/authorship.ts): Claude or Codex for the main draft's last
+   * answer, the model, whether it fell back from the provider it was meant for, and WRITER_SPLIT's reason.
+   */
+  writer?: import("./authorship.ts").WriterRecord;
   /** The writer's delivery tags, lifted out of the fields and kept for the voice only (src/voice/tags.ts). */
   voice_tags?: VoiceTagMark[];
   /**
@@ -334,6 +349,14 @@ export type Script = z.infer<typeof ScriptSchema> & {
   desk_plan?: import("./desk.ts").DeskPlan;
   /** SCRIPT_DESK: the editor's desk's arm, each read's six scores and note, the rewrites and the version kept. */
   desk?: import("./desk.ts").DeskRecord;
+  /** SCRIPT_ROOM: the writers' room's arm, its pack, angles, each critic's marks, a kill or fallback and its calls. */
+  room?: import("./room.ts").RoomRecord;
+  /** FIRST_SECOND_PANEL: the first second as a viewer meets it, the audience critic's stop mark and, under "on", the
+   * openings marked blind and the one kept (src/panel/firstsecond.ts). */
+  first_second?: import("../panel/firstsecond.ts").FirstSecondRecord;
+  /** PACKAGING_PANEL (long videos): the audience critic's order of the factory's own title and thumbnail-text
+   * candidates, what the factory chose and, under "on", what was used (src/panel/packagingpanel.ts). */
+  packaging_panel?: import("../panel/packagingpanel.ts").PackagingPanelRecord;
   /** Long video: the entry whose media plays behind the outro, when it is not the last. */
   take_entry?: number;
   /** A Short cut from a long ranking: the full video, this entry's rank and the comment question. */

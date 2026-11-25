@@ -165,6 +165,8 @@ interface PostRow {
     facebook?: string;
     instagram?: string;
     comments?: number;
+    /** When it went out, by the factory's own clock (the row's created_at is the database's). */
+    posted_at?: string;
     /** Kept so the YouTube Community tab can carry the same post (scheduled browser task). */
     question?: string;
     caption?: string;
@@ -187,7 +189,7 @@ export async function engageTick(d: EngageDeps): Promise<void> {
   const recent = await posts(d.db);
   // Yesterday's "guess" posts get their answer.
   for (const p of recent) {
-    const age = now.getTime() - new Date(p.created_at).getTime();
+    const age = now.getTime() - new Date(p.detail.posted_at ?? p.created_at).getTime();
     if (
       p.detail.format === "guess" &&
       p.detail.answer &&
@@ -329,7 +331,7 @@ export async function engageTick(d: EngageDeps): Promise<void> {
           undefined
         ),
       );
-  await logEvent(d.db, null, "engage_post", detail);
+  await logEvent(d.db, null, "engage_post", { ...detail, posted_at: now.toISOString() });
   log("info", "engage post", {
     day,
     format: topic.format,

@@ -93,6 +93,33 @@ export function withWhyTarget(
   return { ...lengths, why: band, gta_file: lengths.gta_file ?? band };
 }
 
+// ---- The Why length test (WHY_LENGTH_AB, 19 Nov 2026 audit, upgrade 1) -------------------------------------------
+// YouTube "fit" Shorts (35 s or under, strong fandom, a stake or number up front) had a median of 634.5 views against
+// 163.5 for the rest (26 against 90 Shorts, 16 Nov loop), while the 45-60 s serial band rests on 6 Shorts converting
+// 2.22 subscribers per 1,000. So on alternate days The Why and The GTA File run 30-35 s instead of WHY_TARGET_SECONDS,
+// and the weekly loop compares 72-hour views (median) and subscribers per 1,000 per arm.
+
+/** The test's two arms: "short" days run LENGTH_AB_SHORT, "long" days keep the serial band. */
+export type LengthArm = "short" | "long";
+
+/** The short arm's band. */
+export const LENGTH_AB_SHORT: LengthBand = { min: 30, max: 35 };
+
+/**
+ * Which arm a UTC day is in (pure): days since 1 Jan 1970, even days short. The day itself decides, so a retry, a
+ * restart or the voice step a day later keeps the side the script was written on.
+ */
+export function lengthArm(dayUtc: string): LengthArm {
+  const n = Math.round(Date.parse(`${dayUtc.slice(0, 10)}T12:00:00Z`) / 86_400_000);
+  return Number.isFinite(n) && n % 2 === 0 ? "short" : "long";
+}
+
+/** The lanes on a short-arm day: The Why and The GTA File both at LENGTH_AB_SHORT; a long-arm day changes nothing. */
+export function withLengthArm(lengths: ShortLengths, arm: LengthArm | undefined): ShortLengths {
+  if (arm !== "short") return lengths;
+  return { ...lengths, why: LENGTH_AB_SHORT, gta_file: LENGTH_AB_SHORT };
+}
+
 /** What the writer, the checks and the voice step hold a Short to. */
 export interface ShortTarget {
   format: LengthFormat;

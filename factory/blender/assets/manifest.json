@@ -1,0 +1,66 @@
+{
+  "about": "Every outside file the Blender scene kit (factory/blender) uses: where it comes from and its licence. fetch_assets.py downloads them into the asset folder (BLENDER_ASSETS, default D:/pulse-data/blender/assets on the PC) and checks each checksum. Geometry, lettering layout, materials and animation are all made in code (factory/blender/pulse3d); no game company logos, characters or ripped game models.",
+  "files": [
+    {
+      "id": "hdri_studio",
+      "file": "hdri/studio_small_09_2k.hdr",
+      "url": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_09_2k.hdr",
+      "md5": "b056fea247bc84b81d2e0987d44c87d8",
+      "source": "https://polyhaven.com/a/studio_small_09",
+      "author": "Sergej Majboroda (Poly Haven)",
+      "licence": "CC0 1.0"
+    },
+    {
+      "id": "wood_diff",
+      "file": "tex/wood_table_001_diff_2k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/wood_table_001/wood_table_001_diff_2k.jpg",
+      "source": "https://polyhaven.com/a/wood_table_001",
+      "author": "Dimitrios Savva, Rico Cilliers (Poly Haven)",
+      "licence": "CC0 1.0"
+    },
+    {
+      "id": "wood_nor",
+      "file": "tex/wood_table_001_nor_gl_2k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/wood_table_001/wood_table_001_nor_gl_2k.jpg",
+      "source": "https://polyhaven.com/a/wood_table_001",
+      "author": "Dimitrios Savva, Rico Cilliers (Poly Haven)",
+      "licence": "CC0 1.0"
+    },
+    {
+      "id": "wood_rough",
+      "file": "tex/wood_table_001_rough_2k.jpg",
+      "url": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/wood_table_001/wood_table_001_rough_2k.jpg",
+      "source": "https://polyhaven.com/a/wood_table_001",
+      "author": "Dimitrios Savva, Rico Cilliers (Poly Haven)",
+      "licence": "CC0 1.0"
+    },
+    {
+      "id": "countries",
+      "file": "geo/ne_50m_admin_0_countries.geojson",
+      "url": "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson",
+      "source": "https://www.naturalearthdata.com/downloads/50m-cultural-vectors/",
+      "author": "Natural Earth",
+      "licence": "Public domain"
+    }
+  ],
+  "made": [
+    {
+      "id": "land_mask",
+      "file": "geo/land_4096.png",
+      "from": "countries",
+      "how": "every country polygon filled white on black, equirectangular, 4096 x 2048 (fetch_assets.py)"
+    },
+    {
+      "id": "fonts",
+      "file": "fonts/anton-400.ttf, fonts/inter-800.ttf, fonts/inter-600.ttf",
+      "from": "factory/public/fonts/*.woff2 (Anton and Inter, SIL Open Font Licence 1.1, already shipped with the factory)",
+      "how": "woff2 unpacked to TrueType with fontTools (Blender reads TrueType, not woff2)"
+    },
+    {
+      "id": "logo_mark",
+      "file": "factory/blender/assets/logo_mark.json (in git)",
+      "from": "factory/public/logo.png (Pulse's own mark)",
+      "how": "the orange shapes traced to polygons with OpenCV (fetch_assets.py --trace-logo), extruded in Blender"
+    }
+  ]
+}

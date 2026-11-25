@@ -91,6 +91,7 @@ import {
 } from "./youtube/branding.ts";
 import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
+import { outputAudit } from "./outputaudit.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import {
   consentUrl,
@@ -134,6 +135,7 @@ import { hudVodTick } from "./hudreader/job.ts";
 import { startLeverJobs } from "./levers/job.ts";
 import { launchGames, sceneIndexTick } from "./sceneindex/job.ts";
 import { asksDir, streamAsksTick, vodMinerTick } from "./streamasks/job.ts";
+import { semanticIndexTick } from "./semantic/job.ts";
 import { searchHarvestTick } from "./searchq/job.ts";
 import { searchDir, searchKey } from "./searchq/store.ts";
 import { asksKey } from "./streamasks/page.ts";
@@ -950,6 +952,30 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     // Every note the factory's own checks wrote about its videos (the feedback the Discord posts carry):
     // the visual check's verdict, problems and notes, the quality rubric, narration faults, dropped media
     // and failed steps. Read-only, for reviewing what keeps coming up.
+    // Read-only: the factory's own event records of chosen kinds (19 Nov 2026: the script desk and payoff gate write
+    // only events, and the embedded database cannot be read while the factory runs). kinds=desk,payoff_gate&hours=24
+    if (url.pathname === "/admin/events" && req.method === "GET") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const kinds = (url.searchParams.get("kinds") ?? "")
+        .split(",")
+        .map((k) => k.trim())
+        .filter((k) => /^[a-z_]{1,40}$/.test(k))
+        .slice(0, 12);
+      const hours = Math.min(24 * 30, Math.max(1, Number(url.searchParams.get("hours") ?? 24) || 24));
+      if (!kinds.length) {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: "kinds is required" }));
+        return;
+      }
+      const rows = await db.query(
+        `SELECT v.episode_id, v.kind, v.created_at, v.detail, e.status, e.youtube_video_id, e.story_json->>'headline' AS headline
+           FROM events v LEFT JOIN episodes e ON e.id = v.episode_id
+          WHERE v.kind = ANY($1) AND v.created_at > now() - make_interval(hours => $2)
+          ORDER BY v.id`,
+        [kinds, hours],
+      );
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(rows));
+      return;
+    }
     if (url.pathname === "/admin/qa-notes" && req.method === "GET") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const days = Math.min(
@@ -1031,6 +1057,19 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
     if (url.pathname === "/admin/retry" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
+      // rewrite=1: a failed episode that never reached the voice (stopped at writing, e.g. a spoiler or fact-check
+      // door after a fix to the writer) is written again from its stored story (20 Nov 2026: the weekly explainer).
+      if (ep && ep.status === "failed" && !ep.assets_json?.audio && url.searchParams.get("rewrite") === "1") {
+        await db.query(
+          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, script_json = NULL WHERE id = $1`,
+          [ep.id],
+        );
+        await logEvent(db, ep.id, "retried", { after: ep.last_error ?? "", rewrite: true }).catch(() => undefined);
+        res
+          .writeHead(200, { "content-type": "application/json" })
+          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true }));
+        return;
+      }
       if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {
         res.writeHead(400, { "content-type": "application/json" }).end(
           JSON.stringify({
@@ -1110,6 +1149,39 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       await yt.updateComment(hits[0]!.id, text);
       log("info", "comment edited", { video, from: hits[0]!.text.slice(0, 200), to: text.slice(0, 200) });
       return json(200, { ok: true, from: hits[0]!.text, to: text });
+    }
+    // A correction (19 Nov 2026: three Shorts had a wrong fact): post=1 adds a new comment from the channel;
+    // find=&replace= changes those words in the video's description (every language), exactly one match required.
+    if (url.pathname === "/admin/correct" && req.method === "POST") {
+      if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
+      const video = (url.searchParams.get("video") ?? "").trim();
+      const text = (url.searchParams.get("text") ?? "").trim();
+      const find = url.searchParams.get("find") ?? "";
+      const replace = url.searchParams.get("replace") ?? "";
+      const json = (code: number, body: unknown) =>
+        res.writeHead(code, { "content-type": "application/json" }).end(JSON.stringify(body));
+      if (!/^[\w-]{11}$/.test(video) || /—/.test(text + replace))
+        return json(400, { ok: false, error: "needs an 11-character video id, and no em dash" });
+      const yt = services.youtube();
+      const out: Record<string, unknown> = { ok: true };
+      if (find) {
+        if (find.length < 6 || replace.length > 500) return json(400, { ok: false, error: "find needs 6+ characters" });
+        let bad = "";
+        const changed = await yt.rewriteDescriptions(video, (d, lang) => {
+          const n = d.split(find).length - 1;
+          if (n === 0) return d;
+          if (n > 1) bad = `${lang}: ${n} matches`;
+          return n === 1 ? d.replace(find, replace) : d;
+        });
+        if (bad) return json(409, { ok: false, error: bad, changed });
+        out.descriptions = changed;
+      }
+      if (url.searchParams.get("post") === "1") {
+        if (!text || text.length > 1000) return json(400, { ok: false, error: "text 1-1000 characters" });
+        out.comment = await yt.insertComment(video, text);
+      }
+      log("info", "correction", { video, ...out });
+      return json(200, out);
     }
     if (url.pathname === "/admin/reupload" && req.method === "POST") {
       if (!isAdmin()) return send(403, page("Forbidden", "<h1>Forbidden</h1>"));
@@ -2129,6 +2201,11 @@ async function main(): Promise<void> {
     setTimeout(() => void vodMinerTick(cfg), 6 * 60_000);
     setInterval(() => void vodMinerTick(cfg), 10 * 60_000);
   }
+  // MATCH_SEMANTIC: every scene index gets its shot vectors, a turn at a time behind renders (src/semantic/job.ts).
+  if (cfg.semantic.enabled) {
+    setTimeout(() => void semanticIndexTick(cfg), 8 * 60_000);
+    setInterval(() => void semanticIndexTick(cfg), 15 * 60_000);
+  }
   // The week of streams as one long video (STREAM_WEEKLY): src/streamweekly/job.ts, checked every half hour.
   if (cfg.streamWeekly.enabled) {
     const weeklyPass = () =>
@@ -2499,6 +2576,55 @@ async function main(): Promise<void> {
     setTimeout(() => void check(), 180_000);
     setInterval(() => void check(), 30 * 60_000);
   }
+  // Whether YouTube has age-restricted any of Pulse's recent uploads (AGE_ALARM): one batched videos.list call an hour.
+  if (cfg.ageAlarm && !cfg.dryRun) {
+    const ages = () =>
+      withLease(db, "age-alarm", 20 * 60, () =>
+        import("./agealarm.ts").then((m) =>
+          m.ageAlarmTick({
+            db,
+            youtube: () => services.youtube(),
+            notify: (msg) => services.notify(msg),
+            now: () => new Date(),
+          }),
+        ),
+      ).catch((err) =>
+        log("warn", "age alarm pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void ages(), 6 * 60_000);
+    setInterval(() => void ages(), 60 * 60_000);
+  }
+  // The trend feed (TREND_FEED): the download account's subscriptions read every 3 hours as story leads, signed in,
+  // metadata only, within the clips' share of the signed-in budget (src/discovery/trendfeed.ts).
+  if (cfg.trendFeed) {
+    const trends = () =>
+      withLease(db, "trend-feed", 20 * 60, () =>
+        import("./discovery/trendfeed.ts").then((m) =>
+          m.trendFeedRun({
+            dataDir: cfg.dataDir,
+            ytdlp: cfg.ytdlpPath,
+            cookiesFile: cfg.ytdlpCookiesFile,
+            channels: cfg.trendChannels,
+          }),
+        ),
+      ).catch((err) =>
+        log("warn", "trend feed pass failed", { error: errorMessage(err) }),
+      );
+    setTimeout(() => void trends(), 8 * 60_000);
+    setInterval(() => void trends(), 3 * 3600_000);
+  }
+  // Pulse's own uploads, kept for every process so the signed-in download account never touches them
+  // (src/lib/ytown.ts). Read from the episodes table only: no YouTube call, no quota.
+  if (cfg.ytdlpCookiesFile) {
+    const own = () =>
+      import("./lib/ytown.ts")
+        .then((m) => m.refreshOwnVideos(db))
+        .catch((err) =>
+          log("warn", "own video list not written", { error: errorMessage(err) }),
+        );
+    void own();
+    setInterval(() => void own(), 30 * 60_000);
+  }
   // What viewers ask us to rank next, read from the long videos' comments once a day.
   if (!cfg.dryRun) {
     const requests = () =>
@@ -2663,6 +2789,17 @@ async function main(): Promise<void> {
         ),
       );
       log("info", "daily summary sent");
+      // OUTPUT_AUDIT (src/outputaudit.ts): the week's plan against what went public, sent only when a lane is
+      // under half its plan or no long video has gone public for LONG_DROUGHT_DAYS; once a day with the summary.
+      await outputAudit(db, cfg, new Date())
+        .then(async (m) => {
+          if (!m) return;
+          await services.notify({ ...m, ping: true });
+          await logEvent(db, null, "output_audit", { text: m.content ?? "" });
+        })
+        .catch((err) =>
+          log("error", "output audit failed", { error: errorMessage(err) }),
+        );
       await sendMissReport(db, cfg, new Date(), (m) =>
         services.notify(m),
       ).catch((err) =>

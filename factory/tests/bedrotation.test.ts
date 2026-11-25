@@ -14,6 +14,7 @@ import {
   type BedUse,
 } from "../src/render/bedrotation.ts";
 import { BEDS, MOOD_BEDS } from "../src/render/soundscape.ts";
+import { LIBRARY_BEDS, LIBRARY_GRID, LIBRARY_MOODS } from "../src/render/bedlibrary.ts";
 import { MOODS } from "../src/render/musicplan.ts";
 
 const pool = Array.from({ length: 16 }, (_, i) => `music/bed_${i + 1}.wav`);
@@ -134,4 +135,22 @@ test("every bed is listed once, in D or E, with its rights record, and every moo
   for (const [m, list] of Object.entries(MOOD_BEDS))
     for (const b of list)
       assert.equal(rights.moods.find((x) => x.file === b.file)?.mood, m, b.file);
+});
+
+test("the 15 Nov library is in the lists and every listed bed's file is in public/music", () => {
+  const pub = path.join(import.meta.dirname, "..", "public");
+  assert.ok(LIBRARY_BEDS.length >= 10, `only ${LIBRARY_BEDS.length} library house beds`);
+  assert.ok(LIBRARY_MOODS.length >= 10, `only ${LIBRARY_MOODS.length} library mood beds`);
+  const house = BEDS.map((b) => b.file);
+  for (const b of LIBRARY_BEDS) assert.ok(house.includes(b.file), `${b.file} missing from BEDS`);
+  for (const b of LIBRARY_MOODS)
+    assert.ok(MOOD_BEDS[b.mood].some((x) => x.file === b.file), `${b.file} missing from MOOD_BEDS.${b.mood}`);
+  const all = [...BEDS, ...Object.values(MOOD_BEDS).flat()];
+  for (const b of all) {
+    const file = path.join(pub, b.file);
+    assert.ok(fs.existsSync(file), `${b.file} is listed but not in public/`);
+    assert.ok(fs.statSync(file).size > 1_000_000, `${b.file} is too small to be a bed`);
+  }
+  const names = new Set(all.map((b) => b.file.split("/").pop()));
+  for (const name of Object.keys(LIBRARY_GRID)) assert.ok(names.has(name), `grid for unlisted bed ${name}`);
 });

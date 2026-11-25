@@ -806,6 +806,8 @@ export interface MatchClipsOptions {
   fillSeconds?: number;
   /** Read each clip with the local OCR: big burned-in text is cut away, or the clip dropped (src/assets/cliptext.ts). */
   textCheck?: boolean;
+  /** SHORT_CLIP_EDGE_TEXT: false where the clip is shown whole with no zoom (long videos), so nothing is cut at the edge. */
+  edgeText?: boolean;
   preserveWork?: boolean;
   /** SCENE_MATCH: the located-scene check on the local vision model (src/assets/scenecheck.ts), in place of `llm`. */
   sceneReview?: (targets: FootageTarget[], candidates: Candidate[]) => Promise<Assignment[]>;
@@ -999,7 +1001,7 @@ export async function matchClips(o: MatchClipsOptions): Promise<VisualAsset[]> {
         continue;
       }
       if (o.textCheck) {
-        const kept = await keepCleanRun(r.file, at, seconds, path.join(o.episodeDir, file));
+        const kept = await keepCleanRun(r.file, at, seconds, path.join(o.episodeDir, file), o.edgeText);
         if (!kept) continue;
         at = kept.at;
         seconds = kept.seconds;
@@ -1087,8 +1089,9 @@ async function keepCleanRun(
   at: number,
   seconds: number,
   file: string,
+  edge?: boolean,
 ): Promise<{ at: number; seconds: number } | undefined> {
-  const read = await clipBigText(file, seconds);
+  const read = await clipBigText(file, seconds, edge === undefined ? {} : { edge });
   if (read.clean) return { at, seconds };
   if (read.run.length < MIN_CLIP_SECONDS) {
     log("info", "clip dropped: big text on screen", {
@@ -1217,7 +1220,7 @@ async function fillClips(
       continue;
     }
     if (o.textCheck) {
-      const kept = await keepCleanRun(r.file, at, seconds, full);
+      const kept = await keepCleanRun(r.file, at, seconds, full, o.edgeText);
       if (!kept) continue;
       at = kept.at;
       seconds = kept.seconds;

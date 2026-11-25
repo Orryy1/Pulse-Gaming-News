@@ -41,6 +41,7 @@ import {
   WEIGHT_MAX,
   WEIGHT_MIN,
   WEIGHT_STEP,
+  FANDOM_WEIGHT_KEY,
   FAVOUR_KEYS,
   durationBand,
   hasNumber,
@@ -56,9 +57,24 @@ import {
 import { parseSkeleton, structureLine } from "./editorial/skeletons.ts";
 import { payoffArmLine, type PayoffArm } from "./editorial/payoff.ts";
 import { deskLinesForReport, type DeskArm } from "./editorial/desk.ts";
+import { roomLinesForReport, type RoomArm, type RoomVersion } from "./editorial/room.ts";
+import { firstSecondLinesForReport, type FirstSecondArm } from "./panel/firstsecond.ts";
+import { packagingPanelLinesForReport } from "./panel/packagingpanel.ts";
+import { panelLinesForReport, panelSummary, type PlanPanelRecord } from "./render/planpanel.ts";
+import { focusLinesForReport, focusReportRow, type FrameFocusRecord } from "./qa/framefocus.ts";
 import { SERIES_START, isSerial, isSeriesTag, seriesTagFor } from "./series.ts";
 import { seriesJson, seriesLines, type SeriesJson } from "./seriesreport.ts";
-import { retentionSection, type RetentionStudy } from "./retentionlearn.ts";
+import { retentionLessonLines, retentionSection, type RetentionStudy } from "./retentionlearn.ts";
+import type { LengthArm } from "./shortlengths.ts";
+import { narratorOf } from "./editorial/authorship.ts";
+import {
+  lengthAbReading,
+  splitLines,
+  splitReading,
+  type LengthAbReading,
+  type SplitGroup,
+  type SplitRow,
+} from "./loopsplits.ts";
 import { retentionModelLessons } from "./retentionstep.ts";
 
 const DAY = 86_400_000;
@@ -221,10 +237,36 @@ export interface EpisodeInfo {
   payoff?: { arm: PayoffArm; pass: boolean };
   /** The editor's desk's arm and the kept version's overall score (SCRIPT_DESK, src/editorial/desk.ts). */
   desk?: { arm: DeskArm; overall?: number };
+  /** The writers' room's arm, whether its words went out and each critic's mark (SCRIPT_ROOM, src/editorial/room.ts). */
+  room?: {
+    arm: RoomArm;
+    wrote?: boolean;
+    editor?: number;
+    viewer?: number;
+    killed?: boolean;
+    drop?: { editor: boolean; viewer: boolean };
+    won?: RoomVersion;
+  };
+  /** The first-second panel's arm, whether the opening changed and the audience critic's marks (FIRST_SECOND_PANEL). */
+  first_second?: { arm: FirstSecondArm; changed: boolean; stop?: number; gives_away?: boolean };
+  /** A long video's packaging panel: whether its first choice was the factory's title and the tap mark of the title used. */
+  packaging_panel?: { mode: string; agreed: boolean; tap?: number };
+  /** The shot plan panel's arm, the kept plan's critic mark and measurements (SHOT_PLAN_PANEL, src/render/planpanel.ts). */
+  plan_panel?: ReturnType<typeof panelSummary>;
+  /** FRAME_FOCUS's arm and, for the check arm, the mean focus score and weak-line share (src/qa/framefocus.ts). */
+  frame_focus?: ReturnType<typeof focusReportRow>;
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
   next_line?: { arm: "line" | "none"; said: boolean };
+  /** The Why length test's arm (WHY_LENGTH_AB, src/shortlengths.ts). */
+  length_arm?: LengthArm;
+  /** Who wrote the script: "claude" or "codex" (src/editorial/authorship.ts); absent before 19 Nov 2026. */
+  writer?: string;
+  /** The writer fell back from the provider it was meant for. */
+  writer_fallback?: boolean;
+  /** Who voiced it: "elevenlabs: <voice>" or "local (Liam/VoxCPM)". */
+  narrator?: string;
 }
 
 // ------------------------------------------------------------------ matching (spec section 4)
@@ -778,6 +820,8 @@ export interface NextTest {
   judge_on: string;
   pass_mark: string;
   result?: string;
+  /** Week-long extensions so far for too few Shorts (LOOP_MEDIAN_JUDGE stops at MAX_EXTENSIONS). */
+  extensions?: number;
 }
 
 export interface LoopJson {
@@ -809,6 +853,10 @@ export interface LoopJson {
   next_test: NextTest;
   /** Subscribers per 1,000 views by series, the line test and the verdicts so far (src/seriesreport.ts); absent in older reports. */
   series?: SeriesJson;
+  /** The Why length test (WHY_LENGTH_AB): median 72-hour views and subscribers per 1,000 per arm; absent with no arm yet. */
+  length_ab?: { groups: SplitGroup[]; reading: LengthAbReading };
+  /** Writer and narrator per YouTube Short (19 Nov audit): median 72-hour views and subscribers per 1,000, within fit and not fit. */
+  authors?: { writer: SplitGroup[]; narrator: SplitGroup[] };
   /** RETENTION_LEARN (src/retentionlearn.ts): the week's retention curve study, its lines and lessons; absent while off. */
   retention?: {
     shorts: number;
@@ -867,6 +915,115 @@ export function seriesShort(e: EpisodeInfo | undefined): boolean {
   );
 }
 
+// ---- LOOP_MEDIAN_JUDGE (19 Nov 2026 audit, upgrade 2) -------------------------------------------------------------
+// Fixed breakout bars (1,000 Instagram views, 2,000 TikTok) leave about one breakout a group, so "twice as often" is
+// noise and the fit test said "too few" every week. Under LOOP_MEDIAN_JUDGE every comparison is the middle views of
+// each side, with at least MEDIAN_MIN_SIDE posts a side; series Shorts count; a test ends "inconclusive" after
+// MAX_EXTENSIONS extensions; a writer lesson needs MIN_LESSON_SHORTS Shorts behind it.
+
+/** A median comparison needs this many posts a side. */
+export const MEDIAN_MIN_SIDE = 15;
+/** The fit test passes when the fit side's median is at least this many times the rest's. */
+export const MEDIAN_PASS_LIFT = 1.5;
+/** A test still too few after this many week-long extensions ends "inconclusive". */
+export const MAX_EXTENSIONS = 2;
+/** A writer lesson needs this many Shorts behind it. */
+export const MIN_LESSON_SHORTS = 15;
+
+export interface MedianComparison {
+  n: number;
+  rest_n: number;
+  median: number;
+  rest_median: number;
+  /** Absent under MEDIAN_MIN_SIDE a side. */
+  ratio?: number;
+}
+
+/** Middle views of each side and their ratio (pure); no ratio under MEDIAN_MIN_SIDE a side. */
+export function medianCompare(has: number[], rest: number[]): MedianComparison {
+  const m = median(has);
+  const rm = median(rest);
+  const enough = Math.min(has.length, rest.length) >= MEDIAN_MIN_SIDE;
+  return {
+    n: has.length,
+    rest_n: rest.length,
+    median: m,
+    rest_median: rm,
+    ...(enough ? { ratio: rm > 0 ? m / rm : m > 0 ? Infinity : 1 } : {}),
+  };
+}
+
+/** Tier 2 by medians: tiktokBoost's steps (2x: 25%, 1.25x: 10%) on the middle views, 15 a side (pure). */
+export function medianBoost(has: number[], rest: number[]): number {
+  const c = medianCompare(has, rest);
+  if (c.ratio === undefined) return 0;
+  return c.ratio >= 2 ? 0.25 : c.ratio >= 1.25 ? 0.1 : 0;
+}
+
+/**
+ * The retention study's lessons with only the causes and effects seen in MIN_LESSON_SHORTS Shorts or more (pure):
+ * "gameplay footage costs 11 points" on 3 Shorts never reaches the writers.
+ */
+export function evidencedRetentionLessons(st: RetentionStudy | undefined): string[] {
+  if (!st) return [];
+  return retentionLessonLines(
+    st.causes.filter((c) => c.videos >= MIN_LESSON_SHORTS),
+    st.effects.filter((e) => e.videos >= MIN_LESSON_SHORTS),
+    st.at.slice(0, 10),
+  );
+}
+
+const ratioText = (c: MedianComparison) =>
+  c.ratio === undefined
+    ? `under ${MEDIAN_MIN_SIDE} a side`
+    : `${Number.isFinite(c.ratio) ? c.ratio.toFixed(2) : "inf"}x`;
+
+/** The fit test's median reading (pure): Instagram and TikTok decide, YouTube is shown beside them. */
+export function judgeFitTestByMedian(
+  rows: LoopRow[],
+  eps: Map<string, EpisodeInfo>,
+  since: string,
+  now: Date,
+): {
+  lines: string[];
+  verdict: "pass" | "fail" | "too few";
+  by: Record<string, MedianComparison>;
+} {
+  const lines: string[] = [];
+  const by: Record<string, MedianComparison> = {};
+  let verdict: "pass" | "fail" | "too few" = "pass";
+  const read = (p: LoopPlatform): MedianComparison => {
+    const xs = rows.filter(
+      (r) =>
+        r.platform === p &&
+        r.episode_id &&
+        (p !== "youtube" || r.kind === "short") &&
+        r.posted_at >= since &&
+        age(r, now) >= MIN_AGE_HOURS &&
+        r.views !== null,
+    );
+    const v = (r: LoopRow) => r.views_72h ?? r.views!;
+    const fit = xs.filter(
+      (r) => features(r, eps.get(r.episode_id!))["fit"] === "yes",
+    );
+    const rest = xs.filter((r) => !fit.includes(r));
+    return medianCompare(fit.map(v), rest.map(v));
+  };
+  const say = (p: LoopPlatform, c: MedianComparison, tail = "") =>
+    `${PLATFORM_NAME[p]}: fit middle ${n0(c.median)} views (${c.n} Shorts), not fit ${n0(c.rest_median)} (${c.rest_n}), ${ratioText(c)}${tail}.`;
+  for (const p of ["instagram", "tiktok"] as const) {
+    const c = (by[p] = read(p));
+    lines.push(say(p, c));
+    if (c.ratio === undefined) verdict = "too few";
+    else if (verdict === "pass" && c.ratio < MEDIAN_PASS_LIFT) verdict = "fail";
+  }
+  by.youtube = read("youtube");
+  lines.push(
+    say("youtube", by.youtube, " (for reference; Instagram and TikTok decide)"),
+  );
+  return { lines, verdict, by };
+}
+
 /** The fit test's reading: per platform, fit and not-fit breakouts at the fixed bars, at 72 hours. */
 export function judgeFitTest(
   rows: LoopRow[],
@@ -912,6 +1069,8 @@ export function nextTest(
   rows: LoopRow[],
   eps: Map<string, EpisodeInfo>,
   now: Date,
+  /** LOOP_MEDIAN_JUDGE: judge by median views (series Shorts counted) and stop after MAX_EXTENSIONS extensions. */
+  opts: { median?: boolean } = {},
 ): { test: NextTest; lines: string[] } {
   const today = now.toISOString().slice(0, 10);
   const start = (i: number, from: string): NextTest => ({
@@ -922,18 +1081,36 @@ export function nextTest(
   let test = prev ?? start(0, FIRST_TEST_START);
   const lines: string[] = [];
   if (test.id === TESTS[0]!.id) {
-    const j = judgeFitTest(rows, eps, test.started, now);
+    const j = opts.median
+      ? judgeFitTestByMedian(rows, eps, test.started, now)
+      : judgeFitTest(rows, eps, test.started, now);
     lines.push(
       `**${test.name}**`,
       "",
-      `Started ${test.started}. Pass mark: ${test.pass_mark}.`,
+      `Started ${test.started}. Pass mark: ${opts.median ? `judged by median views (LOOP_MEDIAN_JUDGE): the fit group's middle views at least ${MEDIAN_PASS_LIFT} times the rest's, with ${MEDIAN_MIN_SIDE} or more Shorts in each group on Instagram and TikTok, series Shorts included` : test.pass_mark}.`,
       "",
       ...j.lines.map((l) => `- ${l}`),
     );
     if (today >= test.judge_on) {
-      if (j.verdict === "too few") {
+      if (
+        j.verdict === "too few" &&
+        opts.median &&
+        (test.extensions ?? 0) >= MAX_EXTENSIONS
+      ) {
+        lines.push(
+          "",
+          `Result: **inconclusive**. Still too few Shorts in a group after ${MAX_EXTENSIONS} extensions, so the test ends and nothing changes.`,
+        );
+        const next = start(1, today);
+        lines.push(
+          "",
+          `Next: **${next.name}** Pass mark: ${next.pass_mark}. Judged on ${next.judge_on}.`,
+        );
+        test = next;
+      } else if (j.verdict === "too few") {
         test = {
           ...test,
+          extensions: (test.extensions ?? 0) + 1,
           judge_on: new Date(Date.parse(test.judge_on) + 7 * DAY)
             .toISOString()
             .slice(0, 10),
@@ -1102,6 +1279,45 @@ export function storyWeights(
     };
   }
   return { weights, signals };
+}
+
+/**
+ * Tier 2, the strong-fandom pick multiplier (LOOP_FANDOM_WEIGHT, 19 Nov audit): while YouTube's "strong-identity
+ * fandom" pattern has strong evidence, the key is its middle-views ratio (or 1.0 if the pattern points the other way
+ * from its ratio) inside WEIGHT_MIN to WEIGHT_MAX; once the evidence is no longer strong it eases back to 1.0 by
+ * WEIGHT_STEP a week and then goes. Undefined: no key.
+ */
+export function fandomWeight(
+  patterns: LoopPattern[],
+  previous: number | undefined,
+): { weight?: number; basis: string } {
+  const p = patterns.find(
+    (x) =>
+      x.platform === "youtube" &&
+      x.dim === "strong-identity fandom" &&
+      x.group === "yes",
+  );
+  if (p && p.strength === "strong" && p.rest_median > 0) {
+    const ratio = p.median / p.rest_median;
+    const aimed = p.direction === "better" ? Math.max(1, ratio) : Math.min(1, ratio);
+    const weight =
+      Math.round(Math.min(WEIGHT_MAX, Math.max(WEIGHT_MIN, aimed)) * 100) / 100;
+    return {
+      ...(weight !== 1 ? { weight } : {}),
+      basis: `YouTube strong-identity fandom: middle of ${n0(p.median)} views against ${n0(p.rest_median)} (${p.n} against ${p.rest_n} Shorts, evidence strong)`,
+    };
+  }
+  if (previous === undefined || previous === 1)
+    return { basis: "YouTube's fandom pattern is not strong this week" };
+  const eased =
+    previous > 1
+      ? Math.max(1, previous - WEIGHT_STEP)
+      : Math.min(1, previous + WEIGHT_STEP);
+  const weight = Math.round(eased * 100) / 100;
+  return {
+    ...(weight !== 1 ? { weight } : {}),
+    basis: "YouTube's fandom pattern is no longer strong, so the multiplier eases back to 1.00",
+  };
 }
 
 // ------------------------------------------------------------------ the platform readers
@@ -1364,10 +1580,15 @@ export async function runAnalyticsLoop(
     story_series: string | null;
     has_why: boolean | null;
     has_run: boolean | null;
+    plan_panel: unknown;
+    frame_focus: unknown;
+    voice: unknown;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
             e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
-            e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run
+            e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run,
+            e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus,
+            e.assets_json->'voice' AS voice
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1423,6 +1644,50 @@ export async function runAnalyticsLoop(
       ...(sc?.desk
         ? { desk: { arm: sc.desk.arm, overall: sc.desk.scores?.overall } }
         : {}),
+      ...(sc?.first_second
+        ? {
+            first_second: {
+              arm: sc.first_second.arm,
+              changed: sc.first_second.changed,
+              stop: sc.first_second.stop,
+              gives_away: sc.first_second.gives_away,
+            },
+          }
+        : {}),
+      ...(sc?.packaging_panel
+        ? {
+            packaging_panel: {
+              mode: sc.packaging_panel.mode,
+              agreed:
+                !!sc.packaging_panel.panel.title &&
+                sc.packaging_panel.panel.title === sc.packaging_panel.factory.title,
+              tap: sc.packaging_panel.used_tap,
+            },
+          }
+        : {}),
+      ...((pp) => (pp ? { plan_panel: pp } : {}))(
+        panelSummary(
+          (typeof r.plan_panel === "string" ? JSON.parse(r.plan_panel) : r.plan_panel) as PlanPanelRecord | undefined,
+        ),
+      ),
+      ...((ff) => (ff ? { frame_focus: ff } : {}))(
+        focusReportRow(
+          (typeof r.frame_focus === "string" ? JSON.parse(r.frame_focus) : r.frame_focus) as FrameFocusRecord | undefined,
+        ),
+      ),
+      ...(sc?.room
+        ? {
+            room: {
+              arm: sc.room.arm,
+              wrote: sc.room.wrote,
+              editor: sc.room.editor_overall,
+              viewer: sc.room.viewer_overall,
+              killed: !!sc.room.kill,
+              ...(sc.room.drop ? { drop: { editor: sc.room.drop.editor, viewer: sc.room.drop.viewer } } : {}),
+              ...(sc.room.won ? { won: sc.room.won } : {}),
+            },
+          }
+        : {}),
       series: seriesTagFor(
         {
           lane: r.lane,
@@ -1437,6 +1702,20 @@ export async function runAnalyticsLoop(
       ...(sc?.next_line
         ? { next_line: { arm: sc.next_line.arm, said: sc.next_line.said } }
         : {}),
+      ...(sc?.length_arm ? { length_arm: sc.length_arm.arm } : {}),
+      ...(sc?.writer && sc.writer.provider !== "unknown"
+        ? {
+            writer: sc.writer.provider,
+            ...(sc.writer.fallback ? { writer_fallback: true } : {}),
+          }
+        : {}),
+      ...((n) => (n ? { narrator: n } : {}))(
+        narratorOf(
+          (typeof r.voice === "string" ? JSON.parse(r.voice) : r.voice) as
+            | { provider?: string; name?: string }
+            | null,
+        ),
+      ),
     });
   }
   const snaps = new Map<
@@ -1937,7 +2216,7 @@ export async function runAnalyticsLoop(
   // SHORT_PAYOFF_GATE: the two arms of the held-answer test side by side (YouTube views, viewed share and comments).
   const payoffLine = payoffArmLine(
     [...eps.values()]
-      .filter((e) => !e.long && e.live_at >= periodStart && e.payoff)
+      .filter((e) => !e.long && e.live_at >= periodStart && e.payoff && !e.room?.wrote)
       .map((e) => {
         const y = yt.get(e.id);
         return {
@@ -1955,7 +2234,8 @@ export async function runAnalyticsLoop(
   signalLines.push(
     ...deskLinesForReport(
       [...eps.values()]
-        .filter((e) => !e.long && e.live_at >= periodStart && e.desk)
+        // A Short the writers' room wrote was only read by the desk, never written by its arm.
+        .filter((e) => !e.long && e.live_at >= periodStart && e.desk && !e.room?.wrote)
         .map((e) => {
           const y = yt.get(e.id);
           return {
@@ -1966,6 +2246,77 @@ export async function runAnalyticsLoop(
             comments: y?.comments,
           };
         }),
+      spearman,
+    ),
+  );
+  // SCRIPT_ROOM: where the room wrote against the control arm, and each critic's mark against average viewed, with no
+  // verdict before 20 Shorts a side.
+  signalLines.push(
+    ...roomLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.room)
+        .map((e) => {
+          const y = yt.get(e.id);
+          return {
+            arm: e.room!.arm,
+            wrote: e.room!.wrote,
+            editor: e.room!.editor,
+            viewer: e.room!.viewer,
+            killed: e.room!.killed,
+            drop: e.room!.drop,
+            won: e.room!.won,
+            views: y?.views,
+            viewed_pct: y?.viewed_pct,
+            comments: y?.comments,
+          };
+        }),
+      spearman,
+    ),
+  );
+  // FIRST_SECOND_PANEL: the audience critic's stop mark against stayed to watch (engaged views over views, from the
+  // stored retention row), by arm, with no correlation before 20 Shorts. PACKAGING_PANEL: long videos, the panel's
+  // agreement with the factory's title and its tap mark against impressions click-through (the stored ctr row, 100
+  // impressions or more). Both marks are also in the judge ledger (src/learn/judges.ts) against every outcome it has.
+  const stayedOf = (id: string): number | undefined => {
+    const r = snaps.get(id)?.get("retention")?.raw;
+    const v = Number(r?.views);
+    return r?.engagedViews !== undefined && v > 0 ? (100 * Number(r.engagedViews)) / v : undefined;
+  };
+  const ctrOf = (id: string): number | undefined => {
+    const r = snaps.get(id)?.get("ctr")?.raw;
+    return r && Number(r.impressions) >= 100 && Number.isFinite(Number(r.ctr)) ? Number(r.ctr) : undefined;
+  };
+  signalLines.push(
+    ...firstSecondLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.first_second)
+        .map((e) => ({ ...e.first_second!, stayed: stayedOf(e.id) })),
+      spearman,
+    ),
+    ...packagingPanelLinesForReport(
+      [...eps.values()]
+        .filter((e) => e.long && e.live_at >= periodStart && e.packaging_panel)
+        .map((e) => ({ ...e.packaging_panel!, ctr: ctrOf(e.id) })),
+      spearman,
+    ),
+  );
+  // SHOT_PLAN_PANEL: the panel's arm against the control arm, and the critic's mark and each plan measurement against
+  // average viewed, with no verdict before 20 Shorts a side.
+  signalLines.push(
+    ...panelLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.plan_panel)
+        .map((e) => ({ ...e.plan_panel!, viewed_pct: yt.get(e.id)?.viewed_pct })),
+      spearman,
+    ),
+  );
+  // FRAME_FOCUS: the check arm's mean focus score and weak-line share, and each arm's average viewed, with no verdict
+  // before 20 Shorts a side.
+  signalLines.push(
+    ...focusLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.frame_focus)
+        .map((e) => ({ ...e.frame_focus!, viewed_pct: yt.get(e.id)?.viewed_pct })),
       spearman,
     ),
   );
@@ -2094,7 +2445,13 @@ export async function runAnalyticsLoop(
       blocklist,
       date,
     ),
-    mergeRetentionLessons(retentionStudy?.lessons ?? [], modelLessons),
+    // LOOP_MEDIAN_JUDGE: a retention lesson needs MIN_LESSON_SHORTS Shorts behind it (the loop's own already do).
+    mergeRetentionLessons(
+      cfg.loopMedianJudge
+        ? evidencedRetentionLessons(retentionStudy)
+        : (retentionStudy?.lessons ?? []),
+      modelLessons,
+    ),
     blocklist,
   );
   const tk = breakouts.tiktok;
@@ -2103,13 +2460,20 @@ export async function runAnalyticsLoop(
     .map((r) => ({
       fit: features(r, eps.get(r.episode_id!))["fit"] === "yes",
       hit: r.v >= (tk?.bar ?? Infinity),
+      v: r.v,
     }));
-  const boost = tiktokBoost({
-    fit: fitSplit.filter((x) => x.fit).length,
-    fitBreaks: fitSplit.filter((x) => x.fit && x.hit).length,
-    rest: fitSplit.filter((x) => !x.fit).length,
-    restBreaks: fitSplit.filter((x) => !x.fit && x.hit).length,
-  });
+  // LOOP_MEDIAN_JUDGE: the fit boost from middle views, 15 a side, instead of 30 a side and five breakouts.
+  const boost = cfg.loopMedianJudge
+    ? medianBoost(
+        fitSplit.filter((x) => x.fit).map((x) => x.v),
+        fitSplit.filter((x) => !x.fit).map((x) => x.v),
+      )
+    : tiktokBoost({
+        fit: fitSplit.filter((x) => x.fit).length,
+        fitBreaks: fitSplit.filter((x) => x.fit && x.hit).length,
+        rest: fitSplit.filter((x) => !x.fit).length,
+        restBreaks: fitSplit.filter((x) => !x.fit && x.hit).length,
+      });
   const ig = breakouts.instagram;
   const igGroups = new Map<
     string,
@@ -2134,7 +2498,11 @@ export async function runAnalyticsLoop(
   // boost's rule. TikTok keeps its own fit boost above.
   const favour: PostingFavour = {};
   const favourBasis: string[] = [];
-  for (const p of ["instagram", "facebook"]) {
+  // LOOP_MEDIAN_JUDGE: judged by middle views (15 a side), and TikTok gets the "why" and fandom favours too (its fit
+  // has the boost above).
+  for (const p of cfg.loopMedianJudge
+    ? ["instagram", "facebook", "tiktok"]
+    : ["instagram", "facebook"]) {
     const b = breakouts[p];
     if (!b) continue;
     const split = b.rows
@@ -2146,21 +2514,30 @@ export async function runAnalyticsLoop(
           why: f["format"] === "why",
           strong_fandom: f["strong-identity fandom"] === "yes",
           hit: r.v >= b.bar,
+          v: r.v,
         };
       });
     for (const k of FAVOUR_KEYS) {
+      if (p === "tiktok" && k === "fit") continue;
       const has = split.filter((x) => x[k]);
       const rest = split.filter((x) => !x[k]);
-      const lift = tiktokBoost({
-        fit: has.length,
-        fitBreaks: has.filter((x) => x.hit).length,
-        rest: rest.length,
-        restBreaks: rest.filter((x) => x.hit).length,
-      });
+      const lift = cfg.loopMedianJudge
+        ? medianBoost(
+            has.map((x) => x.v),
+            rest.map((x) => x.v),
+          )
+        : tiktokBoost({
+            fit: has.length,
+            fitBreaks: has.filter((x) => x.hit).length,
+            rest: rest.length,
+            restBreaks: rest.filter((x) => x.hit).length,
+          });
       if (!lift) continue;
       (favour[p] ??= {})[k] = lift;
       favourBasis.push(
-        `${PLATFORM_NAME[p] ?? p} ${k.replace("_", " ")}: ${has.filter((x) => x.hit).length} of ${has.length} broke out, the rest ${rest.filter((x) => x.hit).length} of ${rest.length}`,
+        cfg.loopMedianJudge
+          ? `${PLATFORM_NAME[p] ?? p} ${k.replace("_", " ")}: middle ${n0(median(has.map((x) => x.v)))} views (${has.length}) against ${n0(median(rest.map((x) => x.v)))} (${rest.length})`
+          : `${PLATFORM_NAME[p] ?? p} ${k.replace("_", " ")}: ${has.filter((x) => x.hit).length} of ${has.length} broke out, the rest ${rest.filter((x) => x.hit).length} of ${rest.length}`,
       );
     }
   }
@@ -2201,11 +2578,16 @@ export async function runAnalyticsLoop(
       score: (viewsRel + 2 * subsRel) / 3,
     };
   });
+  const { [FANDOM_WEIGHT_KEY]: prevFandom, ...prevWeights } =
+    prev?.feedback.weights ?? {};
   const sw = storyWeights(
     weightGroups,
-    prev?.feedback.weights ?? {},
+    prevWeights,
     prev?.feedback.weight_signals ?? {},
   );
+  // The strong-fandom key (LOOP_FANDOM_WEIGHT), written whatever the settings say like the rest.
+  const fw = fandomWeight(patterns, prevFandom);
+  if (fw.weight !== undefined) sw.weights[FANDOM_WEIGHT_KEY] = fw.weight;
 
   const changes: LoopChange[] = [];
   const prevPosting = prev?.feedback.posting ?? {
@@ -2259,10 +2641,21 @@ export async function runAnalyticsLoop(
       basis: `score ${sw.moved.score.toFixed(2)} against 1.00 (24-hour views and subscribers per 1,000, subscribers counted double), two runs in the same direction`,
       applied: cfg.analyticsLoopScoring,
     });
+  if ((fw.weight ?? 1) !== (prevFandom ?? 1))
+    changes.push({
+      date,
+      lever: "story-pick multiplier, strong-identity fandom",
+      old: (prevFandom ?? 1).toFixed(2),
+      new: (fw.weight ?? 1).toFixed(2),
+      basis: fw.basis,
+      applied: cfg.analyticsLoopScoring && cfg.loopFandomWeight,
+    });
   for (const c of changes.filter((c) => c.applied))
     await logEvent(db, null, "analytics_loop_change", { ...c });
 
-  const test = nextTest(prev?.next_test, all, eps, now);
+  const test = nextTest(prev?.next_test, all, eps, now, {
+    median: cfg.loopMedianJudge,
+  });
   // Subscribers per 1,000 views by series (format redesign plan items 1 and 11), YouTube Shorts 72 hours or older.
   const series = seriesJson(
     all
@@ -2283,6 +2676,31 @@ export async function runAnalyticsLoop(
       }),
     now,
   );
+  // The Why length test (WHY_LENGTH_AB): YouTube Shorts with an arm, both series pooled.
+  const ytShorts: SplitRow[] = all
+    .filter((r) => r.platform === "youtube" && r.kind === "short" && r.episode_id && eps.get(r.episode_id))
+    .map((r) => ({
+      episode_id: r.episode_id!,
+      posted_at: r.posted_at,
+      views: r.views,
+      ...(r.views_72h !== undefined ? { views_72h: r.views_72h } : {}),
+      ...(r.subs !== undefined ? { subs: r.subs } : {}),
+    }));
+  const lengthGroups = splitReading(ytShorts, (r) => eps.get(r.episode_id)?.length_arm, now);
+  const lengthAb = lengthGroups.length
+    ? { groups: lengthGroups, reading: lengthAbReading(lengthGroups) }
+    : undefined;
+  // Writer and narrator (recorded from 19 Nov 2026), each split by fit so a fit-heavy writer does not look better.
+  const fitOf = (id: string) => {
+    const e = eps.get(id)!;
+    return isFit({ title: e.title, hook: e.hook, game: e.game, durationSeconds: e.duration }) ? "fit" : "not fit";
+  };
+  const writerGroups = splitReading(
+    ytShorts,
+    (r) => ((w) => (w ? `${w}, ${fitOf(r.episode_id)}` : undefined))(eps.get(r.episode_id)?.writer),
+    now,
+  );
+  const narratorGroups = splitReading(ytShorts, (r) => eps.get(r.episode_id)?.narrator, now);
   const json: LoopJson = {
     version: 1,
     run_at: now.toISOString(),
@@ -2309,6 +2727,10 @@ export async function runAnalyticsLoop(
     changes,
     next_test: test.test,
     series,
+    ...(lengthAb ? { length_ab: lengthAb } : {}),
+    ...(writerGroups.length || narratorGroups.length
+      ? { authors: { writer: writerGroups, narrator: narratorGroups } }
+      : {}),
     ...(retentionStudy
       ? {
           retention: {
@@ -2568,6 +2990,22 @@ export function renderReport(x: RenderInput): string {
       "**Subscribers per 1,000 views by series** (YouTube Shorts 72 hours or older; the control's GTA news apart; TikTok and Instagram give no per-post follows, so they are left out)",
       "",
       ...seriesLines(json.series),
+      "",
+    );
+  if (json.authors)
+    L.push(
+      "**Writer and narrator** (YouTube Shorts 72 hours or older, recorded from 19 Nov 2026; the writer within fit and not fit)",
+      "",
+      ...splitLines(json.authors.writer).map((l) => `- Writer ${l}`),
+      ...splitLines(json.authors.narrator).map((l) => `- Narrator ${l}`),
+      "",
+    );
+  if (json.length_ab)
+    L.push(
+      "**The Why length test** (WHY_LENGTH_AB: The Why and The GTA File at 30-35 s on short-arm days against the serial band; YouTube Shorts 72 hours or older)",
+      "",
+      ...splitLines(json.length_ab.groups).map((l) => `- ${l}`),
+      `- Reading: ${json.length_ab.reading.verdict} (${json.length_ab.reading.why}).`,
       "",
     );
   if (x.tooFew.length)

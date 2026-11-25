@@ -22,12 +22,13 @@ import {
   type ShortShape,
 } from "../src/render/untemplate.ts";
 import { planSfx, type RenderPlan, type Shot } from "../src/render/plan.ts";
-import { overlaySpans, shortLayout } from "../src/render/cleanframe.ts";
+import { arbitrate, overlaySpans, shortLayout } from "../src/render/cleanframe.ts";
 import type { Segment } from "../src/render/timeline.ts";
 import { memoryOf, shapeShort, soundShort } from "../src/untemplatestep.ts";
 import { recordOf, samenessScore, samenessTable } from "../src/qa/sameness.ts";
 import { loadConfig } from "../src/config.ts";
 import { LEVEL } from "../src/render/soundscape.ts";
+import { testConfig } from "./helpers.ts";
 
 const FPS = 30;
 
@@ -673,4 +674,79 @@ test("people and mention insets count as the one overlay in every opening and cl
     for (const close of ["card", "hold"] as const)
       assert.ok(kept({ open, close }).some((s) => s.kind === "mention"), `${open}/${close}: mention shown`);
   assert.ok(arr.some((a) => Math.abs(a.frame - mentions[0]!.from) <= 3));
+});
+
+test("with every setting off, a stored Short's plan, effects and overlays are exactly stage's", () => {
+  const fx = JSON.parse(
+    fs.readFileSync(
+      new URL("./fixtures/untemplate_off_3658bb74.json", import.meta.url),
+      "utf8",
+    ),
+  ) as {
+    segments: Segment[];
+    words: Array<{ text: string; start: number; end: number }>;
+    stamps: Array<{ at: number; text: string; sub?: string; colour: string }>;
+    plan: RenderPlan;
+    stage: { sfx: unknown; layout: unknown; spans: unknown; kept: unknown };
+  };
+  const cfg = testConfig(""); // only the settings are read
+  assert.equal(cfg.shortSoundPlan, "v3");
+  assert.equal(cfg.shortLayouts, false);
+  assert.equal(cfg.shortFirstShotMinSeconds, 0);
+  const plan = JSON.parse(JSON.stringify(fx.plan)) as RenderPlan;
+  const before = JSON.stringify(plan);
+  // The render step's order (src/pipeline.ts): the shape, the overlays, then the sound step.
+  const assets: { shortShape?: unknown; shortSoundArm?: "sparse" | "v3" } = {};
+  const shape = shapeShort({
+    cfg,
+    id: "ep_20261105_3658bb74",
+    plan,
+    clean: true,
+    rumour: false,
+    headline: "Nintendo Rules Out Another Switch 2 Hike, For Now",
+    memory: undefined,
+    assets,
+  });
+  assert.equal(shape, undefined);
+  const layout = shortLayout(fx.segments, plan.fps, plan.totalFrames, plan.tailFrames);
+  const spans = overlaySpans({
+    segments: fx.segments,
+    words: fx.words,
+    plan,
+    layout,
+    stamps: fx.stamps,
+    sting: false,
+    shape,
+  });
+  assert.equal(JSON.stringify(layout), JSON.stringify(fx.stage.layout));
+  assert.equal(JSON.stringify(spans), JSON.stringify(fx.stage.spans));
+  assert.equal(JSON.stringify(arbitrate(spans)), JSON.stringify(fx.stage.kept));
+  // The pipeline skips the sound step unless SHORT_SOUND_PLAN=sparse or the stored plan is sparse; called anyway, it
+  // leaves a v3 plan alone.
+  assert.ok(!((cfg.shortSoundPlan as string) === "sparse" || plan.soundPlan === "sparse"));
+  soundShort({
+    cfg,
+    id: "ep_20261105_3658bb74",
+    plan,
+    segments: fx.segments,
+    words: fx.words,
+    stamps: fx.stamps,
+    clean: true,
+    stampSound,
+    shape,
+    memory: undefined,
+    assets,
+    v3: () => {
+      throw new Error("a v3 plan is never rebuilt");
+    },
+  });
+  assert.equal(JSON.stringify(plan), before, "the plan, its shots and its effects, byte for byte");
+  assert.deepEqual(assets, {}, "nothing recorded on the episode");
+  assert.equal(JSON.stringify(planSfx(fx.segments, plan.totalFrames)), JSON.stringify(fx.stage.sfx));
+  assert.deepEqual(
+    plan.sfx.map((c) => c.file),
+    (fx.stage.sfx as Array<{ file: string }>).map((c) => c.file),
+  );
+  // The render's music level: no silence dip on any frame of a plan with no silences.
+  for (let f = 0; f < plan.totalFrames; f++) assert.equal(silenceDipAt(plan.silences, f), 1);
 });

@@ -1,10 +1,15 @@
-// The thumbnail rule for long videos (THUMB_HERO_RULE, owner, 3-4 Nov 2026): one recognisable hero, at most four big
-// words, no decorative frames, visors or small panels. The owner's words were "2-4"; a single strong word is allowed
-// too, even one repeating the title's promise, after the Inspiration study (GrandGecko's 1.66M-view GTA 6 thumbnail
-// is one giant word, one cut-out character and a simple background). He rejected the Halo motif thumbnail (Halloween skins inside a visor
+// The thumbnail rule for long videos (THUMB_HERO_RULE, owner, 3-4 Nov 2026): one recognisable hero, 2-5 big words,
+// no decorative frames, visors or small panels. He rejected the Halo motif thumbnail (Halloween skins inside a visor
 // frame) and replaced it with Master Chief on the right and HALO 3 ISN'T #1 huge on the left; that is the model
-// (src/render/ThumbStudio.tsx PosterThumb). The GTA cover grid, which he asked for on Vice City, is the one approved
-// special case and keeps its route (approvedGrid).
+// (src/render/ThumbStudio.tsx PosterThumb).
+//
+// The 19 Nov 2026 review of the seven public long videos settled it. The two that passed (San Andreas, 1,847 views,
+// our best by far: THE CITY CAME BACK; Halo: HALO 3 ISN'T #1) are one big character and a few words that open a
+// question the title answers. The five that failed were the GTA cover grid (8-9 small tiles and a card that repeated
+// the title: GTA 6 Before You Buy, Vice City) and the older split template (logo, label pill, the whole title as the
+// headline, a subtitle cut off mid-sentence). So the grid is off the route too (approvedGrid), and designProblems
+// rejects what those had: words that repeat the title, more than three pictures, secondary lines too small to read
+// at 168x94, and words cut off.
 //
 // At generation time this picks words that pass and art that belongs to the game, from the provenance line every
 // picture carries: on the GTA 6 documentary the media step holds Red Dead Redemption 2 art (its chapter) beside GTA
@@ -38,8 +43,8 @@ import {
 
 const run = promisify(execFile);
 
-export const THUMB_MIN_WORDS = 1;
-export const THUMB_MAX_WORDS = 4;
+export const THUMB_MIN_WORDS = 2;
+export const THUMB_MAX_WORDS = 5;
 /** Longer than this cannot be big, whatever the word count. */
 const THUMB_MAX_CHARS = 26;
 /** The feed's small thumbnail. */
@@ -82,6 +87,90 @@ export function thumbWordProblems(text: string): string[] {
   return out;
 }
 
+// ------------------------------------------------------------------------------------------------ title echo
+
+/** Words that carry no meaning of their own when a headline is compared with its title. */
+const ECHO_STOP = new Set(
+  "a an the of to in on at by for from with and or but is are was were be it its this that these those why how what who when where every all ever before after you your we our i my has had have do does did go got get".split(
+    " ",
+  ),
+);
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1",
+  two: "2",
+  three: "3",
+  four: "4",
+  five: "5",
+  six: "6",
+  seven: "7",
+  eight: "8",
+  nine: "9",
+  ten: "10",
+  eleven: "11",
+  twelve: "12",
+  thirteen: "13",
+  fourteen: "14",
+  fifteen: "15",
+  sixteen: "16",
+  seventeen: "17",
+  eighteen: "18",
+  nineteen: "19",
+  twenty: "20",
+};
+
+/** A text's meaning words, normalised so GTA VI, Grand Theft Auto 6 and thirteen/13 compare equal (pure). */
+export function echoWords(text: string): string[] {
+  const words = nameWords(
+    text
+      .replace(/\bgrand theft auto\b/gi, "gta")
+      .replace(/\bcall of duty\b/gi, "cod"),
+  )
+    .map((w) => NUMBER_WORDS[w] ?? w)
+    .filter((w) => !ECHO_STOP.has(w) && w !== "s" && w !== "t");
+  return [...new Set(words)];
+}
+
+/**
+ * Whether thumbnail words repeat the title instead of adding to it (pure). Two shared meaning words at least, and
+ * either three quarters of the words are the title's or they cover most of the title: VICE CITY on "Why GTA 6 Had to
+ * Go Back to Vice City", WHY GTA 6 TOOK THIRTEEN YEARS on its own title, HALO RANKED on "Every Halo Campaign Ranked".
+ * HALO 3 ISN'T #1 and 13 YEARS OF SILENCE add something, so they pass; one word alone is never an echo.
+ */
+export function titleEchoProblems(
+  words: string,
+  ...titles: Array<string | undefined>
+): string[] {
+  const h = echoWords(words);
+  for (const title of titles) {
+    if (!title?.trim()) continue;
+    const t = new Set(echoWords(title));
+    if (!t.size) continue;
+    const shared = h.filter((w) => t.has(w)).length;
+    if (shared >= 2 && (shared / h.length >= 0.75 || shared / t.size >= 0.6))
+      return [
+        `"${words.toUpperCase()}" repeats the title "${title}" (${shared} of its ${h.length} words); it should open a question the title answers`,
+      ];
+  }
+  return [];
+}
+
+/** Words a line cannot end on unless it was cut short ("WORLD, STORY AND"). */
+const DANGLING = new Set(
+  "a an the of to in on at by for from with and or but nor as than into onto over under about versus vs".split(
+    " ",
+  ),
+);
+
+/** Whether a line of thumbnail text was cut off mid-sentence (pure). */
+export function cutOffProblems(text: string): string[] {
+  const t = text.trim();
+  if (!t) return [];
+  const last = t.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").trim().split(/\s+/).pop() ?? "";
+  if (/(\.\.\.|\u2026|[-,;:&/])$/.test(t) || DANGLING.has(last))
+    return [`"${t}" is cut off`];
+  return [];
+}
+
 /** The fields of a script the words are chosen from. */
 export interface ThumbScript {
   headline: string;
@@ -89,19 +178,36 @@ export interface ThumbScript {
   recap?: unknown;
   evergreen_format?: string;
   entries?: Array<{ game_title?: string }>;
-  youtube?: { thumb_text?: string };
+  youtube?: { thumb_text?: string; title?: string };
 }
 
-/** The words for a thumbnail: the writer's own if they pass, else short plain ones that always do. */
+/** Everything wrong with a video's thumbnail words: the rule, a title echo and a cut. */
+export function thumbWordsForTitleProblems(
+  words: string,
+  script: Pick<ThumbScript, "headline" | "youtube">,
+): string[] {
+  return [
+    ...thumbWordProblems(words),
+    ...titleEchoProblems(words, script.youtube?.title, script.headline),
+    ...cutOffProblems(words),
+  ];
+}
+
+/**
+ * The words for a thumbnail: the writer's own if they pass (the title echo included), else short plain ones that
+ * open a question and do not repeat the title.
+ */
 export function heroThumbWords(script: ThumbScript): string {
   const own = script.youtube?.thumb_text?.trim().replace(/\s+/g, " ");
-  if (own && !thumbWordProblems(own).length) return own.toUpperCase();
-  const game = script.game_title.trim().toUpperCase();
-  const fits = (t: string) => (thumbWordProblems(t).length ? undefined : t);
-  if (script.recap) return "THIS WEEK";
+  if (own && !thumbWordsForTitleProblems(own, script).length)
+    return own.toUpperCase();
+  const pick = (...options: string[]) =>
+    options.find((t) => !thumbWordsForTitleProblems(t, script).length) ??
+    options[options.length - 1]!;
+  if (script.recap) return pick("THIS WEEK", "THE BIG WEEK");
   if (script.entries?.length && script.evergreen_format !== "documentary")
-    return fits(`${game} RANKED`) ?? "THE FINAL RANKING";
-  return fits(`THE ${game} STORY`) ?? "THE REAL STORY";
+    return pick("ONLY ONE IS #1", "THE TOP SPOT", "#1 IS CLEAR");
+  return pick("WHAT REALLY HAPPENED", "THE REAL STORY", "THE HIDDEN SIDE");
 }
 
 // ------------------------------------------------------------------------------------------------ the art
@@ -265,9 +371,13 @@ export function rankHeroArt<T extends HeroArtImage>(
   return [...first, ...later];
 }
 
-/** The series-grid special case: the GTA cover grid the owner asked for. Every other motif card is off the route. */
-export function approvedGrid(motifId?: string): boolean {
-  return motifId === "gta";
+/**
+ * The series-grid special case. The GTA cover grid was approved on Vice City (31 Oct 2026); the 19 Nov review found
+ * it on the two GTA videos that did worst (66 and 141 views: 8-9 small tiles, no subject, unreadable small), so no
+ * grid is on the route now. Kept as a function so a future approved grid has one place to go.
+ */
+export function approvedGrid(_motifId?: string): boolean {
+  return false;
 }
 
 /** The designs the rule allows. Everything else (frames, screens, panels, circles, cuttings) is off the default route. */
@@ -281,6 +391,76 @@ export function layoutProblem(
   if (layout === "hero" || layout === "depth")
     return `the ${layout} design cuts its subject out by depth, which can remove part of a face`;
   return `the ${layout ?? "split"} design has frames or panels`;
+}
+
+// ------------------------------------------------------------------------------------------------ the design
+
+/** At most this many pictures in one thumbnail: one hero, or a versus at most. */
+export const MAX_PANELS = 3;
+/** Secondary lines the older designs draw (kicker pill, subtitle, year, labels): font sizes at 1280x720. */
+const SECONDARY_FONT: Record<string, number> = {
+  kicker: 28,
+  game: 30,
+  year: 34,
+  labels: 36,
+};
+
+/** How many separate pictures a design shows (a cut-out of the same picture is not another one). */
+export function panelCount(thumb: Record<string, unknown>): number {
+  const files = new Set<string>();
+  for (const k of ["imageFile", "image2File"])
+    if (typeof thumb[k] === "string" && thumb[k]) files.add(thumb[k] as string);
+  if (Array.isArray(thumb.pictureFiles))
+    for (const f of thumb.pictureFiles)
+      if (typeof f === "string" && f) files.add(f);
+  return files.size;
+}
+
+/** The capital height of a poster's words at 168x94 (pure). */
+export function posterCapPx(headline: string): number {
+  return posterWords(headline).fontSize * CAP_EM * (SMALL_H / POSTER_H);
+}
+
+/**
+ * What is wrong with a long video's thumbnail design, before or after it is drawn (pure): the layout, the words (the
+ * rule, a title echo, a cut), more than MAX_PANELS pictures, and any line too small to read at 168x94.
+ */
+export function designProblems(
+  thumb: Record<string, unknown>,
+  script: Pick<ThumbScript, "headline" | "youtube">,
+  motifId?: string,
+): string[] {
+  const layout = typeof thumb.layout === "string" ? thumb.layout : undefined;
+  const headline = typeof thumb.headline === "string" ? thumb.headline : "";
+  const out: string[] = [];
+  const lp = layoutProblem(layout, motifId);
+  if (lp) out.push(lp);
+  out.push(...thumbWordsForTitleProblems(headline, script));
+  const panels = panelCount(thumb);
+  if (panels > MAX_PANELS)
+    out.push(`${panels} pictures; the rule is at most ${MAX_PANELS}`);
+  const scale = SMALL_W / POSTER_W;
+  for (const [k, size] of Object.entries(SECONDARY_FONT)) {
+    const v = thumb[k];
+    const text = Array.isArray(v)
+      ? v.filter(Boolean).join(" ")
+      : typeof v === "string"
+        ? v.trim()
+        : "";
+    if (!text) continue;
+    const cap = size * CAP_EM * scale;
+    if (cap < MIN_CAP_PX)
+      out.push(
+        `"${text}" is ${cap.toFixed(1)} px tall at ${SMALL_W}x${SMALL_H}, too small to read`,
+      );
+    out.push(...cutOffProblems(text));
+  }
+  if (layout === "poster" && headline) {
+    const cap = posterCapPx(headline);
+    if (cap < MIN_CAP_PX)
+      out.push(`letters ${cap.toFixed(1)} px tall at ${SMALL_W}x${SMALL_H}`);
+  }
+  return out;
 }
 
 // ------------------------------------------------------------------------------------------------ the check
@@ -620,8 +800,9 @@ export async function heroRuleDesigns(o: {
 }
 
 /**
- * No picture the rule can use: the plain split design carries the release, with legal words and never a picture of
- * another game. No frame, no panel of pictures, and the only route left when everything else has fallen away.
+ * No picture the rule ranked: a poster still carries the release, on the given picture unless it belongs to another
+ * game, with legal words and no kicker or subtitle. It used to be the split design, whose logo, label pill, repeated
+ * title and cut-off subtitle the 19 Nov review failed on three videos.
  */
 export function heroRuleFallback(
   split: HeroDesign,
@@ -631,10 +812,13 @@ export function heroRuleFallback(
   const wrong = artVerdict(provenance, script.game_title) === "other";
   return [
     {
-      layout: split.layout,
+      layout: "poster",
       thumb: {
-        ...split.thumb,
         headline: heroThumbWords(script),
+        kicker: "",
+        game: "",
+        accent: (split.thumb.accent as string | undefined) ?? "#FF6B1A",
+        layout: "poster",
         imageFile: wrong ? null : split.thumb.imageFile,
       },
     },

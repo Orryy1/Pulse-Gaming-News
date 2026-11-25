@@ -2,6 +2,16 @@
 
 Questions people type into YouTube where the answers are old, off-target or long videos (YouTube autocomplete and the top 20 results, measured 26 Oct 2026). The topic pickers prefer a candidate that answers one directly and use the searcher's own words in the title. One a line: `- phrase (format): angle`. Refresh by re-running the demand study.
 
+- things i wish i knew before playing gta 6 (fit Short, one item each): One thing new players get wrong in GTA 6's first hours, from published guides and Rockstar's own manual; the stake in the first line. Never claim we played it. (1of10 outlier 21.5x, 19 Nov 2026)
+- gta 5 habits that fail in gta 6 (fit Short, one habit each): One GTA 5 habit the new wanted system, handling or economy punishes, as guides and Rockstar describe it. (30x)
+- things from gta 5 you can't do in gta 6 (fit Short, one item each): One GTA 5 feature missing at launch, checked against Rockstar's own pages or two guides. (42.9x)
+- gta 6 series s vs ps5 pro graphics (fit Short): The verified resolution and frame-rate gap from Digital Foundry or Rockstar, shown side by side on our own footage only. (100x)
+- gta 6 launch trailer vs final game (fit Short): One shot from Rockstar's trailer against the same place in the released game, early story only. (24.1x)
+- glitches already breaking gta 6 (fit Short, one each): A glitch that outlets have reported and players have filmed, labelled as reported; never instructions for exploits that break the terms of service. (71.9x)
+- gta 6 vs real miami (fit Short): One Leonida landmark beside the real Miami place it is based on, from outlets that compared them. (230.8x)
+- gta 6 made me realize how good gta iv was (why Short): What GTA IV did that GTA 6 builds on, older GTA nostalgia, which still performs for us. (417.7x)
+- evolution of the wanted level gta 1 to gta 6 (why Short): How the wanted system changed across the series, one era a beat. (9.7x)
+- games to play after finishing gta 6 (ranking Short): Open-world crime games with a clear reason each. (75x)
 - steam machine price (why Short): Why does the Steam Machine cost what it costs? Price from Valve's store page in dollars first, what is in the box, and how it compares with a PS5 Pro at list price.
 - why did they kill john marston in red dead redemption (why Short): Why Rockstar ended Red Dead Redemption the way it did: the Bureau's motive in the story and what Rockstar's writers have said on record. Spoiler warning up front.
 - what happened to minecraft's art style (why Short): What actually changed in Minecraft's look (texture updates, Vibrant Visuals) and when, from Mojang's own changelogs, so viewers can judge for themselves.

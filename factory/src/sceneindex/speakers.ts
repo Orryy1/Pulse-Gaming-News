@@ -62,7 +62,7 @@ export function speakerChunks(
   return out;
 }
 
-const SYSTEM = `You label who speaks each line of a video game's cutscene transcript. The lines are in the order they are heard, with the second they start. Speakers are the game's characters; use the cast list's spelling. Name a speaker only when the conversation makes it plain: the speaker is named or addressed by the line before or after ("Carl, tell him!" then CJ answers), they answer a question put to them by name, or the scene's two people alternate and one is already known. Mark "sure" true only then. A line whose speaker you would be guessing gets sure false (and may have an empty speaker). The words are machine-heard and sometimes wrong; judge from what they plainly say. Answer for every line id in the list.`;
+export const SPEAKER_SYSTEM = `You label who speaks each line of a video game's cutscene transcript. The lines are in the order they are heard, with the second they start. Speakers are the game's characters; use the cast list's spelling. Name a speaker only when the conversation makes it plain: the speaker is named or addressed by the line before or after ("Carl, tell him!" then CJ answers), they answer a question put to them by name, or the scene's two people alternate and one is already known. Mark "sure" true only then. A line whose speaker you would be guessing gets sure false (and may have an empty speaker). The words are machine-heard and sometimes wrong; judge from what they plainly say. Answer for every line id in the list.`;
 
 /** One chunk's prompt (pure). */
 export function speakerPrompt(
@@ -139,7 +139,7 @@ export async function attributeSpeakers(
       const r = await llm.structured({
         site: "sceneindex.speakers",
         tier: "mid",
-        system: SYSTEM,
+        system: SPEAKER_SYSTEM,
         content: speakerPrompt(cur, chunk, o.plot),
         schema: SpeakerAnswerSchema,
         effort: "low",

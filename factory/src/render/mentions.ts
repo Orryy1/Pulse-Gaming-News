@@ -9,6 +9,10 @@
 //   realplace  MENTION_REALPLACES  a real place named alongside its game version: a free Commons photo beside the game frame
 //   platform   MENTION_PLATFORMS   a row of Pulse-drawn text marks (PS5, Xbox Series X|S, PC, Switch 2) when platforms are listed
 //   receipt    MENTION_RECEIPTS    "Bloomberg reported": a chip with the outlet and the date, from the story's own sources
+//   outlet     MENTION_OUTLETS     a news outlet or magazine the story cites ("Edge's preview"): its own logo or masthead,
+//                                  as Wikidata files it on Commons, on its name (default on, 20 Nov 2026)
+//   inworld    MENTION_INWORLD     an in-game brand, shop, radio station or place ("Scooter Bros"): its real in-game logo,
+//                                  sign or a frame showing it, from our own frames, official art or a game wiki (default on)
 //
 // Rules for every kind (owner and the top-creator study, 18 Nov 2026): on screen at least 1.2 s, never two new insets at
 // once, about five a Short (MENTION_MAX_PER_SHORT), never over the captions, the hook or another overlay; an inset stands
@@ -25,7 +29,9 @@ export type MentionKind =
   | "character"
   | "realplace"
   | "platform"
-  | "receipt";
+  | "receipt"
+  | "outlet"
+  | "inworld";
 
 /** One picture in an inset, as the render gets it. */
 export interface MentionPicture {
@@ -38,6 +44,8 @@ export interface MentionPicture {
   credit?: string;
   /** Width over height of the picture as it will show. */
   aspect?: number;
+  /** A logo or sign on a light card (shown whole), not a photo or frame cut to fill. */
+  logo?: boolean;
 }
 
 /** A mention as the render gets it: what to draw and when its name is first said. */
@@ -89,7 +97,11 @@ export const PAIR_SECONDS = 3;
  * the noun, so receipts and compared games first; a logo or the platform row last).
  */
 export const KIND_RANK: Record<MentionKind, number> = {
+  // The outlet the line credits, as its own masthead: the noun of a "says Edge" line (owner, 20 Nov 2026).
+  outlet: 7,
   receipt: 6,
+  // The in-game thing the line is about ("Scooter Bros"), as itself.
+  inworld: 5.2,
   game: 5,
   realplace: 4,
   character: 3,
@@ -517,7 +529,7 @@ export function mentionText(m: MentionInset): string {
   if (m.kind === "receipt") return [m.label, m.sub].filter(Boolean).join(" ");
   if (m.kind === "platform") return (m.platforms ?? []).join(" ");
   // A logo is read as a picture; the other pictures by their names. Credits are legal lines, not counted.
-  if (m.kind === "logo") return m.pictures[0]?.label ?? "";
+  if (m.kind === "logo" || m.kind === "outlet") return m.pictures[0]?.label ?? "";
   return m.pictures.map((p) => p.label).join(" ");
 }
 export function mentionNeedFrames(m: MentionInset, fps: number): number {

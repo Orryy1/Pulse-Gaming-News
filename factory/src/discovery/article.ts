@@ -17,7 +17,12 @@ export interface ArticleText {
   via?: string;
 }
 
-export function extractArticle(html: string, url: string): ArticleText {
+export function extractArticle(
+  html: string,
+  url: string,
+  /** SCRIPT_ROOM_LINKS: also the body's outbound links (absent, the result is exactly as it always was). */
+  opts: { links?: boolean } = {},
+): ArticleText & { links?: string[] } {
   const $ = cheerio.load(html);
   $(
     "script, style, noscript, nav, header, footer, aside, form, iframe, figure figcaption",
@@ -42,12 +47,59 @@ export function extractArticle(html: string, url: string): ArticleText {
         p.length > 40 &&
         !/cookie|subscribe|newsletter|sign up|affiliate commission/i.test(p),
     );
+  const links = opts.links ? bodyLinks($, container, url) : undefined;
   return {
     url,
     title: title.trim(),
     text: paragraphs.join("\n").slice(0, 9000),
     ogImage,
+    ...(links ? { links } : {}),
   };
+}
+
+/** The article body's outbound links, absolute, deduplicated, in page order, at most 60 (pure). */
+function bodyLinks(
+  $: cheerio.CheerioAPI,
+  container: ReturnType<cheerio.CheerioAPI>,
+  url: string,
+): string[] {
+  const out = new Set<string>();
+  let self = "";
+  try {
+    self = new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    // a bad page URL: every absolute link counts as outbound
+  }
+  container.find("p a[href], li a[href]").each((_, el) => {
+    const href = $(el).attr("href");
+    if (!href || out.size >= 60) return;
+    try {
+      const u = new URL(href, url);
+      if (u.protocol !== "https:" && u.protocol !== "http:") return;
+      if (self && u.hostname.replace(/^www\./, "") === self) return;
+      u.hash = "";
+      out.add(u.toString());
+    } catch {
+      // not a link
+    }
+  });
+  return [...out];
+}
+
+/**
+ * The outbound links in an article's body (SCRIPT_ROOM_LINKS, the writers' room's primary sources). Fetched through
+ * fetchPublic like every article; an error gives none.
+ */
+export async function fetchOutboundLinks(url: string): Promise<string[]> {
+  if (steamNewsPost(url) || /^https?:\/\/en\.wikipedia\.org\//.test(url)) return [];
+  try {
+    const res = await fetchPublic(url, { headers: { accept: "text/html" } }, 15_000);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return extractArticle(await res.text(), url, { links: true }).links ?? [];
+  } catch (err) {
+    log("warn", "article links fetch failed", { url, error: errorMessage(err) });
+    return [];
+  }
 }
 
 const WIKI_SECTIONS =

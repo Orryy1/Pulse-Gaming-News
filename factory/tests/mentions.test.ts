@@ -711,7 +711,7 @@ test("findMentions keeps only verified pictures: the wrong store game and a non-
   );
 });
 
-test("every MENTION_ setting is off by default; MENTION_MAX_PER_SHORT is 5", () => {
+test("MENTION_ settings: outlets and in-world pictures on by default, every other kind off; MENTION_MAX_PER_SHORT is 5", () => {
   const keys = [
     "MENTION_GAMES",
     "MENTION_LOGOS",
@@ -719,6 +719,8 @@ test("every MENTION_ setting is off by default; MENTION_MAX_PER_SHORT is 5", () 
     "MENTION_REALPLACES",
     "MENTION_PLATFORMS",
     "MENTION_RECEIPTS",
+    "MENTION_OUTLETS",
+    "MENTION_INWORLD",
     "MENTION_MAX_PER_SHORT",
   ];
   const before = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
@@ -736,7 +738,11 @@ test("every MENTION_ setting is off by default; MENTION_MAX_PER_SHORT is 5", () 
     [false, false, false, false, false, false],
   );
   assert.equal(c.mentionMaxPerShort, 5);
-  assert.deepEqual(mentionKinds(c), []);
+  // Outlet logos and in-world pictures are on by default (owner, 20 Nov 2026).
+  assert.deepEqual(mentionKinds(c), ["outlet", "inworld"]);
+  process.env.MENTION_OUTLETS = "false";
+  process.env.MENTION_INWORLD = "false";
+  assert.deepEqual(mentionKinds(loadConfig()), []);
   process.env.MENTION_GAMES = "true";
   assert.deepEqual(mentionKinds(loadConfig()), ["game"]);
   for (const k of keys)

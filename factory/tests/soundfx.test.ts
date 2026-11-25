@@ -52,6 +52,7 @@ import {
   inKey,
   leadFrames,
 } from "../src/render/soundscape.ts";
+import { LIBRARY_BEDS, LIBRARY_MOODS } from "../src/render/bedlibrary.ts";
 import { ALL_STYLES } from "../src/render/components/packs/index.ts";
 import { PHOTO_TREATMENTS } from "../src/render/photoplan.ts";
 import { SKETCH_TREATMENTS } from "../src/render/sketchplan.ts";
@@ -355,7 +356,9 @@ test("the pocketed copy plays under the voice and fades out in pauses, in propor
   assert.equal(pocketWeight(0.11, 0.07, 0.11), 0);
   assert.equal(pocketWeight(0.42, 0.07, 0.11), 0);
   assert.ok(Math.abs(pocketWeight(0.09, 0.07, 0.11) - 0.5) < 1e-9);
-  for (const b of [...BEDS, ...Object.values(MOOD_BEDS).flat()])
+  // library beds (bedlibrary.ts) ship without a pocketed copy to keep the repo small; render skips the pocket for them
+  const library = new Set([...LIBRARY_BEDS, ...LIBRARY_MOODS].map((b) => b.file));
+  for (const b of [...BEDS, ...Object.values(MOOD_BEDS).flat()].filter((b) => !library.has(b.file)))
     assert.ok(
       fs.existsSync(path.join(ROOT, "public", pocketOf(b.file))),
       b.file,

@@ -27,9 +27,11 @@ import { nameWords, sameGame, type SteamApp } from "./steam.ts";
 import { commonsFile, faceSquare, FREE, PRESS } from "./people.ts";
 import type { SiteAsset } from "./publishersite.ts";
 import { placeFor } from "../render/places.ts";
+import { findInworldPicture, inworldCandidates, type InworldDeps } from "./inworld.ts";
 import {
   COMPARE_WORDS,
   PLACE_PAIRS,
+  PLATFORMS,
   attributedTimes,
   firstSaid,
   phraseTimes,
@@ -58,6 +60,8 @@ export interface MentionPictureFile {
   sourceUrl: string;
   license?: string;
   pageUrl?: string;
+  /** A logo or sign drawn whole on a light card (an in-game logo from a wiki). */
+  logo?: boolean;
 }
 
 /** One thing a video may show an inset for, before it is placed on the words. */
@@ -546,6 +550,99 @@ export function receiptDate(iso: string | undefined): string | undefined {
   return m[3] ? `${mon} ${Number(m[3])}, ${m[1]}` : `${mon} ${m[1]}`;
 }
 
+// ---- Outlets ----------------------------------------------------------------------------------------------------
+
+/**
+ * News outlets and magazines whose own logo or masthead may show on their name (MENTION_OUTLETS), each with the names
+ * that say it and the Wikipedia article whose Wikidata item files the logo (P154, on Commons). Only when the outlet is
+ * a source of the story (outletsCited): "Edge's preview describes..." in a story built from Edge's preview.
+ */
+export const OUTLETS: Array<{ key: string; names: string[]; article: string }> = [
+  { key: "edge", names: ["Edge"], article: "Edge (magazine)" },
+  { key: "ign", names: ["IGN"], article: "IGN" },
+  { key: "gamespot", names: ["GameSpot"], article: "GameSpot" },
+  { key: "eurogamer", names: ["Eurogamer"], article: "Eurogamer" },
+  { key: "vgc", names: ["Video Games Chronicle", "VGC"], article: "Video Games Chronicle" },
+  { key: "kotaku", names: ["Kotaku"], article: "Kotaku" },
+  { key: "bloomberg", names: ["Bloomberg News", "Bloomberg"], article: "Bloomberg News" },
+  { key: "polygon", names: ["Polygon"], article: "Polygon (website)" },
+  { key: "pcgamer", names: ["PC Gamer"], article: "PC Gamer" },
+  { key: "gameinformer", names: ["Game Informer"], article: "Game Informer" },
+  { key: "verge", names: ["The Verge", "the Verge"], article: "The Verge" },
+  { key: "pushsquare", names: ["Push Square"], article: "Push Square" },
+  { key: "insidergaming", names: ["Insider Gaming"], article: "Insider Gaming" },
+  { key: "reuters", names: ["Reuters"], article: "Reuters" },
+  { key: "famitsu", names: ["Famitsu"], article: "Famitsu" },
+  { key: "rps", names: ["Rock Paper Shotgun"], article: "Rock Paper Shotgun" },
+  { key: "digitalfoundry", names: ["Digital Foundry"], article: "Digital Foundry" },
+  { key: "vg247", names: ["VG247"], article: "VG247" },
+  { key: "gamesradar", names: ["GamesRadar+", "GamesRadar"], article: "GamesRadar+" },
+  { key: "windowscentral", names: ["Windows Central"], article: "Windows Central" },
+  { key: "purexbox", names: ["Pure Xbox"], article: "Pure Xbox" },
+  { key: "nintendolife", names: ["Nintendo Life"], article: "Nintendo Life" },
+  { key: "gematsu", names: ["Gematsu"], article: "Gematsu" },
+  { key: "destructoid", names: ["Destructoid"], article: "Destructoid" },
+  { key: "dexerto", names: ["Dexerto"], article: "Dexerto" },
+  { key: "thegamer", names: ["TheGamer"], article: "TheGamer" },
+  { key: "rollingstone", names: ["Rolling Stone"], article: "Rolling Stone" },
+  { key: "guardian", names: ["The Guardian", "the Guardian"], article: "The Guardian" },
+  { key: "bbc", names: ["BBC News", "BBC"], article: "BBC News" },
+  { key: "nyt", names: ["The New York Times", "the New York Times", "New York Times"], article: "The New York Times" },
+  { key: "forbes", names: ["Forbes"], article: "Forbes" },
+  { key: "axios", names: ["Axios"], article: "Axios (website)" },
+];
+
+const nameRe = (n: string) =>
+  new RegExp(`(^|[^\\p{L}\\p{N}])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+
+/**
+ * The outlets the spoken lines name that are sources of the story (pure), in the order first said: the name, case
+ * kept, in the story's own sources (the articles' outlets, titles and summaries, the attribution line, the long
+ * video's sources), or credited in the narration itself ("Edge says", "according to IGN").
+ */
+export function outletsCited(o: {
+  spoken: string;
+  sourcesText: string;
+  /** The narration's words, for the credited-in-the-line test; optional. */
+  words?: Word[];
+}): Array<(typeof OUTLETS)[number]> {
+  const hits: Array<{ c: (typeof OUTLETS)[number]; at: number }> = [];
+  for (const c of OUTLETS) {
+    let at = -1;
+    for (const n of c.names) {
+      const m = o.spoken.match(nameRe(n));
+      if (m?.index !== undefined && (at < 0 || m.index < at)) at = m.index;
+    }
+    if (at < 0) continue;
+    const source =
+      c.names.some((n) => nameRe(n).test(o.sourcesText)) ||
+      (o.words ? attributedTimes(o.words, c.names).length > 0 : false);
+    if (source) hits.push({ c, at });
+  }
+  return hits.sort((a, b) => a.at - b.at).map((h) => h.c);
+}
+
+/** All the story's own source text an outlet may be named in (pure). */
+export function storySourcesText(o: {
+  items: StoryItem[];
+  attribution?: string;
+  docSources?: Array<string | { url?: string; source?: string }>;
+}): string {
+  // The outlets' names, the attribution and the long video's sources; never the articles' headlines or summaries
+  // (a Title Case headline "Pushes The Edge Of..." would make Edge a source).
+  return [
+    ...o.items.map((i) => i.source ?? ""),
+    o.attribution ?? "",
+    ...(o.docSources ?? []).map((d) => (typeof d === "string" ? d : `${d.source ?? ""}`)),
+  ].join(" \n ");
+}
+
+/** A word said with a capital, as a name is ("Edge", not "the edge of the map"). */
+function saidAsName(words: Word[], at: number): boolean {
+  const w = words.find((x) => Math.abs(x.start - at) < 0.001);
+  return !!w && /^[("“‘']*[A-Z0-9]/.test(w.text);
+}
+
 // ---- Placing on the words (pure) --------------------------------------------------------------------------------
 
 type Word = { text: string; start: number; end?: number };
@@ -590,6 +687,7 @@ const pic = (p: MentionPictureFile): MentionPicture => ({
   ...(p.sub ? { sub: p.sub } : {}),
   ...(p.credit ? { credit: p.credit } : {}),
   ...(p.aspect ? { aspect: p.aspect } : {}),
+  ...(p.logo ? { logo: true } : {}),
 });
 
 /**
@@ -645,8 +743,10 @@ export function mentionsOnWords(
     for (const at of times) {
       // A logo only on the company's own name: "Rockstar North", "EA Sports", "Microsoft Flight Simulator" and
       // "Nintendo Switch" name something else (the next word is a capitalised part of another name).
-      if (it.kind === "logo" && namesSomethingElse(words, at, it.aliases))
+      if ((it.kind === "logo" || it.kind === "outlet") && namesSomethingElse(words, at, it.aliases))
         continue;
+      // An outlet or an in-game name only where it is said as a name: "Edge", never "the edge".
+      if ((it.kind === "outlet" || it.kind === "inworld") && !saidAsName(words, at)) continue;
       let pictures = it.pictures.map(pic);
       if (
         it.kind === "game" &&
@@ -694,6 +794,10 @@ export interface MentionDeps {
   faces?: (
     file: string,
   ) => Promise<Array<{ x: number; y: number; w: number; h: number }>>;
+  /** Where found outlet logos and in-world pictures are kept between videos (<data>/mentioncache). */
+  cacheDir?: string;
+  /** MENTION_INWORLD's sources (src/assets/inworld.ts): our frames, the library, the text reader. */
+  inworld?: InworldDeps;
 }
 
 export interface MentionInput {
@@ -855,6 +959,80 @@ async function capsule(
       };
   }
   return undefined;
+}
+
+/**
+ * Whether a Commons file is the outlet's own logo by its title (pure): one of the outlet's names, spaces and case aside,
+ * is in it ("EDGE logo.svg" for Edge). Wikidata files Pure Xbox under "Logo Gamer Network.svg", its owner's logo.
+ */
+export function outletFileOk(c: { names: string[] }, title: string): boolean {
+  const t = title.toLowerCase().replace(/^file:/, "").replace(/[^a-z0-9]/g, "");
+  return c.names.some((n) => {
+    const k = n.toLowerCase().replace(/^the\s+/, "").replace(/[^a-z0-9]/g, "");
+    return k.length >= 2 && t.includes(k);
+  });
+}
+
+/** How long a cached outlet logo is trusted before Wikidata is asked again (a masthead changes rarely). */
+const OUTLET_CACHE_DAYS = 30;
+
+/**
+ * An outlet's own logo (Wikidata P154 on Commons, under a free licence or public domain, as logoAllowed checks) in the
+ * episode folder, from the shared cache when it is there (network otherwise, never throws).
+ */
+async function outletLogo(
+  c: (typeof OUTLETS)[number],
+  dir: string,
+  fetchFn: Fetch,
+  cacheDir?: string,
+): Promise<MentionPictureFile | undefined> {
+  const file = path.join("assets", `mention_outlet_${c.key}.png`);
+  const cache = cacheDir ? path.join(cacheDir, "outlets") : undefined;
+  if (cache) {
+    try {
+      const meta = JSON.parse(await fs.readFile(path.join(cache, `${c.key}.json`), "utf8")) as MentionPictureFile & { at: string; refused?: string };
+      // A logo refused (not free, not the outlet's own) is not asked for again until the cache ages out.
+      if (meta.refused && Date.now() - Date.parse(meta.at) < OUTLET_CACHE_DAYS * 86_400_000) return undefined;
+      if (!meta.refused && Date.now() - Date.parse(meta.at) < OUTLET_CACHE_DAYS * 86_400_000) {
+        await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+        await fs.copyFile(path.join(cache, `${c.key}.png`), path.join(dir, file));
+        const { at: _at, ...pic } = meta;
+        return { ...pic, file };
+      }
+    } catch {
+      // not cached yet
+    }
+  }
+  const it = await itemFile(c.article, "P154", fetchFn).catch(() => undefined);
+  if (!it?.file) return undefined;
+  const meta = await commonsFile(it.file, fetchFn, 600);
+  if (!meta) return undefined;
+  const ok = outletFileOk(c, meta.title) ? logoAllowed(meta) : ({ ok: false, why: "the file is not named for the outlet (a parent company's logo?)" } as const);
+  if (!ok.ok) {
+    log("info", "mention insets: outlet logo refused", { outlet: c.key, file: it.file, why: ok.why });
+    if (cache)
+      await fs
+        .mkdir(cache, { recursive: true })
+        .then(() => fs.writeFile(path.join(cache, `${c.key}.json`), JSON.stringify({ refused: ok.why, file: it.file, at: new Date().toISOString() })))
+        .catch(() => undefined);
+    return undefined;
+  }
+  if (!(await save(meta.url, path.join(dir, file), fetchFn, 500))) return undefined;
+  const pic: MentionPictureFile = {
+    file,
+    label: c.names[0]!,
+    aspect: meta.thumbWidth && meta.thumbHeight ? meta.thumbWidth / meta.thumbHeight : undefined,
+    provenance: `${c.names[0]}'s logo as Wikidata files it (${it.qid}, P154): Wikimedia Commons ${meta.title}, ${meta.license}`,
+    sourceUrl: meta.url,
+    license: meta.license,
+    pageUrl: meta.pageUrl,
+  };
+  if (cache) {
+    await fs.mkdir(cache, { recursive: true }).catch(() => undefined);
+    await fs.copyFile(path.join(dir, file), path.join(cache, `${c.key}.png`)).catch(() => undefined);
+    await fs.writeFile(path.join(cache, `${c.key}.json`), JSON.stringify({ ...pic, at: new Date().toISOString() })).catch(() => undefined);
+  }
+  return pic;
 }
 
 /** The Wikidata item a Wikipedia article stands for, with a claim's first file (P154 logo, P18 image). */
@@ -1161,6 +1339,68 @@ export async function findMentions(
               sub: "IN THE GAME",
               provenance: gameProv,
               sourceUrl: gameSource,
+            },
+          ],
+        });
+      }
+    });
+
+  if (kinds.has("outlet"))
+    await tryKind("outlet", async () => {
+      const cited = outletsCited({
+        spoken: input.spoken,
+        sourcesText: storySourcesText({ items: input.items, attribution: input.attribution, docSources: input.docSources }),
+        words: input.spoken
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((text, i) => ({ text, start: i })),
+      });
+      for (const c of cited.slice(0, 4)) {
+        const logo = await outletLogo(c, dir, fetchFn, deps.cacheDir);
+        if (!logo) continue;
+        out.push({ kind: "outlet", key: `outlet:${c.key}`, aliases: c.names, pictures: [logo] });
+      }
+    });
+
+  if (kinds.has("inworld") && deps.cacheDir && input.mainGame.trim())
+    await tryKind("inworld", async () => {
+      const taken = out.flatMap((i) => i.aliases);
+      const names = inworldCandidates({
+        spoken: input.spoken,
+        mainGame: input.mainGame,
+        exclude: [
+          ...taken,
+          ...COMPANIES.flatMap((c) => c.names),
+          ...OUTLETS.flatMap((c) => c.names),
+          ...PLATFORMS.flatMap((p) => p.aliases),
+          ...PLACE_PAIRS.flatMap((p) => p.real),
+          ...gameAliases(input.mainGame),
+          // The story's own outlets ("GTA BOOM"), never something in the game.
+          ...input.items.flatMap((i) => (i.source ? [i.source.split(/[,(]/)[0]!.trim(), ...i.source.split(/[,(]/)[0]!.trim().split(/\s+/)] : [])),
+        ],
+      });
+      let k = 0;
+      for (const name of names) {
+        const p = await findInworldPicture(input.mainGame, name, path.join(deps.cacheDir!, "inworld"), deps.inworld ?? {});
+        if (!p) continue;
+        const ext = path.extname(p.file) || ".jpg";
+        const file = path.join("assets", `mention_inworld_${k++}${ext}`);
+        await fs.mkdir(path.join(dir, "assets"), { recursive: true });
+        await fs.copyFile(p.file, path.join(dir, file));
+        out.push({
+          kind: "inworld",
+          key: `inworld:${slug(name)}`,
+          aliases: [name],
+          pictures: [
+            {
+              file,
+              label: name,
+              credit: p.credit,
+              aspect: p.aspect,
+              logo: p.logo,
+              provenance: p.provenance,
+              sourceUrl: p.sourceUrl,
+              ...(p.pageUrl ? { pageUrl: p.pageUrl } : {}),
             },
           ],
         });

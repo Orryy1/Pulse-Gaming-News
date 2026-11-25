@@ -553,7 +553,7 @@ export function shortElements(input: ShortGfxInput): {
                 const m = input.mentions?.find((x) => x.key === sp.key)?.m;
                 return m ? mentionNeedFrames(m, fps) / fps : readNeed(n);
               })()
-          : readNeed(n),
+            : readNeed(n),
       keyAt: key.at,
       keyLine: key.line,
     });

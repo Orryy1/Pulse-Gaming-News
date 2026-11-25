@@ -6,7 +6,8 @@
 
 import { execFile, type ExecFileOptions } from "node:child_process";
 import { promisify } from "node:util";
-import { guardedYt } from "./ytguard.ts";
+import { guardedYt, isYouTubeCall } from "./ytguard.ts";
+import { envSwitch, signedPull } from "./ytsignin.ts";
 
 const exec = promisify(execFile);
 
@@ -36,13 +37,18 @@ export function timedOut(err: unknown): boolean {
  * execFile with the cap applied and SIGKILL on overrun (Windows has no gentler signal anyway). Resolves with
  * the child's stdout and stderr as text, like promisify(execFile). A yt-dlp call to YouTube goes through the
  * YouTube guard (src/lib/ytguard.ts): a kept answer first, then the hourly budget, spacing and any bot-check pause.
+ * With SIGNED_CLIPS on (default off), a pull of one video that YouTube age-gated, or that the anonymous lane's
+ * bot-check pause refused, is tried once more through the signed-in download account, within its clip share
+ * (src/lib/ytsignin.ts signedPull); searches and Pulse's own videos never are.
  */
 export function runCapped(
   cmd: string,
   args: readonly string[],
   opts: ExecFileOptions = {},
 ): Promise<{ stdout: string; stderr: string }> {
-  return guardedYt(cmd, args, () => runCappedRaw(cmd, args, opts));
+  const once = (a: readonly string[]) => guardedYt(cmd, a, () => runCappedRaw(cmd, a, opts));
+  if (!isYouTubeCall(cmd, args) || !envSwitch("SIGNED_CLIPS")) return once(args);
+  return signedPull(args, once, { enabled: true, what: "clip" });
 }
 
 async function runCappedRaw(

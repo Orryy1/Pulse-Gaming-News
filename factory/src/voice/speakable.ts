@@ -381,7 +381,7 @@ export const SAID_AS_LETTERS = new Set(
   // Platforms, hardware and formats.
   (
     "PC PS PSP PSN PSVR NES SNES GBA DS N XB HD SD UHD TV CD DVD USB SSD HDD CPU GPU RTX GTX RX AMD API OS VR AR XR " +
-    "VRR HDR DLSS FSR FOV HUD UI UX FPS RPM " +
+    "VRR HDR DLSS FSR FOV HUD UI UX FPS RPM HDMI LCD LED " +
     // Genres and game words.
     "DLC RPG JRPG CRPG ARPG MMO MMORPG RTS NPC PVP PVE QA AI CGI FMV DRM NFT XP HP " +
     // Companies, studios, outlets and bodies said as letters.

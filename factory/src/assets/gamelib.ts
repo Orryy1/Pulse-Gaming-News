@@ -104,6 +104,10 @@ export interface LibItem {
   scenes?: LibScene[];
   /** The model saw large lettering, a webcam, hardware or merchandise, or a suggestive picture: never picked. */
   unusable?: string;
+  /** From a publisher's press kit (PRESS_KITS, src/sources/presskits.ts): ranked first among stills. */
+  pressKit?: boolean;
+  /** The terms the asset was offered under, as recorded when it was harvested. */
+  terms?: string;
   addedAt: string;
 }
 
@@ -592,6 +596,18 @@ export const RECENT_PENALTY = 1.25;
 export const RECENT_SHORTS = 10;
 /** How much fit the owner's own recording gains over a publisher's or a store's picture. */
 export const OWN_BONUS = 0.5;
+/** How much fit a press kit picture gains (PRESS_KITS, 20 Nov 2026): the top-ranked still, above IGDB, Steam and wikis. */
+export const PRESS_KIT_BONUS = 0.4;
+/** Wiki art (a fan wiki's upload) loses this much, so any official picture of the same fit wins. */
+export const WIKI_PENALTY = 0.2;
+
+/** A source's standing in the picture choice (pure): own footage, then press kits, then official stores, then wikis. */
+export function sourceBonus(item: Pick<LibItem, "source" | "pressKit">): number {
+  if (item.source === "own") return OWN_BONUS;
+  if (item.pressKit) return PRESS_KIT_BONUS;
+  if (/\b(wiki|fandom)\b/i.test(item.source)) return -WIKI_PENALTY;
+  return 0;
+}
 
 export interface PickOptions {
   /** Asset key to how many of the game's recent Shorts showed it. */
@@ -643,8 +659,9 @@ export function pickForLines(
             fit -
             RECENT_PENALTY * (recent.get(key) ?? 0) +
             (kind === "video" && o.preferVideo ? 0.25 : 0) +
-            // Own footage first (owner, 5 Nov 2026): the owner's recordings win a tie with anyone else's.
-            (item.source === "own" ? OWN_BONUS : 0);
+            // Own footage first (owner, 5 Nov 2026): the owner's recordings win a tie with anyone else's; then press kit
+            // pictures, then the stores and the publisher's site, and wiki art last (src/sources/presskits.ts).
+            sourceBonus(item);
           if (!best || score > best.score)
             best = {
               key: w.key,

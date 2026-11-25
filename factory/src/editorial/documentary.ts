@@ -503,7 +503,7 @@ export const DocOutlineSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals for the thumbnail that add the hook or the emotion and do not restate the whole title (one strong word from its promise is fine), and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
+        "2-5 words in capitals for the thumbnail that open a question the title answers, adding the hook or the emotion; never the title's own words again (at most one of them), and that make sense to someone who has not watched (no bare ranks like 'HALO 2 AT 5?'): 'THE $69B MISTAKE', 'NEVER RELEASED', 'IT WAS A TRAP'. In a study of 1,598 gaming thumbnails, short hook text beat restated titles, dates and 'Top 10' labels",
       )
       .optional(),
     description: z
@@ -971,6 +971,8 @@ export const DocMomentSchema = z.object({
 /** A moment as stored: the writer's fields, plus the filler visual chosen later (src/assets/fillers.ts). */
 export type DocMoment = z.infer<typeof DocMomentSchema> & {
   filler?: import("../render/fillerplan.ts").MomentFiller;
+  /** EXPLAINERS (src/explainerstep.ts): the sentence's animated explainer; the filler chooser gives it the shot. */
+  explainer?: import("../render/components/explainers/types.ts").Explainer;
 };
 
 export function docMomentsSchema(count: number) {

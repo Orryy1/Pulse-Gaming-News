@@ -141,8 +141,8 @@ export function arbitrate(input: Span[]): Span[] {
       s.kind === "mention"
         ? pieces.find(([a, z]) => a - s.from <= MENTION_LATE_FRAMES && z - a >= MIN_KEEP.mention)
         : pieces.sort(
-      (x, y) => y[1] - y[0] - (x[1] - x[0]) || x[0] - y[0],
-    )[0];
+            (x, y) => y[1] - y[0] - (x[1] - x[0]) || x[0] - y[0],
+          )[0];
     if (!best || best[1] - best[0] < MIN_KEEP[s.kind]) continue;
     kept.push({ ...s, from: best[0], to: best[1] });
   }
@@ -329,7 +329,8 @@ export function overlaySpans(input: {
   const settled = settleMentions({ segments, words, plan, mentions: input.mentions ?? [], tracklist: input.tracklist, blockers });
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
-    if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    // EXPLAINERS: a line's explainer takes its card's place, card or not.
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
     if (input.tracklist?.segment === i) return;
     if (settled.replaced.has(i)) return;
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
@@ -369,7 +370,7 @@ export function settleMentions(input: {
   const cards: Array<{ i: number; from: number; to: number; entry: boolean }> = [];
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
-    if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
     if (input.tracklist?.segment === i) return;
     const w = cardWindow(segments, words, i, plan.fps, plan.totalFrames);
     cards.push({ i, from: w.from, to: w.from + w.len, entry: isEntryCard(s) });

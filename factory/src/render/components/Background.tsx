@@ -1,4 +1,6 @@
 import { safeScale } from "../safetransform.ts";
+import { DepthCam } from "./DepthCam.tsx";
+import { depthCamPlan } from "../depthcam.ts";
 import React from "react";
 import {
   AbsoluteFill,
@@ -126,15 +128,32 @@ export function focusPosition(image: ShortImage): string | undefined {
 }
 
 /** Full-bleed cover crop with one ambient move. */
-const Still: React.FC<{
+export const Still: React.FC<{
   image: ShortImage;
   durationFrames: number;
   move: MovePreset;
-}> = ({ image, durationFrames, move }) => {
+  /** The shot's place in the Short: PARALLAX_DEEP's path, direction and lens vary by it. */
+  index?: number;
+}> = ({ image, durationFrames, move, index = 0 }) => {
   const frame = useCurrentFrame();
   const p = Math.min(1, frame / Math.max(1, durationFrames));
   const m = moveTransform(move, p);
   const punch = cutPunch(frame);
+  // PARALLAX_DEEP: the still filmed as a 3D photo, cropped round its subject (components/DepthCam.tsx).
+  if (image.layers?.mesh) {
+    return (
+      <AbsoluteFill style={{ transform: `scale(${punch})` }}>
+        <DepthCam
+          src={image.src}
+          mesh={image.layers.mesh}
+          aspect={image.aspect}
+          len={durationFrames}
+          plan={depthCamPlan(index, durationFrames)}
+          focusX={image.focusX ?? 0.5}
+        />
+      </AbsoluteFill>
+    );
+  }
   // SHORT_PARALLAX: the still's depth layers drift at their own speeds, nearer faster, so it moves like footage.
   if (image.layers) {
     const layers = image.layers;
@@ -374,7 +393,7 @@ export const ArtTrack: React.FC<{
         />
       </FramedFootage>
     ) : (
-      <Still image={image} durationFrames={len} move={shot.move} />
+      <Still image={image} durationFrames={len} move={shot.move} index={index} />
     );
   } else {
     body = <BrandPlate accent={accent} title={gameTitle} />;

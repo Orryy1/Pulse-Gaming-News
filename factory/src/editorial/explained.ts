@@ -452,7 +452,7 @@ export const ExplainedPackagingSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals that add the hook and do not restate the whole title (one strong word from its promise is fine)",
+        "2-5 words in capitals that open a question the title answers; never the title's own words again (at most one of them)",
       ),
     description: z
       .string()
@@ -726,7 +726,7 @@ export async function writeExplainedBookends(
   const digest = chapters
     .map(
       (c, i) =>
-        `${i + 1}. ${outline.chapters[i]?.chapter_title} (${EXPLAINED_PARTS[i]?.label}): ${c.claims
+        `${i + 1}. ${outline.chapters[i]?.chapter_title} (${EXPLAINED_PARTS.find((p) => p.job === outline.chapters[i]?.focus)?.label ?? EXPLAINED_PARTS[i]?.label}): ${c.claims
           .slice(0, 6)
           .map((x) => x.claim)
           .join("; ")}`,

@@ -8,6 +8,7 @@ import { runCapped } from "../lib/child.ts";
 import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
+import { namesOtherEntry, titleNamesGame } from "../sceneindex/gamenames.ts";
 import { orchClientUrl } from "../platform.ts";
 import {
   appleSoundReady,
@@ -197,7 +198,11 @@ export function pickCutsceneUpload(
       if (item.isLive || (item.liveStatus && item.liveStatus !== "not_live"))
         return false;
       const title = titleWords(item.title);
-      if (!names.some((name) => ` ${title} `.includes(` ${name} `)))
+      // 19 Nov 2026: fans write "GTA 6" for Grand Theft Auto VI; every GTA VI movie was refused as another game.
+      if (
+        !names.some((name) => ` ${title} `.includes(` ${name} `)) &&
+        !(titleNamesGame(item.title, gameTitle) && !namesOtherEntry(item.title, gameTitle))
+      )
         return false;
       if (!/\b(cut\s*scenes?|movies?|no\s+commentary)\b/i.test(title) &&
           !(opts.sceneKeyword && /\bscenes?\b/i.test(title)))
@@ -822,6 +827,8 @@ export interface CutsceneOptions {
   soundTags?: boolean;
   /** LONG_WATERMARK_CROP: a section with one small corner mark is cropped clear of it when this much picture stays. */
   watermarkCropKeep?: number;
+  /** SHORT_CLIP_EDGE_TEXT: false for long videos, which show the whole picture, so text near the edge is not cut. */
+  edgeText?: boolean;
   deps?: {
     search?: (query: string) => Promise<CutsceneUpload[]>;
     details?: (
@@ -1271,6 +1278,7 @@ export async function cutsceneMedia(
         ...(o.sceneCheck ? { sceneReview: localSceneReview(o.gameTitle) } : {}),
         prefix: `${path.basename(workDir)}_${pass++}`,
       textCheck: true,
+        ...(o.edgeText === undefined ? {} : { edgeText: o.edgeText }),
         preserveWork: true,
         fillSeconds: fill ? remaining : undefined,
         describe: (t, seconds, at) => {

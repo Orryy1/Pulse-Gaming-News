@@ -46,6 +46,7 @@ import {
   type SpoilerWindow,
 } from "./spoilers.ts";
 import type { Config } from "../config.ts";
+import { indexScorer, ownStreamClips } from "../semantic/hook.ts";
 
 export interface PlannedClip {
   key: string;
@@ -132,6 +133,8 @@ export function planIndexedClips(
     /** SCENE_MATCH: for a line that names someone or somewhere, this many next-best shots ride along as alternates. */
     alternates?: number;
     gameTitle?: string;
+    /** MATCH_SEMANTIC: each shot's meaning score for a line (src/semantic/shots.ts); unset: the words alone. */
+    semantic?: (t: FootageTarget) => ReadonlyMap<number, number> | undefined;
   },
 ): PlannedClip[] {
   const clipSeconds = o.clipSeconds ?? CLIP_SECONDS;
@@ -167,7 +170,11 @@ export function planIndexedClips(
           quote: hit.text,
         });
     }
+    const meaning = o.semantic?.(t);
     for (const h of findShots(index, t, {
+      ...(meaning ? { semantic: meaning } : {}),
+      // MATCH_SEMANTIC on: shots the spoiler guard refuses are left out before ranking, not cut from the list after.
+      ...(meaning && o.allow ? { allow: (s: SceneShot) => o.allow!(s, t.key) } : {}),
       max: 4 + extra * 2,
       minConfidence: extra ? Math.min(o.minConfidence, NAMED_MIN_CONFIDENCE) : o.minConfidence,
       minSeconds: MIN_CLIP_SECONDS + 0.3,
@@ -243,10 +250,14 @@ export interface IndexedOptions {
    * a link, the uploader's name, a caption fixed at the edge); the game's own signs, HUD and subtitles pass.
    */
   inWorldText?: boolean;
+  /** SHORT_CLIP_EDGE_TEXT: false for long videos, which show the whole picture with no zoom, so nothing is cut at the edge. */
+  edgeText?: boolean;
   /** LONG_WATERMARK_CROP (long videos): a clip with one small corner mark is cut again cropped clear of it. */
   watermarkCropKeep?: number;
   /** SPOILER_GUARD: whether a shot may be used for a line. */
   allow?: (shot: SceneShot, key: string) => boolean;
+  /** MATCH_SEMANTIC: each shot's meaning score for a line, blended with the words (src/semantic/shots.ts). */
+  semantic?: (t: FootageTarget) => ReadonlyMap<number, number> | undefined;
   /**
    * SCENE_MATCH: a line that names someone or somewhere gets its clip only once this picture check sees them in it
    * (src/assets/scenecheck.ts checkClip on the local model); refused, the next best shot is tried, then the search.
@@ -355,7 +366,7 @@ export interface ScreenVerdict {
 async function screen(
   file: string,
   seconds: number,
-  o: { textCheck: boolean; inWorldText?: boolean; uploader?: string; cropKeep?: number },
+  o: { textCheck: boolean; inWorldText?: boolean; uploader?: string; cropKeep?: number; edgeText?: boolean },
 ): Promise<ScreenVerdict> {
   const frames = await screenFramesOf(file, seconds);
   const reason = cleanFrameReason(frames);
@@ -366,7 +377,7 @@ async function screen(
   const darkest = await darkestLuma(file);
   if (darkest !== undefined && darkest < DARK_LUMA) return { ok: false, why: "dark" };
   if (o.textCheck) {
-    const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds);
+    const read = o.inWorldText ? await clipOverlayText(file, seconds, { uploader: o.uploader }) : await clipBigText(file, seconds, o.edgeText === undefined ? {} : { edge: o.edgeText });
     if (!read.clean) return { ok: false, why: `text: ${read.words.slice(0, 4).join(" ")}` };
   }
   // Every frame, not four a second: a fade or a cut to black between the samples is cut off, or the clip refused.
@@ -445,7 +456,7 @@ export async function indexedCutsceneClips(
           );
           await (o.deps?.cut ?? cut)(section, lead, c.seconds, file);
           const screenOf = (f: string, n: number) =>
-            (o.deps?.screen ?? ((x: string, y: number) => screen(x, y, { textCheck: o.textCheck !== false, inWorldText: o.inWorldText, uploader: src.uploader, cropKeep: o.watermarkCropKeep })))(f, n);
+            (o.deps?.screen ?? ((x: string, y: number) => screen(x, y, { textCheck: o.textCheck !== false, inWorldText: o.inWorldText, uploader: src.uploader, cropKeep: o.watermarkCropKeep, edgeText: o.edgeText })))(f, n);
           let verdict = verdictOf(await screenOf(file, c.seconds));
           cropped = undefined;
           // LONG_WATERMARK_CROP: one small corner mark is cropped away and the clip screened once more.
@@ -771,7 +782,7 @@ export async function indexFirstCutscenes<
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
     Partial<
-      Pick<Config, "spoilerGuard" | "sceneMatch" | "sceneMatchUnchecked" | "archiveSections" | "longInWorldText" | "longWatermarkCrop" | "longWatermarkCropKeep">
+      Pick<Config, "spoilerGuard" | "sceneMatch" | "sceneMatchUnchecked" | "archiveSections" | "longInWorldText" | "longWatermarkCrop" | "longWatermarkCropKeep" | "semantic">
     >,
   options: O,
   search: (o: O) => Promise<CutsceneClip[]>,
@@ -800,6 +811,24 @@ export async function indexFirstCutscenes<
           return ok;
         })
     : search;
+  // VOD_TAGS: the owner's own tagged recordings of the game first; the scene index and the search cover the rest.
+  if (cfg.semantic?.vodTags && options.mode !== "search")
+    return cutscenesIndexFirst(
+      options,
+      (o) => ownStreamClips(cfg, o, indexedCutsceneClips, now, windows),
+      (o) => indexChain(cfg, o, searched, deps, allow),
+    );
+  return indexChain(cfg, options, searched, deps, allow);
+}
+
+/** The scene index first, the cutscene search for the rest (indexFirstCutscenes after the spoiler wrapping). */
+async function indexChain<O extends Parameters<typeof indexFirstCutscenes>[1]>(
+  cfg: Parameters<typeof indexFirstCutscenes>[0],
+  options: O,
+  searched: (o: O) => Promise<CutsceneClip[]>,
+  deps: IndexedOptions["deps"],
+  allow: ReturnType<typeof spoilerAllow> | undefined,
+): Promise<CutsceneClip[]> {
   if (!cfg.sceneIndex || options.mode === "search") return searched(options);
   return cutscenesIndexFirst(
     options,
@@ -810,7 +839,10 @@ export async function indexFirstCutscenes<
         return [];
       }
       if (!indexFitsRelease(index, o.recentRelease)) return [];
+      // MATCH_SEMANTIC: the index's shot vectors against each line, blended into the word lookup.
+      const semantic = await indexScorer(cfg, index, o.targets);
       return indexedCutsceneClips({
+        ...(semantic ? { semantic } : {}),
         index,
         gameTitle: o.gameTitle,
         episodeDir: o.episodeDir,
@@ -822,6 +854,7 @@ export async function indexFirstCutscenes<
         publisher: o.publisher,
         // A long video shows the whole picture: the game's own writing stays, and a small corner mark can be cropped.
         ...(o.long && cfg.longInWorldText ? { inWorldText: true } : {}),
+        ...(o.long ? { edgeText: false } : {}),
         ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep ?? 0.78 } : {}),
         // SCENE_MATCH: a named moment is used only once the free local vision model sees it in the clip.
         ...(cfg.sceneMatch

@@ -432,6 +432,20 @@ export class YouTubeClient {
     return out;
   }
 
+  /**
+   * Age restriction and status of up to 50 of the channel's videos (videos.list, one quota unit): YouTube marks an
+   * age-restricted video with contentDetails.contentRating.ytRating "ytAgeRestricted" (src/agealarm.ts).
+   */
+  async ageRatings(ids: string[]): Promise<Array<Record<string, unknown>>> {
+    if (!ids.length) return [];
+    const res = await this.fetchFn(
+      `${API}/videos?part=snippet,contentDetails,status&id=${ids.slice(0, 50).map(encodeURIComponent).join(",")}`,
+      { headers: await this.auth() },
+    );
+    if (!res.ok) throw await apiError(res, "videos.list (age rating)");
+    return (((await res.json()) as any).items ?? []) as Array<Record<string, unknown>>;
+  }
+
   async listComments(videoId: string): Promise<
     Array<{
       id: string;

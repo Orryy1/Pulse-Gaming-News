@@ -278,6 +278,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
   /** The Why length test (WHY_LENGTH_AB, src/shortlengths.ts): the day's arm and the band the writer was given. */
   length_arm?: { arm: import("../shortlengths.ts").LengthArm; band: string };
+  /** The ending test (ENDING_FORMS_SHARE, src/editorial/endingforms.ts): the side, the closing form and whether a lead-in slipped through. */
+  ending?: import("./endingforms.ts").EndingRecord;
   /**
    * Who wrote the script (always recorded, src/editorial/authorship.ts): Claude or Codex for the main draft's last
    * answer, the model, whether it fell back from the provider it was meant for, and WRITER_SPLIT's reason.

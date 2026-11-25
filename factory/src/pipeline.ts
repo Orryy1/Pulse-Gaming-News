@@ -989,6 +989,15 @@ import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisu
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
 import {
+  endingArmFor,
+  endingFormProblems,
+  endingFormRule,
+  endingRecord,
+  pickEndingForm,
+  recentEndingForms,
+  type EndingForm,
+} from "./editorial/endingforms.ts";
+import {
   fitClipsAroundQuotes,
   quotesAfterGaps,
   openQuotes,
@@ -8347,12 +8356,26 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
   const series = seriesTagFor(ep);
   // The Pulse Check is the news desk's own segment; with NEWS_SEGMENT_SERIES every series Short ends on it too.
-  const pulseCheck = pulseCheckFor(s.cfg, {
+  const pulseCheckPlanned = pulseCheckFor(s.cfg, {
     lane: ep.lane,
     why: !!cluster.why,
     argument,
     series,
   });
+  // ENDING_FORMS_SHARE (src/editorial/endingforms.ts): half the Pulse Check Shorts drop the spoken "My verdict:" and
+  // end the take on a varied closing form instead. A room Short skips the Pulse Check already, so it is not in the test.
+  const endingArm =
+    pulseCheckPlanned && !roomOn && s.cfg.endingFormsShare > 0
+      ? endingArmFor(unitHash(`endings:${ep.id}`), s.cfg.endingFormsShare)
+      : undefined;
+  let endingForm: EndingForm | undefined;
+  if (endingArm === "forms") {
+    const recentForms = await recentEndingForms(s.db, ep.id, s.now()).catch(() => ({ used: [] as string[], kept: undefined }));
+    endingForm = pickEndingForm(unitHash(`endform:${ep.id}`), recentForms.used, recentForms.kept);
+  }
+  if (endingArm)
+    await logEvent(s.db, ep.id, "ending_forms", { arm: endingArm, ...(endingForm ? { form: endingForm } : {}) }).catch(() => undefined);
+  const pulseCheck = pulseCheckPlanned && endingArm !== "forms";
   // The next-part line test (SERIES_NEXT_LINE, plan item 9): The Why and The GTA File, on alternate days, and only
   // when the run has the next part planned and dated (src/nextpart.ts). No plan, no line.
   const lineArm =
@@ -8371,6 +8394,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     personal ? PERSONAL_VOICE : "",
     shortFloorRule(floor, s.cfg.shortSpeed),
     pulseCheck && s.cfg.newsSegmentSeries ? seriesPulseCheckNote(series) : "",
+    endingForm ? endingFormRule(endingForm) : "",
     nextPart ? nextLineRule(nextPart) : "",
   ]
     .filter(Boolean)
@@ -8424,6 +8448,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     problems.push(...short);
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
+    if (endingForm) problems.push(...endingFormProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
     if (payoffFix) {
       const gateFindings = payoffFindings({
@@ -9283,6 +9308,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       (s.cfg.codexLlm ? (siteListed(site, s.cfg.codexCalls) ? "codex" : "claude") : "claude");
     script = { ...script, writer: writerRecord(writerCalls, intended, split?.why) };
   }
+  if (endingArm) script = { ...script, ending: endingRecord(endingArm, endingForm, script) };
   if (lengthAb && length)
     script = { ...script, length_arm: { arm: lengthAb, band: `${length.seconds.min}-${length.seconds.max}` } };
   if (lineArm)

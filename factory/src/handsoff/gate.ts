@@ -62,7 +62,7 @@ export interface GateState {
   cleared: Record<string, { at: string; memo: FaultMemo }>;
   launches: LaunchRecord[];
   /** The fix session started last, while it may still be running. */
-  running?: { pid: number; at: string; keys: string[] };
+  running?: { pid: number; at: string; keys: string[]; start?: string };
   /** The project's own memory between runs (for example when it first saw an episode in a status). */
   extra: Record<string, unknown>;
 }
@@ -321,10 +321,11 @@ export function buildPrompt(p: PromptInput): string {
       `You were not started for anything else: fix these, check the fix worked, and stop.`,
     "",
     "FAULTS TO FIX",
-    lines(p.faults),
+    lines(p.faults.slice(0, 12)),
+    p.faults.length > 12 ? `(and ${p.faults.length - 12} more of the same kind: see the watch log)` : "",
     "",
     p.others.length
-      ? `Also open, already handled by an earlier session or not worth a session (don't work on these unless they are the same cause):\n${p.others.map((f) => `- ${f.what}`).join("\n")}\n`
+      ? `Also open, already handled by an earlier session or not worth a session (don't work on these unless they are the same cause):\n${p.others.slice(0, 20).map((f) => `- ${f.what}`).join("\n")}\n`
       : "",
     "HOW",
     "- Find the root cause first. A fix you can't prove (a test, the real command, the live page) is not done.",
@@ -373,26 +374,55 @@ export function logDecision(
   fs.appendFileSync(file, `${JSON.stringify(entry)}\n`);
 }
 
-/** True while `pid` runs and is the program we started (Windows: the image name matches). */
-export function alive(pid: number, image = "claude.exe"): boolean {
-  if (!pid) return false;
+/** A process's image name and start time (UTC ISO), or undefined when it is not running. */
+export function processInfo(
+  pid: number,
+): { image: string; start: string } | undefined {
+  if (!pid) return undefined;
   if (process.platform !== "win32") {
     try {
       process.kill(pid, 0);
-      return true;
+      return { image: "", start: "" };
     } catch {
-      return false;
+      return undefined;
     }
   }
   const r = spawnSync(
-    "tasklist",
-    ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"],
-    {
-      encoding: "utf8",
-      windowsHide: true,
-    },
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      `$p = Get-Process -Id ${Math.trunc(pid)} -ErrorAction SilentlyContinue; if ($p) { $p.ProcessName + '|' + $p.StartTime.ToUniversalTime().ToString('o') }`,
+    ],
+    { encoding: "utf8", windowsHide: true, timeout: 30_000 },
   );
-  return (r.stdout ?? "").toLowerCase().includes(`"${image.toLowerCase()}"`);
+  const out = (r.stdout ?? "").trim();
+  if (!out.includes("|")) return undefined;
+  const [image, start] = out.split("|");
+  return { image: `${image}.exe`.toLowerCase(), start: start ?? "" };
+}
+
+/**
+ * True while our own session runs (pure over processInfo's answer): same pid, the image we started and the start
+ * time we recorded, so a reused pid (the owner runs many claude.exe) never counts as ours.
+ */
+export function isOurs(
+  info: { image: string; start: string } | undefined,
+  running: { start?: string },
+  image = "claude.exe",
+): boolean {
+  if (!info) return false;
+  if (process.platform !== "win32") return true;
+  if (info.image !== image.toLowerCase()) return false;
+  if (!running.start) return false;
+  return Math.abs(Date.parse(info.start) - Date.parse(running.start)) < 5_000;
+}
+
+export function alive(
+  running: GateState["running"],
+  image = "claude.exe",
+): boolean {
+  return !!running && isOurs(processInfo(running.pid), running, image);
 }
 
 /** Ends our own fix session when it has run past `maxMin` (only that pid and its children). True if it was ended. */
@@ -402,7 +432,7 @@ export function stopIfOverdue(
   maxMin: number,
   image = "claude.exe",
 ): boolean {
-  if (!running || !alive(running.pid, image)) return false;
+  if (!running || !alive(running, image)) return false;
   if (now.getTime() - Date.parse(running.at) < maxMin * MIN) return false;
   if (process.platform === "win32")
     spawnSync("taskkill", ["/PID", String(running.pid), "/T", "/F"], {
@@ -414,7 +444,8 @@ export function stopIfOverdue(
 
 export interface LaunchInput {
   exe: string;
-  prompt: string;
+  /** The prompt, as a file: it goes to the session on stdin, so its length never meets the command-line limit. */
+  promptFile: string;
   cwd: string;
   outFile: string;
   model?: string;
@@ -422,13 +453,12 @@ export interface LaunchInput {
   name?: string;
 }
 
-/** The arguments for a headless session (pure). Auto mode, never a bypass. */
+/** The arguments for a headless session (pure). The prompt comes on stdin. Auto mode, never a bypass. */
 export function claudeArgs(
-  l: Pick<LaunchInput, "prompt" | "model" | "permissionMode" | "name">,
+  l: Pick<LaunchInput, "model" | "permissionMode" | "name">,
 ): string[] {
   const a = [
     "-p",
-    l.prompt,
     "--permission-mode",
     l.permissionMode ?? "auto",
     "--output-format",
@@ -439,19 +469,40 @@ export function claudeArgs(
   return a;
 }
 
-/** Starts a detached headless Claude session; its output goes to outFile. Returns its pid. */
-export function launchClaude(l: LaunchInput): number {
+/**
+ * Starts a detached headless Claude session; its output goes to outFile. Resolves to its pid and start time once
+ * the process has started, or rejects if it could not start (a missing exe, a bad argument), so a failed launch is
+ * never counted as a session.
+ */
+export function launchClaude(
+  l: LaunchInput,
+): Promise<{ pid: number; start?: string }> {
   fs.mkdirSync(path.dirname(l.outFile), { recursive: true });
   const out = fs.openSync(l.outFile, "a");
-  const child = spawn(l.exe, claudeArgs(l), {
-    cwd: l.cwd,
-    detached: true,
-    stdio: ["ignore", out, out],
-    windowsHide: true,
+  const input = fs.openSync(l.promptFile, "r");
+  return new Promise((resolve, reject) => {
+    const child = spawn(l.exe, claudeArgs(l), {
+      cwd: l.cwd,
+      detached: true,
+      stdio: [input, out, out],
+      windowsHide: true,
+    });
+    const close = () => {
+      fs.closeSync(out);
+      fs.closeSync(input);
+    };
+    child.once("error", (err) => {
+      close();
+      reject(err);
+    });
+    child.once("spawn", () => {
+      close();
+      child.unref();
+      const pid = child.pid ?? 0;
+      if (!pid) return reject(new Error("no pid"));
+      resolve({ pid, start: processInfo(pid)?.start });
+    });
   });
-  child.unref();
-  fs.closeSync(out);
-  return child.pid ?? 0;
 }
 
 /** A safe file title (pure): no path characters, one line, at most 80 characters. */
@@ -474,14 +525,19 @@ export function nextInboxNumber(names: readonly string[]): number {
   return n + 1;
 }
 
-/** Writes one owner item to the inbox unless one with the same title is already there or done. The path, or "". */
+export type InboxResult =
+  | { status: "written"; file: string }
+  | { status: "exists" }
+  | { status: "nofolder" };
+
+/** Writes one owner item to the inbox unless one with the same title is already there or done. */
 export function writeInboxItem(
   dir: string,
   project: string,
   what: string,
   body: string,
-): string {
-  if (!fs.existsSync(dir)) return "";
+): InboxResult {
+  if (!fs.existsSync(dir)) return { status: "nofolder" };
   const title = inboxTitle(project, what);
   const done = path.join(dir, "Done");
   const names = [
@@ -491,11 +547,34 @@ export function writeInboxItem(
   if (
     names.some((x) => x.replace(/^\d+\s+/, "").replace(/\.\w+$/, "") === title)
   )
-    return "";
+    return { status: "exists" };
   const file = path.join(dir, `${nextInboxNumber(names)} ${title}.md`);
   fs.writeFileSync(
     file,
     `# ${title}\n\n${body.trim()}\n\nWritten by the ${project} watch script on ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC. Move this file to Done when it is done.\n`,
   );
-  return file;
+  return { status: "written", file };
+}
+
+/** Takes back a launch that never started (pure): the fault and day caps are not used up by it. */
+export function undoLaunch(
+  state: GateState,
+  keys: readonly string[],
+  at: string,
+): GateState {
+  const s: GateState = {
+    ...state,
+    faults: { ...state.faults },
+    launches: state.launches.filter((l) => l.at !== at),
+  };
+  for (const k of keys) {
+    const m = s.faults[k];
+    if (m && m.lastLaunch === at)
+      s.faults[k] = {
+        ...m,
+        launches: Math.max(0, m.launches - 1),
+        lastLaunch: undefined,
+      };
+  }
+  return s;
 }

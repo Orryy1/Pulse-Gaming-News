@@ -46,6 +46,9 @@ const BASH = fs.existsSync("C:\\Program Files\\Git\\bin\\bash.exe")
   ? "C:\\Program Files\\Git\\bin\\bash.exe"
   : "bash";
 const LIVE_BRANCH = "claude/epic-pasteur-7s143q";
+/** Files the backspace check reads: text only (pictures, sound and fonts contain 0x08 by nature). */
+const TEXT_FILE =
+  /\.(ts|tsx|mts|cts|js|mjs|cjs|json|md|txt|sh|ps1|cmd|bat|py|css|html|yml|yaml|toml|env|sql|svg)$/i;
 
 const args = process.argv.slice(2);
 const dry = args.includes("--dry");
@@ -191,6 +194,14 @@ function dropWorktree(dir: string): void {
   git(STAGE, "worktree", "remove", "--force", dir);
 }
 
+function writePending(target: string, why: string): void {
+  if (dry) return;
+  fs.writeFileSync(
+    path.join(WORK, "pending-deploy.json"),
+    JSON.stringify({ target, since: new Date().toISOString(), why }),
+  );
+}
+
 function deployAndVerify(target: string): never {
   const mac = macState();
   const w = deployWindow({
@@ -203,18 +214,21 @@ function deployAndVerify(target: string): never {
   record.window = w;
   const pending = path.join(WORK, "pending-deploy.json");
   if (!w.ok) {
-    if (!dry)
-      fs.writeFileSync(
-        pending,
-        JSON.stringify({ target, since: new Date().toISOString(), why: w.why }),
-      );
-    finish(3, `merged; deploy waits (${w.why}). Run with --deploy-only later.`);
+    writePending(target, w.why);
+    finish(
+      3,
+      dry
+        ? `dry run: the deploy would wait now (${w.why}); everything before it passed`
+        : `merged; deploy waits (${w.why}). Run with --deploy-only later.`,
+    );
   }
-  if (!mac.ok)
+  if (!mac.ok) {
+    writePending(target, "the factory was not answering /health");
     finish(
       3,
       "merged; deploy waits: the factory is not answering /health right now",
     );
+  }
   const factoryDir = path.join(LIVE, "factory");
   if (dry) {
     const d = run(BASH, ["mac/deploy.sh", target], {
@@ -232,6 +246,7 @@ function deployAndVerify(target: string): never {
     );
   }
   const old = mac.release;
+  const want = git(LIVE, "rev-parse", LIVE_BRANCH).out.trim();
   const d = run(BASH, ["mac/deploy.sh", LIVE_BRANCH], {
     cwd: factoryDir,
     env: { ...process.env, DEPLOY_WAIT_MINUTES: "15" },
@@ -240,35 +255,41 @@ function deployAndVerify(target: string): never {
   step(
     `deploy (exit ${d.code}): ${d.out.trim().split("\n").slice(-3).join(" | ")}`,
   );
-  if (d.code === 2 && /gave up: still busy/.test(d.out)) {
-    fs.writeFileSync(
-      pending,
-      JSON.stringify({
-        target,
-        since: new Date().toISOString(),
-        why: "the Mac stayed busy",
-      }),
+  // deploy.sh exit 2: it refused before pushing (busy, not a fast-forward, the flight simulator). Nothing changed on
+  // the Mac, so there is nothing to roll back. Exit 3: its canary already went back by itself.
+  if (d.code === 2) {
+    writePending(
+      target,
+      /gave up: still busy/.test(d.out)
+        ? "the Mac stayed busy"
+        : "deploy.sh refused",
     );
     finish(
-      3,
-      "merged; the deploy gave up waiting for a quiet Mac. Run with --deploy-only later.",
+      /gave up: still busy/.test(d.out) ? 3 : 6,
+      `merged; deploy.sh refused and changed nothing: ${d.out.trim().split("\n").pop()}`,
     );
   }
-  const want = git(LIVE, "rev-parse", LIVE_BRANCH).out.trim();
-  let healthy = false;
-  for (let i = 0; i < 30 && d.code !== 2; i++) {
-    const s = macState();
-    if (s.ok && s.release === want) {
-      healthy = true;
-      break;
+  if (d.code === 3)
+    finish(
+      7,
+      "deploy.sh's canary saw a regression and went back by itself; nothing more done",
+    );
+  // Up and healthy on the new release, or not: poll for five minutes.
+  let last: MacState | undefined;
+  for (let i = 0; i < 30; i++) {
+    last = macState();
+    if (last.ok && last.release === want) {
+      fs.rmSync(pending, { force: true });
+      finish(
+        0,
+        `deployed ${want.slice(0, 9)} and the factory is healthy on it`,
+      );
     }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10_000);
   }
-  if (healthy) {
-    fs.rmSync(pending, { force: true });
-    finish(0, `deployed ${want.slice(0, 9)} and the factory is healthy on it`);
-  }
-  if (old && old !== want) {
+  // Roll back only when the Mac really runs the new code and it is unhealthy. If it runs something else (the push
+  // never landed, or mac/run.sh already went back by itself), rolling back would put it on older code still.
+  if (last?.release === want && old && old !== want) {
     const rb = run(BASH, ["mac/rollback.sh", "release", want, old], {
       cwd: factoryDir,
       timeout: 15 * 60_000,
@@ -283,7 +304,7 @@ function deployAndVerify(target: string): never {
   }
   finish(
     7,
-    `the factory was not healthy after the deploy and there was no earlier release to go back to`,
+    `not healthy on ${want.slice(0, 9)} after five minutes, but the Mac runs ${last?.release?.slice(0, 9) ?? "unknown"}: no rollback done; look at data/logs on the Mac`,
   );
 }
 
@@ -299,6 +320,14 @@ function main(): void {
     finish(
       2,
       `refused: "${branch}" is not a claude/* helper branch the gate may merge`,
+    );
+  if (
+    git(STAGE, "rev-parse", "--abbrev-ref", "HEAD").out.trim() !==
+    "claude/stage"
+  )
+    finish(
+      2,
+      `refused: the stage worktree (${STAGE}) is missing or not on claude/stage; set MERGE_GATE_STAGE`,
     );
   const dirty = git(
     STAGE,
@@ -326,8 +355,16 @@ function main(): void {
   if (git(STAGE, "merge-base", "--is-ancestor", ref, "claude/stage").code === 0)
     finish(0, `${branch} is already in claude/stage`);
   const messages = git(STAGE, "log", "--format=%B", `claude/stage..${ref}`).out;
-  const reviewMd = [`${ref}:REVIEW.md`, `${ref}:factory/REVIEW.md`]
-    .map((s) => git(STAGE, "show", s))
+  // A REVIEW.md counts only when this branch itself wrote or changed it (one left on stage must not pass others).
+  const touched = git(
+    STAGE,
+    "diff",
+    "--name-only",
+    `claude/stage...${ref}`,
+  ).out.split("\n");
+  const reviewMd = ["REVIEW.md", "factory/REVIEW.md"]
+    .filter((f) => touched.includes(f))
+    .map((f) => git(STAGE, "show", `${ref}:${f}`))
     .find((r) => r.code === 0)?.out;
   if (!reviewed(messages, reviewMd))
     finish(
@@ -369,7 +406,9 @@ function main(): void {
   record.changed = changed.length;
   const files = changed
     .map((f) => path.join(tmp, f))
-    .filter((f) => fs.existsSync(f) && fs.statSync(f).isFile())
+    .filter(
+      (f) => fs.existsSync(f) && fs.statSync(f).isFile() && TEXT_FILE.test(f),
+    )
     .map((f) => ({ name: path.relative(tmp, f), data: fs.readFileSync(f) }));
   const bad = backspaceFiles(files);
   if (bad.length)
@@ -435,9 +474,12 @@ function main(): void {
       `claude/stage moved while testing; run the gate again:\n${ff.out.slice(0, 300)}`,
     );
   const push = git(STAGE, "push", "-q", "origin", "claude/stage");
-  step(
-    `claude/stage at ${tested.slice(0, 9)}${push.code === 0 ? ", pushed" : `, push failed: ${push.out.slice(0, 200)}`}`,
-  );
+  if (push.code !== 0)
+    finish(
+      6,
+      `claude/stage is at ${tested.slice(0, 9)} here but the push failed, so nothing went further: ${push.out.slice(0, 300)}`,
+    );
+  step(`claude/stage at ${tested.slice(0, 9)}, pushed`);
 
   const liveDirty = git(
     LIVE,

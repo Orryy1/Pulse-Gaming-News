@@ -71,6 +71,8 @@ export interface MacFacts {
   episodes: Episode[];
   published: Published[];
   gateHeld: Held[];
+  /** Admin pages that did not answer (their lists above are empty because unknown, not because empty). */
+  unknown: string[];
   ytBlockUntil?: number;
   alerts: Alert[];
   ports: { hostport: string; up: boolean }[];
@@ -157,7 +159,10 @@ export function macFactsFrom(sec: Record<string, string>): MacFacts {
     const x = json<LogLine | undefined>(l, undefined);
     if (x && typeof x.t === "string") log.push(x);
   }
-  const last = json<LogLine | undefined>(sec.lastlog, undefined);
+  const lastT = /"t":"([^"]+)"/.exec(sec.lastlog ?? "")?.[1];
+  const unknown = (["episodes", "published", "gateheld"] as const).filter(
+    (k) => json<unknown>(sec[k], null) === null,
+  );
   const alerts: Alert[] = [];
   for (const l of (sec.alerts ?? "").split("\n")) {
     const x = json<Alert | undefined>(l, undefined);
@@ -175,10 +180,11 @@ export function macFactsFrom(sec: Record<string, string>): MacFacts {
     health,
     diskFreeGb: Number.isFinite(free) ? free : undefined,
     log,
-    lastLogAt: last?.t ? new Date(last.t) : undefined,
-    episodes: json<Episode[]>(sec.episodes, []),
-    published: json<Published[]>(sec.published, []),
-    gateHeld: json<Held[]>(sec.gateheld, []),
+    lastLogAt: lastT ? new Date(lastT) : undefined,
+    episodes: json<Episode[] | null>(sec.episodes, null) ?? [],
+    published: json<Published[] | null>(sec.published, null) ?? [],
+    gateHeld: json<Held[] | null>(sec.gateheld, null) ?? [],
+    unknown: [...unknown],
     ytBlockUntil: json<{ until?: number }>(sec.ytguard, {}).until,
     alerts,
     ports,
@@ -210,7 +216,8 @@ export const CONTENT_ERROR =
 export const LONG_LANES = ["longform", "documentary"];
 /** Shorts that do not take a planned slot (breaking news goes out when it breaks; gameplay waits for the owner). */
 const OFF_PLAN = ["news_breaking", "gameplay", "twin"];
-const PRODUCING = ["selected", "scripted", "voiced", "rendered", "approved"];
+// Not "approved": an approved Short waits for its slot, and a spare one for a gap, often for hours.
+const PRODUCING = ["selected", "scripted", "voiced", "rendered"];
 const DONE = ["published", "failed", "rejected"];
 
 export function healthFaults(m: MacFacts, now: Date): Fault[] {
@@ -454,7 +461,7 @@ export function logFaults(
   );
   if (refused.length)
     out.push({
-      key: `long-topic-refused:${localDayOf(now, "Europe/London")}`,
+      key: "long-topic-refused",
       severity: "fault",
       what: `The long-video topic picker refused ${refused.length} time(s) in 24 hours`,
       detail: refused
@@ -545,6 +552,9 @@ export function stuckFaults(
   return { faults: out, memory: next };
 }
 
+/** Digests and summaries count things, failures included; they are not alerts. */
+const DIGEST_TEXT =
+  /^\W*(📋|alert digest|daily digest|weekly report|growth report)/iu;
 const ALERT_RE =
   /paused|needs you|no new short has started|gave up|qa failed|failed|could not|is not on youtube yet/i;
 const BACK_ON_RE =
@@ -556,7 +566,10 @@ export const OWNER_RE =
 /** New factory alerts in the last 90 minutes that say something is wrong, owner-only ones marked (pure). */
 export function alertFaults(alerts: readonly Alert[], now: Date): Fault[] {
   const recent = alerts.filter(
-    (a) => now.getTime() / 1000 - a.at <= 90 * 60 && a.channel !== "routine",
+    (a) =>
+      now.getTime() / 1000 - a.at <= 90 * 60 &&
+      !/:digest$|^routine$/.test(a.channel ?? "") &&
+      !DIGEST_TEXT.test(a.text),
   );
   const out: Fault[] = [];
   const seen = new Set<string>();
@@ -721,14 +734,32 @@ export function allFaults(
   const hf = healthFaults(m, now);
   if (!m.reachable) return { faults: [...hf, ...pcf], memory, thin: false };
   const disk = diskCheck(m.diskFreeGb);
-  const stuck = stuckFaults(m.episodes, memory, now);
+  // An admin page that did not answer is unknown, not empty: the checks that need it wait (and the stuck clock
+  // keeps its memory) rather than calling every slot missed.
+  const epsKnown = !m.unknown.includes("episodes");
+  const pubKnown = !m.unknown.includes("published");
+  const stuck = epsKnown
+    ? stuckFaults(m.episodes, memory, now)
+    : { faults: [], memory };
   const faults = [
     ...hf,
+    ...(m.unknown.length
+      ? [
+          {
+            key: "admin-api",
+            severity: "fault" as const,
+            what: `The factory's admin pages did not answer: ${m.unknown.join(", ")}`,
+            confirmRuns: 2,
+          },
+        ]
+      : []),
     ...(disk.fault ? [disk.fault] : []),
-    ...(plan ? missedSlotFaults(plan, m.published, now) : []),
-    ...(plan ? longSlotFaults(plan, m.episodes, m.published, now) : []),
+    ...(plan && pubKnown ? missedSlotFaults(plan, m.published, now) : []),
+    ...(plan && pubKnown && epsKnown
+      ? longSlotFaults(plan, m.episodes, m.published, now)
+      : []),
     ...logFaults(m.log, m.episodes, now),
-    ...failedFaults(m.episodes, now),
+    ...(epsKnown ? failedFaults(m.episodes, now) : []),
     ...stuck.faults,
     ...alertFaults(m.alerts, now),
     ...portFaults(m.ports),

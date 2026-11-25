@@ -14,6 +14,8 @@ import {
   localDay,
   nextInboxNumber,
   skillBody,
+  isOurs,
+  undoLaunch,
   writeInboxItem,
   type Fault,
   type GateState,
@@ -236,8 +238,10 @@ test("the prompt names only the chosen faults, keeps the rules and stays under t
 });
 
 test("claude is started headless in auto mode, never with permissions bypassed", () => {
-  const a = claudeArgs({ prompt: "hi", model: "opus" });
-  assert.deepEqual(a.slice(0, 4), ["-p", "hi", "--permission-mode", "auto"]);
+  const a = claudeArgs({ model: "opus" });
+  assert.deepEqual(a.slice(0, 3), ["-p", "--permission-mode", "auto"]);
+  // the prompt goes on stdin, never on the command line
+  assert.equal(a.length, 7);
   assert.ok(!a.join(" ").includes("bypass"));
 });
 
@@ -263,14 +267,36 @@ test("inbox items get the next number, a safe title, and are never written twice
   fs.mkdirSync(path.join(dir, "Done"));
   fs.writeFileSync(path.join(dir, "Done", "4 Old - thing.cmd"), "");
   const one = writeInboxItem(dir, "Pulse", "Sign in again on the Mac", "body");
-  assert.equal(path.basename(one), "5 Pulse - Sign in again on the Mac.md");
-  assert.equal(
-    writeInboxItem(dir, "Pulse", "Sign in again on the Mac", "body"),
-    "",
-  );
-  assert.equal(
-    writeInboxItem(path.join(dir, "missing"), "Pulse", "x", "y"),
-    "",
-  );
+  assert.equal(one.status, "written");
+  assert.equal(one.status === "written" && path.basename(one.file), "5 Pulse - Sign in again on the Mac.md");
+  assert.equal(writeInboxItem(dir, "Pulse", "Sign in again on the Mac", "body").status, "exists");
+  assert.equal(writeInboxItem(path.join(dir, "missing"), "Pulse", "x", "y").status, "nofolder");
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a launch that never started gives its caps back", () => {
+  const d = decide(emptyState(), [f("x")], at("2026-11-25T10:00:00Z"), P, live);
+  assert.equal(d.launch, true);
+  const back = undoLaunch(d.state, d.launchKeys, "2026-11-25T10:00:00.000Z");
+  assert.equal(back.faults.x!.launches, 0);
+  assert.equal(back.launches.length, 0);
+  const again = decide(back, [f("x")], at("2026-11-25T10:15:00Z"), P, live);
+  assert.equal(again.launch, true);
+});
+
+test("a reused pid is never taken for our session", () => {
+  if (process.platform !== "win32") return;
+  const ours = { start: "2026-11-25T10:00:00.000Z" };
+  assert.equal(isOurs({ image: "claude.exe", start: "2026-11-25T10:00:01.000Z" }, ours), true);
+  assert.equal(isOurs({ image: "claude.exe", start: "2026-11-25T12:00:00.000Z" }, ours), false);
+  assert.equal(isOurs({ image: "node.exe", start: "2026-11-25T10:00:00.000Z" }, ours), false);
+  assert.equal(isOurs({ image: "claude.exe", start: "2026-11-25T10:00:00.000Z" }, {}), false);
+  assert.equal(isOurs(undefined, ours), false);
+});
+
+test("the fault list in a prompt is bounded however many faults there are", () => {
+  const many = Array.from({ length: 200 }, (_, i) => f("k" + i, { what: "x".repeat(300), detail: "y".repeat(2000) }));
+  const p = buildPrompt({ project: "Pulse", faults: many, others: many, rules: "r", inboxDir: "i", reportFile: "r.md" });
+  assert.ok(p.length < 30_000, String(p.length));
+  assert.match(p, /188 more/);
 });

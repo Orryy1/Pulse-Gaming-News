@@ -42,6 +42,7 @@ const mac = (x: Partial<MacFacts> = {}): MacFacts => ({
   procs: [],
   holdRestart: false,
   slotEnv: "",
+  unknown: [],
   ...x,
 });
 const pc = (x: Partial<PcFacts> = {}): PcFacts => ({
@@ -484,13 +485,115 @@ test("a Pulse orchestrator job that failed in the last two hours is a fault; old
   const got = pcFaults(
     pc({
       orchHistory: [
-        { id: "a", job: "proof", project: "pulse", outcome: "failed", end: t - 600 },
-        { id: "b", job: "old", project: "pulse", outcome: "failed", end: t - 3 * 3600 },
-        { id: "c", job: "fine", project: "pulse", outcome: "done", end: t - 60 },
-        { id: "d", job: "theirs", project: "orryy", outcome: "expired", end: t - 60 },
+        {
+          id: "a",
+          job: "proof",
+          project: "pulse",
+          outcome: "failed",
+          end: t - 600,
+        },
+        {
+          id: "b",
+          job: "old",
+          project: "pulse",
+          outcome: "failed",
+          end: t - 3 * 3600,
+        },
+        {
+          id: "c",
+          job: "fine",
+          project: "pulse",
+          outcome: "done",
+          end: t - 60,
+        },
+        {
+          id: "d",
+          job: "theirs",
+          project: "orryy",
+          outcome: "expired",
+          end: t - 60,
+        },
       ],
     }),
     NOW,
   );
-  assert.deepEqual(got.map((f) => f.key), ["orchfail:a"]);
+  assert.deepEqual(
+    got.map((f) => f.key),
+    ["orchfail:a"],
+  );
+});
+
+test("a long last log line still gives its time; a failed admin page is unknown, not empty", () => {
+  const long = '"t":"2026-11-25T15:28:00.000Z"';
+  const m = macFactsFrom(
+    parseSections(
+      [
+        "@@lastlog",
+        long,
+        "@@episodes",
+        "null",
+        "@@published",
+        "[]",
+        "@@gateheld",
+        "null",
+        "@@end",
+      ].join("\n"),
+    ),
+  );
+  assert.equal(m.lastLogAt?.toISOString(), "2026-11-25T15:28:00.000Z");
+  assert.deepEqual(m.unknown, ["episodes", "gateheld"]);
+  const p = plan([["why", "2026-11-25T12:00:00.000Z"]]);
+  const got = allFaults(
+    { ...mac(), unknown: ["published"] },
+    pc(),
+    p,
+    { kept: { status: "selected", since: ago(60) } },
+    NOW,
+  );
+  assert.ok(got.faults.some((f) => f.key === "admin-api"));
+  assert.ok(!got.faults.some((f) => f.key.startsWith("slot:")));
+  const eps = allFaults(
+    { ...mac(), unknown: ["episodes"] },
+    pc(),
+    p,
+    { kept: { status: "selected", since: ago(60) } },
+    NOW,
+  );
+  assert.ok(eps.memory.kept, "the stuck clock keeps its memory");
+});
+
+test("an approved Short waiting for its slot or a gap is not stuck", () => {
+  const got = stuckFaults(
+    [
+      {
+        id: "spare",
+        lane: "news",
+        status: "approved",
+        created_at: ago(10 * 60),
+      },
+    ],
+    {},
+    NOW,
+  );
+  assert.deepEqual(got.faults, []);
+});
+
+test("digests are not alerts", () => {
+  const t = NOW.getTime() / 1000;
+  const got = alertFaults(
+    [
+      {
+        at: t - 60,
+        channel: "alerts:digest",
+        text: "3 Shorts failed QA this week",
+      },
+      {
+        at: t - 60,
+        channel: "alerts",
+        text: "📋 Alert digest: 4 failed, 2 paused",
+      },
+    ],
+    NOW,
+  );
+  assert.deepEqual(got, []);
 });

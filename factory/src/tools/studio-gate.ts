@@ -89,7 +89,16 @@ async function main(): Promise<void> {
   }
   const t = throttle(v, memo, now);
   state[kind] = t.memo;
-  fs.writeFileSync(stateFile, JSON.stringify(state, null, 1));
+  // Re-read just before writing and change only this routine's entry, so two routines at once keep each other's memo.
+  let fresh: Record<string, GateMemo> = {};
+  try {
+    fresh = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, GateMemo>;
+  } catch {
+    /* none yet */
+  }
+  fresh[kind] = t.memo;
+  fs.writeFileSync(`${stateFile}.${process.pid}.tmp`, JSON.stringify(fresh, null, 1));
+  fs.renameSync(`${stateFile}.${process.pid}.tmp`, stateFile);
   fs.appendFileSync(
     path.join(DIR, "decisions.jsonl"),
     `${JSON.stringify({ at: now.toISOString(), kind, work: t.verdict.work, why: t.verdict.why, keys: t.verdict.keys.slice(0, 30) })}\n`,

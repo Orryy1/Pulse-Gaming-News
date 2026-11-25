@@ -26,6 +26,7 @@ import {
   logDecision,
   saveState,
   stopIfOverdue,
+  undoLaunch,
   writeInboxItem,
   type Fault,
 } from "../handsoff/gate.ts";
@@ -55,7 +56,11 @@ const dir =
   flag("dir") ??
   process.env.HANDSOFF_DIR ??
   "D:\\pulse-data\\handsoff\\pulse-watch";
-const stateFile = path.join(dir, "state.json");
+// Shadow and live keep separate state, so faults met in shadow still get real sessions after the switch.
+const stateFile = path.join(
+  dir,
+  shadow ? "state-shadow.json" : "state-live.json",
+);
 const logFile = path.join(dir, "decisions.jsonl");
 const sessions = path.join(dir, "sessions");
 const INBOX = path.join(os.homedir(), "Desktop", "Do when home");
@@ -82,13 +87,21 @@ function readJson<T>(file: string): T | undefined {
   }
 }
 
-/** One run at a time: a lock that a crashed run leaves behind expires after ten minutes. */
+/** One run at a time: a lock held by a live run is respected; one a crashed run left behind expires after 30 minutes. */
 function lock(): boolean {
   fs.mkdirSync(dir, { recursive: true });
   const f = path.join(dir, "run.lock");
   try {
     const st = fs.statSync(f);
-    if (Date.now() - st.mtimeMs < 10 * 60_000) return false;
+    const holder = Number(fs.readFileSync(f, "utf8"));
+    let held = false;
+    try {
+      if (holder) process.kill(holder, 0);
+      held = Boolean(holder);
+    } catch {
+      held = false;
+    }
+    if (held && Date.now() - st.mtimeMs < 30 * 60_000) return false;
   } catch {
     /* no lock */
   }
@@ -229,7 +242,7 @@ function historyTail(file: string): NonNullable<PcFacts["orchHistory"]> {
   }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   if (!lock()) {
     console.log("another watch run is still going");
     return;
@@ -240,7 +253,7 @@ function main(): void {
     const prev = loadState(stateFile);
     const notes: string[] = [];
     // The last fix session: finished, or overdue (ours only, ended after MAX_RUN_MIN).
-    let running = Boolean(prev.running && alive(prev.running.pid));
+    let running = alive(prev.running);
     if (
       prev.running &&
       running &&
@@ -300,17 +313,23 @@ function main(): void {
     for (const f of d.inbox) {
       if (shadow) notes.push(`would write inbox item: ${f.what}`);
       else {
-        const file = writeInboxItem(
+        const r = writeInboxItem(
           INBOX,
           "Pulse",
           f.what.replace(/^Factory alert:\s*/, ""),
           `${f.what}\n\n${f.detail ?? ""}\n\nThis needs you: the factory cannot do it for itself.`,
         );
-        notes.push(
-          file
-            ? `inbox: ${path.basename(file)}`
-            : `inbox item already there: ${f.what}`,
-        );
+        if (r.status === "nofolder") {
+          // Not written: try again next run rather than losing it.
+          const memo = d.state.faults[f.key];
+          if (memo) memo.inboxed = undefined;
+          notes.push(`inbox folder missing (${INBOX}): ${f.what}`);
+        } else
+          notes.push(
+            r.status === "written"
+              ? `inbox: ${path.basename(r.file)}`
+              : `inbox item already there: ${f.what}`,
+          );
       }
     }
     let pid: number | undefined;
@@ -338,17 +357,31 @@ function main(): void {
       });
       fs.writeFileSync(promptFile, prompt);
       if (!shadow) {
-        pid = launchClaude({
-          exe: CLAUDE_EXE,
-          prompt,
-          cwd: FIX_CWD,
-          outFile: path.join(sessions, `${stamp}.out.txt`),
-          model: process.env.HANDSOFF_MODEL ?? "opus",
-          name: `Pulse fix: ${chosen[0]?.what.slice(0, 60) ?? "fault"}`,
-        });
-        d.state.running = { pid, at: now.toISOString(), keys: d.launchKeys };
-        const last = d.state.launches[d.state.launches.length - 1];
-        if (last) last.pid = pid;
+        try {
+          const started = await launchClaude({
+            exe: CLAUDE_EXE,
+            promptFile,
+            cwd: FIX_CWD,
+            outFile: path.join(sessions, `${stamp}.out.txt`),
+            model: process.env.HANDSOFF_MODEL ?? "opus",
+            name: `Pulse fix: ${chosen[0]?.what.slice(0, 60) ?? "fault"}`,
+          });
+          pid = started.pid;
+          d.state.running = {
+            pid,
+            start: started.start,
+            at: now.toISOString(),
+            keys: d.launchKeys,
+          };
+          const last = d.state.launches[d.state.launches.length - 1];
+          if (last) last.pid = pid;
+        } catch (err) {
+          // It never started: the caps are not used up, and the next run tries again.
+          d.state = undoLaunch(d.state, d.launchKeys, now.toISOString());
+          notes.push(
+            `could not start a fix session: ${(err as Error).message}`,
+          );
+        }
       }
     }
     saveState(stateFile, d.state);
@@ -397,4 +430,4 @@ function main(): void {
   }
 }
 
-main();
+void main();

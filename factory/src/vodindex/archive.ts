@@ -25,7 +25,9 @@ export function minFreeGb(env: NodeJS.ProcessEnv): number {
  * Lodge needs its room; 30 GB on any other drive (the index and clip cache live on C:, small and pruned).
  */
 export function floorFor(dir: string, env: NodeJS.ProcessEnv): number {
-  const root = (p: string) => path.parse(path.resolve(p)).root.toLowerCase();
+  // A Windows drive letter decides on its own, so the rule holds on any machine (CI runs on Linux, where path.resolve
+  // would turn "C:/x" into a path under the current folder and every path would share the root "/").
+  const root = (p: string) => /^[A-Za-z]:/.exec(p)?.[0].toLowerCase() ?? path.parse(path.resolve(p)).root.toLowerCase();
   return root(dir) === root(env.VOD_ROOT || "D:/pulse-data/vods") ? minFreeGb(env) : 30;
 }
 

@@ -9271,6 +9271,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           ? await roomCheckStep(roomInput(), script).catch(() => undefined)
           : roomControlRecord(s.cfg.scriptRoom === "on" ? "on" : "check");
     if (roomRec) {
+      // The desk's mark on the published script rides beside the room's own critics', so the weekly report compares all three.
+      const deskOverall = deskRec?.scores?.overall;
+      if (typeof deskOverall === "number") roomRec = { ...roomRec, desk_overall: deskOverall };
       script = { ...script, room: roomRec };
       await logEvent(s.db, ep.id, "script_room", roomEvent(roomRec)).catch(() => undefined);
     }

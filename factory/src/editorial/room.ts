@@ -73,14 +73,30 @@ export const ROOM = {
   iThinkWindow: 4,
   /** The voice pass: a first sentence that carries this share of the answer's words gives the answer away. */
   answerInFirstShare: 0.6,
-  /** Model calls a Short at most, whatever the settings say. */
+  /**
+   * A first sentence that shares at least this many of the angle's own answer words (the answer's content words the
+   * question, the game and the company do not already have), and at least this share of them, gives the answer away.
+   */
+  firstAnswerWords: 3,
+  firstAnswerShare: 0.5,
+  /** Unsourced sentences one edit instruction names at most. */
+  unsourcedMax: 4,
+  /**
+   * Output room for the two long answers (thinking included): four angles and three drafts at high effort ran out of
+   * the default 16,000 on 21 and 22 Nov 2026 (one cut mid-string, one at max_tokens) and the Short fell back.
+   */
+  maxTokens: { write: 32000, voice: 24000 },
+  /**
+   * Model calls a Short at most, whatever the settings say. The writer and the voice pass may each be asked a second
+   * time with the same request, once, when the first answer is cut or cannot be parsed.
+   */
   caps: {
     pack: 1,
-    write: 1,
+    write: 2,
     critic: 3,
     viewer: 3,
     edit: 1,
-    voice: 1,
+    voice: 2,
     layout: 2,
     repair: 1,
   },
@@ -110,6 +126,35 @@ export function roomArm(episodeId: string, share: number): RoomArm {
     .digest()
     .readUInt16BE(0);
   return n / 65536 < share ? "room" : "control";
+}
+
+/**
+ * Whether a structured answer was cut short or came back unparsable (pure): the model hit max_tokens, or the JSON
+ * stops mid-string ("Unterminated string", "Unexpected end of JSON input") or does not match the schema. The same
+ * request asked again usually succeeds; any other failure (a refusal, a network error) is not retried here.
+ */
+export function isCutAnswer(err: unknown): boolean {
+  const m = err instanceof Error ? err.message : String(err);
+  return /max_tokens|Failed to parse structured output|Unterminated string|Unexpected end of JSON|not valid JSON|did not match the schema|in JSON at position/i.test(
+    m,
+  );
+}
+
+/**
+ * One step asked again with the same request, once, when its answer is cut or unparsable (the injected steps of
+ * runRoom). `onRetry` counts the second call before it is made.
+ */
+export async function retryCut<T>(
+  step: () => Promise<T>,
+  onRetry: (why: string) => void,
+): Promise<T> {
+  try {
+    return await step();
+  } catch (err) {
+    if (!isCutAnswer(err)) throw err;
+    onRetry((err instanceof Error ? err.message : String(err)).slice(0, 200));
+    return step();
+  }
 }
 
 /**
@@ -739,7 +784,7 @@ export function writerPrompt(words: { min: number; max: number }): string {
 
 Craft rules for every draft:
 - ${words.min} to ${words.max} spoken words.
-- First sentence: ${ROOM.firstSentenceWords} words or fewer, names the game or company, and is a plain concrete surprise a general gamer understands; where true it names the personal consequence (what the viewer gets, loses, pays or can do). Never open on a quote without context, an unknown name, or "X, not Y". It does not contain the answer. No riddles, no hype words.
+- First sentence: ${ROOM.firstSentenceWords} words or fewer, names the game or company, and is a plain concrete surprise a general gamer understands; where true it names the personal consequence (what the viewer gets, loses, pays or can do). Never open on a quote without context, an unknown name, or "X, not Y". It does not contain the answer or a verdict ("made the right call", "was right to", "should have", "is the best", "was a mistake"). No riddles, no hype words.
 - Second sentence sharpens the gap. It is never background.
 - Every sentence does one of five jobs: sharpen the question, rule out the obvious answer, add a concrete detail that makes the answer land harder, deliver the answer, deliver the verdict. No stall lines. One point and one thread: the middle is never a list of facts and never splits into a second story.
 - One turn at 40 to 55% that renews curiosity with new information.
@@ -747,7 +792,7 @@ Craft rules for every draft:
 - After the answer: one verdict in the narrator's own voice ("I") that a viewer could disagree with, with its reason, then stop. No flip, no symmetry, no punchline of two short sentences, no ask, plug or pointer to another video.
 - Sources: say "reportedly" or "one report says" unless the outlet or the person is the story (a rumor still names who reports it once). A quote keeps its speaker in three or four words.
 - One point. If the point cannot be said in one plain sentence, re-angle.
-- Facts only from the pack; nothing from unverified. Reported or speculative things are flagged in a few natural words. Second-hand quotes are attributed to the outlet that carried them. Never imply the answer is bigger than it is.
+- Every claim comes from a field of the pack. A fact, name, number, date or event that no pack field holds is never said: not as background, not as context and not with "reportedly" or "one report says" (those words label a pack fact that is reported; they never make room for one the pack lacks). Nothing from unverified. Reported or speculative things are flagged in a few natural words. Second-hand quotes are attributed to the outlet that carried them. Never imply the answer is bigger than it is.
 - Human: contractions, short and long sentences mixed, the game's full name once then the short form, no lists of three, no "it isn't just X, it's Y", no stiff connectives, no stock phrases, no forced "you", at most one joke and only if it follows from the line before.
 - Numbers rounded as spoken, no em dashes, nothing advertiser-unfriendly.
 - Never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
@@ -783,6 +828,7 @@ export async function writeRoom(
   return llm.structured({
     site: ROOM_WRITE_SITE,
     effort: "high",
+    maxTokens: ROOM.maxTokens.write,
     system: writerPrompt(words),
     content: `${packText(pack)}${extra ? `\n\n${extra}` : ""}${variety ? `\n\n${variety}` : ""}`,
     schema: RoomWriterSchema,
@@ -813,10 +859,10 @@ export function voicePrompt(words: { min: number; max: number }): string {
 
 - Name the form you choose: in_order (told in order), tiny_story (a tiny story with a person in it), contradiction_hangs (one contradiction left to hang), read_again ("read that again" on one detail), blunt_then_proven (a blunt opinion, then proven), real_question (a question the narrator really asks and answers).
 - Show the stance in word choice from the second sentence on, instead of a verdict bolted on at the end.
-- The answer stays in the last third and is never in the first sentence. Copy the sentence where it lands into answer_line.
+- The answer stays in the last third and is never in the first sentence, and neither is the verdict: the first sentence never says who was right or wrong ("made the right call", "was right to", "should have", "is the best", "was a mistake"). Copy the sentence where the answer lands into answer_line.
 - ${words.min} to ${words.max} spoken words; when the story is small, stay near ${words.min}.
 - The game's full title once, then the short form fans use.
-- Every claim exactly as strong as the pack supports: nothing added, nothing upgraded, rumors stay labeled.
+- Every claim comes from a field of the pack and is exactly as strong as the pack supports: no fact, name, number or event the pack lacks (not as background, not with "reportedly"), nothing upgraded, rumors stay labeled. Cutting a line is always better than adding one.
 - No em dashes, no ask or plug, and never these set-up phrases: ${TELL_PHRASES.map((t) => t.what).join(", ")}.
 - Name the form, the first_line_shape and the ending (reveal, consequence, dry_line or verdict). When a VARIETY note is given, repeat none it rules out.
 
@@ -839,6 +885,7 @@ export async function voiceRoom(
   return llm.structured({
     site: ROOM_VOICE_SITE,
     effort: "high",
+    maxTokens: ROOM.maxTokens.voice,
     system: voicePrompt(o.words),
     content: `${packText(o.pack)}\n\nTHE EDITED SHORT\nTITLE: ${o.draft.title}\nNARRATION: ${o.draft.narration}${variety ? `\n\n${variety}` : ""}`,
     schema: RoomVoiceSchema,
@@ -846,8 +893,70 @@ export async function voiceRoom(
 }
 
 /**
+ * A sentence that passes judgement (pure): "made the right call", "was right to", "should have kept", "is the best",
+ * "was a mistake" and the like. The room's verdict comes after the answer, so a first sentence never states one: on
+ * 24 Nov 2026 a voiced Short on why Kratos was almost replaced opened "God of War made the right call keeping
+ * Kratos." and went on air. Plain news and premises are not verdicts: a possessive ("Nintendo's best game"), a
+ * compound ("the best-reviewed"), a deal ("the best price"), a move with no one judged ("one wrong move deletes your
+ * save") or a late launch ("should have launched in 2019", "should have the update by Friday").
+ */
+export const VERDICT_PHRASE =
+  /\b(?:made|makes|making|make|is|was|are|were|it's|that's|he's|she's|they're)\s+(?:the|a)\s+(?:right|wrong|correct|smart|best|worst)\s+(?:call|choice|decision|move)\b|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:absolutely\s+|completely\s+|totally\s+|so\s+)?(?:right|wrong)\s+to\b|\b(?:should|shouldn't|should\s+not)\s+(?:never\s+)?have\s+(?:known|kept|left|stayed|waited|listened|done|made|cut|scrapped|cancell?ed|changed|fixed|ignored|trusted|picked|chosen|stuck|stopped|dropped|replaced|removed|added|asked|told|been\s+(?:cut|scrapped|cancell?ed|kept|left|better|bigger|smaller|cheaper|free|a\s+[a-z]+|the\s+[a-z]+))\b|\bshould(?:n't)?'ve\s+(?:never\s+)?(?:known|kept|left|stayed|waited|listened|done|made|cut|scrapped|cancell?ed|changed|fixed|ignored|trusted|picked|chosen|stuck|stopped|dropped|replaced|removed|added|asked|told|been\s+(?:cut|scrapped|cancell?ed|kept|left|better|bigger|smaller|cheaper|free|a\s+[a-z]+|the\s+[a-z]+))\b|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:still\s+|easily\s+|honestly\s+)?(?:the\s+)?(?:best|worst)\b(?!-|\s+(?:price|deal|sale|discount|time|part|way|place|chance)\b)|\b(?:is|was|are|were|it's|that's|he's|she's|they're)\s+(?:a|the)\s+(?:huge\s+|big\s+|massive\s+|terrible\s+|real\s+)?mistake\b|\b(?:got|gets|get|had)\s+it\s+(?:right|wrong)\b|\bnailed\s+it\b|\bdodged\s+a\s+bullet\b|\b(?:was|is)\s+(?:worth\s+it|the\s+right\s+thing)\b/i;
+
+/** The verdict phrase a sentence states, or undefined (pure). */
+export function verdictIn(sentence: string): string | undefined {
+  return stripVoiceTags(sentence)
+    .replace(/[’‘]/g, "'")
+    .match(VERDICT_PHRASE)?.[0]
+    ?.trim();
+}
+
+/**
+ * Why a version's first sentence gives the answer away, or undefined (pure): one of the answer lines is the first
+ * sentence or most of its words are in it (the game's name left out); the first sentence states a verdict; or it
+ * shares the angle's own answer words, the ones its question, the game and the company do not already have.
+ */
+export function firstGivesAway(
+  narration: string,
+  o: {
+    answerLines?: readonly string[];
+    game?: string;
+    company?: string;
+    angle?: { question: string; answer: string };
+  },
+): string | undefined {
+  const { sentences } = spokenSentences([narration]);
+  const first = sentences[0]?.text ?? "";
+  if (!first) return undefined;
+  if (answerInFirst(narration, o.answerLines ?? [], o.game ?? ""))
+    return "gives the answer away in its first sentence";
+  const verdict = verdictIn(first);
+  if (verdict)
+    return `states a verdict in its first sentence ("${verdict}") before the story has asked its question`;
+  if (o.angle?.answer.trim()) {
+    const skip = new Set([
+      ...gameAliases(o.game ?? ""),
+      ...contentTokens(o.company ?? ""),
+      ...contentTokens(o.angle.question),
+    ]);
+    const keys = [...new Set(contentTokens(o.angle.answer))].filter(
+      (t) => !skip.has(t),
+    );
+    const firstToks = new Set(contentTokens(first));
+    const shared = keys.filter((t) => firstToks.has(t));
+    if (
+      shared.length >= ROOM.firstAnswerWords &&
+      shared.length / keys.length >= ROOM.firstAnswerShare
+    )
+      return `gives the angle's answer away in its first sentence (${shared.join(", ")})`;
+  }
+  return undefined;
+}
+
+/**
  * Whether a version gives the answer away in its first sentence (pure): its own answer line is the first sentence, or
  * the first sentence carries most of the answer's words (the edited version's answer line, the game's name left out).
+ * firstGivesAway adds the verdict and the angle's own answer words.
  */
 export function answerInFirst(
   narration: string,
@@ -1076,7 +1185,12 @@ export function pickDraft(
   editorPick?: string,
 ): number {
   const ids = editor.map((_, i) => String(i));
-  const read = (id: string, overall: number) => ({ id, overall, marks: {}, fault: "" });
+  const read = (id: string, overall: number) => ({
+    id,
+    overall,
+    marks: {},
+    fault: "",
+  });
   const verdicts = [
     {
       critic: "editor",
@@ -1144,6 +1258,8 @@ export const ROOM_RULES = [
   "formula_ending",
   "tell_phrase",
   "variety",
+  "first_verdict",
+  "unsourced",
 ] as const;
 export type RoomRule = (typeof ROOM_RULES)[number];
 
@@ -1312,6 +1428,8 @@ export function roomChecks(o: {
   /** The version's declared shape, and the last room Shorts' (variety memory). */
   shape?: RecentShape;
   recent?: readonly RecentShape[];
+  /** The pack and the source texts (claimCorpus): a sentence whose name, figure or event word none has is flagged. */
+  sources?: readonly string[];
 }): { findings: RoomFinding[]; counts: RoomCounts } {
   const out: RoomFinding[] = [];
   const text = stripVoiceTags(o.narration).replace(/\s+/g, " ").trim();
@@ -1339,6 +1457,15 @@ export function roomChecks(o: {
       problem:
         "The first sentence does not name the game or the company; a viewer must know the topic at once.",
     });
+  const verdict = verdictIn(first);
+  if (verdict)
+    out.push({
+      rule: "first_verdict",
+      problem: `The first sentence states a verdict ("${verdict}"); open on the plain surprise and keep the verdict for after the answer.`,
+    });
+  if (o.sources?.length)
+    for (const u of unsourcedSentences(text, o.sources, o))
+      out.push({ rule: "unsourced", problem: unsourcedProblem(u) });
   if (total < o.words.min || total > o.words.max)
     out.push({
       rule: "words",
@@ -1439,8 +1566,35 @@ export function roomInstruction(o: {
   viewer?: Pick<ViewerRead, "fix" | "lost_me" | "overall">;
   findings: readonly RoomFinding[];
   point?: string;
+  /** Why the pick's first sentence gives the answer away (firstGivesAway), when it does. */
+  opening?: string;
+  /**
+   * The pick cleared the bar and only its unsourced sentences and its opening need fixing: the edit is told nothing
+   * else.
+   */
+  fixesOnly?: boolean;
 }): string {
   const parts: string[] = [];
+  // A claim no pack field supports would be blocked by the fact check later: it is fixed before anything else.
+  const unsourced = o.findings.filter((f) => f.rule === "unsourced");
+  const rest = o.findings.filter((f) => f.rule !== "unsourced");
+  if (unsourced.length)
+    parts.push(
+      `First, the facts: ${unsourced
+        .slice(0, ROOM.unsourcedMax)
+        .map((f) => f.problem)
+        .join(" ")} Never add background the pack does not hold, not even with "reportedly".`,
+    );
+  if (o.opening)
+    parts.push(
+      `The pick ${o.opening}: rewrite only the first sentence as a plain concrete surprise that names the game, and keep the answer and the verdict for later.`,
+    );
+  if (o.fixesOnly && (unsourced.length || o.opening)) {
+    parts.push(
+      "Edits only: change these sentences and keep every other line word for word. Use only facts already in the draft or in the fact pack.",
+    );
+    return parts.join(" ");
+  }
   if (o.editor.promise_kept < ROOM.promiseMin)
     parts.push(
       `First: the ending is smaller than the first line promises (promise kept ${o.editor.promise_kept}/10). Resize the first line to what the answer really delivers, or change the angle to one whose answer is as big as its first line.`,
@@ -1456,16 +1610,16 @@ export function roomInstruction(o: {
     parts.push(
       `The viewer lost interest at "${o.viewer.lost_me.trim()}": ${o.viewer.fix.trim()}`,
     );
-  if (o.findings.length)
+  if (rest.length)
     parts.push(
-      `Also: ${o.findings
+      `Also: ${rest
         .slice(0, 5)
         .map((f) => f.problem)
         .join(" ")}`,
     );
   if (o.point?.trim()) parts.push(`The point: ${o.point.trim()}`);
   parts.push(
-    "Edits only: change what these name and keep every other line word for word. Use only facts already in the draft. Hold the answer late, keep the verdict in the narrator's own voice, and end on a plain line.",
+    "Edits only: change what these name and keep every other line word for word. Use only facts already in the draft or in the fact pack. Hold the answer late, keep the verdict in the narrator's own voice, and end on a plain line.",
   );
   return parts.join(" ");
 }
@@ -1523,7 +1677,12 @@ export interface RoomRoundMarks {
 }
 
 export type RoomStop =
-  "cleared" | "compared" | "unread" | "killed" | "dropped" | "failed";
+  | "cleared"
+  | "compared"
+  | "unread"
+  | "killed"
+  | "dropped"
+  | "failed";
 
 export interface RoomRun {
   pack?: FactPack;
@@ -1552,6 +1711,8 @@ export interface RoomRun {
     first_line?: string;
     ending?: string;
     i_think: boolean;
+    /** Sentences of the kept version that still carry a claim no pack field or source has (the fact check decides). */
+    unsourced?: string[];
   };
   kill?: { why: string };
   /** A drop by either critic on the pick, with the reason; both dropping sends the story back. */
@@ -1559,6 +1720,8 @@ export interface RoomRun {
   stop: RoomStop;
   error?: string;
   calls: RoomCalls;
+  /** The steps asked a second time with the same request because the first answer was cut or unparsable. */
+  retries?: Array<{ site: string; why: string }>;
 }
 
 const editorMarks = (r: EditorRead) =>
@@ -1595,14 +1758,21 @@ export function pickVersion(
     (a, b) => order.indexOf(a.version) - order.indexOf(b.version),
   );
   const ids = sorted.map((_, i) => String(i));
-  const read = (id: string, overall: number) => ({ id, overall, marks: {}, fault: "" });
+  const read = (id: string, overall: number) => ({
+    id,
+    overall,
+    marks: {},
+    fault: "",
+  });
   const p = panelPick(
     ids,
     [
       {
         critic: "editor",
         required: true,
-        verdict: { reads: sorted.map((r, i) => read(ids[i]!, r.editor.overall)) },
+        verdict: {
+          reads: sorted.map((r, i) => read(ids[i]!, r.editor.overall)),
+        },
       },
       {
         critic: "viewer",
@@ -1726,6 +1896,8 @@ export async function runRoom(o: {
   ) => { findings: RoomFinding[]; counts: RoomCounts };
   /** The game's name, so the answer-in-first check leaves it out. */
   game?: () => string;
+  /** The company at the centre, which the answer-in-first check leaves out too. */
+  company?: () => string;
   /** The last room Shorts' shapes, newest first (variety memory). */
   recent?: readonly RecentShape[];
   rounds?: number;
@@ -1741,7 +1913,17 @@ export async function runRoom(o: {
     run.pack = p.pack;
     run.drops = p.drops;
     calls.write++;
-    const w = await o.write(p.pack);
+    const retried = (site: string) => (why: string) => {
+      (run.retries ??= []).push({ site, why });
+    };
+    // A cut or unparsable answer is asked again once with the same request (21 and 22 Nov 2026 fell back on it).
+    const w = await retryCut(
+      () => o.write(p.pack),
+      (why) => {
+        calls.write++;
+        retried(ROOM_WRITE_SITE)(why);
+      },
+    );
     run.writing = w;
     const drafts = w.drafts.slice(0, 3);
     if (!drafts.length) {
@@ -1781,7 +1963,11 @@ export async function runRoom(o: {
     }));
     // Both critics read the drafts blind on the shared panel (src/panel/panel.ts): the editor first and required (no
     // editor read, no pick), the viewer beside it when it is on (its failure only leaves its marks out).
-    const first = await roomPanel({ drafts: shown, editor: o.editor, viewer: o.viewer });
+    const first = await roomPanel({
+      drafts: shown,
+      editor: o.editor,
+      viewer: o.viewer,
+    });
     calls.critic += first.callsBy.editor ?? 0;
     calls.viewer += first.callsBy.viewer ?? 0;
     if (first.failed.editor !== undefined) {
@@ -1853,21 +2039,47 @@ export async function runRoom(o: {
     };
     const candidates: Candidate[] = [original];
     const cleared = clearsRoom(pickedRead, pickedView, min);
-    // One edit, when the pick misses the bar.
+    const giveAway = (narration: string, lines: readonly string[]) =>
+      firstGivesAway(narration, {
+        answerLines: [
+          ...lines,
+          // The writer's own held-back answer for the angle, short enough that its words tell.
+          w.angles[picked.angle]?.answer ?? "",
+        ],
+        game: o.game?.() ?? "",
+        company: o.company?.() ?? "",
+        ...(w.angles[picked.angle] ? { angle: w.angles[picked.angle]! } : {}),
+      });
+    // A claim no pack field supports is cut before the fact check sees it, and an opening that gives the answer or
+    // the verdict away is rewritten, even in a pick that cleared the bar.
+    const unsourcedPick = firstCheck.findings.some(
+      (f) => f.rule === "unsourced",
+    );
+    const opening = giveAway(picked.narration, [picked.answer_line]);
+    // One edit, when the pick misses the bar, says something the pack does not hold or opens on its answer.
     let edited: Candidate | undefined;
-    if (!cleared && calls.edit < caps.edit) {
+    if ((!cleared || unsourcedPick || opening) && calls.edit < caps.edit) {
       const instruction = roomInstruction({
         editor: pickedRead,
         viewer: pickedView,
         findings: firstCheck.findings,
         point: w.point,
+        ...(opening ? { opening } : {}),
+        fixesOnly: cleared,
       });
       calls.edit++;
       const after = await o
         .edit(original.text, instruction, p.pack)
         .catch(() => undefined);
+      // The edit is there to fix the opening when the pick gave it away; it may never introduce one either.
+      const opened = after
+        ? giveAway(after.narration, [picked.answer_line])
+        : undefined;
       const refused = after
-        ? (o.accept?.(original.text, after) ?? [])
+        ? [
+            ...(opened ? [`The edited version ${opened}.`] : []),
+            ...(o.accept?.(original.text, after) ?? []),
+          ]
         : ["The edits did not apply."];
       if (after && !refused.length) {
         const shape = {
@@ -1899,7 +2111,14 @@ export async function runRoom(o: {
       let refused: string[] = [];
       let voiced: Candidate | undefined;
       try {
-        const v = await o.voice(base.text, p.pack);
+        const voice = o.voice;
+        const v = await retryCut(
+          () => voice(base.text, p.pack),
+          (why) => {
+            calls.voice++;
+            retried(ROOM_VOICE_SITE)(why);
+          },
+        );
         const text = { title: v.title, narration: v.narration };
         const shape: RecentShape = {
           form: v.form,
@@ -1907,21 +2126,14 @@ export async function runRoom(o: {
           ending: v.ending,
           i_think: iThinkBecause(lastSentence(v.narration)),
         };
+        // The answer and the verdict stay out of the first sentence (24 Nov 2026: "God of War made the right call
+        // keeping Kratos." went on air from the voice pass).
+        const opened = giveAway(v.narration, [
+          v.answer_line,
+          base.answer_line ?? "",
+        ]);
         refused = [
-          ...(answerInFirst(
-            v.narration,
-            [
-              v.answer_line,
-              base.answer_line ?? "",
-              // The writer's own held-back answer for the angle, short enough that its words tell.
-              w.angles[picked.angle]?.answer ?? "",
-            ],
-            o.game?.() ?? "",
-          )
-            ? [
-                "The voiced version gives the answer away in its first sentence.",
-              ]
-            : []),
+          ...(opened ? [`The voiced version ${opened}.`] : []),
           ...varietyProblems(shape, o.recent),
           ...(o.accept?.(base.text, text) ?? []),
         ];
@@ -1951,6 +2163,11 @@ export async function runRoom(o: {
         ...(c.shape.first_line ? { first_line: c.shape.first_line } : {}),
         ...(c.shape.ending ? { ending: c.shape.ending } : {}),
         i_think: !!c.shape.i_think,
+        ...((u) => (u.length ? { unsourced: u } : {}))(
+          c.check.findings
+            .filter((f) => f.rule === "unsourced")
+            .map((f) => f.problem),
+        ),
       };
       run.stop = stop;
       return run;
@@ -2013,16 +2230,220 @@ export async function runRoom(o: {
   }
 }
 
+// ---------------------------------------------------------------- the claim guard
+
 /**
- * The fact guard on an edit (pure): a number or a quotation the edited narration says that the sources (the pack's
- * corpora) do not hold is refused.
+ * Event words that assert a fact of their own. A sentence that says one which no pack field and no source text has
+ * is a claim the writer added: the fact check blocked "Half-Life 2's Steam lock went to court" (23 Nov 2026) and a
+ * Portal 2 mechanic "that playtesters reportedly liked" (21 Nov) that no source supports.
+ */
+export const CLAIM_WORDS: ReadonlyArray<{ re: RegExp; roots: string[] }> = [
+  {
+    re: /\b(?:courts?|ruling)\b/i,
+    roots: ["court", "ruling", "lawsuit", "legal", "sued", "judge"],
+  },
+  {
+    re: /\b(?:lawsuits?|sued|sues|suing|legal action)\b/i,
+    roots: ["lawsuit", "sued", "sues", "suing", "legal", "court"],
+  },
+  {
+    re: /\b(?:layoffs?|laid off)\b/i,
+    roots: ["layoff", "laid off", "job cuts", "redundan", "let go", "fired"],
+  },
+  {
+    re: /\b(?:cancell?ed|scrapped|axed|shelved)\b/i,
+    roots: ["cancel", "scrapped", "axed", "shelved"],
+  },
+  {
+    re: /\b(?:playtest(?:ers?|ing|s)?|focus[- ]test(?:ers?|ing|s)?|testers)\b/i,
+    roots: ["playtest", "focus test", "focus - test", "tester"],
+  },
+  { re: /\brefund(?:s|ed)?\b/i, roots: ["refund"] },
+  {
+    re: /\b(?:acquired|acquisition|buyout)\b/i,
+    roots: [
+      "acquir",
+      "acquisition",
+      "buyout",
+      "bought",
+      "purchase",
+      "takeover",
+    ],
+  },
+  {
+    re: /\b(?:resigned|stepped down)\b/i,
+    roots: ["resign", "stepped down", "step down", "steps down", "departure"],
+  },
+  {
+    re: /\b(?:petition|boycott|review[- ]bomb\w*)\b/i,
+    roots: ["petition", "boycott", "review bomb", "review - bomb"],
+  },
+  { re: /\b(?:patent|trademark)(?:s|ed)?\b/i, roots: ["patent", "trademark"] },
+  {
+    re: /\b(?:banned|bans?|banning)\b/i,
+    roots: ["ban", "bans", "banned", "banning"],
+  },
+  { re: /\bleak(?:ed|s|er)?\b/i, roots: ["leak"] },
+];
+
+export interface UnsourcedSentence {
+  sentence: string;
+  /** Capitalised names no pack field and no source text has. */
+  names: string[];
+  /** Figures none of them gives. */
+  figures: string[];
+  /** Event words (CLAIM_WORDS) none of them has. */
+  claims: string[];
+}
+
+/** Every string a value holds, its unverified list left out (pure). */
+function packStrings(x: unknown): string[] {
+  if (typeof x === "string") return [x];
+  if (Array.isArray(x)) return x.flatMap(packStrings);
+  if (x && typeof x === "object")
+    return Object.entries(x).flatMap(([k, v]) =>
+      k === "unverified" ? [] : packStrings(v),
+    );
+  return [];
+}
+
+/**
+ * The texts a draft's claims may come from (pure): every field of the pack but its unverified list, and the source
+ * texts (the number corpus: the articles, the primaries, the feed's summaries, the vault and the store).
+ */
+export function claimCorpus(
+  pack: FactPack | undefined,
+  sources: readonly string[],
+): string[] {
+  return [...(pack ? packStrings(pack) : []), ...sources].filter(Boolean);
+}
+
+const escapeRe = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The sentences of a narration that carry a claim from nowhere (pure): a capitalised name, a figure or an event word
+ * (CLAIM_WORDS) that appears in no pack field and no source text. Never counted: a sentence's first word, a short
+ * all-capitals word (RPG, NPC, GOTY), the game's, the company's and the outlets' own words, the game's numeral, and a
+ * figure within 5% of one the texts give (a rounded "almost 350,000").
+ */
+export function unsourcedSentences(
+  narration: string,
+  texts: readonly string[],
+  o: { game?: string; company?: string; outlets?: readonly string[] } = {},
+): UnsourcedSentence[] {
+  const corpus = normaliseForMatch(texts.join("\n"));
+  const has = (w: string) => {
+    const n = escapeRe(normaliseForMatch(w));
+    return !!n && new RegExp(`(?:^|[^a-z0-9])${n}(?:$|[^a-z0-9])`).test(corpus);
+  };
+  // An event word's root: at the start of a word, and a whole word when it is short ("ban" is not "band").
+  const rootIn = (r: string) =>
+    new RegExp(
+      `(?:^|[^a-z0-9])${escapeRe(r)}${r.length >= 5 ? "" : "(?:$|[^a-z0-9])"}`,
+    ).test(corpus);
+  const own = new Set([
+    ...gameAliases(o.game ?? ""),
+    ...contentTokens(o.company ?? ""),
+    ...[...KNOWN_OUTLETS, ...(o.outlets ?? [])].flatMap((x) =>
+      contentTokens(x),
+    ),
+  ]);
+  const gameFigures = new Set([
+    ...figuresIn(o.game ?? ""),
+    ...[...gameAliases(o.game ?? "")].filter((t) => /^\d+$/.test(t)),
+  ]);
+  const pool = new Set(texts.flatMap((t) => figuresIn(t)));
+  const poolNumbers = [...pool].map(Number).filter((n) => n > 0);
+  const near = (f: string) => {
+    const x = Number(f);
+    return (
+      Number.isFinite(x) &&
+      [1, 1e3, 1e6, 1e9].some((k) => {
+        const v = x * k;
+        return v >= 100 && poolNumbers.some((p) => Math.abs(v - p) / p <= 0.05);
+      })
+    );
+  };
+  const { sentences } = spokenSentences([stripVoiceTags(narration)]);
+  const out: UnsourcedSentence[] = [];
+  for (const s of sentences) {
+    const words = s.text.match(/[A-Za-z0-9][A-Za-z0-9'’-]*/g) ?? [];
+    const names: string[] = [];
+    words.forEach((raw, i) => {
+      if (i === 0) return;
+      const w = raw.replace(/['’]s$/, "").replace(/['’-]+$/, "");
+      if (!/^[A-Z]/.test(w) || NOT_NAMES.has(w) || /^[A-Z0-9]{2,5}$/.test(w))
+        return;
+      const toks = contentTokens(w);
+      if (!toks.length || toks.every((t) => own.has(t))) return;
+      if (!has(w) && !names.includes(w)) names.push(w);
+    });
+    const figures = [...new Set(figuresIn(s.text))].filter(
+      (f) => !pool.has(f) && !gameFigures.has(f) && !near(f),
+    );
+    const claims = CLAIM_WORDS.flatMap((c) => {
+      const m = s.text.match(c.re);
+      return m && !c.roots.some(rootIn) ? [m[0]] : [];
+    });
+    if (names.length || figures.length || claims.length)
+      out.push({ sentence: s.text, names, figures, claims });
+  }
+  return out;
+}
+/** One unsourced sentence as an instruction (pure). */
+export function unsourcedProblem(u: UnsourcedSentence): string {
+  const what = [
+    ...u.names.map((n) => `the name ${n}`),
+    ...u.figures.map((f) => `the figure ${f}`),
+    ...u.claims.map((c) => `"${c}"`),
+  ].join(", ");
+  return `The sentence "${u.sentence}" says ${what}, which no pack field and no source has: cut the sentence or replace it with a fact from the pack.`;
+}
+
+/**
+ * The fact guard on an edit or a voiced version (pure): a number or a quotation the new narration says that the
+ * sources (the pack's corpora) do not hold is refused; with `claims` (the pack and the sources, claimCorpus), so is a
+ * sentence it adds whose name or event word no pack field and no source has.
  */
 export function roomEditProblems(
   after: RoomText,
-  corpora: { quotes: readonly string[]; numbers: readonly string[] },
+  corpora: {
+    quotes: readonly string[];
+    numbers: readonly string[];
+    claims?: readonly string[];
+    game?: string;
+    company?: string;
+    outlets?: readonly string[];
+  },
   before?: RoomText,
 ): string[] {
   const out: string[] = [];
+  if (corpora.claims?.length) {
+    const o = {
+      game: corpora.game,
+      company: corpora.company,
+      outlets: corpora.outlets,
+    };
+    // A name or event word the old narration already says, wherever it stood, is inherited, not added.
+    const old = normaliseForMatch(before?.narration ?? "");
+    const inherited = (w: string) =>
+      !!old &&
+      new RegExp(
+        `(?:^|[^a-z0-9])${normaliseForMatch(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:$|[^a-z0-9])`,
+      ).test(old);
+    for (const u of unsourcedSentences(after.narration, corpora.claims, o)) {
+      const added = {
+        ...u,
+        names: u.names.filter((n) => !inherited(n)),
+        claims: u.claims.filter((c) => !inherited(c)),
+        figures: [],
+      };
+      if (added.names.length || added.claims.length)
+        out.push(
+          `The new version adds a claim no source supports. ${unsourcedProblem(added)}`,
+        );
+    }
+  }
   const had = new Set(before ? figuresIn(before.narration) : []);
   for (const f of figuresIn(after.narration))
     if (!had.has(f) && !numberFound(f, corpora.numbers))
@@ -2119,6 +2540,85 @@ export async function runLayout(o: {
   return { calls, fallback: why };
 }
 
+// ---------------------------------------------------------------- the repair's brief
+
+/** The pack's facts as plain lines, the only facts a repair may put in (pure): nothing from unverified. */
+export function packFacts(pack: FactPack): string[] {
+  const t = (x: unknown) => (typeof x === "string" ? x.trim() : "");
+  return [
+    t(pack.what_happened) && `What happened: ${t(pack.what_happened)}`,
+    t(pack.the_why?.reason) &&
+      `Why: ${t(pack.the_why.reason)}${t(pack.the_why.who) ? ` (${t(pack.the_why.who)})` : ""}`,
+    ...(pack.quotes ?? []).map(
+      (q) =>
+        t(q.text) &&
+        `Quote: "${t(q.text)}" (${[t(q.speaker), t(q.role), t(q.outlet)].filter(Boolean).join(", ")})`,
+    ),
+    ...(pack.numbers ?? []).map(
+      (n) =>
+        t(n.value) && `Number: ${t(n.spoken) || t(n.value)} (${t(n.what)})`,
+    ),
+    t(pack.surprise?.detail) && `Surprise: ${t(pack.surprise.detail)}`,
+    t(pack.stakes_for_player) && `For players: ${t(pack.stakes_for_player)}`,
+    t(pack.callback?.line) &&
+      `Callback: ${t(pack.callback.line)}${t(pack.callback.date) ? ` (${t(pack.callback.date)})` : ""}`,
+    ...(pack.best_questions ?? []).map(
+      (q) => t(q.answer) && `Answer (${q.solidity}): ${t(q.answer)}`,
+    ),
+  ].filter((x): x is string => !!x);
+}
+
+/**
+ * The whole narration sentence a fact check's quote sits in (pure): the sentence that holds the quote word for word,
+ * else the one sharing most of its content words; the quote itself when no sentence does.
+ */
+export function blockedSentence(narration: string, quote: string): string {
+  const { sentences } = spokenSentences([stripVoiceTags(narration)]);
+  const q = narrationKey(quote);
+  if (!q) return quote.trim();
+  const exact = sentences.find((s) => {
+    const k = narrationKey(s.text);
+    return k.includes(q) || (k.length > 0 && q.includes(k));
+  });
+  if (exact) return exact.text;
+  const want = new Set(contentTokens(quote));
+  let best = { text: quote.trim(), n: 0 };
+  for (const s of sentences) {
+    const n = [...new Set(contentTokens(s.text))].filter((t) =>
+      want.has(t),
+    ).length;
+    if (n > best.n) best = { text: s.text, n };
+  }
+  return best.n >= Math.min(2, want.size) && best.n > 0
+    ? best.text
+    : quote.trim();
+}
+
+/**
+ * The one room.repair's problems (pure): each fact check blocker ('Fact-check: "quote" - problem') becomes its exact
+ * blocked sentence with the instruction to cut it or replace it with a pack fact, and the pack's facts follow as the
+ * only material a replacement may use. Other problems (air-time words, house safety) pass through as they are.
+ */
+export function repairFeedback(
+  problems: readonly string[],
+  narration: string,
+  pack?: FactPack,
+): string[] {
+  let blocked = 0;
+  const out = problems.map((p) => {
+    const m = /^Fact-check: "([\s\S]+?)" - ([\s\S]*)$/.exec(p);
+    if (!m) return p;
+    blocked++;
+    return `Blocked sentence: "${blockedSentence(narration, m[1]!)}" The fact check says: ${m[2]!.trim()} Cut this sentence, or replace it with a fact from the pack below; add nothing else, and no claim the pack does not hold, not even with "reportedly". Change the matching beat's card and claims to agree.`;
+  });
+  const facts = pack ? packFacts(pack) : [];
+  if (blocked && facts.length)
+    out.push(
+      `The fact pack, the only facts a replacement may use:\n${facts.map((f) => `  * ${f}`).join("\n")}`,
+    );
+  return out;
+}
+
 // ---------------------------------------------------------------- the record
 
 export interface RoomRecord {
@@ -2138,6 +2638,11 @@ export interface RoomRecord {
   editor_overall?: number;
   viewer_overall?: number;
   mean?: number;
+  /**
+   * The factory's editor's desk's overall score on the published script (SCRIPT_DESK reads every Short), beside the
+   * room's own critics, so the weekly report compares all three marks against retention.
+   */
+  desk_overall?: number;
   counts?: RoomCounts;
   kill?: { why: string };
   /** A drop by either critic on the pick, with the reason (both: the story went back; the report counts them). */
@@ -2159,6 +2664,10 @@ export interface RoomRecord {
   /** Steps a room script skipped or ran record-only. */
   skipped?: string[];
   calls: RoomCalls;
+  /** Steps asked a second time with the same request after a cut or unparsable answer (counted in calls too). */
+  retried?: Array<{ site: string; why: string }>;
+  /** Sentences of the kept version that still carry a claim no pack field or source has. */
+  unsourced?: string[];
   /** The model that wrote the drafts (from the usage meter), when known. */
   model?: string;
 }
@@ -2225,6 +2734,10 @@ export function roomRecord(o: {
     ...(o.wrote !== undefined ? { wrote: o.wrote } : {}),
     ...(o.skipped?.length ? { skipped: o.skipped } : {}),
     calls: { ...noCalls(), ...(run?.calls ?? {}), ...(o.calls ?? {}) },
+    ...(run?.retries?.length ? { retried: run.retries } : {}),
+    ...(run?.final?.unsourced?.length
+      ? { unsourced: run.final.unsourced }
+      : {}),
     ...(o.model ? { model: o.model } : {}),
   };
 }
@@ -2246,6 +2759,8 @@ export function roomLinesForReport(
     wrote?: boolean;
     editor?: number;
     viewer?: number;
+    /** The editor's desk's overall score on the published script (its own 0 to 10 scale). */
+    desk?: number;
     views?: number | null;
     viewed_pct?: number;
     comments?: number;
@@ -2284,7 +2799,7 @@ export function roomLinesForReport(
     vw.length >= ROOM_VERDICT_MIN && vc.length >= ROOM_VERDICT_MIN
       ? `Writers' room verdict: average viewed ${avg(vw).toFixed(1)}% where the room wrote against ${avg(vc).toFixed(1)}% in the control arm (${(avg(vw) - avg(vc)).toFixed(1)} points, ${vw.length} against ${vc.length} Shorts).`
       : `Writers' room verdict: ${vw.length} room and ${vc.length} control Shorts with retention data; no verdict before ${ROOM_VERDICT_MIN} a side.`;
-  const marks = (key: "editor" | "viewer", label: string) => {
+  const marks = (key: "editor" | "viewer" | "desk", label: string) => {
     const paired = wrote.filter(
       (r) =>
         typeof r[key] === "number" &&
@@ -2299,6 +2814,20 @@ export function roomLinesForReport(
     );
     return `${label}: rank correlation ${rho === undefined ? "n/a" : rho.toFixed(2)} over ${paired.length} Shorts`;
   };
+  // The three marks side by side: the room's critics read only the room's Shorts, the desk reads every Short.
+  const averageMarks = () => {
+    const mean = (xs: typeof all, key: "editor" | "viewer" | "desk") => {
+      const v = xs
+        .map((r) => r[key])
+        .filter(
+          (x): x is number => typeof x === "number" && Number.isFinite(x),
+        );
+      return v.length ? `${avg(v).toFixed(1)} (${v.length})` : "n/a";
+    };
+    if (![...wrote, ...control].some((r) => typeof r.desk === "number"))
+      return "";
+    return `Writers' room, average marks where the room wrote: editor critic ${mean(wrote, "editor")}, viewer critic ${mean(wrote, "viewer")}, editor's desk ${mean(wrote, "desk")}; editor's desk on the control arm ${mean(control, "desk")}.`;
+  };
   const arm = all.filter((r) => r.arm === "room");
   const killed = arm.filter((r) => r.killed).length;
   const both = arm.filter((r) => r.drop?.editor && r.drop.viewer).length;
@@ -2309,7 +2838,8 @@ export function roomLinesForReport(
   return [
     `Writers' room (SCRIPT_ROOM), by side: ${sides.join("; ")}.`,
     verdict,
-    `Writers' room marks against average viewed: ${marks("editor", "editor critic")}; ${marks("viewer", "viewer critic")}.`,
+    `Writers' room marks against average viewed: ${marks("editor", "editor critic")}; ${marks("viewer", "viewer critic")}; ${marks("desk", "editor's desk")}.`,
     `Writers' room, stories it could not use: ${killed + both} of ${arm.length} in its arm went back to the normal writer (${killed} killed by the writer, ${both} dropped by both critics); ${one} more were dropped by one critic and written anyway. Kept version: ${won("original")} the pick, ${won("edited")} its edit, ${won("voiced")} the voice pass.`,
+    ...((line) => (line ? [line] : []))(averageMarks()),
   ];
 }

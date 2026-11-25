@@ -661,6 +661,8 @@ export interface RenderInput {
       kind: string;
       aspect: number;
       blurFile?: string;
+      fillFile?: string;
+      upFile?: string;
       beatIndex?: number;
       credit?: string;
       focusX?: number;
@@ -751,6 +753,8 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
+      fillFile?: string;
+      upFile?: string;
       layers?: {
         bg: string;
         mid: string;
@@ -875,7 +879,9 @@ export function longProps(
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
     images: imageFiles.map((i) => ({
-      src: `${filesUrl}/${webPath(i.file)}`,
+      src: `${filesUrl}/${webPath(i.upFile ?? i.file)}`,
+      ...(i.upFile ? { origSrc: `${filesUrl}/${webPath(i.file)}` } : {}),
+      ...(i.fillFile ? { fillSrc: `${filesUrl}/${webPath(i.fillFile)}` } : {}),
       kind: i.kind,
       aspect: i.aspect,
       beatIndex: i.beatIndex,
@@ -1293,10 +1299,11 @@ export async function renderShort(input: RenderInput): Promise<void> {
         : undefined,
       audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${webPath(i.file)}`,
+        src: `${files.url}/${webPath(i.upFile ?? i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
         blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
+        ...(i.fillFile ? { fillSrc: `${files.url}/${webPath(i.fillFile)}` } : {}),
         beatIndex: i.beatIndex,
         credit: i.credit,
         focusX: i.focusX,

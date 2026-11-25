@@ -396,6 +396,8 @@ import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
+import { framedStills, prepareImages, remoteAsk } from "./gpuvis/client.ts";
+import { thumbCandidateStep } from "./gpuvis/thumbstep.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
 import { cardWindow } from "./render/shortcraft.ts";
 import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
@@ -12707,6 +12709,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       i.aspect = await s
         .imageAspect(path.join(dir, i.file))
         .catch(() => 16 / 9);
+  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts): portrait pictures extended to 16:9 and low-resolution ones
+  // enlarged on the PC's GPU before the long render.
+  {
+    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "long");
+    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
+  }
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
     kind: i.kind,
@@ -12716,6 +12724,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     moment: i.moment,
     label: i.label,
     layers: i.layers,
+    // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+    fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+    upFile: s.cfg.upscaleStills ? i.upFile : undefined,
   }));
   // The shot list per entry, in on-screen order (lowest rank first), for sentence-level pictures and graphics.
   const moments = [...(script.entries ?? [])]
@@ -12905,6 +12916,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           moment: undefined,
           label: undefined,
           layers: undefined,
+          fillFile: undefined,
+          upFile: undefined,
         });
         added++;
       }
@@ -14186,6 +14199,46 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         });
       }
     }
+  // THUMB_CANDIDATES (src/gpuvis/thumbstep.ts): the main poster's art extended and relit on the PC's GPU, drawn as
+  // the same poster, and every passing design scored by the local vision model; the top three become the thumbnail
+  // and the Test & compare variants. Off, or with the PC's service down, the order above stands.
+  if (s.cfg.thumbCandidates && mainThumb?.layout === "poster" && !bad.has("thumb.jpg")) {
+    try {
+      const { renderLongThumbs } = await import("./render/render.ts");
+      const picked = await thumbCandidateStep(dir, mainThumb.thumb as never, ["thumb.jpg", ...thumbFiles], {
+        url: s.cfg.gpuvisUrl,
+        // The judge runs through the GPU service, inside its orchestrator turn (a 30B model on the shared 4090).
+        // The whole step has 15 minutes: the extension, the plate and the ranking rounds share them.
+        until: Date.now() + 15 * 60_000,
+        ask: remoteAsk(s.cfg.gpuvisUrl, Date.now() + 15 * 60_000),
+        render: (file, thumb) => renderLongThumbs({ episodeDir: dir, thumbs: [{ file, thumb: thumb as never }] }),
+        // The episode's own seed, so each video's relit candidate has its own light.
+        seed: [...ep.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100000,
+        // The same checks the rendered designs had: the rule (under THUMB_HERO_RULE), the poster's measures and the
+        // release's vision check on thumbnails, which matters most here because these margins were drawn by AI.
+        check: async (file, thumb) => {
+          const problems = [
+            ...(s.cfg.thumbHeroRule ? designProblems(thumb as Record<string, unknown>, script, motif?.id) : []),
+            ...(await posterProblems(file, thumb as never)),
+          ];
+          if (s.cfg.visionQa) {
+            const v = await s
+              .visionQa([file], { headline: script.headline, gameTitle: script.game_title, format: "thumbs", heroRule: s.cfg.thumbHeroRule })
+              .catch(() => undefined);
+            if (!v) problems.push("the thumbnail vision check did not answer");
+            else if (v.verdict === "fail") problems.push(...(v.problems.length ? v.problems : ["failed the thumbnail vision check"]));
+          }
+          return problems;
+        },
+      });
+      if (picked) {
+        thumbFiles = picked.variants;
+        await logEvent(s.db, ep.id, "thumb_candidates", { ...picked });
+      }
+    } catch (err) {
+      log("warn", "THUMB_CANDIDATES step failed; the usual thumbnails stand", { episode: ep.id, error: errorMessage(err) });
+    }
+  }
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,
@@ -14786,6 +14839,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // The clean frame (SHORTS_CLEAN) shows every shot full-bleed, so under it no still is framed and none is filled.
+  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts), once the plan is final: only the stills the plan shows in the
+  // framed panel are extended (a still shown full-bleed is cover-cropped, so a fill would never show), and
+  // low-resolution and old games' stills are enlarged; anything the service cannot do keeps its blurred plate and size.
+  {
+    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "short", {}, {
+      fillOnly: shortClean ? new Set<number>() : framedStills(plan),
+      year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    });
+    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
+  }
   // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
   // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
   const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
@@ -15025,7 +15090,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
-  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
   // The word stamp, and an every-game Short's year stamps: one at the first game and at each change of era.
   const shownStamps = [
     ...stampsFor(script, words),
@@ -15207,6 +15271,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         kind: i.kind,
         aspect: i.aspect,
         blurFile: i.blurFile,
+        // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+        fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+        upFile: s.cfg.upscaleStills ? i.upFile : undefined,
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
         focusX: i.focusX,

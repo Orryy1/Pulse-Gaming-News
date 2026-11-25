@@ -7,13 +7,16 @@ import { z } from "zod";
 import {
   buildCommand,
   buildPrompt,
+  codexRunTimeout,
   createCodexLlm,
+  LIMIT_TIMEOUT_MS,
   dropNulls,
   extractJson,
   kindFor,
   routeToCodex,
   siteOf,
   strictJsonSchema,
+  withCodexCap,
   type CodexRequest,
 } from "../src/editorial/codex.ts";
 import type { Llm } from "../src/editorial/llm.ts";
@@ -429,4 +432,147 @@ test("an unlisted step stays on Claude while it works, and a passing error does 
   } as unknown as Llm;
   await assert.rejects(createCodexLlm(busy, opts).structured(call));
   assert.equal(codexCalls, 0);
+});
+
+/** Runs fn with console.log captured; returns the JSON log lines it wrote. */
+async function logsOf(fn: () => Promise<unknown>): Promise<Array<Record<string, unknown>>> {
+  const lines: Array<Record<string, unknown>> = [];
+  const orig = console.log;
+  console.log = (line: unknown) => {
+    try {
+      lines.push(JSON.parse(String(line)));
+    } catch {
+      /* not a log line */
+    }
+  };
+  try {
+    await fn().catch(() => undefined);
+  } finally {
+    console.log = orig;
+  }
+  return lines;
+}
+
+test("codexRunTimeout: listed sites get the full time, limit-routed calls 12 min, and a Short's cap bounds both", () => {
+  const full = 20 * 60_000;
+  assert.equal(codexRunTimeout(full, true), full);
+  assert.equal(codexRunTimeout(full, false), LIMIT_TIMEOUT_MS);
+  assert.equal(codexRunTimeout(full, true, 10 * 60_000), 10 * 60_000);
+  assert.equal(codexRunTimeout(full, false, 10 * 60_000), 10 * 60_000);
+  // A cap above the site's own time changes nothing; 0 or undefined is no cap.
+  assert.equal(codexRunTimeout(5 * 60_000, true, 10 * 60_000), 5 * 60_000);
+  assert.equal(codexRunTimeout(full, true, 0), full);
+});
+
+test("a Short's step caps a listed site's Codex run (25 Nov: search.write ran the full 20 min twice)", async () => {
+  const runner = fakeRunner(['{"title":"t","score":1}', '{"title":"t","score":1}']);
+  const llm = createCodexLlm(fakeClaude().llm, {
+    enabled: true,
+    sites: ["search"],
+    timeoutMs: 20 * 60_000,
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "cap-")),
+    run: runner.run,
+  });
+  const call = { system: "s", content: "c", schema: Answer, site: "search.write" } as any;
+  await withCodexCap(10 * 60_000, () => llm.structured(call));
+  await llm.structured(call);
+  assert.equal(runner.seen[0]!.timeoutMs, 10 * 60_000);
+  // Outside a Short's step the site's full time stands.
+  assert.equal(runner.seen[1]!.timeoutMs, 20 * 60_000);
+});
+
+test("a Codex failure while Claude is on its limit says why the fallback was skipped", async () => {
+  let claudeCalls = 0;
+  const claude = {
+    structured: async () => {
+      claudeCalls++;
+      throw new Error("400 You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC.");
+    },
+  } as unknown as Llm;
+  let codexRuns = 0;
+  const llm = createCodexLlm(claude, {
+    enabled: true,
+    sites: ["search"],
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "skip-")),
+    run: async (req) => {
+      codexRuns++;
+      if (req.prompt.includes("unlisted")) return '{"title":"t","score":1}';
+      throw new Error("codex runner exit 1: RuntimeError: codex exec timed out after 1185 s");
+    },
+  });
+  // An unlisted call meets Claude's refusal first: the refusal and the hold are logged.
+  const first = await logsOf(() =>
+    llm.structured({ system: "s", content: "unlisted", schema: Answer, site: "news.write" } as any),
+  );
+  const refusal = first.find((l) => /usage limit/.test(String(l.msg)));
+  assert.ok(refusal, "Claude's refusal is logged");
+  assert.equal(refusal!.site, "news.write");
+  assert.match(String(refusal!.until), /^\d{4}-\d\d-\d\dT/);
+  // Then a listed call's Codex run fails: Claude is not asked, and the log says so and until when.
+  let thrown: unknown;
+  const second = await logsOf(() =>
+    llm
+      .structured({ system: "s", content: "c", schema: Answer, site: "search.write" } as any)
+      .catch((e) => {
+        thrown = e;
+      }),
+  );
+  assert.match(String((thrown as Error)?.message), /timed out after 1185 s/);
+  assert.equal(claudeCalls, 1);
+  const skipped = second.find((l) => l.msg === "codex failed, no Claude fallback");
+  assert.ok(skipped, "the skip is logged");
+  assert.match(String(skipped!.skipped), /out of allowance until \d{4}-/);
+  assert.equal(second.some((l) => l.msg === "codex failed, Claude answers"), false);
+  // One run answered the unlisted call; the failed listed run was not repeated on anything.
+  assert.equal(codexRuns, 2);
+});
+
+test("Claude refusing on its limit after a Codex failure does not run Codex a second time", async () => {
+  let claudeCalls = 0;
+  const claude = {
+    structured: async () => {
+      claudeCalls++;
+      throw new Error("Claude usage limit reached");
+    },
+  } as unknown as Llm;
+  let codexRuns = 0;
+  const llm = createCodexLlm(claude, {
+    enabled: true,
+    sites: ["search"],
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "again-")),
+    run: async () => {
+      codexRuns++;
+      throw new Error("codex hung");
+    },
+  });
+  // The step's failure keeps Codex's reason, with Claude's refusal noted.
+  await assert.rejects(
+    llm.structured({ system: "s", content: "c", schema: Answer, site: "search.write" } as any),
+    /codex hung \(Claude fallback refused: usage limit\)/,
+  );
+  assert.equal(codexRuns, 1);
+  assert.equal(claudeCalls, 1);
+});
+
+test("a skipped fallback after a too-big format says so", async () => {
+  const claude = {
+    structured: async () => {
+      throw new Error("400 The compiled grammar is too large");
+    },
+  } as unknown as Llm;
+  const llm = createCodexLlm(claude, {
+    enabled: true,
+    sites: [],
+    grammarFallback: true,
+    tmpDir: fs.mkdtempSync(path.join(os.tmpdir(), "gram-")),
+    run: async () => {
+      throw new Error("codex hung");
+    },
+  });
+  const lines = await logsOf(() =>
+    llm.structured({ system: "s", content: "c", schema: Answer, site: "room.layout" } as any),
+  );
+  const skipped = lines.find((l) => l.msg === "codex failed, no Claude fallback");
+  assert.ok(skipped);
+  assert.match(String(skipped!.skipped), /format as too big/);
 });

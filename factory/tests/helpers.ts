@@ -155,6 +155,7 @@ export function testConfig(
     factRepair: true,
     visionPaidFallback: false,
     codexTimeoutMinutes: 20,
+    codexShortTimeoutMinutes: 12,
     codexPython: "python",
     codexRunnerDir: "",
     cutdownsEnabled: false,

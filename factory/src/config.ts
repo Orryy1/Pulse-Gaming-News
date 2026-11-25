@@ -239,6 +239,25 @@ export interface Config {
   /** The Python that can import the orchestrator's codex_runner, and where that file lives. */
   codexPython: string;
   codexRunnerDir: string;
+  /**
+   * CLAUDE_VIA_MAX (default off): Claude calls go through Claude Code (`claude -p`) on the owner's Max plan first,
+   * then Codex, then the API key (src/editorial/maxplan.ts). Same model per tier; pictures and WRITER_SPLIT's Codex
+   * calls are routed as before.
+   */
+  claudeViaMax: boolean;
+  /** MAX_WEEK_CAP_PERCENT (default 60): Max stops when Claude's week reaches this, so the owner's own chats keep the rest. */
+  maxWeekCapPercent: number;
+  /** MAX_TIMEOUT_MINUTES (default 15): one `claude -p` run is killed after this (a Short's Codex cap bounds it too). */
+  maxTimeoutMinutes: number;
+  /** MAX_CONCURRENCY (default 2): `claude -p` runs at once. */
+  maxConcurrency: number;
+  /** CLAUDE_BIN: the Claude Code CLI (default /opt/homebrew/bin/claude on the Mac, "claude" elsewhere). */
+  claudeBin: string;
+  /**
+   * MAX_USAGE_URL: where the PC orchestrator's weekly reading is read (default GAMELIB_REMOTE + "/claude-budget", the
+   * PC's library server; empty: no reading, so only the CLI's own limit refusal pauses Max, for an hour).
+   */
+  maxUsageUrl: string;
   voiceProvider: VoiceProvider;
   localTtsUrl: string;
   localVoiceId: string;
@@ -1769,6 +1788,20 @@ export function loadConfig(): Config {
       "CODEX_RUNNER_DIR",
       defaultCodexRunnerDir(process.platform, os.homedir()),
     ),
+    claudeViaMax: bool("CLAUDE_VIA_MAX", false),
+    maxWeekCapPercent: int("MAX_WEEK_CAP_PERCENT", 60),
+    maxTimeoutMinutes: Math.max(1, int("MAX_TIMEOUT_MINUTES", 15)),
+    maxConcurrency: Math.max(1, int("MAX_CONCURRENCY", 2)),
+    claudeBin: str(
+      "CLAUDE_BIN",
+      process.platform === "darwin" ? "/opt/homebrew/bin/claude" : "claude",
+    ),
+    maxUsageUrl: str(
+      "MAX_USAGE_URL",
+      process.env.GAMELIB_REMOTE?.trim()
+        ? `${process.env.GAMELIB_REMOTE.trim().replace(/\/$/, "")}/claude-budget`
+        : "",
+    ),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(
       /\/$/,
@@ -2757,6 +2790,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
     codexGrammarFallback: c.codexGrammarFallback,
+    claudeViaMax: c.claudeViaMax,
+    maxWeekCapPercent: c.maxWeekCapPercent,
     factRepair: c.factRepair,
     longFactDiscipline: c.longFactDiscipline,
     visionPaidFallback: c.visionPaidFallback,

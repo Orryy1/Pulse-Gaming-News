@@ -42,6 +42,16 @@ export function withCodexCap<T>(
   return capMs && capMs > 0 ? runCap.run(capMs, fn) : fn();
 }
 
+/** The CODEX_SHORT_TIMEOUT_MINUTES cap of the step running now, if any (src/editorial/maxplan.ts bounds its runs by it too). */
+export function codexCapNow(): number | undefined {
+  return runCap.getStore();
+}
+
+/** The WRITER_SPLIT route hint of the call running now, if any (src/editorial/maxplan.ts leaves a "codex" hint to Codex). */
+export function routeHintNow(): "claude" | "codex" | undefined {
+  return routeHint.getStore();
+}
+
 /**
  * How long one Codex run may take (pure): a listed site gets the full CODEX_TIMEOUT_MINUTES, a call moved to Codex
  * only by Claude's limit or a route hint gets at most LIMIT_TIMEOUT_MS, and a Short's cap (withCodexCap) bounds both.
@@ -161,7 +171,8 @@ export function siteOf(
     const m = line.match(/([\w.-]+)\.(?:ts|mts|js|mjs|tsx):\d+:\d+/);
     if (!m) continue;
     const name = m[1]!;
-    if (name === "codex" || name === "llm" || name === "codex.test") continue;
+    // maxplan sits between a caller and this router when CLAUDE_VIA_MAX is on: the caller is the site, not it.
+    if (name === "codex" || name === "llm" || name === "codex.test" || name === "maxplan") continue;
     return name;
   }
   return "unknown";

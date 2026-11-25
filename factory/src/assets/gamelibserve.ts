@@ -45,6 +45,26 @@ export function resolveInRoot(
   return abs === base || !abs.startsWith(base + path.sep) ? undefined : abs;
 }
 
+/**
+ * The PC orchestrator's reading of Claude's week (C:\Claude\orchestrator\state\claude_budget.json, written by
+ * claude_budget.py), trimmed to the fields the Mac's Max guard reads (src/editorial/maxplan.ts) (pure). Nothing else
+ * in that file leaves the PC.
+ */
+export function budgetView(raw: unknown): Record<string, unknown> {
+  const d = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  if (typeof d.weekly === "number") out.weekly = d.weekly;
+  if (typeof d.resets_at === "string") out.resets_at = d.resets_at;
+  if (typeof d.read_at === "number") out.read_at = d.read_at;
+  if (typeof d.limited_until === "string") out.limited_until = d.limited_until;
+  return out;
+}
+
+/** Where the orchestrator keeps that reading: ORCH_STATE, else its own state folder. */
+export function budgetFile(env: Record<string, string | undefined> = process.env): string {
+  return path.join(env.ORCH_STATE || "C:\\Claude\\orchestrator\\state", "claude_budget.json");
+}
+
 const TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".jpg": "image/jpeg",
@@ -60,6 +80,20 @@ export function createLibraryServer(root: string): http.Server {
       return res.writeHead(405).end();
     if (req.url === "/health")
       return res.writeHead(200, { "content-type": "text/plain" }).end("ok");
+    // Claude's weekly reading for the Mac's Max guard (CLAUDE_VIA_MAX); 404 while the PC has none.
+    if (req.url === "/claude-budget") {
+      const raw = await fsp.readFile(budgetFile(), "utf8").catch(() => undefined);
+      let body: Record<string, unknown> | undefined;
+      try {
+        body = raw ? budgetView(JSON.parse(raw)) : undefined;
+      } catch {
+        body = undefined;
+      }
+      if (!body) return res.writeHead(404).end();
+      return res
+        .writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+        .end(JSON.stringify(body));
+    }
     // The wiki art library (src/wikiart/serve.ts) rides on the same port the Mac already reaches.
     if (req.url?.startsWith("/wikiart/") && (await handleWikiart(req, res)))
       return;

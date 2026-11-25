@@ -13,6 +13,7 @@ import type { Db } from "./db.ts";
 import type { Services } from "./pipeline.ts";
 import { createClaude, withVoiceTags } from "./editorial/llm.ts";
 import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
+import { createMaxLlm, weekReader } from "./editorial/maxplan.ts";
 import { codexSubjectLook, setSubjectFallback } from "./assets/scenecheck.ts";
 import { codexSegmentLook, setSegmentLookFallback } from "./assets/localvision.ts";
 import { localVisionDown, onVisionRelayAlert } from "./assets/localvision.ts";
@@ -267,8 +268,29 @@ export function createServices(db: Db, cfg: Config): Services {
       ? codexSegmentLook(codexOnly("footagelook"), cfg.footageLookCodexMax)
       : undefined,
   );
+  // CLAUDE_VIA_MAX: Claude Code on the owner's Max plan answers first, then Codex's router (Codex, then the API key).
+  // Off: `routed` itself, untouched. Paused at MAX_WEEK_CAP_PERCENT of Claude's week (the PC orchestrator's reading).
+  const maxed = createMaxLlm(routed, {
+    enabled: cfg.claudeViaMax,
+    models: { top: cfg.anthropicModel, mid: cfg.claudeModelMid, low: cfg.claudeModelLow },
+    capPercent: cfg.maxWeekCapPercent,
+    timeoutMs: cfg.maxTimeoutMinutes * 60_000,
+    concurrency: cfg.maxConcurrency,
+    week: cfg.maxUsageUrl ? weekReader(cfg.maxUsageUrl) : undefined,
+    viaCodex: routed !== claude,
+    bin: cfg.claudeBin,
+    tmpRoot: path.join(cfg.dataDir, "tmp", "max"),
+    onState: (text) => {
+      log("info", text);
+      logEvent(db, null, "note", { text }).catch(() => undefined);
+    },
+  });
+  if (cfg.claudeViaMax)
+    logEvent(db, null, "note", {
+      text: `Claude now answers through the Max plan first (CLAUDE_VIA_MAX), paused at ${cfg.maxWeekCapPercent}% of the week; then ${routed !== claude ? "Codex, then " : ""}the API key.`,
+    }).catch(() => undefined);
   // Codex's answers get the same treatment as Claude's: delivery tags out of every field, kept for the voice only.
-  const llm = withVoiceTags(routed);
+  const llm = withVoiceTags(maxed);
   if (routed !== claude)
     logEvent(db, null, "note", {
       text: `Codex (the ChatGPT plan) now answers these steps instead of Claude, with Claude as the fallback: ${cfg.codexCalls.join(", ")}${cfg.codexVision ? " (vision checks included)" : ""}.`,

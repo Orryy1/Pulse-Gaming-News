@@ -68,6 +68,8 @@ export interface ThumbStepDeps {
   render: (file: string, thumb: PosterThumb) => Promise<void>;
   /** The factory's own rule on a drawn poster (designProblems + posterProblems). */
   check: (file: string, thumb: PosterThumb) => Promise<string[]>;
+  /** The step's deadline (epoch ms): every call to the GPU service gets at most what is left. */
+  until?: number;
 }
 
 /**
@@ -99,11 +101,17 @@ export async function thumbCandidateStep(
     const file = `${stem}.thumbext.jpg`;
     const scale = 1080 / size.height;
     if (
-      (await remoteFill(deps.url, path.join(dir, art), path.join(dir, file), {
-        outW: Math.round(ext.outW * scale),
-        outH: 1080,
-        place: ext.place,
-      }).catch(() => "busy")) === "ok"
+      (await remoteFill(
+        deps.url,
+        path.join(dir, art),
+        path.join(dir, file),
+        {
+          outW: Math.round(ext.outW * scale),
+          outH: 1080,
+          place: ext.place,
+        },
+        deps.until,
+      ).catch(() => "busy")) === "ok"
     ) {
       const w = (await probeSize(path.join(dir, file))).width;
       const origW = Math.round(size.width * scale);
@@ -125,16 +133,20 @@ export async function thumbCandidateStep(
   const plate = path.join(dir, `${stem}.plate.png`);
   const seed = deps.seed ?? 1100;
   if (
-    (await remotePlate(deps.url, plate, seed, seed % 2).catch(() => "busy")) ===
-    "ok"
-  ) {
-    const file = `${stem}.thumbrelit.jpg`;
-    await relight(
+    (await remotePlate(deps.url, plate, seed, seed % 2, deps.until).catch(
+      () => "busy",
+    )) === "ok" &&
+    (await relight(
       path.join(dir, relitArt),
       plate,
-      path.join(dir, file),
+      path.join(dir, `${stem}.thumbrelit.jpg`),
       relitX,
-    );
+    ).then(
+      () => true,
+      () => false,
+    ))
+  ) {
+    const file = `${stem}.thumbrelit.jpg`;
     const s2 = await probeSize(path.join(dir, file));
     made.push({
       name: "thumb_gpu_relit.jpg",

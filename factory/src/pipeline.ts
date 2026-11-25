@@ -14208,7 +14208,9 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       const picked = await thumbCandidateStep(dir, mainThumb.thumb as never, ["thumb.jpg", ...thumbFiles], {
         url: s.cfg.gpuvisUrl,
         // The judge runs through the GPU service, inside its orchestrator turn (a 30B model on the shared 4090).
-        ask: remoteAsk(s.cfg.gpuvisUrl),
+        // The whole step has 15 minutes: the extension, the plate and the ranking rounds share them.
+        until: Date.now() + 15 * 60_000,
+        ask: remoteAsk(s.cfg.gpuvisUrl, Date.now() + 15 * 60_000),
         render: (file, thumb) => renderLongThumbs({ episodeDir: dir, thumbs: [{ file, thumb: thumb as never }] }),
         // The episode's own seed, so each video's relit candidate has its own light.
         seed: [...ep.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100000,

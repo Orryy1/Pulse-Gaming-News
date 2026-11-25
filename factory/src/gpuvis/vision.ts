@@ -53,6 +53,8 @@ export function askImages(
   model: string,
   numPredict = 4096,
   timeoutMs = 300_000,
+  /** How long Ollama keeps the model loaded after the answer (0 unloads it at once); LOCAL_VISION_KEEP_ALIVE or 60 s. */
+  keepAlive?: string | number,
 ): (
   images: string[],
   prompt: string,
@@ -69,7 +71,7 @@ export function askImages(
           stream: false,
           think: false,
           format: { type: "object", ...schema },
-          keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "60s",
+          keep_alive: keepAlive ?? process.env.LOCAL_VISION_KEEP_ALIVE ?? "60s",
           options: { temperature: 0, num_predict: numPredict, num_ctx: 8192 },
           messages: [{ role: "user", content: prompt, images }],
         }),

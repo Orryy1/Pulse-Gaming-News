@@ -12,6 +12,7 @@ import {
   marginProblems,
 } from "../src/gpuvis/fill.ts";
 import { FILL_LABEL } from "../src/gpuvis/label.ts";
+import { fillLabelTop } from "../src/render/components/Background.tsx";
 import {
   isPixelArt,
   laplacianEnergy,
@@ -34,6 +35,7 @@ import {
   prepareImages,
   wantsFill,
   type PreparedImage,
+  callLimit,
 } from "../src/gpuvis/client.ts";
 import { stack } from "../src/gpuvis/sheet.ts";
 import {
@@ -624,4 +626,20 @@ test("thumbOrder: a variant from the same art as a chosen one waits until no dif
     main: "thumb_gpu_ext.jpg",
     variants: ["thumb_b.jpg", "thumb.jpg"],
   });
+});
+
+test("fillLabelTop: the Short's AI label sits just under the original, never below the credit line", () => {
+  assert.equal(fillLabelTop(16 / 9), 360 + 608 + 22);
+  assert.equal(fillLabelTop(4 / 3), 360 + 810 + 22);
+  assert.equal(fillLabelTop(1), 1462);
+  assert.equal(fillLabelTop(0.9), 1560);
+});
+
+test("callLimit: a call gets what is left before the deadline, nothing once it has passed", () => {
+  const now = 1_000_000;
+  assert.equal(callLimit(now - 1, now), 0);
+  assert.equal(callLimit(now + 30_000, now), 30_000);
+  assert.equal(callLimit(now + 10, now), 1000);
+  assert.ok(callLimit(undefined, now) >= 5 * 60_000);
+  assert.ok(callLimit(now + 99 * 60_000, now) < 99 * 60_000);
 });

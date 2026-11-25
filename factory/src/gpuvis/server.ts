@@ -47,7 +47,11 @@ let queued = 0;
 /** True while a job waits for its GPU turn: /health says so, so the factory gives up instead of queueing behind it. */
 let waitingForTurn = false;
 
-async function turn(job: string, maxWait: number): Promise<void> {
+async function turn(
+  job: string,
+  maxWait: number,
+  needsComfy = true,
+): Promise<void> {
   if (!release) {
     const orch = await loadOrch().catch(() => undefined);
     waitingForTurn = true;
@@ -70,8 +74,9 @@ async function turn(job: string, maxWait: number): Promise<void> {
       waitingForTurn = false;
     }
   }
-  // Every job, held turn or not: ComfyUI may have stopped or crashed since the last one.
-  await ensureComfy(DEFAULT_COMFY_URL);
+  // Every ComfyUI job, held turn or not: ComfyUI may have stopped or crashed since the last one. The ranking (Ollama)
+  // does not need it, so it neither waits for a ComfyUI start nor fails with one.
+  if (needsComfy) await ensureComfy(DEFAULT_COMFY_URL);
 }
 
 /** Gives the turn back and unloads ComfyUI; runs on the job chain, so it never overlaps a job. */
@@ -99,13 +104,14 @@ function serial<T>(
   fn: () => Promise<T>,
   maxWait = MAX_WAIT,
   gone: () => boolean = () => false,
+  needsComfy = true,
 ): Promise<T> {
   queued++;
   if (idleTimer) clearTimeout(idleTimer);
   const next = chain.then(async () => {
     try {
       if (gone()) throw new Error("caller gone");
-      await turn(job, maxWait);
+      await turn(job, maxWait, needsComfy);
       return await fn();
     } finally {
       queued--;
@@ -243,14 +249,21 @@ export function createGpuvisServer(): http.Server {
         }
         const answer = await serial(
           "Pulse thumbnail ranking",
-          () =>
-            askImages(GPUVIS_RANK_MODEL)(
-              q2.images!,
-              q2.prompt!,
-              q2.schema ?? {},
-            ),
+          async () => {
+            // klein (about 15 GB) leaves the 4090 before the 30B judge (about 20 GB) loads: together they do not fit
+            // in 24 GB, Ollama would spill to the CPU and every round would time out. The judge itself is unloaded
+            // as soon as it answers (keep_alive 0), so the next fill finds the card free.
+            await freeComfy(DEFAULT_COMFY_URL);
+            return askImages(
+              GPUVIS_RANK_MODEL,
+              4096,
+              300_000,
+              0,
+            )(q2.images!, q2.prompt!, q2.schema ?? {});
+          },
           maxWait,
           gone,
+          false,
         ).catch((e) => e as Error);
         if (answer instanceof Error) {
           res

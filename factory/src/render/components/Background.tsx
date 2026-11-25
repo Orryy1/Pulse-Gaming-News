@@ -24,9 +24,6 @@ import {
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 import { FILL_LABEL } from "../../gpuvis/label.ts";
-
-/** FILL_FRAME's label in a Short: under the hero band (the original spans y 360 to about 968), above the captions. */
-const FILL_LABEL_TOP = 990;
 import { CrtLook, VhsLook } from "./Retro.tsx";
 import { ShotCamera } from "./CameraMoves.tsx";
 import { VPhotoShot } from "./vertical/craft.tsx";
@@ -306,6 +303,13 @@ const Clip: React.FC<{
 };
 
 /** "FOOTAGE: PUBLISHER · OFFICIAL TRAILER" tag in the soft margin during clip shots. */
+/**
+ * FILL_FRAME's label in a Short (pure): just under the original, which spans the width from y 360 (src/gpuvis/fill.ts
+ * "hero"), so the label sits on the made margin; never lower than the usual credit line.
+ */
+export const fillLabelTop = (aspect: number): number =>
+  Math.min(CREDIT_TOP, 360 + Math.round(1080 / Math.max(aspect, 0.5)) + 22);
+
 const FootageCredit: React.FC<{ credit: string; durationFrames: number; small?: boolean; top?: number }> = ({
   credit,
   durationFrames,
@@ -468,7 +472,7 @@ export const ArtTrack: React.FC<{
             credit={image?.credit ? `${FILL_LABEL} · ${image.credit}` : FILL_LABEL}
             durationFrames={len}
             small={clean}
-            top={FILL_LABEL_TOP}
+            top={fillLabelTop(image?.aspect ?? 16 / 9)}
           />
         ) : clean ? (
           (clip?.credit ?? image?.credit) ? (

@@ -44,12 +44,25 @@ export async function gpuvisUp(
 /** What one call came back with: a picture, nothing needed, refused by its own check, or the service unable to help. */
 export type GpuvisAnswer = "ok" | "none" | "rejected" | "busy";
 
+/**
+ * One call's time limit (pure): CALL_MS, or what is left before the caller's deadline when that is sooner; 0 when the
+ * deadline has passed (the call is not made).
+ */
+export function callLimit(until: number | undefined, now = Date.now()): number {
+  if (until === undefined) return CALL_MS;
+  const left = until - now;
+  return left <= 0 ? 0 : Math.min(CALL_MS, Math.max(1000, left));
+}
+
 async function call(
   url: string,
   route: string,
   file: string | undefined,
   dest: string,
+  until?: number,
 ): Promise<GpuvisAnswer> {
+  const limit = callLimit(until);
+  if (!limit) return "busy";
   const sep = route.includes("?") ? "&" : "?";
   const res = await fetchWithTimeout(
     `${url.replace(/\/$/, "")}${route}${sep}maxWait=${FACTORY_MAX_WAIT}`,
@@ -58,7 +71,7 @@ async function call(
       body: file ? await fs.readFile(file) : undefined,
       headers: { "content-type": "application/octet-stream" },
     },
-    CALL_MS,
+    limit,
   );
   if (res.status === 200) {
     await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
@@ -75,12 +88,14 @@ export function remoteFill(
   src: string,
   dest: string,
   o: { outW: number; outH: number; place: string },
+  until?: number,
 ): Promise<GpuvisAnswer> {
   return call(
     url,
     `/fill?outW=${o.outW}&outH=${o.outH}&place=${o.place}`,
     src,
     dest,
+    until,
   );
 }
 
@@ -90,12 +105,14 @@ export function remoteUpscale(
   src: string,
   dest: string,
   o: { frameW: number; frameH: number; year?: number },
+  until?: number,
 ): Promise<GpuvisAnswer> {
   return call(
     url,
     `/upscale?frameW=${o.frameW}&frameH=${o.frameH}${o.year ? `&year=${o.year}` : ""}`,
     src,
     dest,
+    until,
   );
 }
 
@@ -105,16 +122,27 @@ export function remotePlate(
   dest: string,
   seed: number,
   variant: number,
+  until?: number,
 ): Promise<GpuvisAnswer> {
-  return call(url, `/plate?seed=${seed}&variant=${variant}`, undefined, dest);
+  return call(
+    url,
+    `/plate?seed=${seed}&variant=${variant}`,
+    undefined,
+    dest,
+    until,
+  );
 }
 
 /**
  * The thumbnail judge through the GPU service (POST /ask): the service runs the big vision model inside its own
  * orchestrator GPU turn, so a 30B model never lands on the PC's 4090 without one. Throws when the service cannot.
  */
-export function remoteAsk(url: string): Ask {
+export function remoteAsk(url: string, until?: number): Ask {
+  // After one failure (busy, down, too slow) the later rounds are not tried: each could wait minutes for a turn.
+  let failed = false;
   return async (files, prompt, schema) => {
+    const limit = callLimit(until);
+    if (failed || !limit) throw new Error("GPU service ask skipped");
     const images = await Promise.all(
       files.map(async (f) => (await fs.readFile(f)).toString("base64")),
     );
@@ -125,9 +153,15 @@ export function remoteAsk(url: string): Ask {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ prompt, schema, images }),
       },
-      CALL_MS,
-    );
-    if (!res.ok) throw new Error(`GPU service ask ${res.status}`);
+      limit,
+    ).catch((err) => {
+      failed = true;
+      throw err;
+    });
+    if (!res.ok) {
+      failed = true;
+      throw new Error(`GPU service ask ${res.status}`);
+    }
     return res.json();
   };
 }
@@ -265,6 +299,7 @@ export async function prepareImages(
             frameH,
             year: img.year ?? opts.year,
           },
+          until,
         );
         if (a === "busy") return { filled, upscaled, skipped: "service busy" };
         if (a === "ok") {
@@ -285,6 +320,7 @@ export async function prepareImages(
             outH: outH as number,
             place: place as string,
           },
+          until,
         );
         if (a === "busy") return { filled, upscaled, skipped: "service busy" };
         if (a === "ok") {

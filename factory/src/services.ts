@@ -94,7 +94,7 @@ import { personPortrait } from "./assets/people.ts";
 import { findMentions } from "./assets/mentions.ts";
 import { siteFor } from "./assets/publishersite.ts";
 import { readBoxes } from "./assets/applevision.ts";
-import { findIgdbGame, fetchIgdbArt, findIgdbSeries } from "./assets/igdb.ts";
+import { findIgdbGame, fetchIgdbArt, fetchIgdbCharacter, findIgdbSeries } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
 import { footageFirstDeps } from "./assets/footagedeps.ts";
 import { macFootageDeps } from "./assets/footagemac.ts";
@@ -461,14 +461,21 @@ export function createServices(db: Db, cfg: Config): Services {
       ).catch(() => [0]);
       return keep.includes(0);
     },
-    igdbArt: async (title, year, dir, max) => {
+    igdbArt: async (title, year, dir, max, skip) => {
       const game = await findIgdbGame(
         { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
         title,
         year,
       ).catch(() => undefined);
-      return game ? fetchIgdbArt(game, dir, max) : [];
+      return game ? fetchIgdbArt(game, dir, max, fetch, skip) : [];
     },
+    characterArt: (name, gameTitles, dir) =>
+      fetchIgdbCharacter(
+        { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
+        name,
+        gameTitles,
+        dir,
+      ).catch(() => undefined),
     igdbSeries: (series) =>
       findIgdbSeries(
         { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },

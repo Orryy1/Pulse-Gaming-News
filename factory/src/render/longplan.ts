@@ -16,6 +16,7 @@ import {
   type MomentFiller,
 } from "./fillerplan.ts";
 import { capSamePicture, type PictureCapMedia } from "./picturecap.ts";
+import { capPool, pictureKey, type StillCapNotes } from "./stillcap.ts";
 import { wordTimes } from "./components/kinetic/words.ts";
 
 export const LONG_FPS = 30;
@@ -35,6 +36,10 @@ export interface LongImage {
   moment?: number; // the sentence of the entry it was picked for
   /** Its path in the episode folder: a picture the sentence top-up fetched (under fill/) may be a real-world one. */
   file?: string;
+  /** Where it came from: two copies of one source are one picture to the cap (./stillcap.ts pictureKey). */
+  sourceUrl?: string;
+  /** The character it shows (LONG_NAMED_ART): it opens the sentence that names them, before that sentence's footage. */
+  named?: string;
 }
 
 /** Official game art: any line about its game may show it. */
@@ -388,6 +393,17 @@ export interface LongPlanInput {
   /** LONG_ACCENT_STILL_SECONDS in frames: the longest a still holds while footage is left (movingFirst only). */
   accentStillFrames?: number;
   /**
+   * LONG_STILL_MAX_SHOWS (./stillcap.ts): no one picture (every copy of it counted together) on screen more than this
+   * many times. Past it: the chapter's unplayed footage, then one more showing on the depth camera of a picture off
+   * screen for a minute, and only then a repeat, counted in the plan's notes. Unset or 0: the plan as it was.
+   */
+  stillMaxShows?: number;
+  /**
+   * LONG_MIN_MOVING_SHARE: above 0, a chapter plays its unplayed footage before any still, as movingFirst does (its
+   * gather asked the trailers for that share of the chapter). Unset or 0: movingFirst alone decides.
+   */
+  minMovingShare?: number;
+  /**
    * LONG_CLIP_REMAINDERS (13 Nov 2026): a clip used for a shorter slot is not spent. Its unseen remainder (at least
    * REMAINDER_MIN_FRAMES) stays free for a later shot, which starts where the first stopped (LongMedia.from), after
    * every unplayed clip and never straight after itself. Off: one shot spends a clip, as before.
@@ -431,6 +447,8 @@ export function previewShot(
   }>,
   clips: Array<{ beatIndex?: number; moment?: number; cutsceneMatch?: { targetKey?: string } }>,
   clipUsed: boolean[],
+  /** LONG_STILL_MAX_SHOWS: a picture the cap has spent is not previewed (unset: any picture). */
+  imageOk: (k: number) => boolean = () => true,
 ): LongMedia | undefined {
   const mine = previewWords(sentence);
   if (!mine.size) return undefined;
@@ -455,9 +473,10 @@ export function previewShot(
     );
     // A neighbour's photo is of its own person or place; only game footage and art carry over.
     const image = images.findIndex(
-      (m) =>
+      (m, n) =>
         m.beatIndex === best!.e &&
         m.moment === k &&
+        imageOk(n) &&
         (d === 0 || !realWorldImage({ kind: m.kind ?? "", file: m.file })),
     );
     if (clip < 0 && image < 0) continue;
@@ -513,6 +532,8 @@ export interface LongPlan {
   totalFrames: number;
   tailFrames: number;
   shots: LongShot[];
+  /** LONG_STILL_MAX_SHOWS: showings past the cap (on the depth camera, and beyond it). Absent with the cap off. */
+  notes?: StillCapNotes;
 }
 
 const toFrame = (s: number) => Math.round(s * LONG_FPS);
@@ -587,7 +608,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
    * line, then (the closing) any unplayed clip, then a remainder. Never stock, never a scene locked to its line.
    */
   const filmFootage = (closing: boolean): number | undefined => {
-    if (!input.oneGame || !input.movingFirst) return undefined;
+    if (!input.oneGame || !movingFirst) return undefined;
     const ok = clips.map((_, k) => k).filter((k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
     return (
       ok.find((k) => !clipUsed[k] && clips[k]!.moment === undefined) ??
@@ -600,6 +621,60 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     remainders ? ks.find((k) => leftover(k) && !(last?.type === "clip" && last.index === k)) : undefined;
   const previewed = new Set<number>();
   const stillUses = images.map(() => 0);
+  // LONG_MIN_MOVING_SHARE: a chapter's footage plays before its stills, as LONG_MOVING_FIRST asks.
+  const movingFirst = input.movingFirst === true || (input.minMovingShare ?? 0) > 0;
+  // LONG_STILL_MAX_SHOWS (./stillcap.ts): every copy of one picture counts as one, read off the shots placed so far.
+  const capMax = Math.max(0, input.stillMaxShows ?? 0);
+  const keyOfImage = images.map((im) => pictureKey(im));
+  const capNotes: StillCapNotes = { reshows: 0, overCap: 0 };
+  /** The frame the fill has reached: where a picture asked for now would start. */
+  let nowFrame = 0;
+  let showCache: { at: number; shows: Map<string, number>; lastShown: Map<string, number> } | undefined;
+  const showMaps = () => {
+    // Shots are only ever added (or the last one lengthened): the counts change only when a shot is added.
+    if (showCache && showCache.at === shots.length) return showCache;
+    const shows = new Map<string, number>();
+    const lastShown = new Map<string, number>();
+    for (const sh of shots) {
+      if (sh.media.type !== "image") continue;
+      const key = keyOfImage[sh.media.index] ?? `i${sh.media.index}`;
+      shows.set(key, (shows.get(key) ?? 0) + 1);
+      lastShown.set(key, Math.max(lastShown.get(key) ?? 0, sh.end));
+    }
+    showCache = { at: shots.length, shows, lastShown };
+    return showCache;
+  };
+  /**
+   * The picture at `cursor` in a rotation (the intro's, the outro's, a chapter without a shot list), or with the cap
+   * on the next one round from it that is still under the cap; all spent, the one at the cursor, counted.
+   */
+  const inOrder = (order: number[], cursor: number): number => {
+    const at = order[cursor % order.length]!;
+    if (capMax <= 0) return at;
+    for (let d = 0; d < order.length; d++) {
+      const k = order[(cursor + d) % order.length]!;
+      if (!atCap(k)) return k;
+    }
+    capNotes.overCap++;
+    return at;
+  };
+  /** Times picture k (any copy of it) is on screen in the plan so far. */
+  const shownTimes = (k: number) => showMaps().shows.get(keyOfImage[k]!) ?? 0;
+  /** Picture k has had its showings: a sentence's pinned copy of it is passed over. */
+  const atCap = (k: number) => capMax > 0 && shownTimes(k) >= capMax;
+  /**
+   * The pictures of `pool` the cap lets on screen now, least shown first by source when the cap is on (the old order,
+   * by list entry, when it is off). Empty: nothing may go up without a repeat past the cap.
+   */
+  const underCap = (pool: number[]): number[] => {
+    if (capMax <= 0) return pool;
+    const { shows, lastShown } = showMaps();
+    const c = capPool(pool, (k) => keyOfImage[k]!, shows, lastShown, nowFrame, capMax, LONG_FPS);
+    if (c.reshow) capNotes.reshows++;
+    return [...c.pool].sort(
+      (a, b) => (shows.get(keyOfImage[a]!) ?? 0) - (shows.get(keyOfImage[b]!) ?? 0),
+    );
+  };
   // Where each entry's stills left off, so a chapter's paragraphs walk its gallery instead of restarting it.
   const cursors = new Map<number | undefined, number>();
   let shotIndex = 0;
@@ -638,6 +713,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
   ) => {
     let at = from;
     while (at < to) {
+      nowFrame = at;
       const remaining = to - at;
       if (
         remaining < MIN_SHOT &&
@@ -650,7 +726,17 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         shots[shots.length - 1]!.end = to;
         break;
       }
+      let fromQueue = queue.length > 0;
       let media = queue.shift() ?? fallback();
+      // LONG_STILL_MAX_SHOWS: a queued picture that has had its showings since its queue was made gives way to the
+      // next in the queue, or to the fallback (which keeps the cap itself).
+      while (capMax > 0 && fromQueue && media.type === "image" && atCap(media.index)) {
+        if (queue.length) media = queue.shift()!;
+        else {
+          media = fallback();
+          fromQueue = false;
+        }
+      }
       if (same(last, media) && queue.length) {
         queue.push(media);
         media = queue.shift()!;
@@ -816,7 +902,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ? []
           : images
               .map((_, k) => k)
-              .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!));
+              // A character's picture (LONG_NAMED_ART) stays on the line naming them.
+              .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!) && !images[k]!.named);
       let replay = 0;
       /**
        * movingFirst: an unplayed clip free to fill the sentence being filled: loose footage, then one of a sentence
@@ -843,7 +930,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         ]);
       };
       /** movingFirst: whether this chapter still has footage left to play (its own, or its game's from other chapters). */
-      const footageLeft = input.movingFirst
+      const footageLeft = movingFirst
         ? () =>
             entryClips.some((k) => !clipUsed[k] && !clips[k]!.cutsceneMatch?.targetKey && !clips[k]!.stock) ||
             kinClips.some((k) => !clipUsed[k]) ||
@@ -854,7 +941,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
       // it, such as David Jones's photo while the narrator talked about Keith Hamilton).
       let current = 0;
-      const leastUsed = (): LongMedia => {
+      /** stillsOnly: the fill's still fallback, asked when no clip fits the gap: no footage, or the gap goes to the plate. */
+      const leastUsed = (stillsOnly = false): LongMedia => {
         // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
         // An unplayed clip first: replaying one the chapter already showed repeats a moment (31 Oct 2026).
@@ -876,45 +964,63 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           const borrowed = kinClips.find((k) => !clipUsed[k]);
           if (borrowed !== undefined) return { type: "clip", index: borrowed };
           if (kinImages.length) {
-            const pick = [...kinImages].sort(
+            // LONG_STILL_MAX_SHOWS: among the same game's pictures, only those the cap still lets on screen.
+            const under = capMax > 0 ? underCap(kinImages) : kinImages;
+            const pick = [...under].sort(
               (a, b) => stillUses[a]! - stillUses[b]! || a - b,
-            )[0]!;
-            if (stillUses[pick]! < 2) return { type: "image", index: pick };
+            )[0];
+            if (pick !== undefined && stillUses[pick]! < 2) return { type: "image", index: pick };
           }
           // Then, in a film about one game, a replay: there a repeat is a lesser fault than an empty slate. A chapter
           // with no such family keeps the plate, and a video with too much of it stops before its render (qa/slate.ts).
           const again = group === undefined ? [] : game.length ? game : kinClips;
           if (again.length)
             return { type: "clip", index: again[replay++ % again.length]! };
-          if (kinImages.length)
-            return {
-              type: "image",
-              index: kinImages[replay++ % kinImages.length]!,
-            };
+          if (kinImages.length) {
+            const index = kinImages[replay++ % kinImages.length]!;
+            if (atCap(index)) capNotes.overCap++;
+            return { type: "image", index };
+          }
           return { type: "plate", index: 0 };
         };
         if (!entryImages.length) return own();
         // LONG_MOVING_FIRST: unplayed footage that is free to fill before any still.
-        const moving = input.movingFirst ? spareFootage() : undefined;
+        const moving = movingFirst && !stillsOnly ? spareFootage() : undefined;
         if (moving !== undefined) return { type: "clip", index: moving };
+        // A character's picture (LONG_NAMED_ART) is of who its own line names: never a stand-in on another line.
+        const mine = (k: number) => !images[k]!.named || images[k]!.moment === current;
         const free = entryImages.filter((k) =>
-          real(k)
-            ? realWorldMayFill(images[k]!.moment, current)
-            : fillerFor(images[k]!.moment, current),
+          !mine(k)
+            ? false
+            : real(k)
+              ? realWorldMayFill(images[k]!.moment, current)
+              : fillerFor(images[k]!.moment, current),
         );
         // Out of free pictures, game art may stand in for another sentence's; a real-world picture never does.
-        const pool = free.length ? free : entryImages.filter((k) => !real(k));
-        if (!pool.length) return own();
+        const wide = free.length ? free : entryImages.filter((k) => !real(k) && mine(k));
+        if (!wide.length) return own();
+        // LONG_STILL_MAX_SHOWS: no picture past the cap while anything else can fill the line: the chapter's unplayed
+        // footage first (or its unseen remainders), then one more showing on the depth camera, then a counted repeat.
+        let pool = underCap(wide);
+        if (!pool.length) {
+          const spare = stillsOnly ? undefined : spareFootage();
+          if (spare !== undefined) return { type: "clip", index: spare };
+          capNotes.overCap++;
+          pool = [...wide].sort((a, b) => shownTimes(a) - shownTimes(b));
+        }
         // Least shown first; on a tie, a different kind from the last still (a documentary alternates the
         // game's art with archive photos of the real story instead of three office photos in a row).
         const lastKind =
           last?.type === "image" ? images[last.index]?.kind : undefined;
         const otherKind = (k: number) =>
           lastKind && images[k]!.kind === lastKind ? 1 : 0;
+        const seen = capMax > 0 ? showMaps().shows : undefined;
+        const seenOf = (k: number) => seen?.get(keyOfImage[k]!) ?? 0;
         const pick =
           [...pool]
             .sort(
               (a, b) =>
+                seenOf(a) - seenOf(b) ||
                 stillUses[a]! - stillUses[b]! ||
                 otherKind(a) - otherKind(b) ||
                 a - b,
@@ -954,8 +1060,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             (!clipUsed[k] || previewed.has(k)) &&
             !stockBarred(k, w.moment),
         ).sort((a, b) => Number(Boolean(clips[b]!.cutsceneMatch?.targetKey)) - Number(Boolean(clips[a]!.cutsceneMatch?.targetKey)));
+        // LONG_STILL_MAX_SHOWS: a pinned copy of a picture that has had its showings gives way to what comes next.
         const mineStills = entryImages.filter(
-          (k) => images[k]!.moment === w.moment,
+          (k) => images[k]!.moment === w.moment && !atCap(k),
         );
         // A real photo picked for the sentence (the person it names, the real place) is what the sentence is
         // about, so it opens the sentence; a sentence's footage usually fills it, and a photo queued behind the
@@ -974,11 +1081,16 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             still ?? (borrowed?.type === "image" ? borrowed.index : undefined);
           if (opener !== undefined)
             queue.push({ type: "image", index: opener });
-        } else if (!sceneFirst) for (const k of photos) queue.push({ type: "image", index: k });
+        } else if (!sceneFirst) {
+          for (const k of photos) queue.push({ type: "image", index: k });
+          // The character the line names (LONG_NAMED_ART) is who it is about: on screen as they are named.
+          for (const k of stills.filter((n) => images[n]!.named)) queue.push({ type: "image", index: k });
+        }
         for (const k of mineClips) queue.push({ type: "clip", index: k });
         if (sceneFirst) for (const k of photos) queue.push({ type: "image", index: k });
         if (w.moment !== 0)
-          for (const k of stills) queue.push({ type: "image", index: k });
+          for (const k of stills)
+            if (sceneFirst || !images[k]!.named) queue.push({ type: "image", index: k });
         // When the sentence's own media runs out, any unused footage of the entry comes before another still,
         // but never a clip picked for a sentence still to come (a chapter's B-roll would play a minute early).
         // A spare clip of a sentence just gone comes first (it shows the same thing); footage matched to no
@@ -1033,10 +1145,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               to,
               queue.filter((q) => q.type !== "clip"),
               footageFirst,
-              leastUsed,
+              () => leastUsed(true),
               footageLeft,
             );
-        } else fill(i, from, to, queue, footageFirst, leastUsed, footageLeft);
+        } else fill(i, from, to, queue, footageFirst, () => leastUsed(true), footageLeft);
       }
       continue;
     }
@@ -1069,6 +1181,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       .filter(
         (k) =>
           !real(k) &&
+          // A character's picture (LONG_NAMED_ART) stays on the line naming them, out of any rotation.
+          !images[k]!.named &&
           (entry === undefined
             ? images[k]!.beatIndex === undefined
             : images[k]!.beatIndex === entry),
@@ -1144,6 +1258,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             images,
             clips,
             clipUsed,
+            (k) => !atCap(k),
           ),
         };
       });
@@ -1151,7 +1266,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         let cursor = 0;
         const generic = (): LongMedia => {
           const own = ownClips.find((k) => !clipUsed[k]);
-          if (own !== undefined && (cursor % 2 === 0 || input.movingFirst)) {
+          if (own !== undefined && (cursor % 2 === 0 || movingFirst)) {
             cursor++;
             return { type: "clip", index: own };
           }
@@ -1163,12 +1278,12 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           }
           cursor++;
           return order.length
-            ? { type: "image", index: order[cursor % order.length]! }
+            ? { type: "image", index: inOrder(order, cursor) }
             : { type: "plate", index: 0 };
         };
         const genericStill = (): LongMedia =>
           order.length
-            ? { type: "image", index: order[cursor++ % order.length]! }
+            ? { type: "image", index: inOrder(order, cursor++) }
             : { type: "plate", index: 0 };
         for (const [j, p] of plans.entries()) {
           const to =
@@ -1187,9 +1302,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       const remaining = end - at;
       const nextStill = (): LongMedia | undefined => {
         if (!order.length) return undefined;
-        let pick = order[stillCursor % order.length]!;
+        let pick = inOrder(order, stillCursor);
         if (same(last, { type: "image", index: pick }) && order.length > 1)
-          pick = order[(stillCursor + 1) % order.length]!;
+          pick = inOrder(order, stillCursor + 1);
         stillCursor++;
         stillUses[pick]!++;
         return { type: "image", index: pick };
@@ -1276,7 +1391,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       prev &&
       prev.media.type === "image" &&
       sh.media.type === "image" &&
-      prev.media.index === sh.media.index &&
+      (prev.media.index === sh.media.index ||
+        // Two copies of one picture back to back are one hold (LONG_STILL_MAX_SHOWS counts them as one).
+        (capMax > 0 && keyOfImage[prev.media.index] === keyOfImage[sh.media.index])) &&
       prev.end === sh.start
     )
       prev.end = sh.end;
@@ -1290,6 +1407,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
     clipsPlayed: new Set(
       merged.flatMap((sh) => (sh.media.type === "clip" ? [sh.media.index] : [])),
     ),
+    ...(capMax > 0 ? { maxShows: capMax } : {}),
   });
   const done: LongPlan = {
     version: 1,
@@ -1303,6 +1421,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             ...sh,
             xfade: Math.max(0, input.stillXfadeFrames!),
           })),
+    ...(capMax > 0 ? { notes: capNotes } : {}),
   };
   return input.bookend
     ? bookendEcho(
@@ -1313,6 +1432,46 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         input.coldOpenFrames ?? 0,
       )
     : done;
+}
+
+/**
+ * What a finished long plan shows, per chapter (pure; LONG_STILL_MAX_SHOWS, LONG_MIN_MOVING_SHARE): the share of
+ * each chapter's runtime on moving footage, the most times any one picture is on screen (every copy of it counted
+ * as one, ./stillcap.ts pictureKey) and how many pictures are shown more than once.
+ */
+export function chapterPictureAudit(
+  plan: Pick<LongPlan, "shots" | "fps">,
+  segments: Segment[],
+  images: Array<{ file?: string; sourceUrl?: string }>,
+  takeEntry?: number,
+): {
+  chapters: Array<{ entry: number | null; seconds: number; movingShare: number }>;
+  mostShown: number;
+  repeatedPictures: number;
+} {
+  const by = new Map<number | null, { all: number; moving: number }>();
+  const shows = new Map<string, number>();
+  for (const sh of plan.shots) {
+    const e = segments[sh.segment] ? (entryOf(segments, sh.segment, takeEntry) ?? null) : null;
+    const c = by.get(e) ?? { all: 0, moving: 0 };
+    c.all += sh.end - sh.start;
+    if (sh.media.type === "clip") c.moving += sh.end - sh.start;
+    by.set(e, c);
+    if (sh.media.type === "image") {
+      const k = images[sh.media.index] ? pictureKey(images[sh.media.index]!) : `i${sh.media.index}`;
+      shows.set(k, (shows.get(k) ?? 0) + 1);
+    }
+  }
+  const counts = [...shows.values()];
+  return {
+    chapters: [...by.entries()].map(([entry, c]) => ({
+      entry,
+      seconds: Math.round((c.all / plan.fps) * 10) / 10,
+      movingShare: c.all ? Math.round((c.moving / c.all) * 1000) / 1000 : 0,
+    })),
+    mostShown: counts.length ? Math.max(...counts) : 0,
+    repeatedPictures: counts.filter((n) => n > 1).length,
+  };
 }
 
 function stillRank(img: LongImage): number {
@@ -1535,6 +1694,8 @@ export function planGaps(
   takeEntry?: number,
   /** LONG_SAME_PICTURE_MAX_SECONDS: an entry holding one still longer than this is thin too, whatever else it shows. */
   holdMaxSeconds = 0,
+  /** The plan's pictures: given, every copy of one picture counts as one (./stillcap.ts pictureKey). */
+  images?: Array<{ file?: string; sourceUrl?: string }>,
 ): Array<{ entry: number; plateSeconds: number; maxRepeat: number }> {
   const held = new Set<number>();
   const by = new Map<number, { plate: number; uses: Map<string, number> }>();
@@ -1551,7 +1712,10 @@ export function planGaps(
       held.add(e);
     if (s.media.type === "plate") g.plate += s.end - s.start;
     else {
-      const k = `${s.media.type}${s.media.index}`;
+      const k =
+        s.media.type === "image" && images?.[s.media.index]
+          ? pictureKey(images[s.media.index]!)
+          : `${s.media.type}${s.media.index}`;
       g.uses.set(k, (g.uses.get(k) ?? 0) + 1);
     }
   }

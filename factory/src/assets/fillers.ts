@@ -19,6 +19,7 @@
 // text or a fixed label (each family's own rule), and every invented scene carries its ILLUSTRATION or
 // RECONSTRUCTION tag on screen. No model is called.
 
+import { pictureKey } from "../render/stillcap.ts";
 import {
   kineticVerdict,
   type KineticData,
@@ -84,6 +85,8 @@ export interface FillersChapter {
 
 export type FillerImage = {
   file: string;
+  /** Where it came from: copies of one source count as one picture for a thin chapter (src/render/stillcap.ts). */
+  sourceUrl?: string;
   kind: string;
   aspect?: number;
   label?: string;
@@ -267,6 +270,29 @@ export interface ChooseOptions {
   cardShare?: number;
   /** EXPLAINERS on for long videos: a moment's explainer gets its shot. Off (default), it is ignored. */
   explainers?: boolean;
+  /**
+   * LONG_THIN_CARD_SHARE with LONG_STILL_MAX_SHOWS (25 Nov 2026, the Mass Effect ranking: Mass Effect Galaxy had two
+   * pictures and no footage for 80 s, so one screenshot came back ten times): a chapter whose footage and pictures
+   * cannot fill its sentences under the cap (thinChapter) takes cards up to this share, with the type and document
+   * caps doubled, so its lines get a card before a repeat. Unset or 0: the rules as they were.
+   */
+  thin?: { share: number; maxShows: number };
+}
+
+/**
+ * A chapter short of pictures (pure): its distinct pictures (copies counted once), each allowed `maxShows` times,
+ * plus its clips cannot give each of its sentences a picture of its own.
+ */
+export function thinChapter(
+  ch: Pick<FillersChapter, "entry" | "moments">,
+  images: FillerImage[],
+  clips: FillerClip[],
+  maxShows: number,
+): boolean {
+  const own = images.filter((x) => x.beatIndex === ch.entry && x.kind !== "capsule");
+  const pictures = new Set(own.map((x) => pictureKey(x))).size;
+  const footage = clips.filter((c) => (c as { beatIndex?: number }).beatIndex === ch.entry).length;
+  return pictures * Math.max(1, maxShows) + footage < ch.moments.length;
 }
 
 const short = (s: string, n = 90) =>
@@ -289,7 +315,11 @@ export function chooseFillers(
   // Switched off, explainers kept on the shot list from an earlier run are ignored.
   const list = opts.explainers ? chapters : chapters.map((c) => ({ ...c, moments: c.moments.map(({ explainer: _e, ...m }) => m) }));
   for (const ch of list) {
-    const target = opts.cardShare ?? 0;
+    const thin =
+      !!opts.thin &&
+      opts.thin.share > 0 &&
+      thinChapter(ch, opts.images, opts.clips, opts.thin.maxShows);
+    const target = thin ? Math.max(opts.cardShare ?? 0, opts.thin!.share) : (opts.cardShare ?? 0);
     // A small corner figure shares its frame with the footage: only a full card counts towards the share.
     const graphics = ch.moments.filter(
       (m) =>
@@ -300,8 +330,9 @@ export function chooseFillers(
     ).length;
     const needs = needsOf(ch, opts.images, opts.clips, target > 0);
     const plainNeeds = target > 0 ? needsOf(ch, opts.images, opts.clips) : needs;
-    const kineticMax = target > 0 ? Math.ceil(KINETIC_PER_CHAPTER * 1.5) : KINETIC_PER_CHAPTER;
-    const documentMax = target > 0 ? Math.ceil(DOCUMENTS_PER_CHAPTER * 1.5) : DOCUMENTS_PER_CHAPTER;
+    const capRise = thin ? 2 : target > 0 ? 1.5 : 1;
+    const kineticMax = Math.ceil(KINETIC_PER_CHAPTER * capRise);
+    const documentMax = Math.ceil(DOCUMENTS_PER_CHAPTER * capRise);
     const offers = new Map<number, Offer[]>();
     const declines = new Map<number, Partial<Record<FillerFamily, string>>>();
     for (const [k, need] of needs) {

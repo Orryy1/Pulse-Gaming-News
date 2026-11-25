@@ -9,6 +9,7 @@
 // Pure, and free of node modules: the planner imports it.
 
 import type { LongMedia, LongShot } from "./longplan.ts";
+import { pictureKey } from "./stillcap.ts";
 
 /** A window of one minute, in the report's sense of "too long". */
 export const PICTURE_WINDOW_SECONDS = 60;
@@ -19,7 +20,10 @@ export interface PictureCapMedia {
   /** What the viewer sees: a still's or clip's file. Two entries for one file are one picture. */
   images: Array<{
     file?: string;
+    sourceUrl?: string;
     kind?: string;
+    /** A character's picture (LONG_NAMED_ART): it belongs to the line naming them, never a stand-in elsewhere. */
+    named?: string;
     beatIndex?: number;
     moment?: number;
   }>;
@@ -30,6 +34,11 @@ export interface PictureCapMedia {
   entryOf: (segment: number) => number | undefined;
   /** Clips may not replay (FOOTAGE_FIRST). */
   clipsPlayed: Set<number>;
+  /**
+   * LONG_STILL_MAX_SHOWS (./stillcap.ts): pictures are counted by their source, every copy as one, and a stand-in
+   * is never a picture already shown this many times. Unset: by file, as before.
+   */
+  maxShows?: number;
 }
 
 export interface PictureCapResult {
@@ -44,16 +53,19 @@ export interface PictureCapResult {
 
 /** The same IGDB picture downloaded for two chapters is one picture to the viewer. */
 const pictureFile = (file?: string) => {
-  const name = file?.split(/[\\/]/).pop() ?? "";
+  const name = file?.split(/[/]/).pop()?.split(String.fromCharCode(92)).pop() ?? "";
   return /^igdb-/.test(name) ? name : file;
 };
 
+/** One picture to the viewer: by its source with LONG_STILL_MAX_SHOWS on (./stillcap.ts pictureKey), else by file. */
 const keyOf = (
   m: LongMedia,
-  media: Pick<PictureCapMedia, "images" | "clips">,
+  media: Pick<PictureCapMedia, "images" | "clips" | "maxShows">,
 ) =>
   m.type === "image"
-    ? `f:${pictureFile(media.images[m.index]?.file) ?? `i${m.index}`}`
+    ? (media.maxShows ?? 0) > 0 && media.images[m.index]
+      ? pictureKey(media.images[m.index]!)
+      : `f:${pictureFile(media.images[m.index]?.file) ?? `i${m.index}`}`
     : m.type === "clip"
       ? `f:${media.clips[m.index]?.file ?? `c${m.index}`}`
       : m.type === "filler"
@@ -79,6 +91,13 @@ export function capSamePicture(
   const minPiece = Math.round(MIN_PIECE_SECONDS * fps);
   const out: LongShot[] = [];
   const shownFrames = new Map<string, number>();
+  // LONG_STILL_MAX_SHOWS: showings of each picture in the plan as handed in, and of every stand-in taken.
+  const shows = new Map<string, number>();
+  for (const sh of shots)
+    if (sh.media.type === "image") {
+      const k = keyOf(sh.media, media);
+      shows.set(k, (shows.get(k) ?? 0) + 1);
+    }
   const played = new Set(media.clipsPlayed);
   let replaced = 0;
   let unresolved = 0;
@@ -128,9 +147,11 @@ export function capSamePicture(
         const im = media.images[k]!;
         // The intro and the outro preview the whole video, so any chapter's game art may stand in there.
         if (entry !== undefined && im.beatIndex !== entry) return false;
-        if (im.kind === "capsule" || im.kind === "portrait") return false;
+        if (im.kind === "capsule" || im.kind === "portrait" || im.named) return false;
         if (media.real(k)) return false;
         const key = keyOf({ type: "image", index: k }, media);
+        // LONG_STILL_MAX_SHOWS: a stand-in that has had its showings is no stand-in.
+        if ((media.maxShows ?? 0) > 0 && (shows.get(key) ?? 0) >= media.maxShows!) return false;
         return key !== self && usedIn(key, at) + minPiece <= cap;
       })
       .sort((a, b) => {
@@ -184,6 +205,7 @@ export function capSamePicture(
         current = sh.media;
         continue;
       }
+      shows.set(keyOf(next, media), (shows.get(keyOf(next, media)) ?? 0) + 1);
       current = next;
     }
     void key;

@@ -24,6 +24,7 @@ import {
   LOCAL_VISION_URL,
   THINK_ROOM,
   visionAnswer,
+  visionImage,
   visionModelProblem,
 } from "./assets/localvision.ts";
 import { LOCALVIDEO_PROVENANCE } from "./assets/localvideo.ts";
@@ -286,7 +287,7 @@ export async function lookOpeningFrame(
     return undefined;
   if (await visionModelProblem()) return undefined;
   try {
-    const image = (await fs.readFile(file)).toString("base64");
+    const image = await visionImage(file);
     const res = await fetchWithTimeout(
       `${LOCAL_VISION_URL}/api/chat`,
       {

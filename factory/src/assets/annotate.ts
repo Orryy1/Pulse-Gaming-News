@@ -2,9 +2,8 @@
 // footage screen in localvision.ts), for the long videos' "zoom to the detail" annotations: when a
 // sentence names something on screen, the camera pushes in on it and a labelled box draws itself on
 // (the Game Maker's Toolkit look, owner 27 Oct 2026). Nothing is drawn unless the model finds the thing.
-import fs from "node:fs/promises";
 import { errorMessage, fetchWithTimeout, log } from "../lib/util.ts";
-import { THINK_ROOM, visionAnswer, visionTarget } from "./localvision.ts";
+import { THINK_ROOM, visionAnswer, visionImage, visionTarget } from "./localvision.ts";
 
 /** A box as fractions of the picture: [left, top, right, bottom], 0 to 1. */
 export type Box = [number, number, number, number];
@@ -47,7 +46,7 @@ export async function locate(
   if (process.env.LOCAL_VISION === "off" || process.env.NODE_TEST_CONTEXT)
     return undefined;
   try {
-    const image = (await fs.readFile(file)).toString("base64");
+    const image = await visionImage(file);
     const t = await visionTarget(); // the PC relay, or the Mac's own model under MAC_VISION
     const res = await fetchWithTimeout(
       `${t.url}/api/chat`,

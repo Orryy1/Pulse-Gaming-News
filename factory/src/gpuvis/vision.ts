@@ -8,9 +8,8 @@
 // left the answer empty (every rubric score and grid ranking came back blank). So the budget is 4,096 and the answer is
 // read from the reply or, failing that, the last JSON object in the thinking.
 
-import fs from "node:fs/promises";
 import { fetchWithTimeout } from "../lib/util.ts";
-import { visionAnswer } from "../assets/localvision.ts";
+import { visionAnswer, visionImage } from "../assets/localvision.ts";
 
 export const GPUVIS_VISION_URL = (
   process.env.LOCAL_VISION_URL || "http://127.0.0.1:11434"
@@ -41,7 +40,7 @@ export function makeAsk(
   return async (files, prompt, schema) =>
     ask(
       await Promise.all(
-        files.map(async (f) => (await fs.readFile(f)).toString("base64")),
+        files.map((f) => visionImage(f)),
       ),
       prompt,
       schema,

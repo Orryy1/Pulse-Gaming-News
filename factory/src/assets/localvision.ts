@@ -353,6 +353,55 @@ export function localVisionDown(): Promise<boolean> {
 // One frame and a short answer fit easily: the default 32k context held gigabytes the renderer needs.
 const NUM_CTX = 8192;
 
+/**
+ * The longest side a frame keeps on its way to the vision model. A 4K frame is about 8,000 image tokens, which
+ * with the prompt passed the 8,192 context ("request (8548 tokens) exceeds the available context size") and,
+ * three in a row, paused every picture check for ten minutes as if the relay were down (25 Nov). 1,600 px is
+ * about 1,400 tokens: plenty to read a frame, faster on the PC and lighter on its memory.
+ */
+export const VISION_MAX_SIDE = 1600;
+
+/** ffmpeg arguments that fit a picture inside VISION_MAX_SIDE (never enlarging it) as a JPEG on stdout (pure). */
+export function shrinkArgs(file: string, max = VISION_MAX_SIDE): string[] {
+  return [
+    "-v",
+    "error",
+    "-i",
+    file,
+    "-frames:v",
+    "1",
+    "-vf",
+    `scale='min(${max},iw)':'min(${max},ih)':force_original_aspect_ratio=decrease`,
+    "-q:v",
+    "3",
+    "-f",
+    "image2pipe",
+    "-c:v",
+    "mjpeg",
+    "pipe:1",
+  ];
+}
+
+/** A frame as base64 for the vision model, shrunk to VISION_MAX_SIDE; the original bytes if ffmpeg cannot read it. */
+export async function visionImage(file: string): Promise<string> {
+  try {
+    const { execFile } = await import("node:child_process");
+    const { FFMPEG } = await import("../lib/bin.ts");
+    const out = await new Promise<Buffer>((resolve, reject) =>
+      execFile(
+        FFMPEG,
+        shrinkArgs(file),
+        { encoding: "buffer", maxBuffer: 64 * 1024 * 1024, timeout: 20_000 },
+        (err, stdout) => (err ? reject(err) : resolve(stdout)),
+      ),
+    );
+    if (out.length > 0) return out.toString("base64");
+  } catch {
+    // an unreadable or odd file goes as it is, as before
+  }
+  return (await fs.readFile(file)).toString("base64");
+}
+
 /** True when the vision model runs on this machine (so unloading it frees memory for a render here). */
 export function visionIsLocal(url: string): boolean {
   try {
@@ -384,7 +433,7 @@ export async function unloadLocalVision(): Promise<void> {
 }
 
 async function checkOne(file: string): Promise<FrameFlags | undefined> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${(await visionTarget()).url}/api/chat`,
     {
@@ -498,7 +547,7 @@ const FACE_SCHEMA = {
 async function faceBox(
   file: string,
 ): Promise<[number, number, number, number] | undefined> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${(await visionTarget()).url}/api/chat`,
     {
@@ -591,7 +640,7 @@ export async function heroLook(file: string): Promise<HeroLook | undefined> {
     return undefined;
   if (await relayNotReady()) return undefined;
   try {
-    const image = (await fs.readFile(file)).toString("base64");
+    const image = await visionImage(file);
     const res = await fetchWithTimeout(
       `${(await visionTarget()).url}/api/chat`,
       {
@@ -683,7 +732,7 @@ export async function packagingLook(
     return undefined;
   if (await relayNotReady()) return undefined;
   try {
-    const image = (await fs.readFile(file)).toString("base64");
+    const image = await visionImage(file);
     const t = await visionTarget();
     const res = await fetchWithTimeout(
       `${t.url}/api/chat`,
@@ -841,7 +890,7 @@ export async function cutPortrait(
 
 /** A second look at the finished crop: one person's face, in focus, filling much of the picture. */
 async function clearFace(file: string): Promise<boolean> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${(await visionTarget()).url}/api/chat`,
     {
@@ -958,7 +1007,7 @@ export function lookAnswer(parsed: any): SegmentLook {
 }
 
 async function lookOne(file: string): Promise<SegmentLook> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${(await visionTarget()).url}/api/chat`,
     {
@@ -1079,7 +1128,7 @@ async function subjectOne(
   file: string,
   prompt: string,
 ): Promise<SubjectLook | undefined> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${LOCAL_VISION_URL}/api/chat`,
     {
@@ -1191,7 +1240,7 @@ export async function focusAsk(
   schema: object,
   timeoutMs = 45_000,
 ): Promise<unknown> {
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const where = await visionTarget();
   const res = await fetchWithTimeout(
     `${where.url}/api/chat`,

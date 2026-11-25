@@ -1,0 +1,62 @@
+{
+ "Products": [
+  {
+   "ProductId": "9NP1P1WFS0LB",
+   "MarketProperties": [
+    {
+     "OriginalReleaseDate": "2021-12-08T18:00:00.0000000Z"
+    }
+   ],
+   "LocalizedProperties": [
+    {
+     "ProductTitle": "Halo Infinite",
+     "PublisherName": "Xbox Game Studios",
+     "Videos": [],
+     "CMSVideos": [
+      {
+       "HLS": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftassets/65b4a565-7138-4bc5-88e1-7b52ec3c4cc7-AVS.m3u8?packagedStreaming=true",
+       "VideoPurpose": "HeroTrailer",
+       "Height": 1080,
+       "Caption": "Halo Infinite - Campaign"
+      },
+      {
+       "HLS": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftassets/7e8a543e-36d5-47b7-a011-885584178fb1-AVS.m3u8?packagedStreaming=true",
+       "VideoPurpose": "trailer",
+       "Height": 1080,
+       "Caption": "Halo Infinite Multiplayer"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ProductId": "9PP5G1F0C2B6",
+   "MarketProperties": [
+    {
+     "OriginalReleaseDate": "2021-11-15T18:00:00.0000000Z"
+    }
+   ],
+   "LocalizedProperties": [
+    {
+     "ProductTitle": "Halo Infinite",
+     "PublisherName": "Xbox Game Studios",
+     "Videos": [],
+     "CMSVideos": [
+      {
+       "HLS": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftassets/e6307196-1a75-41db-9b51-6f8ccb1a3b93-AVS.m3u8?packagedStreaming=true",
+       "VideoPurpose": "trailer",
+       "Height": 1080,
+       "Caption": "Halo Infinite - Campaign"
+      },
+      {
+       "HLS": "https://cdn-dynmedia-1.microsoft.com/is/content/microsoftassets/d8418c63-6ed6-4bb6-8af1-bf4c382a3606-AVS.m3u8?packagedStreaming=true",
+       "VideoPurpose": "HeroTrailer",
+       "Height": 1080,
+       "Caption": "Operation Infinite"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

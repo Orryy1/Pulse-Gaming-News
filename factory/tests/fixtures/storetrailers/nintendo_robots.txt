@@ -1,0 +1,36 @@
+User-agent: *
+Allow: /
+
+DaumWebMasterTool: 32aa5c28d33b91d5b7ca65e51ab5af74e84941e2c30d294caa1a3dc55aea1191:/KZk3GCODdcSqsR4mp1dtQ==
+
+# Blocked Bots
+User-agent: Kangaroo Bot
+Disallow: /
+
+User-agent: Nutch
+Disallow: /
+
+User-agent: Omgili
+Disallow: /
+
+User-agent: Omgilibot
+Disallow: /
+
+User-agent: PanguBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: Timpibot
+Disallow: /
+
+# Existing restrictions
+
+User-agent: *
+Disallow: /sg/support/qa-list
+Disallow: /my/support/qa-list
+Disallow: /th/support/qa-list
+Disallow: /ph/support/qa-list
+
+# Sitemaps

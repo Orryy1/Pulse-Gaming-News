@@ -54,7 +54,7 @@ import { visionQa } from "./qa/vision.ts";
 import { checkNarration, transcribeWords } from "./qa/narration.ts";
 import { YouTubeClient } from "./youtube/upload.ts";
 import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
-import { trailerFrames, officialMedia } from "./assets/officialTrailer.ts";
+import { trailerFrames, officialMedia, franchisePublisher } from "./assets/officialTrailer.ts";
 import { cutsceneMedia } from "./assets/cutscenes.ts";
 import { indexFirstCutscenes, indexedSceneStills } from "./sceneindex/footage.ts";
 import {
@@ -88,11 +88,12 @@ import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
 import { guardActive, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
-import { YTDLP_TEXT } from "./lib/bin.ts";
+import { FFMPEG, FFPROBE, YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { personPortrait } from "./assets/people.ts";
 import { findMentions } from "./assets/mentions.ts";
 import { siteFor } from "./assets/publishersite.ts";
+import { ffmpegFinish, storeTrailerSource, type StoreId } from "./assets/storetrailers.ts";
 import { readBoxes } from "./assets/applevision.ts";
 import { findIgdbGame, fetchIgdbArt, fetchIgdbCharacter, findIgdbSeries } from "./assets/igdb.ts";
 import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
@@ -637,6 +638,17 @@ export function createServices(db: Db, cfg: Config): Services {
         stillFrames: cfg.officialStillFrames,
         // The publisher's own trailer files from the game library (src/assets/gamelib.ts), before any YouTube call.
         localTrailers: cfg.gameLibrary ? (g) => libraryTrailers(libraryRoot(cfg.dataDir), g) : undefined,
+        // STORE_TRAILERS: the stores' own trailer files (src/assets/storetrailers.ts), after the library, before YouTube.
+        storeTrailers: cfg.storeTrailers
+          ? storeTrailerSource({
+              cacheDir: path.join(cfg.dataDir, "storetrailers"),
+              stores: cfg.storeTrailersStores as StoreId[],
+              editions: cfg.steamEditions,
+              minFreeBytes: cfg.storeTrailersMinFreeGb * 1e9,
+              remux: ffmpegFinish(FFMPEG, FFPROBE),
+              owner: franchisePublisher,
+            })
+          : undefined,
         quotaOk: async () => {
           const now = new Date();
           if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)

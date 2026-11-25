@@ -8,7 +8,7 @@
 // Pure: no network, no files.
 
 /** Words that say a store page is a re-release of the same game, not a new one. */
-const EDITION =
+export const EDITION =
   /\b(legendary|deluxe|definitive|complete|ultimate|gold|premium|enhanced|anniversary|game of the year|goty|remaster(ed)?|hd|collection|trilogy|anthology|bundle|director'?s cut|special|standard|digital)\b|\(\s*(19|20)\d\d\s*\)|\bedition\b/i;
 /**
  * Words that mark a re-release whatever the gap (a Legendary Edition, a remaster, a "(2010) Edition"). The other

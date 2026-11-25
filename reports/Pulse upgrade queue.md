@@ -389,6 +389,8 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 
 ## 46. Drop the spoken "My verdict:" line and vary the endings (frontier check 25 Nov)
 
+**Status (25 Nov 15:00, improvement engine): built and merged** as `ENDING_FORMS_SHARE` on `claude/engine-endings` (81179e241), share 0.5 on the Mac. The Pulse Check card does not stay on the forms side (the whole segment is skipped there, so no pass asks for "My verdict:"). Judged at 20 Shorts a side or the 2 Dec frontier sitting; see the improvement log. Follow-up if the forms side wins: the clarity and humanise rewrites never see the form note, so they may flatten a punchline; pass them the note before switching to 1.
+
 **Why:** sounds human is Pulse's widest gap (2.9 against 6.6 for human breakouts) and links to average viewed (0.25 on 72 Shorts). "My verdict:" closes 14 of 31 Shorts this week because the friend pass and the clarity rewrite require it (src/editorial/friendpass.ts:523, clarity.ts:308, 414); the blind judges named it in about half their notes. The desk already flags it as a tell (desk.ts:276).
 
 **Build:** `ENDING_FORMS` (off by default; `ENDING_FORMS_SHARE=0.5`, by episode). Arm B never says "My verdict:" aloud (the Pulse Check card can stay) and ends on one of a callback to the hook, a consequence, a punchline or a plain closing fact, with no closing shape used more than twice a day. Record the arm on the script.

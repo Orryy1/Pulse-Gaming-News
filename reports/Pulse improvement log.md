@@ -2,6 +2,30 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 25 Nov 2026, 15:00 UK: half the Pulse Check Shorts stop saying "My verdict:" and end like a person would
+
+**Change:** a 50/50 test, by episode. On the "forms" side a Short that would end on the Pulse Check skips the spoken segment, and its take ends on one of four closing forms instead: a callback to the hook, a consequence for the viewer, a dry punchline or a plain closing fact. No form is handed out more than twice a day, and a retry keeps its form. A draft that still says "My verdict", "My call", "Bottom line:", "Verdict:", "My take:" or "Pulse check" aloud goes back to the writer. The other side is unchanged. Writers' room Shorts already skip the Pulse Check, so they are not in the test. Branch `claude/engine-endings` (81179e241), merged into `claude/stage` (e43329c8f) and `C:\PulseFactory`.
+
+**Evidence:**
+
+- Frontier check this morning: "sounds human" is Pulse's widest gap (2.9 against 6.6 for human breakouts, blind marks) and it tracks average viewed (0.25 on 72 Shorts). The blind judges named "My verdict:" in about half their notes.
+- Last 7 days on the Mac: 13 of 30 published Shorts said "My verdict:" aloud, every one of the 13 that ended on the Pulse Check, including "why" Shorts (NEWS_SEGMENT_SERIES is on). The new check catches all 13 and flags none of the other 17 (proof tool `src/tools/ending-forms-proof.ts`).
+- At a share of 0.5, 7 of those 13 would have changed; replayed by day, no form came up more than once a day.
+- A fresh-eyes review found 6 issues: the lead-in check would have flagged ordinary lines ("On the call, Take-Two said", "Sony made the call."), missed "Here’s my take" with a curly apostrophe, "My take:" and a mid-take "Verdict:", recorded the form as if delivered, and lost the form on a retry after 24 hours. All fixed, each with a test case; the record now says `form_asked`.
+- 13 new tests. Typecheck clean. The full suite passed 3,261 of 3,261 before the review fixes; the fixes touch only the new module and its tests, which pass.
+- Not yet proven live: no Short has been written on the forms side (no model calls spent on a sample, since Claude's API is at its monthly limit and Codex is timing out on some steps today).
+
+**Setting:** `ENDING_FORMS_SHARE` (default 0, no change). Set to 0.5 on the Mac at deploy. Each Short in the test carries `script.ending` (`arm`, `form_asked`, `lead_in`) and an `ending_forms` event (count distinct episodes, not events).
+
+**Judged:** at 20 Shorts a side, or at the next frontier sitting (2 Dec), whichever is later. Pass mark: the blind "sounds human" mark at least 1.0 higher on the forms side, and average viewed no more than 2 points lower. If it fails, set the share to 0; if it passes, set it to 1. Also check `lead_in` is false on at least 9 in 10 forms-side Shorts.
+
+**Judged this run (the engine had not run since 20 Nov: Claude's weekly limit stopped all routines from 21 Nov):**
+
+- CODEX_GRAMMAR_FALLBACK (due 21 Nov): **pass, kept on.** No "compiled grammar is too large" failures in the factory log from 20 to 25 Nov, 27 calls routed to Codex with the "too big for Claude" note, and 4 room-written Shorts published in the last 7 days.
+- FACT_REPAIR (due 26 Nov): **missed its pass mark, kept on.** 21 attempts since 20 Nov, all on long "Ranking EVERY" scripts: 18 not repairable (too many blockers), 2 failed the re-check, 1 mended (Half-Life, 22 Nov) that still failed later. No video saved. It costs nothing and harmed nothing, so it stays on; the real fix is LONG_FACT_DISCIPLINE, being built today on `claude/longfacts` by another session.
+- DEMAND_STALE_DAYS and SHORT_CLIP_EDGE_TEXT (due 27 Nov), ELEVENLABS_BALANCE_STALE_HOURS (4 Dec): not due.
+- Core numbers: 0 published in the last 24 hours, but the fault ledger puts that on the YouTube download pause, parked Shorts holding the cap and the Claude API limit, all fixed or being fixed by other sessions today, not on an engine change. Nothing to revert.
+
 ## 20 Nov 2026, 18:35 UK: no build this run; why long rankings keep failing their fact-check (queued as item 45)
 
 **Change:** none shipped. Claude's week was at 89% (one point under the engine's report-only line), the 19:00 to 19:30 gap was the only deploy window before the 20:00 and 21:00 slots, and the one small item ready to build (a reworded failed long topic coming back) had already been fixed by another session today (6ecafb48a and 78ff82f0c on `claude/stage`). A careful fix for the fault below needs a writer change, tests and a fresh-eyes review, so it is queued rather than rushed.

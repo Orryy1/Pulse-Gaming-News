@@ -53,6 +53,7 @@ export interface VisualAsset {
   label?: string;
   reason?: string;
   moment?: number; // long-form: the sentence of the entry this picture was picked for
+  named?: string; // long-form: the character this picture is of (LONG_NAMED_ART), so it opens the sentence naming them
 }
 
 interface StoreSearchItem {

@@ -375,6 +375,7 @@ import {
 } from "./editorial/affiliate.ts";
 import { pickVoice, speedUp } from "./voice/index.ts";
 import { withAlertScope } from "./alertlog.ts";
+import { withYtPriority, type YtPriority } from "./lib/ytguard.ts";
 import {
   turnDownBreaths,
   voiceProblems,
@@ -17754,11 +17755,23 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     // and commit stamped on the episode. Off (no LEARN_STAMPS, no LEARN_HOLDOUT_SHARE), the step runs straight through.
     // A slot-bound Short's step caps each Codex run at CODEX_SHORT_TIMEOUT_MINUTES (src/editorial/codex.ts withCodexCap);
     // long videos and evergreen Shorts keep the full CODEX_TIMEOUT_MINUTES.
+    // The YouTube guard's order on the signed-in lane (src/lib/ytguard.ts): a Short's own fetches first, then long
+    // videos; anything outside an episode's step is background.
     () =>
-      withCodexCap(shortCodexCapMs(s.cfg, ep), () =>
-        withLearn(s, ep, (run) => advanceStep(run, ep)),
+      withYtPriority(ytPriorityFor(ep), () =>
+        withCodexCap(shortCodexCapMs(s.cfg, ep), () =>
+          withLearn(s, ep, (run) => advanceStep(run, ep)),
+        ),
       ),
   );
+}
+
+/**
+ * The YouTube priority of an episode's fetches (pure): a slot-bound Short (its lines, named missions and characters)
+ * "short"; long videos and evergreen Shorts, made days ahead, "long".
+ */
+export function ytPriorityFor(ep: Pick<Episode, "lane">): YtPriority {
+  return isLongEpisode(ep) || ep.lane === "evergreen" ? "long" : "short";
 }
 
 /**

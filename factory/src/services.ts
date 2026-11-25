@@ -87,7 +87,7 @@ import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
 import { parseDemandRows } from "./discovery/searchdemand.ts";
 import { runCapped } from "./lib/child.ts";
-import { guardActive, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
+import { anonClosedWindow, guardActive, guardSettings, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
 import { YTDLP_TEXT } from "./lib/bin.ts";
 import { searchCommons, downloadCommons } from "./assets/commons.ts";
 import { personPortrait } from "./assets/people.ts";
@@ -362,11 +362,12 @@ export function createServices(db: Db, cfg: Config): Services {
     // Vision's face finder on the Mac mini).
     personPortrait: (c, dir, slot) =>
       personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
-    // SHORT_FOOTAGE_WAIT: the anonymous YouTube lane's bot-check pause, as the guard's state file has it.
+    // SHORT_FOOTAGE_WAIT: the anonymous YouTube lane's bot-check pause, as the guard's state file has it; while the lane
+    // is retired (YT_ANON_LANE), the retirement, too long for any Short to wait for.
     youtubePause: async () => {
       if (!guardActive()) return undefined;
       const st = await ytGuard.state();
-      return st.block ? { since: st.block.since, until: st.block.until } : undefined;
+      return anonClosedWindow(st, Date.now(), guardSettings());
     },
     // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
     // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.

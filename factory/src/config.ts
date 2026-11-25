@@ -1314,9 +1314,13 @@ export interface Config {
   /**
    * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
    * Pulse or Orryy channel accounts), exported on the Mac mini by mac/ytcookies.sh, so the game footage fetcher alone
-   * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own budget,
-   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else uses the cookies except the
-   * opt-in switches below (each default off, together within YT_SIGNED_CLIP_SHARE), and never on Pulse's own videos.
+   * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own bot-check
+   * pause and, since 25 Nov 2026, a ration (src/lib/ytguard.ts): YT_SIGNED_PER_HOUR (4; YT_SIGNED_HOURLY still read),
+   * YT_SIGNED_DAILY (30), YT_SIGNED_MIN_GAP_SECONDS (300) and YT_SIGNED_BG_SHARE (0.3), Shorts first, long videos next,
+   * background library building last. YT_ANON_LANE (auto) retires anonymous fetching for YT_ANON_RETIRE_DAYS (14)
+   * after two lifts whose first anonymous answer was a bot check; searches go to the Data API (YOUTUBE_API_KEY) within
+   * YT_API_SEARCHES_PER_DAY (40; YT_API_SEARCH=off to stop). All read from the environment by the guard. Nothing else
+   * uses the cookies except the opt-in switches below, and never on Pulse's own videos.
    */
   ytdlpCookiesFile: string;
   /**
@@ -1326,8 +1330,9 @@ export interface Config {
    */
   signedClips: boolean;
   /**
-   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of YT_SIGNED_HOURLY that clips, the light index and the trend feed may
-   * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of the signed-in hour that background users other than the game
+   * fetcher (the light index, the trend feed) may use together (src/lib/ytguard.ts); a Short's or long video's own clip
+   * pulls go by priority instead.
    */
   ytSignedClipShare: number;
   /**

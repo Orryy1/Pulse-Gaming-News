@@ -9,7 +9,7 @@
 // Steps 3 and 4 are separate on purpose: reading and listening need only this machine, looking needs the PC's GPU.
 
 import { execFile } from "node:child_process";
-import { guardActive, guardedYt, isAgeGate, isCookieTrouble, isYtPaused, videoIdOf, ytGuard } from "../lib/ytguard.ts";
+import { guardActive, guardedYt, ytGuard } from "../lib/ytguard.ts";
 import { signedInArgs } from "../lib/ytsignin.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -85,9 +85,9 @@ export function fetcherCookiesFile(command: string | undefined, complete: boolea
 /**
  * The game fetcher's own yt-dlp calls (its searches, its candidates' details and the chosen upload's proxy): signed
  * in with the download account's cookies when this build has them (s.cookiesFile, set only for the fetcher's
- * `build --complete` turns; src/lib/ytsignin.ts), else anonymous. A signed-in call refused by its own lane (paused,
- * budget used) or meeting refused cookies is made again anonymously; the guard has already noted why. Never made
- * again anonymously: an age gate (it would only meet the same gate) or an upload already known to need sign-in.
+ * `build --complete` turns; src/lib/ytsignin.ts), else anonymous. Since 25 Nov 2026 a signed-in call is never made
+ * again anonymously, whatever its answer (its lane's pause, its budget, refused cookies): the guard has noted why, the
+ * anonymous lane is the one YouTube refuses outright, and the fetcher simply tries again on a later turn.
  */
 async function fetcherRun(
   s: { ytdlp: string; cookiesFile?: string },
@@ -96,21 +96,7 @@ async function fetcherRun(
 ) {
   // The call's own arguments go with it: Pulse's own channel and videos are never fetched signed in (src/lib/ytown.ts).
   const signed = s.cookiesFile ? await signedInArgs({ ytdlpCookiesFile: s.cookiesFile }, undefined, undefined, args) : [];
-  if (!signed.length) return run(s.ytdlp, args, o);
-  try {
-    return await run(s.ytdlp, [...signed, ...args], o);
-  } catch (err) {
-    const text = `${errorMessage(err)} ${String((err as { stderr?: unknown } | undefined)?.stderr ?? "")}`;
-    const id = videoIdOf(args);
-    const gated = isAgeGate(text) || (!!id && guardActive() && ytGuard.needsSignIn(id));
-    if (!gated && (isYtPaused(err) || isCookieTrouble(text))) {
-      log("info", "game fetch: signed-in call not possible, trying anonymously", {
-        why: isYtPaused(err) ? errorMessage(err) : "cookies refused",
-      });
-      return run(s.ytdlp, args, o);
-    }
-    throw err;
-  }
+  return run(s.ytdlp, [...signed, ...args], o);
 }
 
 /** False for an upload YouTube age-gated anonymously while the fetcher cannot sign in: no call is wasted on it. */

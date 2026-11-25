@@ -426,7 +426,10 @@ export async function countToday(
  */
 export async function countProducing(db: Db): Promise<number> {
   const [row] = await db.query<{ n: string | number }>(
-    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin','longform')`,
+    // A Short parked for hours (waiting for YouTube downloads to come back, SHORT_FOOTAGE_WAIT) is not being worked on:
+    // counted, two of them held every new Short back for a day (24-25 Nov 2026, nothing published in 24 hours).
+    `SELECT count(*) AS n FROM episodes WHERE status IN ('selected','scripted','voiced','rendered') AND lane NOT IN ('gameplay','twin','longform')
+       AND (next_attempt_at IS NULL OR next_attempt_at < now() + interval '1 hour')`,
   );
   return Number(row?.n ?? 0);
 }

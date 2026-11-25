@@ -2033,10 +2033,17 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
  */
 /**
  * The long lanes once the day's Shorts allowance is used: a documentary or a long ranking still takes its slot, each by
- * its own rules (lead time, banking window, slot free); no Short is made here.
+ * its own rules (lead time, banking window, slot free), then the weekly long video; no Short is made here.
  */
 export async function maybeSelectLongAfterTarget(s: Services): Promise<string | undefined> {
-  return (await maybeSelectDocumentary(s)) ?? (await maybeSelectLongform(s)) ?? undefined;
+  return (
+    (await maybeSelectDocumentary(s)) ??
+    (await maybeSelectLongform(s)) ??
+    // LONG_WEEKLY_AFTER_TARGET: Friday's long round-up or explainer too. Shorts made ahead for a Friday count on
+    // Friday from midnight, so the allowance can be used before the 12:00 window opens and the slot would pass empty.
+    (s.cfg.longWeeklyAfterTarget ? await maybeSelectWeeklyLong(s) : undefined) ??
+    undefined
+  );
 }
 
 export async function maybeSelect(s: Services): Promise<string | undefined> {
@@ -3513,6 +3520,118 @@ async function weeklyTried(db: Db, key: string): Promise<boolean> {
 }
 
 /**
+ * The weekly long video on its own: Friday's round-up of the week's most-watched Shorts, or the explainer on its
+ * test weeks (RECAP_LONG). maybeSelectWeekly tries it in its usual place; maybeSelectLongAfterTarget tries it once
+ * the day's Shorts allowance is used (LONG_WEEKLY_AFTER_TARGET), since a long video is not one of the day's Shorts.
+ */
+export async function maybeSelectWeeklyLong(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.weeklyEnabled) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const plan = (days: string[]) => ({
+    days,
+    slot: cfg.weeklySlot,
+    leadMinutes: cfg.slotLeadMinutes + 30,
+    graceMinutes: cfg.slotGraceMinutes,
+    timeZone: cfg.timezone,
+  });
+  const taken = await takenSlots(db);
+  const base = (
+    hash: string,
+    headline: string,
+    gameHint: string,
+  ): StoryCluster => ({
+    hash,
+    headline,
+    items: [],
+    sources: ["Steam"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint,
+  });
+
+  // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
+  // starts five hours before the slot; with too few stories it falls back to the Short below.
+  if (cfg.recapLong && cfg.longformEnabled) {
+    const longDue = evergreenDue(
+      now,
+      {
+        ...plan(cfg.recapDays),
+        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
+        leadMinutes: cfg.weeklyExplainedTest
+          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
+          : 300,
+      },
+      taken,
+    );
+    if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
+      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
+      // the round-up below takes the slot and counts as a round-up week.
+      let fallback: string | undefined;
+      if (
+        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
+          () => "roundup" as const,
+        )) === "explained"
+      ) {
+        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
+          (err) => ({ id: undefined, reason: errorMessage(err) }),
+        );
+        if (made.id) return made.id;
+        fallback = made.reason ?? "no story";
+        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
+        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
+      }
+      const stories = await recapStoryIds(db, now);
+      if (stories.length >= RECAP_STORIES_MIN) {
+        const id = shortId();
+        const cluster = base(
+          `weekly:recaplong:${today}`,
+          "This Week in Gaming",
+          "Gaming news",
+        );
+        if (
+          await createEpisode(db, id, cluster, {
+            lane: "longform",
+            priority: LANE_PRIORITY.longform,
+            slotAt: longDue,
+          })
+        ) {
+          await db.query(
+            `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+            [id, JSON.stringify({ recap: true, stories })],
+          );
+          await logEvent(db, id, "selected", {
+            headline: cluster.headline,
+            lane: "longform",
+            recap: true,
+            stories,
+            slot_at: longDue.toISOString(),
+          });
+          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
+            () => undefined,
+          );
+          log("info", "weekly recap video selected", {
+            id,
+            stories: stories.length,
+          });
+          return id;
+        }
+      } else
+        log("info", "weekly recap video skipped: too few stories", {
+          found: stories.length,
+        });
+    }
+  }
+  return undefined;
+}
+
+/**
  * The weekly lanes, each on its own day at the weekly slot: Release Radar
  * (Steam's popular releases this week), Free This Week (Epic's giveaway, a
  * news-style Short from the store's own data) and the Weekly Recap (the
@@ -3907,78 +4026,9 @@ export async function maybeSelectWeekly(
     });
   }
 
-  // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
-  // starts five hours before the slot; with too few stories it falls back to the Short below.
-  if (cfg.recapLong && cfg.longformEnabled) {
-    const longDue = evergreenDue(
-      now,
-      {
-        ...plan(cfg.recapDays),
-        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
-        leadMinutes: cfg.weeklyExplainedTest
-          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
-          : 300,
-      },
-      taken,
-    );
-    if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
-      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
-      // the round-up below takes the slot and counts as a round-up week.
-      let fallback: string | undefined;
-      if (
-        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
-          () => "roundup" as const,
-        )) === "explained"
-      ) {
-        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
-          (err) => ({ id: undefined, reason: errorMessage(err) }),
-        );
-        if (made.id) return made.id;
-        fallback = made.reason ?? "no story";
-        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
-        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
-      }
-      const stories = await recapStoryIds(db, now);
-      if (stories.length >= RECAP_STORIES_MIN) {
-        const id = shortId();
-        const cluster = base(
-          `weekly:recaplong:${today}`,
-          "This Week in Gaming",
-          "Gaming news",
-        );
-        if (
-          await createEpisode(db, id, cluster, {
-            lane: "longform",
-            priority: LANE_PRIORITY.longform,
-            slotAt: longDue,
-          })
-        ) {
-          await db.query(
-            `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
-            [id, JSON.stringify({ recap: true, stories })],
-          );
-          await logEvent(db, id, "selected", {
-            headline: cluster.headline,
-            lane: "longform",
-            recap: true,
-            stories,
-            slot_at: longDue.toISOString(),
-          });
-          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
-            () => undefined,
-          );
-          log("info", "weekly recap video selected", {
-            id,
-            stories: stories.length,
-          });
-          return id;
-        }
-      } else
-        log("info", "weekly recap video skipped: too few stories", {
-          found: stories.length,
-        });
-    }
-  }
+  // Weekly Recap as a long video (maybeSelectWeeklyLong); with too few stories it falls back to the Short below.
+  const weeklyLong = await maybeSelectWeeklyLong(s);
+  if (weeklyLong) return weeklyLong;
 
   // Weekly Recap
   const recapDue = (await formatOpen(db, "weekly_recap", now))

@@ -23,7 +23,8 @@ export interface VisualAsset {
     | "article"
     | "clip"
     | "photo"
-    | "portrait"; // portrait: a face cut from the episode's own footage // photo: a freely licensed archive photo (Wikimedia Commons)
+    | "portrait"
+    | "character"; // character: an IGDB character picture, kept on the line naming them (LONG_NAMED_ART) // portrait: a face cut from the episode's own footage // photo: a freely licensed archive photo (Wikimedia Commons)
   file: string; // path relative to the episode directory
   sourceUrl: string;
   provenance: string;

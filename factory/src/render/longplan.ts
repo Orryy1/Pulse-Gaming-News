@@ -899,7 +899,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           ? []
           : images
               .map((_, k) => k)
-              .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!));
+              // A character's picture (LONG_NAMED_ART) stays on the line naming them.
+              .filter((k) => kin(images[k]!.beatIndex) && !realWorldImage(images[k]!) && !images[k]!.named);
       let replay = 0;
       /**
        * movingFirst: an unplayed clip free to fill the sentence being filled: loose footage, then one of a sentence
@@ -959,21 +960,23 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           const borrowed = kinClips.find((k) => !clipUsed[k]);
           if (borrowed !== undefined) return { type: "clip", index: borrowed };
           if (kinImages.length) {
-            const pick = [...kinImages].sort(
+            // LONG_STILL_MAX_SHOWS: among the same game's pictures, only those the cap still lets on screen.
+            const under = capMax > 0 ? underCap(kinImages) : kinImages;
+            const pick = [...under].sort(
               (a, b) => stillUses[a]! - stillUses[b]! || a - b,
-            )[0]!;
-            if (stillUses[pick]! < 2 && !atCap(pick)) return { type: "image", index: pick };
+            )[0];
+            if (pick !== undefined && stillUses[pick]! < 2) return { type: "image", index: pick };
           }
           // Then, in a film about one game, a replay: there a repeat is a lesser fault than an empty slate. A chapter
           // with no such family keeps the plate, and a video with too much of it stops before its render (qa/slate.ts).
           const again = group === undefined ? [] : game.length ? game : kinClips;
           if (again.length)
             return { type: "clip", index: again[replay++ % again.length]! };
-          if (kinImages.length)
-            return {
-              type: "image",
-              index: kinImages[replay++ % kinImages.length]!,
-            };
+          if (kinImages.length) {
+            const index = kinImages[replay++ % kinImages.length]!;
+            if (atCap(index)) capNotes.overCap++;
+            return { type: "image", index };
+          }
           return { type: "plate", index: 0 };
         };
         if (!entryImages.length) return own();

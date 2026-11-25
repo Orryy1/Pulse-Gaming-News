@@ -7,9 +7,9 @@
 
 /**
  * Where a picture came from, as one name for every copy of it (pure). Only the picture servers whose addresses name
- * one picture are folded together (IGDB's sizes, Steam's sizes and cache-busting queries); any other source keeps its
- * whole address, and a picture cut from footage (a portrait, a trailer frame: their source is the video they came
- * from) is its own file, so two faces cut from one trailer are never one picture.
+ * one picture are folded together (IGDB's sizes, Steam's sizes and cache-busting queries); any other picture is its
+ * own file, because its source may be a whole video (trailer frames, portraits cut from footage, library stills), so
+ * two frames of one trailer are never one picture.
  */
 export function pictureKey(img: {
   sourceUrl?: string;
@@ -34,9 +34,10 @@ export function pictureKey(img: {
       )
         return `u:${u.host}${u.pathname.replace(/\.\d+x\d+(?=\.(?:jpe?g|png|webp)$)/i, "")}`.toLowerCase();
     } catch {
-      // not an address: the whole string below
+      // not an address: keyed by its file below
     }
-    return `u:${url}`;
+    // Any other source may stand for many pictures (every frame cut from one trailer carries the trailer's address,
+    // a library still its video's, a map graphic a fixed tag): those are keyed by their own file.
   }
   const name = img.file?.split(/[\\/]/).pop() ?? "";
   // A picture downloaded twice keeps its source's name (igdb-<id>.jpg): one picture to the viewer.

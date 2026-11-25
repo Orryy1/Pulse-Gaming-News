@@ -336,7 +336,8 @@ export async function fetchIgdbCharacter(
   await fs.mkdir(path.join(episodeDir, "assets"), { recursive: true });
   await fs.writeFile(path.join(episodeDir, file), Buffer.from(await pic.arrayBuffer()));
   return {
-    kind: "hero",
+    // Its own kind: never an entry's key art (the palette, the chapter card, the thumbnail look for "hero").
+    kind: "character",
     file,
     sourceUrl: url,
     named: hit.name.replace(/\s*\([^)]*\)\s*$/, ""),

@@ -11436,7 +11436,9 @@ export async function gatherLongEntryMedia(
   const scope = scopeOf(script);
   // LONG_ENTRY_CLIP_TARGETS: every sentence (up to the dial) asks the trailers for its own moment; the first six alone
   // did before, and the rest of a 21-sentence entry only ever got stills (Mass Effect ranking, 25 Nov 2026).
-  const targets: FootageTarget[] = moments.slice(0, s.cfg.longEntryClipTargets ?? 6).map((m, k) => ({
+  const targets: FootageTarget[] = moments
+    .slice(0, script.evergreen_format === "ranking" ? (s.cfg.longEntryClipTargets ?? 6) : 6)
+    .map((m, k) => ({
     key: `beat:${beatIndex}#m${k}`,
     text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
@@ -11482,7 +11484,8 @@ export async function gatherLongEntryMedia(
             // of the chapter, untagged (the meaning match pins them to lines later, the planner spreads the rest).
             entryFillSeconds(
               script.beats[beatIndex]?.narration ?? "",
-              s.cfg.longMinMovingShare ?? 0,
+              // Only a ranking plans its footage first under LONG_MIN_MOVING_SHARE, so only a ranking asks for it.
+              script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
             ),
           ),
           Math.max(

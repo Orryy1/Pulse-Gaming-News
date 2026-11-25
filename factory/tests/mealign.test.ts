@@ -234,6 +234,15 @@ test("pictureKey: every copy of one picture is one picture (IGDB sizes and folde
       file: "b.jpg",
     }),
   );
+  // Frames cut from one trailer, and library stills of one video, carry its address with no time: still two pictures.
+  assert.notEqual(
+    pictureKey({ kind: "screenshot", sourceUrl: "https://www.youtube.com/watch?v=abc", file: "e/assets/frame_1.jpg" }),
+    pictureKey({ kind: "screenshot", sourceUrl: "https://www.youtube.com/watch?v=abc", file: "e/assets/frame_2.jpg" }),
+  );
+  assert.notEqual(
+    pictureKey({ kind: "screenshot", sourceUrl: "pulse:map-scale", file: "a/map_1.png" }),
+    pictureKey({ kind: "screenshot", sourceUrl: "pulse:map-scale", file: "a/map_2.png" }),
+  );
   // Faces cut from one trailer share its source but are different pictures.
   assert.notEqual(
     pictureKey({
@@ -497,7 +506,7 @@ test("a character picture (LONG_NAMED_ART) opens the line that names them, befor
     },
     { kind: "screenshot", aspect: 16 / 9, beatIndex: 0, file: "b.jpg" },
     {
-      kind: "hero",
+      kind: "character",
       aspect: 0.8,
       beatIndex: 0,
       moment: 2,

@@ -458,3 +458,15 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 **Status (25 Nov 23:00, improvement engine): built and merged** as `LONG_WEEKLY_AFTER_TARGET` (on by default) on `claude/engine-weeklylong` (f6652ff0a), stage b5123c2a3; deploy waiting for the slot window. Judged Sat 28 Nov (see the improvement log). The usage-total watch below still stands.
 
 Since claude/doc-after-target (969f362f9) the documentary and the long ranking are still picked once the day's Shorts are made. The Friday long round-up and long explainers (maybeSelectWeekly's longform recap/explainer) are not: maybeSelectWeekly also makes Shorts (deals, evergreen), so it cannot simply be called after the allowance. Needs a long-only entry point for the weekly lane, plus a test like tests/doc-after-target.test.ts. Small; do before a Friday round-up fails late in the day. Also from the review: the long-ranking and documentary pickers can now spend one model call per 10-minute tick in the evening while their slot is due and the picker keeps refusing; watch the usage total.
+
+## 53. Hands-off hygiene: own worktrees for fix sessions, and the gate retries a lone crashed test file (25 Nov night)
+
+**Why:**
+- At 23:25 a fix session started by the new watch, or another routine, checked out claude/late-shorts-free-slot inside the shared stage worktree (scratchpad\stage) with uncommitted edits, so the merge gate refused to run.
+- At 23:16 the gate stopped on a V8 crash ("Check failed: jit_page_->allocations_.erase") in tests/gameplay-lane.test.ts while the PC was short of RAM. The file passed 16/16 on its own.
+
+**Build:**
+- src/handsoff/pulse-fix-rules.md and the engine prompt: always work in a fresh worktree on its own claude/ branch, never in the shared stage folder.
+- merge-gate.ts: when exactly one test file fails with no assertion (a crash or "test failed" with no subtest failure), rerun that file alone once and continue if it passes, logging the retry.
+
+**Measure:** no gate refusals for a busy stage folder; no gate stops on crashes that pass on a rerun.

@@ -2431,7 +2431,7 @@ export function loadConfig(): Config {
   fillFrame: bool("FILL_FRAME", false),
   upscaleStills: bool("UPSCALE_STILLS", false),
   thumbCandidates: bool("THUMB_CANDIDATES", false),
-  gpuvisUrl: str("GPUVIS_URL", "http://127.0.0.1:8797"),
+  gpuvisUrl: str("GPUVIS_URL", "http://127.0.0.1:8799"),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
   docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),
   docMinChapters: Math.max(1, int("DOC_MIN_CHAPTERS", 5)),

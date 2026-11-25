@@ -5,7 +5,7 @@
 // a ComfyUI this service started is stopped. With no turn within GPUVIS_MAX_WAIT minutes a job answers 503 and the
 // factory keeps its usual picture.
 //
-//   node --import tsx src/gpuvis/server.ts            (listens on 127.0.0.1:8797, GPUVIS_PORT to change)
+//   node --import tsx src/gpuvis/server.ts            (listens on 127.0.0.1:8799, GPUVIS_PORT to change)
 //
 // Endpoints (the picture is the request body; answers are the picture bytes):
 //   GET  /health                                          { ok, comfy }
@@ -14,7 +14,7 @@
 //   POST /plate?seed=1&variant=0                          200 PNG (no body needed)
 //   POST /ask   {prompt, schema, images: [base64]}        200 JSON: the thumbnail judge (GPUVIS_RANK_MODEL), in the turn
 // The Mac reaches it over the cable the way it reaches the PC's vision and voice: through the orchestrator's
-// lan_relay.py, once port 8797 is added to its PORTS (a one-line change in the Master orchestrator's area).
+// lan_relay.py, once port 8799 is added to its PORTS (a one-line change in the Master orchestrator's area).
 
 import fs from "node:fs/promises";
 import http from "node:http";
@@ -35,7 +35,7 @@ import { drawPlate } from "./thumbs.ts";
 import { upscaleStill } from "./upscale.ts";
 import { askImages, GPUVIS_RANK_MODEL } from "./vision.ts";
 
-export const GPUVIS_PORT = Number(process.env.GPUVIS_PORT || 8797);
+export const GPUVIS_PORT = Number(process.env.GPUVIS_PORT || 8799);
 const IDLE_MS = Number(process.env.GPUVIS_IDLE_SECONDS || 90) * 1000;
 const MAX_WAIT = Number(process.env.GPUVIS_MAX_WAIT || 30);
 const MAX_BODY = 40 * 1024 * 1024;

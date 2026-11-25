@@ -8,7 +8,7 @@ local vision model. Every feature is behind a switch that is off by default.
 | `FILL_FRAME`       | A still a Short shows in its framed panel (square to wide), or a portrait cover in a long video, is extended to fill the frame instead of sitting over its blurred copy. Only the stills the Short's plan frames are filled (a still shown full-bleed is cover-cropped and never shows a fill), none under the clean frame (SHORTS_CLEAN). The original's pixels are pasted back; only the margins are new, checked by the vision model for invented people or writing, and labelled `EDGES EXTENDED BY AI`. | `src/gpuvis/fill.ts`, `Background.tsx`, `Long.tsx` |
 | `UPSCALE_STILLS`   | Stills smaller than the frame they are shown in (1080x1920 in a Short, 1920x1080 in a long video) are enlarged by Real-ESRGAN when they must grow by a quarter or more (any growth for a game from before 2010); pixel art by whole pixels (the network smears it); a result far sharper than Lanczos (halos) falls back to Lanczos. A still that already covers its frame is left alone.                                                                                                                    | `src/gpuvis/upscale.ts`                            |
 | `THUMB_CANDIDATES` | The main poster's art extended sideways (room for the words) and relit (an atmosphere plate on the words' side), drawn as the same poster and checked like the other designs; then every design is ranked by the local vision model in a numbered grid (three shuffled rounds, Borda points). The top three become the thumbnail and the Test & compare variants, preferring different art for the variants. With no new candidate passing its checks the factory's order stands.                            | `src/gpuvis/thumbs.ts`, `thumbstep.ts`             |
-| `GPUVIS_URL`       | The PC's GPU picture service (default `http://127.0.0.1:8797`).                                                                                                                                                                                                                                                                                                                                                                                                                                              | `src/gpuvis/server.ts`, `client.ts`                |
+| `GPUVIS_URL`       | The PC's GPU picture service (default `http://127.0.0.1:8799`).                                                                                                                                                                                                                                                                                                                                                                                                                                              | `src/gpuvis/server.ts`, `client.ts`                |
 
 The match wipe that was here (MATCH_WIPE) was removed on 21 Nov 2026: COMPARE_WIPE (`src/render/boldideas.ts`) is
 live and does the two-games comparison, and the frame matching found loose pairs (a helicopter cockpit against a car
@@ -19,13 +19,13 @@ interior), not the same place.
 - The PC runs `node --import tsx src/gpuvis/server.ts`. It holds an orchestrator GPU turn at priority 60 while jobs
   arrive and gives it back after 90 s idle (unloading ComfyUI, stopping a ComfyUI it started). The thumbnail judge
   (qwen3-vl 30B) also runs through it (`POST /ask`), so the big model never loads on the 4090 outside a turn.
-- **The Mac mini (production) cannot reach it today**: port 8797 is not in `PORTS` in
+- **The Mac mini (production) cannot reach it today**: port 8799 is not in `PORTS` in
   `C:\Claude\orchestrator\lan_relay.py` (the Master orchestrator's area). With nothing answering, every feature skips
   at once (a refused connection; at most 5 s for an address that does not answer) and the episode keeps today's look;
   `tests/gpuvis.test.ts` checks this against a closed port. Running the features on the Mac itself was not done:
   klein takes 85 to 94 s a picture there (`mac/sketch_server.py`), the Mac has 16 GB shared with renders and its
   internal disk was at 25 GB free on 21 Nov 2026, under the 35 GB floor.
-- Once the relay carries 8797 and `GPUVIS_URL` is set on the Mac, a Short's step is bounded: 12 pictures at most and
+- Once the relay carries 8799 and `GPUVIS_URL` is set on the Mac, a Short's step is bounded: 12 pictures at most and
   6 minutes in all (15 minutes and 40 pictures for a long video), and a service waiting for its GPU turn answers busy
   so the episode gives up at once. A fill the margin check refused is not asked for again on a retry. Copies made
   while a switch was on are not shown once it is off.

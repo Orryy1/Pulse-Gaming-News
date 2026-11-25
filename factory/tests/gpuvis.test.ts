@@ -514,7 +514,7 @@ test("prepareImages: fillOnly limits the fills to the framed stills; the game's 
   await fs.rm(dir, { recursive: true, force: true });
 });
 
-/** A local port with nothing listening on it (the Mac today: the PC's port 8797 is not relayed). */
+/** A local port with nothing listening on it (the Mac today: the PC's port 8799 is not relayed). */
 async function closedPort(): Promise<number> {
   const srv = net.createServer();
   await new Promise<void>((r) => srv.listen(0, "127.0.0.1", r));

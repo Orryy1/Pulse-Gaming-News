@@ -76,7 +76,7 @@ export function testConfig(
     fillFrame: false,
     upscaleStills: false,
     thumbCandidates: false,
-    gpuvisUrl: "http://127.0.0.1:8797",
+    gpuvisUrl: "http://127.0.0.1:8799",
     codeScenes: false,
     mapPins: false,
     gameLook: false,

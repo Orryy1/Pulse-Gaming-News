@@ -428,3 +428,21 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 **Build:** a series plan first (topic, finish line, episode count, end screen and playlist links), then a run-file entry kind. Rank it in the weekly growth cycle against the existing Wednesday documentary slot before building.
 
 **Measure:** episode 2 picks up 30%+ of episode 1's viewers within 7 days; returning viewers up.
+
+## 51. Small-channel outliers in the benchmark (owner's tip, built 25 Nov by the top creator gap chat)
+
+**Status: built.** The weekly frontier check now marks a third group, "small outliers": gaming videos from channels with 500 to 100,000 subscribers whose views reached 10 times the subscriber count or more in the last 14 days (`C:\Claude\analytics\pulse\frontier\kit\small_outliers.py`, YouTube Data API only, about 1,800 units a week, no vidIQ). First set on 25 Nov: 71 Shorts and 36 long videos (notes: `C:\Claude\analytics\pulse\frontier\small_outliers\2026-11-25-notes.md`). Transcripts and the writers' room comparison run on Fri 27 Nov, after the YouTube block lifts.
+
+**What the first set shows (titles and numbers only):**
+
+- Shorts that won strangers are about the viewer's own play: "you've been playing it wrong", "most people miss this", "5 things you need to know before playing". 14 of 60 English titles say "you"; Pulse's premises are mostly about the industry.
+- A stated stance draws comments: 4.4 and 3.6 comments per 1,000 views on the two stance titles against a median of 0.3.
+- Long winners are personal rankings: 16 of 34 English long outliers are rankings or tier lists, 7 say "I" or "my".
+
+## 52. Player's-eye premises in the writers' room (from item 51)
+
+**Why:** see item 51. Big-channel benchmarks reward reach; small-channel outliers show which premises win strangers, and those are mostly about what the viewer does in the game.
+
+**Build:** `PLAYER_PREMISE` (off by default; share 0.5 by episode, only in the writers' room arm). The room's four angles must include one about the viewer's own play (a hidden mechanic, a common mistake, "what happens if"), sourced from the fact pack or the owner's stream moments, and the weekly small-outlier premise shapes are passed to the angle step as examples, never as titles to copy. Record which angle won.
+
+**Measure:** views per Short against the lane median and engaged rate no lower, 20 Shorts a side. Rank it in the Thursday cycle after the Fri 27 Nov transcript study confirms the pattern.

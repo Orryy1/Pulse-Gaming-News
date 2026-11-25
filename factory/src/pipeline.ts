@@ -11035,6 +11035,8 @@ export async function gatherMedia(
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
       ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
+      // LONG_NAMED_ART: the character the picture shows travels with it to the planner.
+      ...(a.named ? { named: a.named } : {}),
       ...((a as { libKey?: string }).libKey ? { libKey: (a as { libKey?: string }).libKey } : {}),
     });
   }

@@ -417,3 +417,70 @@ Martin, 19 Nov, after the writers' room result: make this permanent across writi
 - Marks on paper are not views. Human hits score 4.7 on the script sheet and get millions on topic, footage and delivery.
 - Every panel costs model calls. Claude is writing again within a budget of about 6 US dollars a day for the whole factory, so panels go on one at a time.
 - The picture and first-second panels are built from the same method but have not had a hand test like the script. Their `check` mode is that test.
+## Status at 13:30 on 25 Nov
+
+**What is live on the Mac mini.** Deployed by the Pulse Gaming News chat.
+
+| Build                                    | Setting on the Mac          | Since              |
+| ---------------------------------------- | --------------------------- | ------------------ |
+| Five no-cost writing rules               | `SHORT_CRAFT_RULES` on      | 19 Nov 10:32       |
+| Writers' room                            | `SCRIPT_ROOM=on`, share 0.5 | 19 Nov 10:40       |
+| Writers' room fixes (`claude/gap-room2`) | Fixes only, no new setting  | 25 Nov 12:58       |
+| Picture-plan panel                       | `SHOT_PLAN_PANEL=check`     | 19 Nov 11:13       |
+| First-second panel                       | `FIRST_SECOND_PANEL=check`  | 19 Nov about 12:03 |
+| Long-video packaging panel               | `PACKAGING_PANEL=check`     | 19 Nov about 12:03 |
+| Hold the answer back                     | `SHORT_PAYOFF_GATE=check`   | 18 Nov 22:06       |
+| Editor's desk                            | `SCRIPT_DESK=check`         | 18 Nov 22:06       |
+
+**The writers' room's first week, 19 to 24 Nov.** Read-only from `/admin/events`.
+
+- 11 Shorts fell in the room's arm. The room wrote 5; 4 fell back to the normal writer; 2 records were incomplete.
+- 2 fallbacks were the writer being cut off (output cap). The other 2 were the fact check blocking a claim the writer had added. The fact check worked as it should; the writer should not have added the claims.
+- One written Short opened on its verdict ("God of War made the right call keeping Kratos."), against the room's own rule.
+- The editor's desk marked the 5 room-written Shorts 4.0 and the 12 others 3.3. That is far short of 20 a side, so it is not a verdict.
+- The room's own critics marked its live Shorts 5.5 to 7. That is below the hand test, as expected: the factory's fact packs come from fetched articles only, with no web search.
+- Volume is the limit. About 2 Shorts a day reach the room's arm, so 20 a side takes until about 5 Dec.
+
+All three faults are fixed in `claude/gap-room2`, live since 12:58 today:
+
+- A bigger output allowance and one retry for the writer.
+- Claims only from the fact pack. Blocked sentences go back to the repair step with the pack's facts, and a new code check flags unsourced claims.
+- Verdict-first openers are refused.
+
+**Ready for the Pulse Gaming News chat to deploy.**
+
+- `claude/gap-longform`, head 369b52daf: typecheck clean, 3,194 of 3,194 tests.
+  - With both settings off, all 36 recorded model calls match the live code.
+  - A code review found seven problems that only appear with the settings on. All are fixed, with tests.
+  - Suggested start: `check` on the next documentary and ranking.
+  - The 21 Nov documentary slot passed without a documentary (a Mass Effect ranking went out), so the hold no longer applies.
+- `claude/gap-untemplate`, head e2e45b943: merged with the live code and reviewed.
+  - A settings-off test on a real stored Short proves the plan and sound list match the live code.
+  - Its like-for-like and four proof renders are queued in the PC orchestrator, waiting for memory.
+
+**Weekly frontier check.**
+
+- The first run (19 Nov) got as far as the marks, then stopped before the report.
+- The task now finishes any half-done week first from its saved files, writes progress after each step, and counts itself done only when the report, history line, queue entries and message all exist.
+- It uses no vidIQ until 11 Dec. Pulse's share of the vidIQ credits is used up, so it finds breakouts with the YouTube Data API and yt-dlp instead.
+
+**Second wave, where each item stands.**
+
+| Item                                             | Where it is                                                                                                                         |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Research with a "why" and a real quote           | The writers' room fact pack (live)                                                                                                  |
+| Refuse thin, obvious and promotion stories       | The room's kill and drop (live, half of Shorts). Not on the normal writer's half                                                    |
+| Premise test for "why" Shorts                    | Covered: `DEMAND_CHECK` (on) ranks Why topics by recent YouTube search demand and skips topics with none                            |
+| Endings that land                                | `SHORT_CRAFT_RULES` plain last line (live) and the room's ending variety                                                            |
+| Pinned comments with a stance                    | The Pulse Gaming News chat's comment-question work (19 Nov)                                                                         |
+| Voices for documentaries                         | `GAME_SPEECH_DIALOGUE` (built by the Pulse Gaming News chat, off): game characters talking with the narrator                        |
+| Music per chapter, silence at seams              | Pulse's own ACE-Step music and game sound stems (built, off); the sparse sound plan waits on `claude/gap-untemplate`                |
+| Retention director to fix, packaging lab to pick | Both live in record-only form (`advise`, `score`). Switching is the Pulse Gaming News chat's call once data is in                   |
+| Pace test (calmer long-video body)               | Not built. Goes to the frontier check's queue with the evidence (body cuts 15 to 19 a minute against 8 to 14 for top documentaries) |
+| A "Long Road" style series                       | Not built: a format decision. Goes to the queue for the weekly growth cycle                                                         |
+
+**What decides the next moves.**
+
+- The writers' room, desk and payoff gate are each judged at 20 Shorts a side, around 5 Dec.
+- The panels' marks are judged against stayed-versus-swiped at the same point.
+- The weekly frontier check (Wednesdays) re-ranks the gaps.

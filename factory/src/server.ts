@@ -92,6 +92,8 @@ import {
 } from "./youtube/branding.ts";
 import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
+import { rewriteRetry } from "./adminretry.ts";
+import { clearDocCheckpoint } from "./editorial/doccheckpoint.ts";
 import { outputAudit } from "./outputaudit.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import {
@@ -1062,15 +1064,29 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
       // rewrite=1: a failed episode that never reached the voice (stopped at writing, e.g. a spoiler or fact-check
       // door after a fix to the writer) is written again from its stored story (20 Nov 2026: the weekly explainer).
-      if (ep && ep.status === "failed" && !ep.assets_json?.audio && url.searchParams.get("rewrite") === "1") {
+      // A rejected one too, voiced or not, unless it reached YouTube: its voice and assets go with the script
+      // (25 Nov 2026: the Cyberpunk 2077 documentary, rejected for disputed lines, src/adminretry.ts).
+      const rewrite = ep && url.searchParams.get("rewrite") === "1" ? rewriteRetry(ep) : undefined;
+      if (ep && rewrite && !rewrite.ok && ep.status === "rejected") {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: rewrite.why }));
+        return;
+      }
+      if (ep && rewrite?.ok) {
         await db.query(
-          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, script_json = NULL WHERE id = $1`,
+          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, script_json = NULL${rewrite.clearAssets ? ", assets_json = NULL" : ""} WHERE id = $1`,
           [ep.id],
         );
-        await logEvent(db, ep.id, "retried", { after: ep.last_error ?? "", rewrite: true }).catch(() => undefined);
+        // A documentary's chapter checkpoint would bring the old chapters back: it goes too.
+        clearDocCheckpoint(cfg.dataDir, ep.id);
+        await logEvent(db, ep.id, "retried", {
+          after: ep.last_error ?? "",
+          rewrite: true,
+          from: ep.status,
+          ...(rewrite.clearAssets ? { assets_cleared: true } : {}),
+        }).catch(() => undefined);
         res
           .writeHead(200, { "content-type": "application/json" })
-          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true }));
+          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true, from: ep.status }));
         return;
       }
       if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {

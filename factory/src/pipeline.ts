@@ -12,6 +12,7 @@ import { openSession, growFromSteam, growFromResearch, growFromArticles } from "
 import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
 import { repairBlockers } from "./factrepair.ts";
 import { longWords, repairLongform } from "./longrepair.ts";
+import { disciplineChapter, docFactLine } from "./docfacts.ts";
 import { countedTitle, disciplineLongform, preFlagFeedback, titleClaimsEvery } from "./editorial/longfacts.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
@@ -4746,6 +4747,8 @@ async function stepScriptDocumentaryBody(
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
     let stillUnsupported: string[] = [];
     let checkRan = false;
+    // DOC_FACT_DISCIPLINE, without records: the last check's disputed lines (undefined when it could not run).
+    let disputed: Array<{ quote: string; problem: string }> | undefined;
     // Only the rules asked for this revision: if its edits don't land the draft stands, and it isn't checked again.
     let ruleOnly = false;
     // The last fact check came back clean with no other problem: only then does the friend pass touch the chapter.
@@ -4887,6 +4890,18 @@ async function stepScriptDocumentaryBody(
           ),
           ...(items ? [] : ["The fact check could not run on this draft."]),
         ];
+      } else if (s.cfg.docFactDiscipline) {
+        // DOC_FACT_DISCIPLINE: each disputed line kept apart, so what survives the rewrites can be mended or cut
+        // (src/docfacts.ts); a check that could not run is undefined, never a pass.
+        disputed = await checkChapterItems(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return undefined;
+          },
+        );
+        unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
       } else
         unsupported = await checkChapter(s.llm, chapter, source).catch(
           (err) => {
@@ -4905,8 +4920,14 @@ async function stepScriptDocumentaryBody(
       clean = !feedback.length;
       if (!feedback.length) break;
       ruleOnly = misses.length > 0 && feedback.length === misses.length;
+      // Under DOC_FACT_DISCIPLINE the disputed lines are settled after the rewrites (mended, cut or the chapter
+      // dropped), so only the other problems stay as warnings.
       if (attempt === attempts - 1)
-        warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+        warnings.push(
+          ...(!strict && s.cfg.docFactDiscipline ? problems : feedback).map(
+            (f) => `${plan.game_title}: ${f}`,
+          ),
+        );
       // Lines the source doesn't back: the next try has more of the record in front of it.
       else if (unsupported.length && s.cfg.writerNotesGuard) await widen();
     }
@@ -4996,6 +5017,71 @@ async function stepScriptDocumentaryBody(
           `${plan.game_title}: ${stillUnsupported.length} unsupported line${stillUnsupported.length === 1 ? "" : "s"} cut.`,
         );
       chapter = cut.chapter;
+    } else if (s.cfg.docFactDiscipline) {
+      // DOC_FACT_DISCIPLINE (src/docfacts.ts): no line the fact check disputes goes on. What survived the rewrites
+      // is mended or its sentence cut, within the chapter's cap, and checked once more; only a clean check keeps the
+      // chapter. Otherwise it is dropped where a refused chapter could be (DOC_DROP_REFUSED_CHAPTER), or the video stops.
+      const settled = await disciplineChapter({
+        chapter: chapter!,
+        disputed,
+        check: (c) => checkChapterItems(s.llm, c, source),
+        maxCutShare: s.cfg.docFactCutPercent / 100,
+      });
+      await logEvent(s.db, ep.id, "doc_fact_discipline", {
+        chapter: index + 1,
+        ok: settled.ok,
+        disputed: disputed?.length ?? null,
+        repairs: settled.repairs,
+        ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
+      }).catch(() => undefined);
+      if (settled.ok) {
+        if (settled.repairs.length) {
+          chapter = settled.chapter;
+          // Mended text: the friend, clarity and humaniser passes stay off it, as for any chapter that wasn't clean.
+          clean = false;
+          warnings.push(docFactLine(`${plan.game_title}: chapter ${index + 1}`, settled.repairs));
+        }
+      } else {
+        const title = outline.title;
+        const fate = refusedChapterFate({
+          on: s.cfg.docDropRefusedChapter,
+          position: chapters.length ? position : 0,
+          written: chapters.length,
+          left: order.length - position - 1,
+          min: s.cfg.docSandboxChapters || pick ? 1 : s.cfg.docMinChapters,
+        });
+        if (!fate.drop) {
+          await s.notify({
+            ping: true,
+            content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still has lines its fact check disputes after the rewrites and the cuts (${settled.why}), and it can't be dropped: ${fate.why}.`,
+          });
+          throw new FatalError(
+            `documentary chapter ${index + 1} fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,
+          );
+        }
+        const kept = loopsWithoutChapter(openLoops.loops, index + 1);
+        openLoops.loops = kept.loops;
+        openLoops.removed.push(...kept.removed);
+        warnings.push(...kept.hanging.map((h) => `${plan.game_title}: ${h}`));
+        warnings.push(
+          `${plan.game_title}: chapter ${index + 1} ("${plan.chapter_title}") dropped, its fact check still disputes it after the rewrites and the cuts: ${settled.why}.`,
+        );
+        await logEvent(s.db, ep.id, "doc_chapter_dropped", {
+          chapter: index + 1,
+          title: plan.chapter_title,
+          why: [settled.why],
+          fate: fate.why,
+          facts: true,
+          loopsRemoved: kept.removed,
+          loopsHanging: kept.hanging,
+        });
+        done.add(index);
+        checkpoint();
+        await s.notify({
+          content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), its fact check still disputes it after the rewrites and the cuts (${settled.why.slice(0, 240)}); the documentary goes on without it (${fate.why}).`,
+        });
+        continue;
+      }
     }
     // Wikipedia never reaches the voice: a line that still names it loses the credit (src/editorial/attribution.ts).
     {
@@ -5332,10 +5418,21 @@ async function stepScriptDocumentaryBody(
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   // The fact check's last word used to be a line in the log nobody reads, and the FFXIV refusals were in it.
+  // DOC_FACT_DISCIPLINE: what was mended or cut, never a disputed line kept (25 Nov 2026: Cyberpunk 2077 kept 18).
+  const factLines = warnings.filter((w) => /: fact check: \d+ disputed line/.test(w));
+  if (factLines.length)
+    await s.notify({
+      content: `✂️ "${outline.title}": the fact check's disputed lines were mended or cut, then checked clean, in ${factLines.length} chapter${factLines.length === 1 ? "" : "s"}. ${factLines[0]!.slice(0, 300)}`,
+    });
   const stillUnbacked = warnings.filter((w) => /Not supported by the source/.test(w));
+  if (stillUnbacked.length && !strict && s.cfg.docFactDiscipline)
+    // Can't happen: every disputed line was settled above. If it ever does, nothing disputed goes to the voice.
+    throw new FatalError(
+      `documentary still holds ${stillUnbacked.length} disputed line${stillUnbacked.length === 1 ? "" : "s"} after the fact discipline: ${stillUnbacked[0]!.slice(0, 200)}`,
+    );
   if (stillUnbacked.length)
     await s.notify({
-      content: `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in. First: ${stillUnbacked[0]!.slice(0, 280)}`,
+      content: `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in (DOC_FACT_DISCIPLINE is off). First: ${stillUnbacked[0]!.slice(0, 280)}`,
     });
   if (longRulesOn(rules)) {
     const said = narrationOfDoc(draft);
@@ -7414,6 +7511,8 @@ async function stepScriptRecap(
   for (const [index, story] of stories.entries()) {
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    // DOC_FACT_DISCIPLINE: the last check's disputed lines, undefined when that check could not run.
+    let disputed: Array<{ quote: string; problem: string }> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       chapter = await writeRecapChapter(s.llm, {
         story,
@@ -7423,25 +7522,57 @@ async function stepScriptRecap(
         previousEnding: chapters.at(-1)?.paragraphs.at(-1)?.narration,
         feedback,
       });
-      const unsupported = await checkChapter(
-        s.llm,
-        chapter,
-        story.source,
-      ).catch(() => [] as string[]);
+      let unsupported: string[];
+      if (s.cfg.docFactDiscipline) {
+        disputed = await checkChapterItems(s.llm, chapter, story.source).catch(() => undefined);
+        unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
+      } else
+        unsupported = await checkChapter(
+          s.llm,
+          chapter,
+          story.source,
+        ).catch(() => [] as string[]);
+      const others = validateRecapChapter(chapter, chapters);
       feedback = [
-        ...validateRecapChapter(chapter, chapters),
+        ...others,
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
       ];
       if (!feedback.length) break;
+      // Under DOC_FACT_DISCIPLINE the disputed lines are settled below, never kept as a warning.
       if (attempt === 2)
-        warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
+        warnings.push(...(s.cfg.docFactDiscipline ? others : feedback).map((f) => `${story.game}: ${f}`));
     }
     if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
       throw new FatalError(
         `recap story "${story.game}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
       );
+    // DOC_FACT_DISCIPLINE (src/docfacts.ts): no disputed line goes on. Mended or cut within the story's cap and
+    // checked once more; a story still disputed stops the recap (its stories, titles and packaging go together).
+    if (s.cfg.docFactDiscipline) {
+      const settled = await disciplineChapter({
+        chapter: chapter!,
+        disputed,
+        check: (c) => checkChapterItems(s.llm, c, story.source),
+        maxCutShare: s.cfg.docFactCutPercent / 100,
+      });
+      await logEvent(s.db, ep.id, "doc_fact_discipline", {
+        story: index + 1,
+        ok: settled.ok,
+        disputed: disputed?.length ?? null,
+        repairs: settled.repairs,
+        ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
+      }).catch(() => undefined);
+      if (!settled.ok)
+        throw new FatalError(
+          `recap story "${story.game}" fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,
+        );
+      if (settled.repairs.length) {
+        chapter = settled.chapter;
+        warnings.push(docFactLine(story.game, settled.repairs));
+      }
+    }
     const grounded = groundCallouts(chapter!, story.source);
     if (grounded.removed.length)
       warnings.push(

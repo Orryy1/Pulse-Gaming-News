@@ -11,6 +11,8 @@ import { packagingAtLeast } from "./packaging/settings.ts";
 import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
 import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
 import { repairBlockers } from "./factrepair.ts";
+import { longWords, repairLongform } from "./longrepair.ts";
+import { countedTitle, disciplineLongform, preFlagFeedback, titleClaimsEvery } from "./editorial/longfacts.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -7388,6 +7390,8 @@ async function adjudicateRanking(
   extra: Array<{ title: string; facts: string }> = [],
   /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
   fix?: (fixes: VaultFix[]) => void | number,
+  /** LONG_FACT_DISCIPLINE: the long ranking's own draft, so a surviving blocker is mended on its cards and moments too. */
+  long?: LongRepairHooks,
 ): Promise<string[]> {
   // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
   const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
@@ -7433,13 +7437,110 @@ async function adjudicateRanking(
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
   // FACT_REPAIR (src/factrepair.ts): one or two lines still wrong after the rewrite are mended without a model
   // and the mended script is checked again; only a clean second check saves the episode.
-  if (s.cfg.factRepair && fix && blockers.length) {
+  // LONG_FACT_DISCIPLINE (src/longrepair.ts): a long ranking is mended on its structured draft, with the last resort
+  // of cutting the blocked sentences inside the 15% cap; the draft already carries any vault fixes.
+  if (long && blockers.length) {
+    if (await repairLongRanking(s, ep, long, blockers, factList)) return [];
+  } else if (s.cfg.factRepair && fix && blockers.length) {
     const base = vaultFixes.length ? applyVaultFixes(script, vaultFixes).value : script;
     if (await repairRanking(s, ep, base, blockers, factList, fix)) return [];
   }
   throw new FatalError(
     `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
   );
+}
+
+/** The long ranking's draft as LONG_FACT_DISCIPLINE's repair reads and replaces it. */
+interface LongRepairHooks {
+  draft: () => import("./editorial/longform.ts").LongformScript;
+  set: (d: import("./editorial/longform.ts").LongformScript) => void;
+}
+
+const blockersOf = (c: { issues: Array<{ severity: string; quote: string; problem: string }> }) =>
+  c.issues.filter((i) => i.severity === "blocker").map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+
+/**
+ * LONG_FACT_DISCIPLINE: the surviving blockers mended on the long draft (line, card and moment together) and checked
+ * again; when that fails, the last resort cuts the blocked sentences (src/longrepair.ts) and checks once more. Only a
+ * clean check replaces the caller's draft, so nothing the checker rejected goes out.
+ */
+async function repairLongRanking(
+  s: Services,
+  ep: Episode,
+  long: LongRepairHooks,
+  blockers: string[],
+  factList: Array<{ title: string; facts: string }>,
+): Promise<boolean> {
+  const start = long.draft();
+  const ctx = speakContext(longformToScript(start).say_as);
+  const speak = (t: string) => speakable(t, ctx);
+  const recheck = async (d: typeof start) => {
+    const c = await factCheckRanking(s.llm, longformToScript(d), factList);
+    const left = blockersOf(c);
+    return { passed: c.verdict !== "fail" && !left.length, left, summary: c.summary };
+  };
+  const first = repairLongform(start, blockers, speak);
+  let from = start;
+  let cut = 0;
+  let open = blockers;
+  if (!first.unrepaired.length && first.repairs.length) {
+    const r = await recheck(first.draft);
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: r.passed ? "repaired" : "recheck_failed",
+      long: true,
+      repairs: first.repairs,
+      left: r.left,
+      summary: r.summary,
+    });
+    if (r.passed) {
+      long.set(first.draft);
+      log("info", "long fact-check blockers repaired", {
+        id: ep.id,
+        repairs: first.repairs.map((x) => `${x.kind}: ${x.quote}`),
+      });
+      return true;
+    }
+    if (!r.left.length) return false;
+    from = first.draft;
+    cut = first.cut;
+    open = r.left;
+  } else {
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: "not_repairable",
+      long: true,
+      blockers,
+      unrepaired: first.unrepaired,
+    });
+  }
+  // The last resort: cut the blocked sentences rather than lose the whole video (never past the 15% cap of the
+  // draft as it stood before any repair).
+  const baseWords = longWords(start);
+  const last = repairLongform(from, open, speak, { lastResort: true, baseWords, alreadyCut: cut });
+  if (last.unrepaired.length || !last.repairs.length) {
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: "cut_not_possible",
+      long: true,
+      blockers: open,
+      unrepaired: last.unrepaired,
+    });
+    return false;
+  }
+  const r2 = await recheck(last.draft);
+  await logEvent(s.db, ep.id, "fact_repair", {
+    outcome: r2.passed ? "repaired_by_cut" : "cut_recheck_failed",
+    long: true,
+    repairs: last.repairs,
+    cut_words: last.cut,
+    left: r2.left,
+    summary: r2.summary,
+  });
+  log(r2.passed ? "info" : "warn", r2.passed ? "long fact-check blockers cut" : "long fact cut did not pass the re-check", {
+    id: ep.id,
+    repairs: last.repairs.map((x) => `${x.kind}: ${x.quote}`),
+  });
+  if (!r2.passed) return false;
+  long.set(last.draft);
+  return true;
 }
 
 /** FACT_REPAIR: mends the surviving blockers, re-checks, and hands the fixes to the caller's draft on a pass. */
@@ -7561,7 +7662,25 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       rules,
       argues: s.cfg.longArgues,
       contract: s.cfg.longOpeningContract,
+      discipline: s.cfg.longFactDiscipline,
     });
+    // LONG_FACT_DISCIPLINE (src/editorial/longfacts.ts): the checks that need no model, before the fact-check reads it.
+    let preFeedback: string[] = [];
+    if (s.cfg.longFactDiscipline) {
+      // No fact pack carries a series' complete list today, so an "Every X" title is always counted (rule a).
+      const pre = disciplineLongform(
+        draft,
+        facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
+      );
+      draft = pre.draft;
+      preFeedback = preFlagFeedback(pre.flags);
+      if (pre.flags.length)
+        await logEvent(s.db, ep.id, "long_precheck", {
+          attempt,
+          fixed: pre.flags.filter((f) => f.fixed).map((f) => `${f.kind}: ${f.quote}`),
+          named: preFeedback,
+        });
+    }
     const problems = [
       ...validateLongform(draft, rules, {
         argues: s.cfg.longArgues === "fix",
@@ -7585,12 +7704,21 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
         draft = r.value;
         return r.applied;
       },
+      s.cfg.longFactDiscipline
+        ? {
+            draft: () => draft!,
+            set: (d) => {
+              draft = d;
+            },
+          }
+        : undefined,
     );
     if (!problems.length && !factual.length) break;
     // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
     if (attempt === 1 && problems.length)
       await logEvent(s.db, ep.id, "style_warnings", { problems });
-    feedback = [...factual, ...problems];
+    // The pre-check's named lines ride along with a rewrite that is happening anyway; alone they never cost one.
+    feedback = [...factual, ...problems, ...preFeedback];
   }
   if (!draft) throw new Error("long-form script produced nothing");
   if (longRulesOn(rules)) {
@@ -13383,6 +13511,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       allow: s.cfg.titleShapeAllow,
     }).catch(() => [] as string[]);
     script.youtube.title_variants = variants;
+    // LONG_FACT_DISCIPLINE: a Test & compare variant written after the fact-check never brings back an unproven
+    // "Every X" title: it is counted like the main title was, or left out.
+    if (s.cfg.longFactDiscipline && script.runtime === "long" && script.evergreen_format === "ranking") {
+      const n = script.entries?.length ?? 0;
+      script.youtube.title_variants = variants
+        .map((v) => countedTitle(v, n) ?? v)
+        .filter((v) => !titleClaimsEvery(v));
+    }
     await applyTitleShape(s, ep, script);
     await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
       ep.id,

@@ -153,6 +153,7 @@ export function testConfig(
     codexVision: false,
     codexGrammarFallback: true,
     factRepair: true,
+    longFactDiscipline: false,
     visionPaidFallback: false,
     codexTimeoutMinutes: 20,
     codexPython: "python",

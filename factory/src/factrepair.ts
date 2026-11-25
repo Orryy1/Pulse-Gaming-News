@@ -70,7 +70,7 @@ const NOT_ROUNDING =
 /** A line that announces a rank: cutting it would leave a hole in the countdown. */
 const ORDINAL =
   "first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|last|\\d+(?:st|nd|rd|th)";
-const RANK_LINE = new RegExp(
+export const RANK_LINE = new RegExp(
   [
     String.raw`\bnumber\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\b`,
     String.raw`\bno\.\s?\d`,
@@ -131,14 +131,14 @@ const LEADING_JOIN = /^\s*[,;:]\s*(?:but|yet|though|although|still)\b[\s,]*/i;
 const TRAILING_JOIN =
   /\s*[,;:]\s*(?:but|yet|and|so|though|although|while)\s*$/i;
 
-const SENTENCE_SPLIT = /(?<=[.?!])\s+/;
+export const SENTENCE_SPLIT = /(?<=[.?!])\s+/;
 const TRAILING_PUNCT = /[\s.,;:!?"'“”‘’]+$/;
 const LEADING_PUNCT = /^[\s"'“”‘’]+/;
 
-const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
-const core = (t: string) =>
+export const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+export const core = (t: string) =>
   t.replace(TRAILING_PUNCT, "").replace(LEADING_PUNCT, "").trim();
-const lower = (t: string) =>
+export const lower = (t: string) =>
   t.toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
 
 /** Splits "Fact-check: "<quote>" - <problem>" into its parts; anything else is not a repairable blocker. */
@@ -154,7 +154,7 @@ export function parseBlocker(
   return quote ? { quote, problem } : undefined;
 }
 
-interface Located {
+export interface Located {
   field: string;
   sentence: string;
   index: number; // sentence position within the field
@@ -162,7 +162,7 @@ interface Located {
 }
 
 /** The raw sentence whose spoken form contains the quote (the checker reads the spoken script). */
-function locate(
+export function locate(
   fields: readonly string[],
   quote: string,
   speak: (t: string) => string,

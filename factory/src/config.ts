@@ -215,6 +215,14 @@ export interface Config {
    * those lines mended (a rounded figure hedged, an unsupported side line cut) and checked again, instead of failing. */
   factRepair: boolean;
   /**
+   * LONG_FACT_DISCIPLINE (default off, src/editorial/longfacts.ts): a long ranking is checked without a model before its
+   * fact-check (absolutes and series-wide firsts named for the rewrite; cards whose figures, games or dates are not in
+   * the fact pack dropped; an unproven "Every X" title counted; a sourceless methodology line cut), its writers get the
+   * same rules, and a blocker that survives the rewrite is mended on the card as well as the line, or as a last resort
+   * its sentence is cut (within the 15% cap) instead of the whole episode failing.
+   */
+  longFactDiscipline: boolean;
+  /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
    */
@@ -1742,6 +1750,7 @@ export function loadConfig(): Config {
     codexVision: bool("CODEX_VISION", false),
     codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
     factRepair: bool("FACT_REPAIR", true),
+    longFactDiscipline: bool("LONG_FACT_DISCIPLINE", false),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
@@ -2737,6 +2746,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexVision: c.codexVision,
     codexGrammarFallback: c.codexGrammarFallback,
     factRepair: c.factRepair,
+    longFactDiscipline: c.longFactDiscipline,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,

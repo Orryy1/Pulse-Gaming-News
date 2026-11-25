@@ -53,7 +53,11 @@ import {
   thumbVerdictProblems,
   verdictLineProblems,
 } from "./argues.ts";
-import { OPENING_WORDS_MAX, openingLengthProblems, stockOpenerProblems } from "./longcontract.ts";
+import {
+  OPENING_WORDS_MAX,
+  openingLengthProblems,
+  stockOpenerProblems,
+} from "./longcontract.ts";
 import {
   EvergreenTopicSchema,
   type EvergreenTopic,
@@ -301,10 +305,36 @@ export interface LongformOptions {
    * contract's 90 words (openingCapOn).
    */
   contract?: "off" | "check" | "fix";
+  /** LONG_FACT_DISCIPLINE (src/editorial/longfacts.ts): no sourceless absolutes, firsts, methods, "every" titles or card figures. */
+  discipline?: boolean;
 }
 
+/**
+ * LONG_FACT_DISCIPLINE: the trust line names the rule, never sources or tests the facts do not hold. The old line
+ * ("what was weighed: sales, reviews, how each plays now") became, on 22 Nov 2026, "All of this comes from launch
+ * reviews, the sales figures the studio has reported, patch histories and how each game runs on today's hardware".
+ */
+const DISCIPLINE_TRUST =
+  "the rule, applied the same way to every entry; never a list of sources or tests such as reviews, sales figures, patch histories or hardware, and never a claim to have played them";
+const DISCIPLINE_TRUST_STACK =
+  "The trust line names the rule the order is judged by, never what it is based on (no reviews, sales, patch histories or tests unless the facts given hold them), and never a claim to have played them.";
+/** LONG_FACT_DISCIPLINE: the shot list's cards. */
+const DISCIPLINE_CARD_RULE =
+  "A graphic shows only this game: never another game's name or year on a stat, date, score or milestone, and a milestone is a record or a first only when the sentence says so from the facts. No lengths or times ('a few hours', 'one evening') on a card.";
+
+/** The writers' rules under LONG_FACT_DISCIPLINE: the plan and each entry get them. */
+export const DISCIPLINE_WRITER_RULE = `Fact discipline (a fact-check reads every line, card, title and description against the facts given):
+- No absolute or superlative the facts don't state: never, always, only, every other, no other, the whole way, exactly what. Say "rarely", "one of the few", "most".
+- No "first" across a series or the industry ("the first God of War not made by Santa Monica") unless the facts say it: spin-offs, handheld and mobile games count as earlier entries.
+- Never say what the ranking is based on (launch reviews, sales figures, patch histories, hardware tests, how each runs on today's hardware). Give the rule the order is judged by, never a list of sources or tests.
+- Title and description: no "Every" or "All" unless the facts list the whole series and every one is ranked. Say the count instead ("12 2D Mario Games, Ranked").
+- A mechanic is described only as the facts or the game itself show it: never "so you could see exactly what they saw".
+- A card shows only this game's own name, its own dates and figures that appear in its facts; no lengths or times ("a few hours", "one evening") unless the facts give them.`;
+
 /** Whether a ranking's intro is held to the contract's 90-word cap while it's written (pure). */
-export function openingCapOn(opts: Pick<LongformOptions, "argues" | "contract">): boolean {
+export function openingCapOn(
+  opts: Pick<LongformOptions, "argues" | "contract">,
+): boolean {
   return opts.contract === "fix" || opts.argues === "fix";
 }
 
@@ -312,8 +342,13 @@ export function openingCapOn(opts: Pick<LongformOptions, "argues" | "contract">)
  * A ranking's rules under the 90-word opening cap (pure): the contract supersedes the stacked hook (LONG_HOOK_STACK),
  * so the hook stack is 0 there; otherwise the rules come back unchanged.
  */
-export function rankingRules(rules: LongRules, opts: Pick<LongformOptions, "argues" | "contract">): LongRules {
-  return openingCapOn(opts) && rules.hookStack ? { ...rules, hookStack: 0 } : rules;
+export function rankingRules(
+  rules: LongRules,
+  opts: Pick<LongformOptions, "argues" | "contract">,
+): LongRules {
+  return openingCapOn(opts) && rules.hookStack
+    ? { ...rules, hookStack: 0 }
+    : rules;
 }
 
 /** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
@@ -324,7 +359,10 @@ export function hookRule(punchy = false): string {
 }
 
 /** The intro's word range: a stacked hook has more to say (LONG_HOOK_STACK). */
-export function introWords(rules: LongRules = NO_LONG_RULES, capped = false): [number, number] {
+export function introWords(
+  rules: LongRules = NO_LONG_RULES,
+  capped = false,
+): [number, number] {
   if (capped) return [40, OPENING_WORDS_MAX];
   return rules.hookStack ? [90, 200] : LONG_INTRO_WORDS;
 }
@@ -345,8 +383,8 @@ export function longformPrompt(opts: LongformOptions = {}): string {
   const rules = opts.rules ?? NO_LONG_RULES;
   const intro = rules.hookStack
     ? `1. intro.narration: 110-190 words. ${hookStackRule(rules.hookStack, "ranking")}
-Its first sentence is 5-10 words, the line the opening card shows. The surprises come from the order itself: a placement people will argue with, a detail about a named entry; a chapter number here counts entries in the order they're spoken. The trust line says what was weighed (sales, reviews, how each plays now), never a claim to have played them. The saved promise is number one, held to the end. No greeting, no channel name, no "welcome" or "today we're ranking".`
-    : `1. intro.narration: 60-120 words, so entry one starts within about forty seconds. ${hookRule(opts.punchyHook)}. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (what was weighed: sales, reviews, how each plays now; never a claim to have played them). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.`;
+Its first sentence is 5-10 words, the line the opening card shows. The surprises come from the order itself: a placement people will argue with, a detail about a named entry; a chapter number here counts entries in the order they're spoken. ${opts.discipline ? DISCIPLINE_TRUST_STACK : "The trust line says what was weighed (sales, reviews, how each plays now), never a claim to have played them."} The saved promise is number one, held to the end. No greeting, no channel name, no "welcome" or "today we're ranking".`
+    : `1. intro.narration: 60-120 words, so entry one starts within about forty seconds. ${hookRule(opts.punchyHook)}. Then the rule in one sentence, naming two or three things every game is judged on (how it plays now, what it changed, whether it holds up), in your own words, and why the viewer can trust the order (${opts.discipline ? DISCIPLINE_TRUST : "what was weighed: sales, reviews, how each plays now; never a claim to have played them"}). Then say plainly that number one is held to the end and that at least one placement will be argued with. No greeting, no channel name, no "welcome" or "today we're ranking": in a study of 1,573 long gaming videos, a greeting or brand line came first in 15 of the 50 weakest and 1 of the 50 strongest.`;
   const sentencesWanted = rules.sentenceGate
     ? "ten to sixteen short sentences"
     : "six to ten sentences";
@@ -361,9 +399,9 @@ ${intro}
 2. entries: ${LONG_ENTRIES_MIN}-${LONG_ENTRIES_MAX}, spoken from the lowest rank to number one. Each narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} words, ${sentencesWanted}: what the game is and when it landed, the story around it (how it was made or received, from the facts given or long-established knowledge), two specific details a fan would nod at (a mechanic, a level, a moment), the fair counterpoint, and why it sits here, argued against its neighbor ("above Vice City because...", "below San Andreas, and here's the one thing that kept it there"), never a plot synopsis followed by praise words. Commit to every call: no "arguably", "for our money" or "it's hard to say". Numbers come as a contrast (a figure and the fact that undercuts it), never a list of stats. Place one deliberate surprise somewhere in the order and defend it. The last line hands over to the next entry. Vary the sentence openings; never start two entries the same way. verdict_chip is 1-4 words. footage names the trailer moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In a ranking that means about one per entry, often the line that hands over to the next entry ("So why does the 'bad' one land this high?"), and one near the end of the intro.
 3. outro.narration: 60-150 words. Why number one wins by the rule, the top three in one line, the ranking's hardest call, honestly, the one placing you're least sure of, and a last line that returns to the image or fact the intro opened on. It asks nothing of the viewer: no sentence inviting comments.
-The YouTube title names the franchise and the promise in plain words ("Every GTA Game Ranked, and Number One Isn't San Andreas"); leave out years and "top 10" counts unless the count is the point, and never "changed gaming forever".
+The YouTube title names the franchise and the promise in plain words (${opts.discipline ? `"11 GTA Games Ranked, and Number One Isn't San Andreas"` : `"Every GTA Game Ranked, and Number One Isn't San Andreas"`}); leave out years and "top 10" counts unless the count is the point, and never "changed gaming forever".
 Keep every number to the Steam facts provided or long-established knowledge. List every factual claim in "claims".
-4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.${ruleLines(rules)}${loops}`;
+4. moments: for every entry, exactly one per sentence of its narration, in order. This is the picture editor's shot list. "show" names the precise thing on screen while that sentence is spoken (the mission, the character, the map, the weapon, the twist), never a generic "gameplay". About half the moments carry a graphic: a stat, date or score the sentence says, a short list of things it names, or a two-row compare. Every figure in a graphic must appear in that entry's narration. "emphasis" lands a name or phrase from the sentence on screen in about a third of the moments; leave it empty when the moment has a graphic.${ruleLines(rules)}${loops}${opts.discipline ? `\n${DISCIPLINE_WRITER_RULE}` : ""}`;
 }
 
 export function longformTopicPrompt(): string {
@@ -433,12 +471,16 @@ function planPrompt(opts: LongformOptions = {}): string {
 This step plans the video only: the order, the intro, the outro and the packaging. For each entry give its rank, title, year, platforms, verdict_chip and an "angle": brief notes on the detail and the reason it sits there. The entry paragraphs and shot lists are written in a later step from your plan.`;
 }
 
-function entryPrompt(rules: LongRules = NO_LONG_RULES, argues?: [number, number]): string {
+function entryPrompt(
+  rules: LongRules = NO_LONG_RULES,
+  argues?: [number, number],
+  discipline = false,
+): string {
   return `${HOUSE}
 
 You are writing one entry of a long-form ranking video, from the plan you are given. The narration is ${LONG_ENTRY_WORDS_MIN}-${LONG_ENTRY_WORDS_MAX} spoken words (count them), ${rules.sentenceGate ? "ten to sixteen short sentences" : "three to five sentences"}: what the game is and when it landed, the specific detail from the plan, and why it sits at this rank by the criterion. It starts by naming the rank and the game in a fresh way: never open the way an earlier entry opened (they are listed). Say the game's full title once, then the short form people use; a person's role goes with their first mention in the video only. In the whole video "we think" comes at most twice and "in fairness" and "which, fair" once each at most. footage names an in-game moment to show, with 1-4 keywords.
 ${REHOOK_RULE} In one entry that means one such line, often the last one handing over to the next entry; never reuse the wording of a re-hook already in the video (they are listed).
-List every factual claim in this entry in "claims".${ruleLines(rules)}${argues ? `\n${arguesEntryRule(argues)}` : ""}`;
+List every factual claim in this entry in "claims".${ruleLines(rules)}${argues ? `\n${arguesEntryRule(argues)}` : ""}${discipline ? `\n${DISCIPLINE_WRITER_RULE}` : ""}`;
 }
 
 /** The shot list for one entry: as many moments as the narration has sentences, numbered to match. */
@@ -479,9 +521,7 @@ export async function writeMoments(
       const r = await llm.structured({
         site: "longform.shots",
         tier: "mid",
-        system: opts.soundBeats
-          ? `${MOMENTS_PROMPT}\n${RANK_BEATS_RULE}`
-          : MOMENTS_PROMPT,
+        system: `${opts.soundBeats ? `${MOMENTS_PROMPT}\n${RANK_BEATS_RULE}` : MOMENTS_PROMPT}${opts.discipline ? `\n${DISCIPLINE_CARD_RULE}` : ""}`,
         content: `Game: ${game}${others.length ? `\nOther entries in this ranking: ${others.join("; ")}` : ""}\n\n${sentences.map((x, i) => `${i + 1}. ${x}`).join("\n")}\n\nReturn exactly ${n} moments.`,
         schema: momentsSchema(n),
         effort: "low",
@@ -530,7 +570,8 @@ export async function writeLongform(
   opts: LongformOptions = {},
 ): Promise<LongformScript> {
   // Under the 90-word cap a stacked hook can't fit: the contract's opening replaces it (rankingRules).
-  if (opts.rules && openingCapOn(opts)) opts = { ...opts, rules: rankingRules(opts.rules, opts) };
+  if (opts.rules && openingCapOn(opts))
+    opts = { ...opts, rules: rankingRules(opts.rules, opts) };
   // Steam facts given up front, or looked up once the plan names the games.
   let facts = Array.isArray(factsFor) ? factsFor : [];
   const factBlock = facts.length
@@ -569,7 +610,10 @@ export async function writeLongform(
     // LONG_ARGUES=fix: the fight named inside 30 s and the verdict on the thumbnail.
     ...(opts.argues === "fix"
       ? [
-          ...inviteProblems(plan.intro.narration, plan.entries.map((x) => x.game_title)),
+          ...inviteProblems(
+            plan.intro.narration,
+            plan.entries.map((x) => x.game_title),
+          ),
           ...thumbVerdictProblems(
             plan.youtube?.thumb_text,
             plan.youtube?.title ?? plan.title,
@@ -621,37 +665,42 @@ export async function writeLongform(
       loopBrief(loops, spokenAt),
       ...(plan.intro.hook_stack?.surprises ?? [])
         .filter((x) => x.chapter === spokenAt)
-        .map((x) => `The intro promised this surprise and this entry pays it: "${x.tease}"`),
+        .map(
+          (x) =>
+            `The intro promised this surprise and this entry pays it: "${x.tease}"`,
+        ),
     ].filter(Boolean);
     const content = `${brief}\nTitle: ${plan.title}\n\nThe full ranking, spoken from the bottom up:\n${outline}\n\nWrite entry #${e.rank} of ${order.length}: ${e.game_title} (${e.year}, ${e.platforms}). Verdict chip: ${e.verdict_chip}. Notes: ${e.angle}${
       owed.length ? `\n\n${owed.join("\n")}` : ""
     }${
-        own.length
-          ? `
+      own.length
+        ? `
 
 ${own.join("\n")}`
-          : ""
-      }${
-        before
-          ? `
+        : ""
+    }${
+      before
+        ? `
 
 How the earlier entries opened (do not repeat these openings):
 ${before}`
-          : ""
-      }${
-        hooks.length
-          ? `
+        : ""
+    }${
+      hooks.length
+        ? `
 
 Re-hooks already in the video (never reuse their wording):
 ${hooks.map((h) => `- ${h}`).join("\n")}`
-          : ""
-      }${fb}`;
+        : ""
+    }${fb}`;
     // LONG_ARGUES=fix: time follows interest, so this entry's length depends on where it sits.
     const range =
-      opts.argues === "fix" ? entryWordRange(written.length, order.length) : undefined;
+      opts.argues === "fix"
+        ? entryWordRange(written.length, order.length)
+        : undefined;
     let body = await llm.structured({
       site: "longform.write",
-      system: entryPrompt(rules, range),
+      system: entryPrompt(rules, range, opts.discipline),
       content,
       schema: LongformEntryBodySchema,
       effort: "medium",
@@ -669,14 +718,16 @@ ${hooks.map((h) => `- ${h}`).join("\n")}`
     ].filter((x): x is string => Boolean(x));
     // LONG_ARGUES=fix: a verdict to close on, the entry's own length and the narrator's "I"; each entry goes back once
     // for these, outside the shared rule budget.
-    const argued = range ? arguesEntryProblems(body.narration, e.game_title, range, before_) : [];
+    const argued = range
+      ? arguesEntryProblems(body.narration, e.game_title, range, before_)
+      : [];
     if ((misses.length && revisions > 0) || argued.length) {
       if (misses.length && revisions > 0) revisions--;
       misses.push(...argued);
       body =
         (await reviseByEdits(llm, {
           site: "longform.write",
-          system: entryPrompt(rules, range),
+          system: entryPrompt(rules, range, opts.discipline),
           content,
           schema: LongformEntryBodySchema,
           draft: body,
@@ -729,7 +780,9 @@ export function arguesEntryProblems(
   const p = verdictLineProblems(narration, title);
   const n = wordCount(narration);
   if (n < range[0] || n > range[1])
-    p.push(`"${title}" is ${n} words; at its place in the ranking it runs ${range[0]}-${range[1]}.`);
+    p.push(
+      `"${title}" is ${n} words; at its place in the ranking it runs ${range[0]}-${range[1]}.`,
+    );
   const i = iShortfall(before, narration);
   if (i) p.push(i);
   p.push(...stockOpenerProblems(before.join(" "), narration));

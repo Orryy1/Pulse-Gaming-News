@@ -304,7 +304,9 @@ export function untagged(
   v: VodIndex,
   t: VodTagFile,
 ): Array<{ from: number; to: number; shots: number[] }> {
-  const described = v.shots.filter((s) => s.desc && s.desc !== "-");
+  // Stretch mode: every picture shot is tagged through its stretch, described or not.
+  const described =
+    v.describe === "stretch" ? v.shots.filter((s) => !s.blank && !s.menu) : v.shots.filter((s) => s.desc && s.desc !== "-");
   return stretchesOf(described).filter((s) => !t.stretches[stretchKey(s)]);
 }
 
@@ -437,6 +439,24 @@ export async function tagVodStretches(
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
   return { tagged, left: todo.length - tagged };
+}
+
+/**
+ * Stretch mode: each picture shot without words takes them from its stretch's tags (pure): what he is doing, the
+ * vehicle and the place, and a menu stretch makes its shots menus. Returns how many shots changed.
+ */
+export function wordsFromTags(v: VodIndex, t: VodTagFile): number {
+  let n = 0;
+  for (const s of v.shots) {
+    if (s.blank || s.menu || s.desc) continue;
+    const tag = tagsAt(t, (s.start + s.end) / 2);
+    if (!tag) continue;
+    if (tag.menu) s.menu = true;
+    s.desc =
+      [tag.activity, tag.vehicle, tag.place ? `in ${tag.place}` : ""].filter(Boolean).join(", ") || "-";
+    n++;
+  }
+  return n;
 }
 
 /** The tags of the stretch a moment falls in (pure). */

@@ -131,10 +131,14 @@ if (cmd === "index") {
           await fs.rm(vodIndexDir(dataDir, r.vodId), { recursive: true, force: true });
         }
       }
-      // The channel goes on the index first: the credit, the order and the facecam rule all read it.
+      // The channel goes on the index first: the credit, the order and the facecam rule all read it. Streams are
+      // tagged by the half-minute stretch, not described shot by shot (VOD_DESCRIBE=shots for the old way).
       const v0 = await openVodIndex(r.file, r.game!, { dataDir });
-      if (v0.channel !== r.source.channel)
-        await saveVodIndex(dataDir, { ...v0, channel: r.source.channel });
+      const describe = process.env.VOD_DESCRIBE === "shots" ? undefined : ("stretch" as const);
+      if (v0.channel !== r.source.channel || v0.describe !== describe) {
+        const { describe: _old, ...rest } = v0;
+        await saveVodIndex(dataDir, { ...rest, channel: r.source.channel, ...(describe ? { describe } : {}) });
+      }
       const places =
         (await loadSceneIndex(dataDir, r.game!).catch(() => undefined))
           ?.places ?? [];

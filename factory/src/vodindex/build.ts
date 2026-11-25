@@ -33,7 +33,7 @@ import {
 } from "../sceneindex/schema.ts";
 import type { Embedder } from "../semantic/embed.ts";
 import { embedShots, loadFailedShots, loadShotVectors, unembedded, vectorFile } from "../semantic/shots.ts";
-import { loadVodTags, tagVodStretches, untagged, type TagDeps } from "./tags.ts";
+import { loadVodTags, tagVodStretches, untagged, wordsFromTags, type TagDeps } from "./tags.ts";
 import {
   asSceneIndex,
   emptyVodIndex,
@@ -270,6 +270,8 @@ export async function indexVodStretch(
 
 /** Shots that are pictures and have not been looked at yet. */
 export function undescribedVod(v: VodIndex): SceneShot[] {
+  // Stretch mode: shots take their words from the stretch tags, never described one by one.
+  if (v.describe === "stretch") return [];
   return v.shots.filter((x) => !x.blank && !x.menu && !x.desc);
 }
 
@@ -404,6 +406,14 @@ export async function vodIndexStep(
         return { index: v, did: "waiting" };
       const r = await tagVodStretches(v, { dataDir: s.dataDir, places: s.tags.places, limit: s.tags.batch }, deps.tag);
       return { index: v, did: r.tagged ? "tagged" : "waiting" };
+    }
+    // Stretch mode, all tagged: the shots take their words from the tags, once.
+    if (v.describe === "stretch" && v.shots.some((x) => !x.blank && !x.menu && !x.desc)) {
+      const fresh = (await loadVodIndex(s.dataDir, v.vodId)) ?? v;
+      if (wordsFromTags(fresh, await loadVodTags(s.dataDir, v.vodId))) {
+        await saveVodIndex(s.dataDir, fresh);
+        return { index: fresh, did: "tagged" };
+      }
     }
     if (s.tags.embedder && s.tags.model) {
       const file = vectorFile(vodIndexDir(s.dataDir, v.vodId), s.tags.model);

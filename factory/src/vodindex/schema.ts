@@ -32,6 +32,12 @@ export interface VodIndex {
   game: string;
   /** The Twitch channel it was streamed on (src/vodindex/sources.ts); absent: the owner's own (tinotv). */
   channel?: string;
+  /**
+   * "stretch" (the PC's stream indexer, 25 Nov 2026): shots are not described one by one (about 14 s a shot on the
+   * PC's vision model, 60 hours for 33 hours of streams); each half-minute stretch is tagged instead and its shots
+   * take their words from the tags. Absent: every shot described first, as the miner always did.
+   */
+  describe?: "stretch";
   /** YYYY-MM-DD the stream was recorded, from the file name; "" when unknown. */
   recordedOn: string;
   /** Seconds. */
@@ -130,6 +136,7 @@ export function parseVodIndex(raw: unknown): VodIndex | undefined {
     title: String(o.title ?? ""),
     game: String(o.game ?? ""),
     ...(typeof o.channel === "string" && o.channel ? { channel: o.channel } : {}),
+    ...(o.describe === "stretch" ? { describe: "stretch" as const } : {}),
     recordedOn: String(o.recordedOn ?? ""),
     duration: o.duration,
     builtAt: String(o.builtAt ?? ""),

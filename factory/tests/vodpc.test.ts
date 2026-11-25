@@ -13,6 +13,8 @@ import {
   vodSources,
 } from "../src/vodindex/sources.ts";
 import {
+  wordsFromTags,
+  untagged,
   parseTags,
   tagPrompt,
   taggedSceneIndex,
@@ -635,4 +637,20 @@ test("indexFirstCutscenes: with an own allowance the recordings are tried first 
     async () => assert.fail("no allowance left"),
   );
   assert.deepEqual(none, []);
+});
+
+test("stretch mode: streams are tagged by the stretch, not described shot by shot, and the shots take the tags' words", async () => {
+  const { undescribedVod } = await import("../src/vodindex/build.ts");
+  const bare = vod("x.mp4", { describe: "stretch" });
+  for (const s of bare.shots) s.desc = "";
+  assert.deepEqual(undescribedVod(bare), []);
+  assert.equal(untagged(bare, tagsOf([])).length, 2, "every picture shot's stretch wants tags");
+  assert.equal(untagged({ ...bare, describe: undefined }, tagsOf([])).length, 0, "the old way waits for descriptions");
+  const t = tagsOf([tag(0, 20, { activity: "riding a scooter", place: "Vice Beach" }), tag(30, 50, { menu: true })]);
+  assert.equal(untagged(bare, t).length, 0);
+  assert.equal(wordsFromTags(bare, t), 4);
+  assert.equal(bare.shots[0]!.desc, "riding a scooter, a scooter, in Vice Beach");
+  assert.equal(bare.shots[2]!.menu, true);
+  assert.equal(wordsFromTags(bare, t), 0, "once");
+  assert.equal(parseVodIndex(bare)?.describe, "stretch");
 });

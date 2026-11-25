@@ -597,3 +597,10 @@ test("digests are not alerts", () => {
   );
   assert.deepEqual(got, []);
 });
+
+test("nothing published in 24 hours is a fault from 14:00 UK, not in the morning", () => {
+  const dry = mac({ health: { ok: true, published_24h: "0", in_flight: 6 } });
+  assert.ok(healthFaults(dry, NOW).some((f) => f.key === "nothing-published-24h"));
+  assert.ok(!healthFaults(dry, new Date("2026-11-25T09:00:00Z")).some((f) => f.key === "nothing-published-24h"));
+  assert.ok(!healthFaults(mac({ health: { ok: true, published_24h: "3" } }), NOW).some((f) => f.key === "nothing-published-24h"));
+});

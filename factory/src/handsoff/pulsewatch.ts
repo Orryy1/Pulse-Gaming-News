@@ -247,6 +247,21 @@ export function healthFaults(m: MacFacts, now: Date): Fault[] {
       what: `The factory has written nothing to its log for over 30 minutes (last ${m.lastLogAt?.toISOString() ?? "never"})`,
       confirmRuns: 2,
     });
+  // Nothing at all published in 24 hours, judged from 14:00 UK (after the first slots of the day had their chance).
+  const ukHour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/London",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(now),
+  );
+  if (m.health?.ok && Number(m.health.published_24h ?? 1) === 0 && ukHour >= 14)
+    out.push({
+      key: "nothing-published-24h",
+      severity: "fault",
+      what: "Nothing has been published in the last 24 hours",
+      detail: `health: in_flight ${m.health.in_flight}, producing ${m.health.producing}, scheduled ${m.health.scheduled}`,
+    });
   return out;
 }
 

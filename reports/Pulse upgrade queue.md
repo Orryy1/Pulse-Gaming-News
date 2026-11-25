@@ -452,3 +452,7 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 **Status: built and merged** as `DOC_CHAPTER_CHECKPOINT` (on by default) on `claude/engine-doccheckpoint` (7a435d030, bb9e11320). Fixes the 25 Nov fault ledger row "documentary restarts lose chapters". Judged after the next two documentaries or by 9 Dec (see the improvement log).
 
 **Left:** retrospectives and "every game" videos are not checkpointed yet: their outline step writes sections, acts and the roster onto the topic in memory, so the checkpoint would need to carry those too. The other half of the fault, 16 restarts a day near slots, is not addressed here.
+
+## 54. The Friday long round-up past the Shorts allowance (fix session, 25 Nov 21:10)
+
+Since claude/doc-after-target (969f362f9) the documentary and the long ranking are still picked once the day's Shorts are made. The Friday long round-up and long explainers (maybeSelectWeekly's longform recap/explainer) are not: maybeSelectWeekly also makes Shorts (deals, evergreen), so it cannot simply be called after the allowance. Needs a long-only entry point for the weekly lane, plus a test like tests/doc-after-target.test.ts. Small; do before a Friday round-up fails late in the day. Also from the review: the long-ranking and documentary pickers can now spend one model call per 10-minute tick in the evening while their slot is due and the picker keeps refusing; watch the usage total.

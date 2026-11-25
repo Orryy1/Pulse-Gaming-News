@@ -35,7 +35,7 @@ const mac = (x: Partial<MacFacts> = {}): MacFacts => ({
   log: [],
   lastLogAt: new Date(ago(2)),
   episodes: [],
-  published: [],
+  published: [{ id: "p", lane: "news", live_at: ago(120) }],
   gateHeld: [],
   alerts: [],
   ports: [],
@@ -599,8 +599,10 @@ test("digests are not alerts", () => {
 });
 
 test("nothing published in 24 hours is a fault from 14:00 UK, not in the morning", () => {
-  const dry = mac({ health: { ok: true, published_24h: "0", in_flight: 6 } });
+  const dry = mac({ health: { ok: true, published_24h: "0", in_flight: 6 }, published: [] });
   assert.ok(healthFaults(dry, NOW).some((f) => f.key === "nothing-published-24h"));
+  // a video scheduled for tonight does not count as gone live
+  assert.ok(healthFaults({ ...dry, published: [{ id: "s", lane: "news", live_at: "2026-11-25T19:00:00Z" }] }, NOW).some((f) => f.key === "nothing-published-24h"));
   assert.ok(!healthFaults(dry, new Date("2026-11-25T09:00:00Z")).some((f) => f.key === "nothing-published-24h"));
   assert.ok(!healthFaults(mac({ health: { ok: true, published_24h: "3" } }), NOW).some((f) => f.key === "nothing-published-24h"));
 });

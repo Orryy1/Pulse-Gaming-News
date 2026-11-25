@@ -255,7 +255,11 @@ export function healthFaults(m: MacFacts, now: Date): Fault[] {
       hourCycle: "h23",
     }).format(now),
   );
-  if (m.health?.ok && Number(m.health.published_24h ?? 1) === 0 && ukHour >= 14)
+  // Gone live means live_at in the last 24 hours (the published list), not a row touched (health counts updated_at).
+  const wentLive = m.unknown.includes("published")
+    ? Number(m.health?.published_24h ?? 1)
+    : m.published.filter((p) => { const t = Date.parse(p.live_at); return t <= now.getTime() && now.getTime() - t <= 24 * 3600_000; }).length;
+  if (m.health?.ok && wentLive === 0 && ukHour >= 14)
     out.push({
       key: "nothing-published-24h",
       severity: "fault",

@@ -375,9 +375,17 @@ async function main(): Promise<void> {
           };
           const last = d.state.launches[d.state.launches.length - 1];
           if (last) last.pid = pid;
+          d.state.extra.launchFails = 0;
+          if (!started.start) notes.push("fix session started but its start time was not read: it will not be tracked as running");
         } catch (err) {
           // It never started: the caps are not used up, and the next run tries again.
           d.state = undoLaunch(d.state, d.launchKeys, now.toISOString());
+          const fails = Number(d.state.extra.launchFails ?? 0) + 1;
+          d.state.extra.launchFails = fails;
+          if (fails === 3) {
+            const r = writeInboxItem(INBOX, "Pulse", "the watch cannot start Claude on the PC", `The Pulse watch tried three times in a row to start a Claude fix session and could not: ${(err as Error).message}. Check that ${CLAUDE_EXE} exists and Claude Code is signed in (open a terminal on the PC and run claude --version).`);
+            notes.push(`launch failed 3 times: inbox ${r.status}`);
+          }
           notes.push(
             `could not start a fix session: ${(err as Error).message}`,
           );

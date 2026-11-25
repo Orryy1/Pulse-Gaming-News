@@ -92,13 +92,24 @@ async function main(): Promise<void> {
   // Re-read just before writing and change only this routine's entry, so two routines at once keep each other's memo.
   let fresh: Record<string, GateMemo> = {};
   try {
-    fresh = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, GateMemo>;
+    fresh = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<
+      string,
+      GateMemo
+    >;
   } catch {
     /* none yet */
   }
   fresh[kind] = t.memo;
-  fs.writeFileSync(`${stateFile}.${process.pid}.tmp`, JSON.stringify(fresh, null, 1));
-  fs.renameSync(`${stateFile}.${process.pid}.tmp`, stateFile);
+  try {
+    fs.writeFileSync(
+      `${stateFile}.${process.pid}.tmp`,
+      JSON.stringify(fresh, null, 1),
+    );
+    fs.renameSync(`${stateFile}.${process.pid}.tmp`, stateFile);
+  } catch (err) {
+    // The verdict still prints: a busy state file must never leave the routine without an answer.
+    console.error(`state not saved: ${(err as Error).message}`);
+  }
   fs.appendFileSync(
     path.join(DIR, "decisions.jsonl"),
     `${JSON.stringify({ at: now.toISOString(), kind, work: t.verdict.work, why: t.verdict.why, keys: t.verdict.keys.slice(0, 30) })}\n`,

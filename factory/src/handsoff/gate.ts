@@ -500,7 +500,7 @@ export function launchClaude(
       child.unref();
       const pid = child.pid ?? 0;
       if (!pid) return reject(new Error("no pid"));
-      resolve({ pid, start: processInfo(pid)?.start });
+      resolve({ pid, start: processInfo(pid)?.start ?? processInfo(pid)?.start });
     });
   });
 }

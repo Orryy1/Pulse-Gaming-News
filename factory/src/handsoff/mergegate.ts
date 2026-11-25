@@ -173,3 +173,25 @@ export function deployWindow(p: {
 export function needsInstall(changed: readonly string[]): boolean {
   return changed.some((f) => /(^|\/)package(-lock)?\.json$/.test(f));
 }
+
+export type DeployOutcome =
+  | { action: "retry-later"; why: string }
+  | { action: "refused"; why: string }
+  | { action: "canary-went-back" }
+  | { action: "verify" };
+
+/** What deploy.sh's exit means (pure): 2 refused before pushing (busy is worth retrying, anything else needs a fix),
+ *  3 its canary went back by itself, otherwise check health on the new release. Only "verify" can lead to rollback. */
+export function deployOutcome(code: number, out: string): DeployOutcome {
+  if (code === 2)
+    return /gave up: still busy/.test(out)
+      ? { action: "retry-later", why: "the Mac stayed busy" }
+      : { action: "refused", why: out.trim().split("\n").pop() ?? "deploy.sh refused" };
+  if (code === 3) return { action: "canary-went-back" };
+  return { action: "verify" };
+}
+
+/** Roll back only when the Mac really runs the new code, it is unhealthy, and there is an older release (pure). */
+export function shouldRollBack(p: { healthy: boolean; running?: string; want: string; old?: string }): boolean {
+  return !p.healthy && p.running === p.want && !!p.old && p.old !== p.want;
+}

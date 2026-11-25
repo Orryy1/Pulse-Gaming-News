@@ -9,6 +9,8 @@ import {
   fixedSlots,
   localInstant,
   needsInstall,
+  deployOutcome,
+  shouldRollBack,
   parseTap,
   reviewed,
   unexpectedFailures,
@@ -241,4 +243,18 @@ test("unchanged work wakes the routine once a day after three runs", () => {
     throttle({ work: false, keys: [], why: "none" }, memo, NOW).memo.sameRuns,
     0,
   );
+});
+
+test("deploy.sh refusals and its canary never lead to a rollback; only bad health on the new release does", () => {
+  assert.deepEqual(deployOutcome(2, "waiting: a render\ngave up: still busy (a render ); nothing changed"), { action: "retry-later", why: "the Mac stayed busy" });
+  assert.equal(deployOutcome(2, "refused: x is not a fast-forward of what the Mac runs").action, "refused");
+  assert.equal(deployOutcome(3, "").action, "canary-went-back");
+  assert.equal(deployOutcome(0, "up on abc").action, "verify");
+  assert.equal(deployOutcome(1, "the factory did not answer").action, "verify");
+  assert.equal(shouldRollBack({ healthy: false, running: "new", want: "new", old: "old" }), true);
+  assert.equal(shouldRollBack({ healthy: true, running: "new", want: "new", old: "old" }), false);
+  // the Mac never got the new code, or already went back: rolling back would land it on older code still
+  assert.equal(shouldRollBack({ healthy: false, running: "old", want: "new", old: "old" }), false);
+  assert.equal(shouldRollBack({ healthy: false, running: undefined, want: "new", old: "old" }), false);
+  assert.equal(shouldRollBack({ healthy: false, running: "new", want: "new", old: undefined }), false);
 });

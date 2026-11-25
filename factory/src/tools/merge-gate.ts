@@ -25,7 +25,9 @@ import { fileURLToPath } from "node:url";
 import {
   backspaceFiles,
   branchAllowed,
+  deployOutcome,
   deployWindow,
+  shouldRollBack,
   fixedSlots,
   needsInstall,
   parseTap,
@@ -257,23 +259,18 @@ function deployAndVerify(target: string): never {
   );
   // deploy.sh exit 2: it refused before pushing (busy, not a fast-forward, the flight simulator). Nothing changed on
   // the Mac, so there is nothing to roll back. Exit 3: its canary already went back by itself.
-  if (d.code === 2) {
-    writePending(
-      target,
-      /gave up: still busy/.test(d.out)
-        ? "the Mac stayed busy"
-        : "deploy.sh refused",
-    );
-    finish(
-      /gave up: still busy/.test(d.out) ? 3 : 6,
-      `merged; deploy.sh refused and changed nothing: ${d.out.trim().split("\n").pop()}`,
-    );
+  const outcome = deployOutcome(d.code, d.out);
+  if (outcome.action === "retry-later") {
+    writePending(target, outcome.why);
+    finish(3, `merged; deploy.sh gave up waiting (${outcome.why}) and changed nothing. Run with --deploy-only later.`);
   }
-  if (d.code === 3)
-    finish(
-      7,
-      "deploy.sh's canary saw a regression and went back by itself; nothing more done",
-    );
+  if (outcome.action === "refused") {
+    // A refusal needs a fix, not a retry every run.
+    fs.rmSync(pending, { force: true });
+    finish(6, `merged; deploy.sh refused and changed nothing: ${outcome.why}`);
+  }
+  if (outcome.action === "canary-went-back")
+    finish(7, "deploy.sh's canary saw a regression and went back by itself; nothing more done");
   // Up and healthy on the new release, or not: poll for five minutes.
   let last: MacState | undefined;
   for (let i = 0; i < 30; i++) {
@@ -289,7 +286,7 @@ function deployAndVerify(target: string): never {
   }
   // Roll back only when the Mac really runs the new code and it is unhealthy. If it runs something else (the push
   // never landed, or mac/run.sh already went back by itself), rolling back would put it on older code still.
-  if (last?.release === want && old && old !== want) {
+  if (old && shouldRollBack({ healthy: false, running: last?.release, want, old })) {
     const rb = run(BASH, ["mac/rollback.sh", "release", want, old], {
       cwd: factoryDir,
       timeout: 15 * 60_000,
@@ -467,17 +464,27 @@ function main(): void {
     );
     deployAndVerify(tested);
   }
+  // Stage must still be where the test started; then the push goes first and the local branch follows only once
+  // it landed, so a failed push leaves everything as it was and the next run tries the same branch again.
+  if (git(STAGE, "rev-parse", "claude/stage").out.trim() !== base)
+    finish(6, "claude/stage moved while testing; run the gate again");
+  const push = git(
+    STAGE,
+    "push",
+    "-q",
+    "origin",
+    `${tested}:refs/heads/claude/stage`,
+  );
+  if (push.code !== 0)
+    finish(
+      6,
+      `the push of ${tested.slice(0, 9)} to claude/stage failed; nothing changed: ${push.out.slice(0, 300)}`,
+    );
   const ff = git(STAGE, "merge", "--ff-only", tested);
   if (ff.code !== 0)
     finish(
       6,
-      `claude/stage moved while testing; run the gate again:\n${ff.out.slice(0, 300)}`,
-    );
-  const push = git(STAGE, "push", "-q", "origin", "claude/stage");
-  if (push.code !== 0)
-    finish(
-      6,
-      `claude/stage is at ${tested.slice(0, 9)} here but the push failed, so nothing went further: ${push.out.slice(0, 300)}`,
+      `pushed ${tested.slice(0, 9)} but the stage worktree would not fast-forward to it: ${ff.out.slice(0, 300)}`,
     );
   step(`claude/stage at ${tested.slice(0, 9)}, pushed`);
 

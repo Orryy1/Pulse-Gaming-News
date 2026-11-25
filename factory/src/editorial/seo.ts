@@ -112,6 +112,9 @@ const SMALL_WORDS = new Set([
   "via",
 ]);
 
+/** Gaming acronyms a writer may give in lower case (19 Nov 2026: "30 fps" became "30 Fps" in a live title). */
+const ACRONYMS: Record<string, string> = { fps: "FPS", dlc: "DLC", rpg: "RPG", mmo: "MMO", npc: "NPC", npcs: "NPCs", gpu: "GPU", cpu: "CPU", ssd: "SSD", hdr: "HDR", dlss: "DLSS", vr: "VR" };
+
 /** Title case with the small words left small ("Call of Duty Ranked Worst to Best"), except first and after a colon or dash. */
 export function titleCase(s: string): string {
   return s
@@ -120,6 +123,8 @@ export function titleCase(s: string): string {
       const after = i > 0 && /[:|\u2013-]$/.test(all[i - 1]!);
       if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase()))
         return w.toLowerCase();
+      const acro = ACRONYMS[w.toLowerCase().replace(/[^a-z]/g, "")];
+      if (acro) return w.replace(/[A-Za-z]+/, acro);
       return w.replace(/^([a-z])/, (m) => m.toUpperCase());
     })
     .join(" ");

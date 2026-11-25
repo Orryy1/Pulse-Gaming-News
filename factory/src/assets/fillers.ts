@@ -61,12 +61,16 @@ export const DOCUMENTS_PER_CHAPTER = 2;
 export const STOCK_UPGRADE = 0.7;
 /** Below this no candidate is taken, whatever its family says (documents offer general memos at 0.48). */
 export const FILLER_MIN_CONFIDENCE = 0.45;
+/** An explainer the writer marked and the guard kept outranks every heuristic offer. */
+export const EXPLAINER_CONFIDENCE = 0.97;
 
 /** A shot-list moment as the episode stores it (src/editorial/documentary.ts DocMoment, loosened). */
 export interface FillerShotMoment extends FillerMoment {
   show: string;
   keywords?: string[];
   filler?: MomentFiller;
+  /** EXPLAINERS: the writer's grounded explainer for this sentence (src/explainerstep.ts). */
+  explainer?: import("../render/components/explainers/types.ts").Explainer;
 }
 
 export interface FillersChapter {
@@ -113,6 +117,8 @@ export function needsOf(
   ch.moments.forEach((m, k) => {
     if (k === 0 || k >= ch.sentences.length) return;
     if (m.graphic && m.graphic.kind !== "none") return;
+    // EXPLAINERS: a line that explains how something works shows its explainer over its own pictures too.
+    if (m.explainer) return void out.set(k, "bare");
     if (own.has(k)) return;
     out.set(k, stock.has(k) ? "stock" : "bare");
   });
@@ -147,6 +153,10 @@ export function offersFor(
   };
   const offers: Offer[] = [];
   const declined: Partial<Record<FillerFamily, string>> = {};
+  // EXPLAINERS: the writer marked this line and the guard kept every item: the surest offer there is.
+  if (m.explainer)
+    offers.push({ family: "explainer", style: m.explainer.type, confidence: EXPLAINER_CONFIDENCE, reason: `writer's ${m.explainer.type} explainer`, raw: m.explainer });
+  else declined.explainer = "the writer marked no explainer";
   const kv = kineticVerdict(sentence, m, chapter, {
     index: k,
     seed,
@@ -255,6 +265,8 @@ export interface ChooseOptions {
    * stops at the share. Unset or 0: the rules as they were.
    */
   cardShare?: number;
+  /** EXPLAINERS on for long videos: a moment's explainer gets its shot. Off (default), it is ignored. */
+  explainers?: boolean;
 }
 
 const short = (s: string, n = 90) =>
@@ -274,7 +286,9 @@ export function chooseFillers(
   const counts: Partial<Record<FillerFamily, number>> = {};
   const usedBackdrops: string[] = [];
   let previousKinetic: string | undefined;
-  for (const ch of chapters) {
+  // Switched off, explainers kept on the shot list from an earlier run are ignored.
+  const list = opts.explainers ? chapters : chapters.map((c) => ({ ...c, moments: c.moments.map(({ explainer: _e, ...m }) => m) }));
+  for (const ch of list) {
     const target = opts.cardShare ?? 0;
     // A small corner figure shares its frame with the footage: only a full card counts towards the share.
     const graphics = ch.moments.filter(
@@ -429,6 +443,16 @@ export function chooseFillers(
           family: o.family,
           style: o.style,
           data: { diagram: o.raw as DiagramData, backdrop: indexOf(back) },
+          confidence: o.confidence,
+          reason: o.reason,
+        };
+      } else if (o.family === "explainer") {
+        const back = backdropFor(chImages, opts.seed + k, usedBackdrops);
+        if (back) usedBackdrops.push(back);
+        filler = {
+          family: o.family,
+          style: o.style,
+          data: { explainer: o.raw as never, backdrop: indexOf(back) },
           confidence: o.confidence,
           reason: o.reason,
         };

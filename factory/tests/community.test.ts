@@ -508,3 +508,20 @@ test("no pictures: the day stays open once, then the owner hears and the day clo
   await engageTick(deps);
   assert.equal(seen.llm, 2, "two tries at most");
 });
+
+test("a Short ending on a verdict still gets its writer's own comment question, never a generic one", () => {
+  assert.equal(
+    arguableQuestion(
+      story({
+        loop_line: "My verdict: wait for the PS5 Pro patch.",
+        comment_question: "Would you play GTA 6 at 30 FPS now, or wait for a patch?",
+      }),
+    ),
+    "Would you play GTA 6 at 30 FPS now, or wait for a patch?",
+  );
+  assert.equal(
+    arguableQuestion(story({ loop_line: "Done.", comment_question: "What do you think about this one?" })),
+    "",
+  );
+  assert.equal(arguableQuestion(story({ loop_line: "Done." })), "");
+});

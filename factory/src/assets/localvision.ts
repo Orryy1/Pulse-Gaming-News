@@ -61,8 +61,10 @@ blurry: the frame is heavily blurred, smeared or an unreadable close-up of a tex
  * character or person, drawn or real, and any crop dominated by a chest, groin or underwear"), asked of the whole frame
  * and of the tall middle slice a vertical Short shows of it. As strict as the final check: a moment it would fail must
  * not be chosen in the first place (14 Nov 2026: 32 renders failed on GTA VI nightclub and beach shots).
+ * 19 Nov 2026, owner: "Surely nightclubs and beach scenes are OK": both checks now allow ordinary beach and club scenes
+ * and keep out sexual poses and body-part crops.
  */
-export const SUGGESTIVE_RULE = `suggestive: true when any person or character, drawn or real, is sexualised or suggestive anywhere in the frame, including in the background: nudity; underwear, lingerie or a bikini on show; visible cleavage or a low-cut or revealing top; a bent-over, twerking, pole or strip-club dancing or otherwise provocative pose; a nightclub or party shot that dwells on bodies; or a picture whose main subject is a chest, bare torso, hips, buttocks, groin or thighs. A vertical Short shows only the tall middle third of this frame, enlarged: answer true when that slice would be dominated by such a body part. When unsure, answer true.`;
+export const SUGGESTIVE_RULE = `suggestive: true when any person or character, drawn or real, is sexualised anywhere in the frame: nudity; lingerie or underwear as the focus; a sex act; a twerking, pole, strip-club or otherwise provocative pose; or a picture whose main subject is a chest, bare torso, hips, buttocks, groin or thighs. Ordinary adults in a beach, pool, party or nightclub scene (swimwear, club outfits, a crowd dancing) are not suggestive when the shot shows the scene rather than a body part. A vertical Short shows only the tall middle third of this frame, enlarged: answer true when that slice would be dominated by such a body part. When unsure, answer true.`;
 
 const SCHEMA = {
   type: "object",
@@ -1163,6 +1165,64 @@ export async function subjectFrames(
     Array.from({ length: Math.min(concurrency, files.length) }, worker),
   );
   return out;
+}
+
+/**
+ * FRAME_FOCUS (src/qa/framefocus.ts): may the local model be asked now? False while it is resting after failures,
+ * switched off (LOCAL_VISION=off), under test or missing from the relay. Never a paid API, never Claude.
+ */
+export async function focusReady(): Promise<boolean> {
+  if (
+    Date.now() < downUntil ||
+    process.env.LOCAL_VISION === "off" ||
+    Boolean(process.env.NODE_TEST_CONTEXT)
+  )
+    return false;
+  return (await relayNotReady()) === undefined;
+}
+
+/**
+ * FRAME_FOCUS: one rendered frame and its question to the local model; the raw JSON answer for parseFocusVerdict.
+ * Throws on a failed call; the caller records the failure on the line and carries on.
+ */
+export async function focusAsk(
+  file: string,
+  prompt: string,
+  schema: object,
+  timeoutMs = 45_000,
+): Promise<unknown> {
+  const image = (await fs.readFile(file)).toString("base64");
+  const where = await visionTarget();
+  const res = await fetchWithTimeout(
+    `${where.url}/api/chat`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model: where.model,
+        stream: false,
+        think: false,
+        format: schema,
+        keep_alive: process.env.LOCAL_VISION_KEEP_ALIVE ?? "20s",
+        options: {
+          temperature: 0,
+          num_predict: 160 + THINK_ROOM,
+          num_ctx: NUM_CTX,
+        },
+        messages: [{ role: "user", content: prompt, images: [image] }],
+      }),
+    },
+    timeoutMs,
+  );
+  if (!res.ok) {
+    throw new Error(
+      `ollama ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  visionRelay.report(true);
+  return visionAnswer(
+    (await res.json()) as { message?: { content?: string; thinking?: string } },
+  );
 }
 
 // ---------------------------------------------------------------- FOOTAGE_LOOK_CODEX

@@ -26,7 +26,7 @@ import { fetchWithTimeout, log } from "../lib/util.ts";
 import { FFMPEG } from "../lib/bin.ts";
 import { loadOrch } from "../lib/orch.ts";
 import {
-  DEFAULT_ILLUSTRATE_URL,
+  DEFAULT_COMFY_URL,
   illustratable,
   sceneOf,
   sketchSeed,
@@ -292,7 +292,7 @@ export interface AnimateOptions {
   dest: string;
   seed: number;
   negative?: string;
-  /** The ComfyUI server; ILLUSTRATE_URL (the same server as the sketches). */
+  /** The ComfyUI server; ILLUSTRATE_VIDEO_URL (the PC's, not the sketches' service). */
   url?: string;
   /** Upload, animate and download within this; ILLUSTRATE_VIDEO_TIMEOUT_SECONDS. */
   timeoutMs?: number;
@@ -313,7 +313,7 @@ export async function animate(
 ): Promise<string> {
   await fs.mkdir(path.dirname(opts.dest), { recursive: true });
   if (opts.stub) return stubClip(image, opts.dest);
-  const url = (opts.url ?? DEFAULT_ILLUSTRATE_URL).replace(/\/$/, "");
+  const url = (opts.url ?? DEFAULT_COMFY_URL).replace(/\/$/, "");
   const timeoutMs = opts.timeoutMs ?? 600_000;
   const deadline = Date.now() + timeoutMs;
 

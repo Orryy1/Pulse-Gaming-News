@@ -18,6 +18,8 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLOUR } from "../brand.ts";
+import type { GameMapGraphic } from "../gamemap.ts";
+import { useLook } from "../gamelook.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
@@ -53,6 +55,8 @@ export interface MomentGraphic {
   primary: string;
   secondary: string;
   items: string[];
+  /** MAP_PINS: the game's own map with its places pinned (src/assets/gamemaps.ts; components/GameMap3D.tsx). */
+  gameMap?: GameMapGraphic;
   /** Shown as the record itself, full frame, with its credit (src/editorial/evidence.ts; packs/pulse/evidence.ts). */
   evidence?: {
     kind: string;
@@ -299,6 +303,8 @@ export const MomentGraphicCard: React.FC<{
     items: raw.items.map(displayText),
   };
   const { frame, fps, inP, out, visible } = useInOut(len);
+  // GAME_LOOK: the figure takes the game's accent (Pulse amber when the look is off).
+  const look = useLook();
   if (!visible || g.kind === "none") return null;
   // Hard-capped and clipped: text inside is sized to fit, so nothing runs past the card or the frame.
   const wrap: React.CSSProperties = {
@@ -407,7 +413,7 @@ export const MomentGraphicCard: React.FC<{
               [112, 84, 64, 52, 44],
             ).size,
             lineHeight: 1,
-            color: COLOUR.amber,
+            color: look.accent,
             textTransform: "uppercase",
           }}
         >

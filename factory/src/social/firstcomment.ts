@@ -11,11 +11,23 @@ const QUESTION_MAX = 140;
 
 /** The video's own closing question, when it is about this video (never a tease for the next one). */
 export function arguableQuestion(script: Script): string {
-  const q = (script.loop_line ?? "").replace(/—/g, ",").trim();
-  if (!q.endsWith("?") || q.length > QUESTION_MAX || q.split(/\s+/).length < 4)
-    return "";
-  if (/\b(next why|tomorrow|next episode|next week)\b/i.test(q)) return "";
-  return q;
+  const usable = (raw: string | undefined): string => {
+    const q = (raw ?? "").replace(/—/g, ",").trim();
+    if (
+      !q.endsWith("?") ||
+      q.length > QUESTION_MAX ||
+      q.split(/\s+/).length < 4
+    )
+      return "";
+    if (/\b(next why|tomorrow|next episode|next week)\b/i.test(q)) return "";
+    if (/^(what do you think|thoughts|what do you make of it)\b/i.test(q))
+      return "";
+    return q;
+  };
+  // 19 Nov 2026: scripts now end on a verdict, so from 12 Nov 41 Shorts in a row posted no comment at all. The
+  // writer's own comment_question (one per Short, in its specifics, so never the repeated text a spam filter hides)
+  // stands in when the video does not end on a question.
+  return usable(script.loop_line) || usable(script.comment_question);
 }
 
 /** True for the plain story Shorts, whose comment opens on one general question. */

@@ -667,8 +667,12 @@ export function rankQueries(
     const title = searchTitle(query, g.game);
     const covered = coveredBy(query, g.game, ctx.covered);
     const refused = refusal(query);
+    // 19 Nov 2026: "GTA 6 how to change to New Zealand" went out a day after the game was out everywhere. A launch
+    // question (unlock time, pre-load size, pre-order bonus) is dead once the first release is 36 hours old.
+    const launchOver = !!intent?.launch && !!rel && ctx.now.getTime() - Date.parse(rel) > 36 * 60 * 60 * 1000;
     const dropped =
       refused ??
+      (launchOver ? "a launch question, and the game is out everywhere now" : undefined) ??
       (covered
         ? "already covered by Pulse"
         : (ans.kind === "facts" && ans.facts.length) ||

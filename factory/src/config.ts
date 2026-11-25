@@ -10,6 +10,8 @@ import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
 import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
+import { blenderSettings, type BlenderSettings } from "./render/blender.ts";
+import type { ShortUpgradeSwitches } from "./render/shortupgrades.ts";
 import {
   defaultBackupDir,
   defaultCodexPython,
@@ -25,6 +27,7 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { streamAsksSettings, streamAsksSummary, type StreamAsksSettings } from "./streamasks/settings.ts";
+import { semanticSettings, semanticSummary, type SemanticSettings } from "./semantic/settings.ts";
 import { searchShortsSettings, searchShortsSummary, type SearchShortsSettings } from "./searchq/settings.ts";
 import { subsLearnSettings, subsLearnSummary, type SubsLearnSettings } from "./subslearn/settings.ts";
 import { packagingSettings, packagingSummary, type PackagingSettings } from "./packaging/settings.ts";
@@ -36,6 +39,7 @@ import { gtaFileSummary } from "./gtafile.ts";
 import { gtaDailySummary } from "./gtadaily.ts";
 import { streamWeeklySettings, streamWeeklySummary, type StreamWeeklySettings } from "./streamweekly/settings.ts";
 import { parseHomeFranchises } from "./editorial/why.ts";
+import { parseFocusMode, parseFocusShare } from "./qa/framefocus.ts";
 
 // Local installs keep settings in factory/.env (never committed).
 const ENV_FILE = path.resolve(process.env.PULSE_ENV_FILE ?? ".env");
@@ -88,6 +92,39 @@ export function whySlotsFrom(list: string, single: string): string[] {
 function modeOf(v: string): "off" | "check" | "fix" {
   const m = v.trim().toLowerCase();
   return m === "check" || m === "fix" ? m : "off";
+}
+
+/**
+ * The channels the download account subscribes to for the trend feed (TREND_FEED), by handle: big gaming news,
+ * platform and documentary channels, picked 19 Nov 2026. src/tools/trendchannels.ts prints them as links to follow.
+ */
+export const DEFAULT_TREND_CHANNELS = [
+  "IGN",
+  "GameSpot",
+  "PlayStation",
+  "Xbox",
+  "NintendoAmerica",
+  "RockstarGames",
+  "TheGameAwards",
+  "Ubisoft",
+  "DigitalFoundry",
+  "gameranxTV",
+  "SkillUp",
+  "NoclipDocs",
+  "DidYouKnowGaming",
+  "AngryJoeShow",
+  "YongYea",
+  "Eurogamer",
+  "PCGamer",
+  "Polygon",
+  "KindaFunnyGames",
+  "GameInformer",
+];
+
+/** TREND_CHANNELS as handles (pure): unset is the default list, empty is none; "@" and spaces are dropped. */
+export function trendChannelList(raw: string | undefined): string[] {
+  if (raw === undefined) return [...DEFAULT_TREND_CHANNELS];
+  return [...new Set(raw.split(",").map((h) => h.trim().replace(/^@/, "")).filter(Boolean))];
 }
 
 function bool(name: string, fallback: boolean): boolean {
@@ -172,6 +209,11 @@ export interface Config {
   codexCalls: string[];
   /** Listed steps that carry images (vision checks) go to Codex too; off until each check has its side-by-side. */
   codexVision: boolean;
+  /** CODEX_GRAMMAR_FALLBACK (default on): a call whose answer format is too big for Claude goes to Codex instead of failing. */
+  codexGrammarFallback: boolean;
+  /** FACT_REPAIR (default on): a ranking whose fact-check still fails on one or two lines after the rewrite gets
+   * those lines mended (a rounded figure hedged, an unsupported side line cut) and checked again, instead of failing. */
+  factRepair: boolean;
   /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
@@ -273,6 +315,9 @@ export interface Config {
   whySerialEnabled: boolean;
   /** The serial Why's seconds (WHY_TARGET_SECONDS, "45-60"); applies only with WHY_SERIAL_ENABLED; undefined = unusable. */
   whyTargetSeconds: LengthBand | undefined;
+  /** The Why length test (src/shortlengths.ts lengthArm, 19 Nov audit): on even UTC days The Why and The GTA File run
+   * 30-35 s instead of WHY_TARGET_SECONDS, the arm recorded on each script for the weekly loop: WHY_LENGTH_AB, default off. */
+  whyLengthAb: boolean;
   /** Share of Why slots, 0-1, that pick only from the home shelf (WHY_HOME_SHARE; serial only); 0 = off. */
   whyHomeShare: number;
   /** The home shelf's franchises (WHY_HOME_FRANCHISES, "|" between them; names from HOME_SHELF). */
@@ -347,6 +392,8 @@ export interface Config {
   demandMinViews: number;
   /** Search pages fetched per pick at most; the rest wait for the cache (24 h). */
   demandLookups: number;
+  /** Days an older cached demand reading may stand in when no fresh one can be had (bot-check pause, failed search, lookups spent); 0 = never. */
+  demandStaleDays: number;
   /** A title or hook phrase in this many of the last 30 days' Shorts already is sent back for a rewrite; 0 = off (src/authenticity.ts). */
   repeatMax: number;
   spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
@@ -427,6 +474,11 @@ export interface Config {
   runPremakeHours: number;
   /** RUN_PREMAKE_UPLOAD_HOURS: a pre-made Short is uploaded (scheduled on YouTube) this long before its slot, no earlier. */
   runPremakeUploadHours: number;
+  /** PREMAKE_REFRESH (default on): a pre-made Short whose game came out (or whose story's date passed) after its media
+   * was gathered, or with under half its screen time on moving footage, gathers its media again and is made again before
+   * it is uploaded when there is time before the slot; otherwise, or if the remake fails or is worse, it goes as made
+   * (src/premakerefresh.ts). */
+  premakeRefresh: boolean;
   /** RUN_SPARE_SLOTS: local "HH:MM" slots a ready spare from the run fills when nothing else has taken them. */
   runSpareSlots: string[];
   /** RUN_SPARE_MINUTES: a slot still empty this close to its time is given to a ready spare. */
@@ -445,6 +497,10 @@ export interface Config {
   runDocPrivateHours: number;
   longStockNotOnPeople: boolean; // no stock shot on a chapter card or a line naming a real person; on by default
   codeScenes: boolean; // src/render/codescene.ts: drawn scenes from a line's sourced data, over a plate or a repeated still, never over footage
+  /** MAP_PINS (default off): a sentence naming a place in its game shows the game's own map in 3D with a pin on it (src/assets/gamemaps.ts). */
+  mapPins: boolean;
+  /** GAME_LOOK (default off): the graphics take on the game's own palette, corners, HUD framing and a matched free face (src/render/gamelook.ts). */
+  gameLook: boolean;
   shortPlateMax: number; // 0-1, the share of a Short that may sit on the bare plate before more media is fetched and, failing that, it is stopped
   shortPlateMaxBig: number; // the same line for one of the day's big stories, which have no better story to give the slot to (SHORT_PLATE_MAX_BIG)
   shortPlateFirstSeconds: number; // no bare plate in this many opening seconds of a Short; 0 = off (SHORT_PLATE_FIRST_SECONDS)
@@ -456,6 +512,7 @@ export interface Config {
   sourceMinChars: number; // a news Short whose richest source says fewer characters than this is dropped before writing; 0 = off (SOURCE_MIN_CHARS)
   shortEndPayoff: boolean; // the last line is a payoff or runs back into the hook, not a question or "next Why tomorrow" (SHORT_END_PAYOFF)
   shortTightScript: boolean; // fewer full stops and plainer words for a quicker read (SHORT_TIGHT_SCRIPT, off)
+  shortCraftRules: boolean; // the writers' room test's five craft rules (SHORT_CRAFT_RULES, on)
   shortArgumentShare: number; // 0-1, the share of news and Why Shorts written as one argument with no labelled take (SHORT_ARGUMENT_SHARE)
   shortMinWpm: number; // speed a Short's voice up to this many words a minute, 25% at most; 0 = as recorded. The owner's ear decides (SHORT_MIN_WPM, off)
   shortCappedStills: number; // the ceiling on trailer frames as stills for a tight-cap publisher (Rockstar), used only to fill what published art leaves blank; 0 = none (SHORT_CAPPED_STILLS)
@@ -546,6 +603,8 @@ export interface Config {
   /** ElevenLabs: the plan's monthly credits (Pro: 500,000); unused credits above two months' worth are lost at the reset. */
   elevenLabsMonthlyCredits: number;
   elevenLabsReserve: number; // credits never spent, a cushion against overage
+  /** ELEVENLABS_BALANCE_STALE_HOURS: how old a balance kept on disk may be and still stand in when the check goes unanswered (0: never). */
+  elevenLabsBalanceStaleHours: number;
   surplusDocDays: string[]; // extra documentary days while credits would otherwise be lost
   surplusDocChars: number; // what one documentary costs in credits, roughly
   bankWindow: string; // local "HH:MM-HH:MM" when a banked documentary may start (it holds the factory for hours)
@@ -640,6 +699,116 @@ export interface Config {
    * rewrite to the delivery writer once, then fact-check the result and keep it only when it passes). Its rewrite step
    * is "humanise.rewrite" (CODEX_CALLS can route it). */
   humanise: "off" | "check" | "fix";
+  /** The explainers (src/editorial/explainers.ts, src/render/components/explainers, 20 Nov 2026): a line that explains HOW
+   * something works gets a code-drawn animated explainer (steps, versus, cause and effect, a timeline with a playhead,
+   * a price build, a cycle, a labelled screenshot or a 3D object) instead of a random still, every word from the script
+   * and its sources. EXPLAINERS=off (default), "short" (Shorts only), "long" (documentary chapters only) or "all". */
+  explainers: "off" | "short" | "long" | "all";
+  /** The held-answer gate (src/editorial/payoff.ts, top creator gap plan gap 1, 18 Nov 2026: Pulse Shorts lose about 4
+   * points a second through the facts, the take lands at 65% with 38% left and the title or first frame often states
+   * the answer; all 27 breakout Shorts studied plant a question and pay it late). On news, breaking and Why Shorts in the
+   * gate's arm the writer plans one question and its answer (script.payoff), holds the answer past 60% of the words,
+   * keeps it out of the hook, headline, thumb_text and title, turns once in the middle third, takes a side in the first
+   * two sentences, lands the verdict last, rotates stock take openers and ends with no ask; a cold reader of title,
+   * first frame and hook alone must know the subject but not the answer. SHORT_PAYOFF_GATE=off (default), "check"
+   * (record pass/fail and reasons on the script's payoff_gate, change nothing) or "fix" (send the draft back to the
+   * writer once with the reasons, then accept it with a note; never drops a story). Rankings, deals and charts are
+   * untouched. Its one model step is "payoff.judge" (CODEX_CALLS=payoff routes it). */
+  shortPayoffGate: "off" | "check" | "fix";
+  /** SHORT_PAYOFF_SHARE (0-1, default 0.5): the share of covered Shorts in the gate's arm, split by episode id; the rest
+   * are the control arm, measured on the plan-free rules only. The arm is on script.payoff_gate.arm for the weekly
+   * comparison. */
+  shortPayoffShare: number;
+  /** The script editor's desk (src/editorial/desk.ts, top creator gap plan writer check, 18 Nov 2026: blind judges
+   * scored 24 published Pulse scripts at 3.9/10; an editor's loop run by hand on the same stories and facts took them to
+   * 6.9, 23 of 24 improved, against 5.25 for 12 breakout human Shorts). On news, breaking and Why Shorts in the desk's arm
+   * the writer states, in its own call, "The most interesting true thing is X, and it matters to Y because Z", the mode
+   * and whether the story can carry a Short (desk_plan: absence, common knowledge, promotion or list kill it; a missing
+   * key fact is recorded as source_gap). Then an editor ("desk.judge", mid tier, never the writer's plan or sources)
+   * reads title, first-frame text and narration and scores clarity, hook, payoff, voice, human and overall 1-10 with
+   * its biggest weakness, beside deterministic checks (banned lines, the full name over twice, a formula ending, a
+   * repeated fact). SCRIPT_DESK=off (default), "check" (read once and record on script.desk, change nothing; a kill is
+   * only recorded) or "fix" (under SCRIPT_DESK_MIN overall or any score under 5: one instruction, the biggest weakness,
+   * through the edit-based reviser ("desk.rewrite"), the fact guard and the fact check, then read again; best version
+   * kept; a killed story takes the thin route, a big story still goes out with a note). Control-arm Shorts get one read
+   * so the weekly report can set desk score against real retention. It runs after the friend pass and the clarity gate,
+   * before the humaniser, and after the payoff gate's rules, which it keeps (newProblems); CODEX_CALLS=desk routes both
+   * steps. Cost by the price table (Opus 5.5 $4/$20, Sonnet 5.5 $2/$10 per million in/out): a read about $0.01 (Sonnet,
+   * ~1,200 in, ~600 out with thinking), a rewrite about $0.08-0.10 (Opus edits on the writer's ~8k-token brief), its
+   * fact check about $0.04 (Opus), the angle about $0.001 more writer output. Per desk-arm Short: $0.01 when the first
+   * read clears, about $0.14 for one round, about $0.28 at the cap (3 reads, 2 rewrites, 2 fact checks); a control-arm
+   * Short $0.01. At SCRIPT_DESK_SHARE 0.5 and two rounds on most Shorts, about $0.13 a covered Short on average. */
+  scriptDesk: "off" | "check" | "fix";
+  /** SCRIPT_DESK_SHARE (0-1, default 0.5): the share of covered Shorts in the desk's arm, split by episode id; the arm is
+   * on script.desk.arm for the weekly comparison. */
+  scriptDeskShare: number;
+  /** SCRIPT_DESK_MIN (1-10, default 7): the overall score that clears the desk without a rewrite. */
+  scriptDeskMin: number;
+  /** SCRIPT_DESK_ROUNDS (1-3, default 2): rewrite rounds at most; the desk also stops when a read clears or no score
+   * moves. The call cap follows: one read per version (rounds + 1) and one rewrite and fact check per round. */
+  scriptDeskRounds: number;
+  /** The writers' room (src/editorial/room.ts, ten/room_spec.md, 19 Nov 2026): a clean, separate path for the same Shorts
+   * the desk covers (news, breaking and Why; not replies, search Shorts, GTA File parts or cut-downs), split by episode
+   * id. SCRIPT_ROOM=off (default: nothing runs, nothing changes), "check" (the room's arm gets only the fact pack, one
+   * call, recorded on script.room beside the normal script: a stated reason, verified quotes, a surprise, thin or not,
+   * and whether the published script used any of it; nothing published changes) or "on" (the room writes the arm's
+   * script: fact pack ("room.pack"), writer ("room.write": four angles, kill, point, three drafts), critics on title and
+   * narration only ("room.critic", and "room.viewer" under SCRIPT_ROOM_VIEWER), edits ("room.edit"), layout into the
+   * normal Script without changing a word ("room.layout"); the fact check, rumour labelling, monetisation and house
+   * safety checks, air-time checks and attribution still run and can block; a block gets one edits-only repair
+   * ("room.repair"), then the normal writer; a kill, a drop by both critics or a failed step falls back to the normal
+   * writer, recorded). After the edit a voice pass ("room.voice") rewrites by ear and both critics read the versions
+   * side by side; the better mean goes on, ties to the edited one. CODEX_CALLS=room routes every step. Calls a Short at
+   * most: 1 pack, 1 write, 1 edit, 1 voice, 3 reads per critic (2 in practice), 2 layouts, 1 repair. */
+  scriptRoom: "off" | "check" | "on";
+  /** SCRIPT_ROOM_SHARE (0-1, default 0.5): the share of covered Shorts in the room's arm, split by episode id. */
+  scriptRoomShare: number;
+  /** SCRIPT_ROOM_VIEWER (default true): the viewer critic reads beside the editor critic. */
+  scriptRoomViewer: boolean;
+  /** SCRIPT_ROOM_ROUNDS (0-1, default 1): the edit round; 0 skips the edit (a pick that clears the bar is never edited). */
+  scriptRoomRounds: number;
+  /** SCRIPT_ROOM_VOICE (default true): the voice pass after the edit, kept only when the critics prefer it side by side. */
+  scriptRoomVoice: boolean;
+  /** SCRIPT_ROOM_MIN (1-10, default 8): the mean overall mark that clears the room (no editor mark under 7 either). */
+  scriptRoomMin: number;
+  /** SCRIPT_ROOM_LINKS (default false): the pack also reads up to three primary sources the articles link to (the
+   * publisher's own post, a filing, an interview), only on hosts the factory already reads. */
+  scriptRoomLinks: boolean;
+  /** The first-second panel (src/panel/firstsecond.ts, 19 Nov 2026): what a viewer meets in the first second of a news,
+   * breaking or Why Short (the first spoken sentence, the text on the first frame and the opening picture as the plan
+   * describes it), read blind. Split by episode id like the desk. FIRST_SECOND_PANEL=off (default: nothing runs),
+   * "check" (one audience read, "first.viewer": a stop mark 1 to 10, the reason and whether the first-frame text gives
+   * the answer away; nothing changes) or "on" (the panel's arm: up to three alternative first-frame texts and, for a Short
+   * the writers' room did not write, up to two alternative first sentences from one call, "first.write"; the audience
+   * critic and the editor critic ("first.editor") mark every combination blind and the best is kept, the current
+   * version winning ties; the control arm gets the one read). Calls a Short at most: 1 write and 2 reads. */
+  firstSecondPanel: "off" | "check" | "on";
+  /** FIRST_SECOND_PANEL_SHARE (0-1, default 0.5): the share of covered Shorts in the panel's arm, split by episode id. */
+  firstSecondShare: number;
+  /** The packaging panel (src/panel/packagingpanel.ts, 19 Nov 2026), long videos only: the audience critic is asked which
+   * of the factory's own title and thumbnail-text candidates it would tap, blind, mixed among reference titles when
+   * data/frontier/reference_titles.json exists ("packaging.viewer", one call a video). PACKAGING_PANEL=off (default),
+   * "check" (the panel's order is recorded beside what the factory chose) or "on" (its first choice among the factory's
+   * own candidates is used, never a reference title). */
+  packagingPanel: "off" | "check" | "on";
+  /** The shot plan panel (src/render/planpanel.ts, creator gap plan, 19 Nov 2026): blind critics read a Short's picture
+   * plan as plain text before the render, for news, breaking and Why Shorts, split by episode id. SHOT_PLAN_PANEL=off
+   * (default: nothing runs, nothing changes), "check" (the arm's plan as built gets one read by the picture editor critic,
+   * "plan.critic", recorded with the plan's measurements; nothing changes) or "on" (up to SHOT_PLAN_CANDIDATES plans
+   * from the same media, red ones dropped, one read each, the best kept, one weakest-line swap). */
+  shotPlanPanel: "off" | "check" | "on";
+  /** SHOT_PLAN_PANEL_SHARE (0-1, default 0.5): the share of covered Shorts in the panel's arm. */
+  shotPlanPanelShare: number;
+  /** SHOT_PLAN_CANDIDATES (1-3, default 3): plans built and read at most under "on". */
+  shotPlanCandidates: number;
+  /** FRAME_FOCUS (src/qa/framefocus.ts, 19 Nov 2026): after a Short passes render QA, one frame from the middle of each
+   * spoken line goes to the free local vision model, which says whether the line's subject is visible, large, centred
+   * and clear of text, with a mark from 0 to 3. "off" (default: nothing runs), "check" (the arm's marks are recorded on
+   * assets.frame_focus and a "frame_focus" event; the video never changes) or "fix" (scaffolding: also records the lines
+   * a fix would act on, otherwise the same as "check"). Time-boxed; a model failure never fails or holds the episode. */
+  frameFocus: "off" | "check" | "fix";
+  /** FRAME_FOCUS_SHARE (0-1, default 0.5): the share of Shorts in the check arm; the rest record only their arm. */
+  frameFocusShare: number;
   /** The Pulse Check (src/editorial/newssegment.ts, plan item 10): every news Short's take ends on one of four readings,
    * the named segment viewers follow for. Why Shorts and rankings are untouched: NEWS_SEGMENT, default off. */
   newsSegment: boolean;
@@ -705,6 +874,18 @@ export interface Config {
   /** The report's story-pick multiplier (0.85 to 1.15, moved 0.05 a week at most) on the news slot's candidates; breaking
    * news never: ANALYTICS_LOOP_SCORING, default off. */
   analyticsLoopScoring: boolean;
+  /** The weekly loop's "strong_fandom" pick multiplier (src/loopfeedback.ts FANDOM_WEIGHT_KEY), set from YouTube's
+   * strong-identity fandom pattern while its evidence is strong, inside the same 0.85 to 1.15; applied to the news slot's
+   * candidates only with ANALYTICS_LOOP_SCORING too: LOOP_FANDOM_WEIGHT, default off. */
+  loopFandomWeight: boolean;
+  /** The loop judges by median views (19 Nov audit, upgrade 2): the fit test, the TikTok fit boost and the capped platforms'
+   * favours on middle views with 15 or more a side, series Shorts counted in the fit test, a test ended "inconclusive" after
+   * 2 extensions, and a retention lesson only from 15 or more Shorts: LOOP_MEDIAN_JUDGE, default off. */
+  loopMedianJudge: boolean;
+  /** The main news Short writer split by value (19 Nov audit, upgrade 4): Claude for fit-length (35 s or under), strong-fandom
+   * and series Shorts, Codex for the rest, whatever CODEX_CALLS says (needs CODEX_LLM and the runner); the writer is
+   * recorded on every script either way: WRITER_SPLIT, default off. */
+  writerSplit: boolean;
   /** Retention curve learning (src/retentionlearn.ts): every Short and long video's audience retention curve read once it
    * is 48 hours old, each drop lined up with what was on screen and in the narration, and the patterns across videos
    * written as plain-text lessons into the weekly analytics report (and so the writers' lessons under
@@ -1009,6 +1190,8 @@ export interface Config {
   spoilerGuard: boolean;
   /** STREAM_ASKS and VOD_MINER: the living list of things to test on stream and the moment miner (src/streamasks). */
   streamAsks: StreamAsksSettings;
+  /** MATCH_SEMANTIC and VOD_TAGS: lines matched to pictures by meaning, the owner's recordings tagged (src/semantic). */
+  semantic: SemanticSettings;
   /** SEARCH_SHORTS and its settings: the search-demand engine (src/searchq). Off by default. */
   searchShorts: SearchShortsSettings;
   /** SUBS_LEARN and its settings: subscribers per 1,000 views by format, and one slot a week moved towards the formats
@@ -1039,6 +1222,16 @@ export interface Config {
    * and with GAME_AUDIO_BED a trailer clip whose stretch is mostly speech is heard through its isolated voice.
    */
   trailerQuotes: boolean;
+  /**
+   * GAME_SPEECH_DIALOGUE (off by default until proven; owner, 20 Nov 2026: the game's characters "talking with" the
+   * narrator): with CHARACTER_QUOTES on, quotes become exchanges. Up to 2 in a Short and 12 in a long video; the
+   * writer may answer, complete or contradict the narrator and the narrator may give a short verdict back ("He's not
+   * wrong."); speakers are named from the dialogue where a story needs them (src/sceneindex/speakerdemand.ts);
+   * official trailer lines count as a source (as TRAILER_QUOTES); a room-written Short may take one too; a clip
+   * YouTube will not serve is cut from the scene index's own proxy; every clip is heard by Whisper before the voice
+   * and dropped unless its words match the line; and the music bed and game bed duck further under the character.
+   */
+  gameSpeechDialogue: boolean;
   /** GAME_AUDIO_BED (off by default; owner, 12 Nov 2026): the footage's own game sound under the narration, ducked
    * well under the voice, up in the gaps between sentences, silent under a character quote (src/assets/gameaudio.ts). */
   gameAudioBed: boolean;
@@ -1047,9 +1240,35 @@ export interface Config {
   gameAudioGapLufs: number; // GAME_AUDIO_GAP_LUFS: the bed's loudness in the gaps between sentences (default -24)
   gameAudioTrailers: boolean; // GAME_AUDIO_TRAILERS: trailer clips' sound too, 8 dB lower (default off: trailer music)
   gameAudioMusicDip: number; // GAME_AUDIO_MUSIC_DIP: the music bed's level where the game sound plays (default 0.6)
+  /** GAME_SFX_STEMS (off by default until a listening check and a private test upload; built 20 Nov 2026): with GAME_AUDIO_BED,
+   * trailers and picture-only library clips are heard through their game-sound stems, score and voices taken out by
+   * Demucs on the PC (src/assets/gamesfx.ts, made by src/tools/gamesfx.ts). */
+  gameSfxStems: boolean;
+  /** ACE_BEDS (off by default; built 20 Nov 2026): Pulse's own ACE-Step music (src/render/acebeds.ts): era and genre beds
+   * the music plan picks from (chiptune for old games, synthwave, orchestral fantasy, documentary tension, upbeat
+   * rankings) and the Pulse ident on a Short's opening sting. */
+  aceBeds: boolean;
   officialStillFrames: number; // stills-only publishers (Nintendo): frames of their trailer matched to lines; 0 is off
   docSandboxChapters: number; // DOC_SANDBOX_CHAPTERS: a sandbox writes only this many chapters; 0 is all
+  docDropRefusedChapter: boolean; // DOC_DROP_REFUSED_CHAPTER: a chapter the writer still refuses after widening its sources is dropped and the documentary goes on, while DOC_MIN_CHAPTERS can still be met and it is not the first (src/editorial/longrescue.ts); on by default
+  docMinChapters: number; // DOC_MIN_CHAPTERS: the fewest chapters a documentary goes out with (default 5)
+  longPollCandidate: boolean; // LONG_POLL_CANDIDATE: the viewer poll winner joins the weekly ranking's shortlist when it is missing (src/editorial/longrescue.ts); on by default
+  longPollFallback: boolean; // LONG_POLL_FALLBACK: a topic refusal that cites the poll is asked again without it, then falls back to the top of the shortlist; on by default
+  outputAudit: boolean; // OUTPUT_AUDIT: once a day, each lane's planned slots over the last week against what went public, a warning for any lane under half its plan or no long video for LONG_DROUGHT_DAYS, with the failed attempts grouped by cause (src/outputaudit.ts); on by default
+  longDroughtDays: number; // LONG_DROUGHT_DAYS: days without a public long video before the warning (default 7)
   peopleInsets: boolean; // PEOPLE_INSETS: a licensed photo inset of each real person a Short names, on their name, and the tracklist card on a soundtrack story (src/render/people.ts)
+  /** MENTION_* (src/render/mentions.ts, src/assets/mentions.ts): a small picture of the exact thing a word names pops
+   * up on that word, one setting per kind, all off by default; MENTION_MAX_PER_SHORT caps a Short (a long video adds
+   * one a minute). */
+  mentionGames: boolean; // MENTION_GAMES: another game's official Steam capsule on its name; compared games side by side
+  mentionLogos: boolean; // MENTION_LOGOS: a studio's or publisher's own logo (Wikidata's, on Commons) on its name only
+  mentionCharacters: boolean; // MENTION_CHARACTERS: a fictional character's official art from the publisher's site
+  mentionRealPlaces: boolean; // MENTION_REALPLACES: a free Commons photo of a real place beside its game version
+  mentionPlatforms: boolean; // MENTION_PLATFORMS: a row of Pulse-drawn platform marks when platforms are listed
+  mentionReceipts: boolean; // MENTION_RECEIPTS: "Bloomberg reported": the outlet and date, from the story's own sources
+  mentionOutlets: boolean; // MENTION_OUTLETS (default on): a news outlet or magazine the story cites (Edge, IGN, Bloomberg) shows its own logo or masthead on its name (Wikidata's, on Commons), cached
+  mentionInworld: boolean; // MENTION_INWORLD (default on): an in-game brand, shop, radio station or place the script names ("Scooter Bros") shows its real in-game logo, sign or a frame of it: our own frames first, then official art, then a game wiki's in-game picture; never generated
+  mentionMaxPerShort: number; // MENTION_MAX_PER_SHORT: most mention insets in a Short (default 5)
   shortVivid: boolean; // SHORT_VIVID: a Short's picture under a lighter scrim and vignette, for the clean frame
   /** APPLE_SMART_CROP (Mac mini only, off until switched on): Apple Vision follows the subject so a wide clip's
    * upright crop keeps the action in frame, not the middle third (src/render/smartcrop.ts). */
@@ -1061,6 +1280,44 @@ export interface Config {
    * VideoToolbox encoder (src/lib/videoenc.ts); final masters stay on libx264. */
   appleHwEncode: boolean;
   ytdlpPath: string;
+  /**
+   * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
+   * Pulse or Orryy channel accounts), exported on the Mac mini by mac/ytcookies.sh, so the game footage fetcher alone
+   * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own budget,
+   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else uses the cookies except the
+   * opt-in switches below (each default off, together within YT_SIGNED_CLIP_SHARE), and never on Pulse's own videos.
+   */
+  ytdlpCookiesFile: string;
+  /**
+   * SIGNED_CLIPS (default off): a Short's or long video's YouTube clip pull that met an age gate (or the anonymous
+   * lane's bot-check pause) is tried once more signed in with YTDLP_COOKIES_FILE (src/lib/child.ts, src/lib/ytsignin.ts
+   * signedPull). Read from the environment by the asset modules; mirrored here for the doctor and the docs.
+   */
+  signedClips: boolean;
+  /**
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of YT_SIGNED_HOURLY that clips, the light index and the trend feed may
+   * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
+   */
+  ytSignedClipShare: number;
+  /**
+   * SIGNED_LIGHT_INDEX (default off): the light index reads an age-gated upload's details and captions again signed in
+   * (skip-download only), within YT_SIGNED_CLIP_SHARE (src/sceneindex/light.ts). Read from the environment there.
+   */
+  signedLightIndex: boolean;
+  /**
+   * TREND_FEED (default off): every 3 hours the download account's subscriptions feed (YTDLP_COOKIES_FILE, at most 2
+   * signed-in calls, metadata only) is read for new gaming uploads, kept as labelled story leads for discovery
+   * (src/discovery/trendfeed.ts). TREND_CHANNELS: the channel handles the account should subscribe to
+   * (src/tools/trendchannels.ts prints them for the owner); the feed itself is whatever the account subscribes to.
+   */
+  trendFeed: boolean;
+  trendChannels: string[];
+  /**
+   * AGE_ALARM (default off): every hour one videos.list call (1 quota unit) checks Pulse's uploads from the last 14 days
+   * for YouTube's age restriction and sends one Discord line per newly restricted video (src/agealarm.ts). Uses the
+   * channel's own API login, never the download account.
+   */
+  ageAlarm: boolean;
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
@@ -1069,6 +1326,10 @@ export interface Config {
   gameLibrary: boolean;
   /** SHORT_FOOTAGE_GATE (default on): a Short with no moving footage, or no footage to open on, is held when footage of its game exists. */
   shortFootageGate: boolean;
+  /** SHORT_FOOTAGE_WAIT (default on): a Short the footage gate would hold while YouTube downloads are paused waits for the
+   * pause to lift and gathers again from scratch, once, as a spare for the next empty slot; one already held that way is
+   * tried once more after the pause lifts (src/premakerefresh.ts footageWaitPlan). */
+  shortFootageWait: boolean;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   /**
    * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
@@ -1085,6 +1346,19 @@ export interface Config {
   libraryPixabay: boolean;
   pixabayApiKey: string;
   libraryArchive: boolean;
+  /**
+   * New sources (src/sources, 20 Nov 2026), each robots.txt-polite and terms-recorded:
+   *  - pressKits (PRESS_KITS, default on): publishers' press kits indexed per game with each asset's terms (only
+   *    editorial or press use kept), ranked first among stills and put first in news Shorts' press pictures;
+   *  - achievementArt (ACHIEVEMENT_ART, default on): real achievement icons, names and unlock shares on Pulse's own
+   *    card; STEAM_API_KEY (optional, free) switches Steam's data to the official Web API schema;
+   *  - wikiLeads (WIKI_LEADS, default on): fan wiki trivia, timelines and development notes as story leads, each a
+   *    fact candidate only once its cited primary source backs it; the writers get the primary's text, never the wiki.
+   */
+  pressKits: boolean;
+  achievementArt: boolean;
+  steamApiKey: string;
+  wikiLeads: boolean;
   amazonUkTag: string; // Amazon Associates UK tracking ID
   amazonUsTag: string; // Amazon Associates US tracking ID, when there is one
   amazonMoreTags: {
@@ -1113,8 +1387,58 @@ export interface Config {
   hookTargetWpm: number;
   /** 2.5D depth layers for long videos' stills (src/render/parallax.ts). */
   parallax: boolean;
+  /** BLENDER_SCENES (default off), BLENDER_SHARE, BLENDER_CAP_MINUTES, BLENDER_URL, BLENDER_WAIT_MINUTES: original 3D
+   * clips from the PC's Blender in place of a long video's flat graphics (src/render/blender.ts). */
+  blender: BlenderSettings;
   /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
   shortParallaxShare: number;
+  /** The 3D photo orbit (src/render/orbit.ts): the best wide key art of each chapter gets a depth mesh and the
+   * camera swings round its subject, about once a chapter (DEPTH_ORBIT, default off until proven). Needs PARALLAX. */
+  depthOrbit: boolean;
+  /** At most this many stills get the 3D photo maps in one video (DEPTH_ORBIT_MAX, default 16). */
+  depthOrbitMax: number;
+  /** The depth camera (src/render/depthcam.ts): wide stills filmed as 3D photos on a gentle path timed to the stressed
+   * word, with a focus rack, haze on the far depths and the odd light leak, instead of the three-layer drift, in long
+   * videos and Shorts; the place behind the subject is painted from the background only (PARALLAX_DEEP, default off
+   * until proven). Needs PARALLAX. */
+  parallaxDeep: boolean;
+  /** At most this many stills a video get the depth camera's maps (PARALLAX_DEEP_MAX, default 40). */
+  parallaxDeepMax: number;
+  /** A documentary chapter's title breather over a 3D wall of the chapter's own stills (src/render/boldideas.ts;
+   * CHAPTER_WALL, default off until proven). */
+  chapterWall: boolean;
+  /** A line's short stressed phrase set huge behind a layered still's subject, in place of its caption
+   * (DEPTH_TYPE, default off until proven). */
+  depthType: boolean;
+  /** A line comparing two chapters' games shows both games' pictures behind a sliding wipe
+   * (COMPARE_WIPE, default off until proven). */
+  compareWipe: boolean;
+  /** The subject pop-out (src/render/popout.ts): a still's subject steps in front of the title drop and every
+   * other chapter opener's title when it fits (SUBJECT_POP, default off until proven). Needs PARALLAX. */
+  subjectPop: boolean;
+  /** 3D game boxes (src/render/boxart.ts): a ranking entry's box turns in on its card; a documentary's "it came
+   * out" sentence turns the game's box in beside the picture (BOX_3D, default off until proven). */
+  box3d: boolean;
+  /**
+   * The long videos' 3D and look craft in Shorts (src/render/shortupgrades.ts, src/shortupgradestep.ts), each on by
+   * default but only where its long-video switch is on too, so the long switch stays the one kill switch:
+   * SHORT_MAP_PINS (with MAP_PINS), SHORT_GAME_LOOK (GAME_LOOK), SHORT_BLENDER (BLENDER_SCENES), SHORT_BOX_3D
+   * (BOX_3D), SHORT_DEPTH_TYPE (DEPTH_TYPE), SHORT_COMPARE_WIPE (COMPARE_WIPE) and SHORT_DEPTH_ORBIT (DEPTH_ORBIT).
+   * SHORT_BLENDER_WAIT_MINUTES (default 25) is the most a Short waits for its 3D clip, and SHORT_BLENDER_MARGIN_MINUTES
+   * (default 45) the time it keeps before its slot: a Short with no slot (news) never waits for one.
+   */
+  shortUpgrades: ShortUpgradeSwitches;
+  /** AI upscaling of old games' footage and stills (src/assets/upscale.ts): Real-ESRGAN on this machine's GPU at
+   * gather time, cached by file hash (UPSCALE, default off until proven; also off where no model files are found). */
+  upscale: boolean;
+  /** Which model: "anime" (realesr-animevideov3, the default: flat game art), "general" or "x4plus" (UPSCALE_MODEL). */
+  upscaleModel: "anime" | "general" | "x4plus";
+  /** The folder with the Real-ESRGAN weights (UPSCALE_MODEL_DIR). */
+  upscaleModelDir: string;
+  /** Only pictures and footage at most this many lines tall are upscaled: never modern HD (UPSCALE_MAX_HEIGHT, default 576). */
+  upscaleMaxHeight: number;
+  /** Seconds of footage upscaled at most in one video, so it fits the gather budget (UPSCALE_MAX_SECONDS, default 150). */
+  upscaleMaxSeconds: number;
   /** Zoom-to-the-detail annotations on long videos' stills (src/assets/annotate.ts). */
   annotate: boolean;
   /** A long video's real-world photos (Commons photos, portraits, sketches) only on the sentence they were picked for,
@@ -1142,16 +1466,22 @@ export interface Config {
   footageFirstMaxMinutes: number; // the whole pass stops starting new chapters after this long; 0 = no limit
   /** Drawn concept sketches for documentary lines nothing filmed can show (src/assets/illustrate.ts); off by default. */
   illustrate: boolean;
-  /** The ComfyUI server that draws them (this PC's FLUX.1 dev). */
+  /** The server that draws them with FLUX.2 klein 4B (Apache 2.0): the Mac's sketch service (mac/sketch.sh) by default. */
   illustrateUrl: string;
+  /** "klein": the Mac's sketch service (POST /draw); "comfy": ComfyUI with the klein workflow (the PC route). */
+  illustrateBackend: "klein" | "comfy";
   /** At most this many sketches per documentary, so a run cannot take all night. */
   illustrateMax: number;
   /** Each sketch's time to queue, draw and download; past it the job is dropped. */
   illustrateTimeoutSeconds: number;
+  /** The whole video's drawing time: no sketch starts that could run past it (0 = no limit). */
+  illustrateBudgetSeconds: number;
   /** A placeholder PNG instead of the model: dry runs and the trial without the GPU. */
   illustrateStub: boolean;
   /** A few concept sketches of lines with movement brought to life by this PC's own video model (Wan 2.2 TI2V 5B through ComfyUI; src/assets/localvideo.ts); off by default. */
   illustrateVideo: boolean;
+  /** The ComfyUI server for those motion clips (the PC's); separate from the sketches' server. */
+  illustrateVideoUrl: string;
   /** At most this many AI motion clips per documentary: each holds the GPU about 3 minutes. */
   illustrateVideoMax: number;
   /** Each clip's time to upload, animate and download; past it the job is dropped from ComfyUI's queue. */
@@ -1395,6 +1725,8 @@ export function loadConfig(): Config {
       .map((s) => s.trim())
       .filter(Boolean),
     codexVision: bool("CODEX_VISION", false),
+    codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
+    factRepair: bool("FACT_REPAIR", true),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
@@ -1519,6 +1851,7 @@ export function loadConfig(): Config {
     whyFreshDays: Math.max(0, int("WHY_FRESH_DAYS", 14)),
     whySerialEnabled: bool("WHY_SERIAL_ENABLED", false),
     whyTargetSeconds: parseBand(str("WHY_TARGET_SECONDS", "45-60")),
+    whyLengthAb: bool("WHY_LENGTH_AB", false),
     whyHomeShare: Math.min(1, Math.max(0, Number(str("WHY_HOME_SHARE", "0")) || 0)),
     whyHomeFranchises: parseHomeFranchises(
       str("WHY_HOME_FRANCHISES", "Grand Theft Auto|Resident Evil"),
@@ -1569,6 +1902,7 @@ export function loadConfig(): Config {
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
+    demandStaleDays: Math.max(0, int("DEMAND_STALE_DAYS", 10)),
     repeatMax: Math.max(0, int("REPEAT_MAX", 3)),
     // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
     spareUploads: bool("SPARE_UPLOADS", false),
@@ -1654,6 +1988,7 @@ export function loadConfig(): Config {
     everyGameFile: str("EVERYGAME_FILE", ""),
     runPremakeHours: Math.max(0, int("RUN_PREMAKE_HOURS", 0)),
     runPremakeUploadHours: Math.max(0, int("RUN_PREMAKE_UPLOAD_HOURS", 2)),
+    premakeRefresh: bool("PREMAKE_REFRESH", true),
     runSpareSlots: str("RUN_SPARE_SLOTS", "")
       .split(",")
       .map((x) => x.trim())
@@ -1667,6 +2002,8 @@ export function loadConfig(): Config {
     runDocPrivateHours: Math.max(0, int("RUN_DOC_PRIVATE_HOURS", 2)),
     longStockNotOnPeople: bool("LONG_STOCK_NOT_ON_PEOPLE", true),
     codeScenes: bool("CODE_SCENES", false),
+    mapPins: bool("MAP_PINS", false),
+    gameLook: bool("GAME_LOOK", false),
     shortPlateMax: Number(str("SHORT_PLATE_MAX", "0.10")) || 0.1,
     shortPlateMaxBig: Number(str("SHORT_PLATE_MAX_BIG", "0.35")) || 0.35,
     shortPlateFirstSeconds: Math.max(0, int("SHORT_PLATE_FIRST_SECONDS", 5)),
@@ -1678,6 +2015,7 @@ export function loadConfig(): Config {
     sourceMinChars: Math.max(0, int("SOURCE_MIN_CHARS", 600)),
     shortEndPayoff: bool("SHORT_END_PAYOFF", true),
     shortTightScript: bool("SHORT_TIGHT_SCRIPT", false),
+    shortCraftRules: bool("SHORT_CRAFT_RULES", true),
     shortArgumentShare: Math.max(
       0,
       Math.min(1, Number(str("SHORT_ARGUMENT_SHARE", "0.5"))),
@@ -1780,6 +2118,7 @@ export function loadConfig(): Config {
     docEnabled: bool("DOC_ENABLED", true),
     elevenLabsMonthlyCredits: int("ELEVENLABS_MONTHLY_CREDITS", 500_000),
     elevenLabsReserve: int("ELEVENLABS_RESERVE", 10_000),
+    elevenLabsBalanceStaleHours: int("ELEVENLABS_BALANCE_STALE_HOURS", 12),
     surplusDocDays: str("SURPLUS_DOC_DAYS", "tue,thu,sat")
       .toLowerCase()
       .split(",")
@@ -1845,6 +2184,28 @@ export function loadConfig(): Config {
     clarityGate: friendPassFrom(process.env.CLARITY_GATE),
     clarityMin: Math.min(10, Math.max(1, int("CLARITY_MIN", 8))),
     humanise: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("HUMANISE", "off").trim().toLowerCase()),
+    explainers: ((v) => (v === "short" || v === "long" || v === "all" ? v : "off"))(str("EXPLAINERS", "off").trim().toLowerCase()),
+    shortPayoffGate: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SHORT_PAYOFF_GATE", "off").trim().toLowerCase()),
+    shortPayoffShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHORT_PAYOFF_SHARE", "0.5"))))),
+    scriptDesk: ((v) => (v === "check" || v === "fix" ? v : "off"))(str("SCRIPT_DESK", "off").trim().toLowerCase()),
+    scriptDeskShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_DESK_SHARE", "0.5"))))),
+    scriptDeskMin: Math.min(10, Math.max(1, int("SCRIPT_DESK_MIN", 7))),
+    scriptDeskRounds: Math.min(3, Math.max(1, int("SCRIPT_DESK_ROUNDS", 2))),
+    scriptRoom: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SCRIPT_ROOM", "off").trim().toLowerCase()),
+    scriptRoomShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SCRIPT_ROOM_SHARE", "0.5"))))),
+    scriptRoomViewer: str("SCRIPT_ROOM_VIEWER", "true").trim().toLowerCase() !== "false",
+    scriptRoomRounds: Math.min(1, Math.max(0, int("SCRIPT_ROOM_ROUNDS", 1))),
+    scriptRoomVoice: str("SCRIPT_ROOM_VOICE", "true").trim().toLowerCase() !== "false",
+    scriptRoomMin: Math.min(10, Math.max(1, int("SCRIPT_ROOM_MIN", 8))),
+    scriptRoomLinks: str("SCRIPT_ROOM_LINKS", "false").trim().toLowerCase() === "true",
+    firstSecondPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("FIRST_SECOND_PANEL", "off").trim().toLowerCase()),
+    firstSecondShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("FIRST_SECOND_PANEL_SHARE", "0.5"))))),
+    packagingPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("PACKAGING_PANEL", "off").trim().toLowerCase()),
+    shotPlanPanel: ((v) => (v === "check" || v === "on" ? v : "off"))(str("SHOT_PLAN_PANEL", "off").trim().toLowerCase()),
+    shotPlanPanelShare: Math.min(1, Math.max(0, ((n) => (Number.isFinite(n) ? n : 0.5))(Number(str("SHOT_PLAN_PANEL_SHARE", "0.5"))))),
+    shotPlanCandidates: Math.min(3, Math.max(1, int("SHOT_PLAN_CANDIDATES", 3))),
+    frameFocus: parseFocusMode(process.env.FRAME_FOCUS),
+    frameFocusShare: parseFocusShare(process.env.FRAME_FOCUS_SHARE),
     hypeAsk: bool("HYPE_ASK", false),
     growthReport: bool("GROWTH_REPORT", false),
     growthReportSplit: bool("GROWTH_REPORT_SPLIT", false),
@@ -1853,6 +2214,9 @@ export function loadConfig(): Config {
     analyticsLoopLessons: bool("ANALYTICS_LOOP_LESSONS", false),
     analyticsLoopPosting: bool("ANALYTICS_LOOP_POSTING", false),
     analyticsLoopScoring: bool("ANALYTICS_LOOP_SCORING", false),
+    loopFandomWeight: bool("LOOP_FANDOM_WEIGHT", false),
+    loopMedianJudge: bool("LOOP_MEDIAN_JUDGE", false),
+    writerSplit: bool("WRITER_SPLIT", false),
     retentionLearn: bool("RETENTION_LEARN", false),
     retentionDirector: ((m) => (m === "advise" || m === "fix" ? m : "off"))(str("RETENTION_DIRECTOR", "off").trim().toLowerCase()),
     commentReplyShorts: bool("COMMENT_REPLY_SHORTS", false),
@@ -2039,6 +2403,7 @@ export function loadConfig(): Config {
     archiveSections: bool("ARCHIVE_SECTIONS", false),
     spoilerGuard: bool("SPOILER_GUARD", false),
     streamAsks: streamAsksSettings(process.env),
+    semantic: semanticSettings(process.env),
     // Facts files resolve against the factory folder the server runs in, like SHORT_RUN_FILE.
     searchShorts: searchShortsSettings(process.env),
     subsLearn: subsLearnSettings(process.env),
@@ -2054,20 +2419,45 @@ export function loadConfig(): Config {
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
     trailerQuotes: bool("TRAILER_QUOTES", false),
+    gameSpeechDialogue: bool("GAME_SPEECH_DIALOGUE", false),
     gameAudioBed: bool("GAME_AUDIO_BED", false),
     gameAudioShare: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_SHARE", "0.5")) || 0)),
     gameAudioUnderLufs: Math.min(-18, Math.max(-50, Number(str("GAME_AUDIO_UNDER_LUFS", "-30")) || -30)),
     gameAudioGapLufs: Math.min(-16, Math.max(-50, Number(str("GAME_AUDIO_GAP_LUFS", "-24")) || -24)),
     gameAudioTrailers: bool("GAME_AUDIO_TRAILERS", false),
     gameAudioMusicDip: Math.min(1, Math.max(0, Number(str("GAME_AUDIO_MUSIC_DIP", "0.6")) || 0)),
+    gameSfxStems: bool("GAME_SFX_STEMS", false),
+    aceBeds: bool("ACE_BEDS", false),
   officialStillFrames: int("OFFICIAL_STILL_FRAMES", 0),
   peopleInsets: bool("PEOPLE_INSETS", true),
+  mentionGames: bool("MENTION_GAMES", false),
+  mentionLogos: bool("MENTION_LOGOS", false),
+  mentionCharacters: bool("MENTION_CHARACTERS", false),
+  mentionRealPlaces: bool("MENTION_REALPLACES", false),
+  mentionPlatforms: bool("MENTION_PLATFORMS", false),
+  mentionReceipts: bool("MENTION_RECEIPTS", false),
+  mentionOutlets: bool("MENTION_OUTLETS", true),
+  mentionInworld: bool("MENTION_INWORLD", true),
+  mentionMaxPerShort: Math.min(8, Math.max(0, int("MENTION_MAX_PER_SHORT", 5))),
   shortVivid: bool("SHORT_VIVID", false),
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
   appleHwEncode: bool("APPLE_HW_ENCODE", false),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
+  docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),
+  docMinChapters: Math.max(1, int("DOC_MIN_CHAPTERS", 5)),
+  longPollCandidate: bool("LONG_POLL_CANDIDATE", true),
+  longPollFallback: bool("LONG_POLL_FALLBACK", true),
+  outputAudit: bool("OUTPUT_AUDIT", true),
+  longDroughtDays: Math.max(1, int("LONG_DROUGHT_DAYS", 7)),
     ytdlpPath: usablePath(str("YTDLP_PATH"), process.platform) || "yt-dlp",
+    ytdlpCookiesFile: ((v) => (v ? path.resolve(v) : ""))(usablePath(str("YTDLP_COOKIES_FILE").trim(), process.platform)),
+    signedClips: bool("SIGNED_CLIPS", false),
+    signedLightIndex: bool("SIGNED_LIGHT_INDEX", false),
+    ageAlarm: bool("AGE_ALARM", false),
+    trendFeed: bool("TREND_FEED", false),
+    trendChannels: trendChannelList(process.env.TREND_CHANNELS),
+    ytSignedClipShare: ((n) => (Number.isFinite(n) && n >= 0 ? Math.min(1, n) : 0.5))(Number(str("YT_SIGNED_CLIP_SHARE", "0.5"))),
     ownerGames: str("OWNER_GAMES", "Grand Theft Auto V, Grand Theft Auto VI")
       .split(",")
       .map((g) => g.trim())
@@ -2078,8 +2468,13 @@ export function loadConfig(): Config {
     footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE || os.homedir(), "Videos")),
     gameLibrary: bool("GAME_LIBRARY", true),
     shortFootageGate: bool("SHORT_FOOTAGE_GATE", true),
+    shortFootageWait: bool("SHORT_FOOTAGE_WAIT", true),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
+    pressKits: bool("PRESS_KITS", true),
+    achievementArt: bool("ACHIEVEMENT_ART", true),
+    steamApiKey: str("STEAM_API_KEY"),
+    wikiLeads: bool("WIKI_LEADS", true),
     libraryOpenverse: bool("LIBRARY_OPENVERSE", true),
     libraryPixabay: bool("LIBRARY_PIXABAY", true),
     pixabayApiKey: str("PIXABAY_API_KEY"),
@@ -2107,7 +2502,36 @@ export function loadConfig(): Config {
     hookTakes: Math.min(5, Math.max(0, int("HOOK_TAKES", 0))),
     hookTargetWpm: Math.min(240, Math.max(120, int("HOOK_TARGET_WPM", 175))),
     parallax: bool("PARALLAX", true),
+    blender: blenderSettings(process.env),
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
+    depthOrbit: bool("DEPTH_ORBIT", false),
+    depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
+    parallaxDeep: bool("PARALLAX_DEEP", false),
+    parallaxDeepMax: Math.max(0, int("PARALLAX_DEEP_MAX", 40)),
+    chapterWall: bool("CHAPTER_WALL", false),
+    depthType: bool("DEPTH_TYPE", false),
+    compareWipe: bool("COMPARE_WIPE", false),
+    subjectPop: bool("SUBJECT_POP", false),
+    box3d: bool("BOX_3D", false),
+    shortUpgrades: {
+      mapPins: bool("SHORT_MAP_PINS", true),
+      gameLook: bool("SHORT_GAME_LOOK", true),
+      blender: bool("SHORT_BLENDER", true),
+      blenderWaitMinutes: Math.max(1, int("SHORT_BLENDER_WAIT_MINUTES", 25)),
+      blenderMarginMinutes: Math.max(10, int("SHORT_BLENDER_MARGIN_MINUTES", 45)),
+      box3d: bool("SHORT_BOX_3D", true),
+      depthType: bool("SHORT_DEPTH_TYPE", true),
+      compareWipe: bool("SHORT_COMPARE_WIPE", true),
+      depthOrbit: bool("SHORT_DEPTH_ORBIT", true),
+    },
+    upscale: bool("UPSCALE", false),
+    upscaleModel:
+      (["anime", "general", "x4plus"] as const).find(
+        (m) => m === str("UPSCALE_MODEL", "anime").toLowerCase(),
+      ) ?? "anime",
+    upscaleModelDir: str("UPSCALE_MODEL_DIR", defaultUpscaleModels()),
+    upscaleMaxHeight: Math.max(0, int("UPSCALE_MAX_HEIGHT", 576)),
+    upscaleMaxSeconds: Math.max(0, int("UPSCALE_MAX_SECONDS", 150)),
     annotate: bool("ANNOTATE", true),
     realPhotosPinnedOnly: bool("REAL_PHOTOS_PINNED_ONLY", true),
     stockThemeMax: int("STOCK_THEME_MAX", 2),
@@ -2124,11 +2548,14 @@ export function loadConfig(): Config {
     footageVisionMax: Math.max(12, int("FOOTAGE_VISION_MAX", 120)),
     footageFirstMaxMinutes: Math.max(0, int("FOOTAGE_FIRST_MAX_MINUTES", 40)),
     illustrate: bool("ILLUSTRATE_ENABLED", false),
-    illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8188"),
+    illustrateUrl: str("ILLUSTRATE_URL", "http://127.0.0.1:8798"),
+    illustrateBackend: (/^comfy/i.test(str("ILLUSTRATE_BACKEND", "klein").trim()) ? "comfy" : "klein") as "klein" | "comfy",
     illustrateMax: int("ILLUSTRATE_MAX", 24),
     illustrateTimeoutSeconds: int("ILLUSTRATE_TIMEOUT_SECONDS", 180),
+    illustrateBudgetSeconds: Math.max(0, int("ILLUSTRATE_BUDGET_SECONDS", 1500)),
     illustrateStub: bool("ILLUSTRATE_STUB", false),
     illustrateVideo: bool("ILLUSTRATE_VIDEO_ENABLED", false),
+    illustrateVideoUrl: str("ILLUSTRATE_VIDEO_URL", "http://127.0.0.1:8188"),
     illustrateVideoMax: int("ILLUSTRATE_VIDEO_MAX", 6),
     illustrateVideoTimeoutSeconds: int("ILLUSTRATE_VIDEO_TIMEOUT_SECONDS", 600),
     illustrateVideoStub: bool("ILLUSTRATE_VIDEO_STUB", false),
@@ -2288,6 +2715,8 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexLlm: c.codexLlm,
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
+    codexGrammarFallback: c.codexGrammarFallback,
+    factRepair: c.factRepair,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,
@@ -2308,6 +2737,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
       : `${c.bigStoryMode}, size>=${c.bigStorySize}, up to ${c.bigStoryPerDay}/day, ${c.bigStoryMaxAgeHours}h window`,
     whySlots: c.whyEnabled ? c.whySlots.join(",") : "off",
     streamAsks: streamAsksSummary(c.streamAsks),
+    semantic: semanticSummary(c.semantic),
     searchShorts: searchShortsSummary(c.searchShorts),
     subsLearn: subsLearnSummary(c.subsLearn),
     packaging: packagingSummary(c.packaging),
@@ -2316,7 +2746,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     hud: hudSummary(c.hud),
     levers: leverSummary(c.levers),
     whySerial: c.whySerialEnabled
-      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
+      ? `numbered, ${c.whyTargetSeconds ? `${c.whyTargetSeconds.min}-${c.whyTargetSeconds.max}s` : "default length"}${c.whyLengthAb ? " (30-35s on even UTC days, WHY_LENGTH_AB)" : ""}, home shelf ${Math.round(c.whyHomeShare * 100)}% (${c.whyHomeFranchises.join(", ")})`
       : "off",
     gtaFile: gtaFileSummary(c),
     gtaDaily: gtaDailySummary(c),
@@ -2355,6 +2785,15 @@ function defaultParallaxPython(): string {
     `${os.homedir()}/PulseFactory/parallax/bin/python`,
   ];
   return venvs.find((p) => fs.existsSync(p)) ?? defaultWhisperPython();
+}
+
+/** The Real-ESRGAN weights (PC: D:/pulse-tools/models/realesrgan; Mac: ~/PulseFactory/models/realesrgan). */
+function defaultUpscaleModels(): string {
+  const candidates = [
+    "D:/pulse-tools/models/realesrgan",
+    `${process.env.HOME ?? ""}/PulseFactory/models/realesrgan`,
+  ];
+  return candidates.find((p) => p && fs.existsSync(p)) ?? "";
 }
 
 function defaultWhisperPython(): string {

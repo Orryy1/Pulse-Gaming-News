@@ -38,6 +38,84 @@ export interface PcWindow {
   note: string;
 }
 
+/** One lane due on a day: lane, local HH:MM, minutes of lead time, minutes the PC is kept free. */
+export type DaySlot = [lane: string, hhmm: string, lead: number, keep: number];
+
+/**
+ * The lanes due on one local day (YYYY-MM-DD), as the selection code plans them. plannedSlots reads it for the
+ * next hours and the output audit (src/outputaudit.ts) for the week gone, so both count the same plan.
+ */
+export function slotsOnDay(cfg: Config, d: string): DaySlot[] {
+  const day = weekday(localTime(d, "12:00", cfg.timezone), cfg.timezone);
+  const due: DaySlot[] = [];
+  for (const s of cfg.newsSlots)
+    due.push(["news", s, cfg.slotLeadMinutes, KEEP_SHORT_MIN]);
+  // Every Why slot (WHY_SLOTS, src/storymix.ts) keeps its own window, like a news slot.
+  if (cfg.whyEnabled && cfg.whyDays.includes(day))
+    for (const s of cfg.whySlots)
+      due.push(["why", s, cfg.slotLeadMinutes + 30, KEEP_SHORT_MIN]);
+  if (cfg.evergreenEnabled && cfg.evergreenDays.includes(day))
+    due.push([
+      "evergreen",
+      cfg.evergreenSlot,
+      cfg.slotLeadMinutes + 45,
+      KEEP_SHORT_MIN,
+    ]);
+  if (cfg.weeklyEnabled) {
+    const recap = cfg.recapDays.includes(day);
+    const weekly = [
+      cfg.radarDays,
+      cfg.freeDays,
+      cfg.climbersDays,
+      cfg.achievementDays,
+    ].some((ds) => ds.includes(day));
+    if (recap || weekly)
+      due.push([
+        "weekly",
+        cfg.weeklySlot,
+        cfg.slotLeadMinutes + 30,
+        // An explainer week (src/weeklytest.ts) renders 15-20 minutes: the documentary's window.
+        recap && cfg.recapLong
+          ? cfg.weeklyExplainedTest
+            ? KEEP_DOC_MIN
+            : KEEP_LONG_MIN
+          : KEEP_SHORT_MIN,
+      ]);
+  }
+  if (cfg.dealsDays.includes(day))
+    due.push([
+      "deals",
+      cfg.dealsSlot,
+      cfg.slotLeadMinutes + 30,
+      KEEP_SHORT_MIN,
+    ]);
+  if (cfg.cutdownsEnabled)
+    due.push([
+      "cutdown",
+      cfg.cutdownSlot,
+      cfg.slotLeadMinutes,
+      KEEP_SHORT_MIN,
+    ]);
+  if (
+    cfg.longformEnabled &&
+    cfg.longformDays.includes(day) &&
+    !cfg.longformSkip.includes(d)
+  )
+    due.push([
+      "longform",
+      cfg.longformSlot,
+      cfg.slotLeadMinutes + 420,
+      KEEP_LONG_MIN,
+    ]);
+  if (
+    cfg.docEnabled &&
+    cfg.docDays.includes(day) &&
+    cfg.docWeeks.includes(Math.ceil(Number(d.slice(8)) / 7))
+  )
+    due.push(["documentary", cfg.docSlot, cfg.docLeadMinutes, KEEP_DOC_MIN]);
+  return due;
+}
+
 /** Every scheduled publish time in the next `hours`, lane by lane, as the selection code plans them. */
 export function plannedSlots(
   cfg: Config,
@@ -48,74 +126,7 @@ export function plannedSlots(
   const out: PlannedSlot[] = [];
   const today = dayKey(now, tz);
   for (const d of [today, addDays(today, 1)]) {
-    const day = weekday(localTime(d, "12:00", tz), tz);
-    const due: [string, string, number, number][] = []; // lane, HH:MM, lead, keep
-    for (const s of cfg.newsSlots)
-      due.push(["news", s, cfg.slotLeadMinutes, KEEP_SHORT_MIN]);
-    // Every Why slot (WHY_SLOTS, src/storymix.ts) keeps its own window, like a news slot.
-    if (cfg.whyEnabled && cfg.whyDays.includes(day))
-      for (const s of cfg.whySlots)
-        due.push(["why", s, cfg.slotLeadMinutes + 30, KEEP_SHORT_MIN]);
-    if (cfg.evergreenEnabled && cfg.evergreenDays.includes(day))
-      due.push([
-        "evergreen",
-        cfg.evergreenSlot,
-        cfg.slotLeadMinutes + 45,
-        KEEP_SHORT_MIN,
-      ]);
-    if (cfg.weeklyEnabled) {
-      const recap = cfg.recapDays.includes(day);
-      const weekly = [
-        cfg.radarDays,
-        cfg.freeDays,
-        cfg.climbersDays,
-        cfg.achievementDays,
-      ].some((ds) => ds.includes(day));
-      if (recap || weekly)
-        due.push([
-          "weekly",
-          cfg.weeklySlot,
-          cfg.slotLeadMinutes + 30,
-          // An explainer week (src/weeklytest.ts) renders 15-20 minutes: the documentary's window.
-          recap && cfg.recapLong
-            ? cfg.weeklyExplainedTest
-              ? KEEP_DOC_MIN
-              : KEEP_LONG_MIN
-            : KEEP_SHORT_MIN,
-        ]);
-    }
-    if (cfg.dealsDays.includes(day))
-      due.push([
-        "deals",
-        cfg.dealsSlot,
-        cfg.slotLeadMinutes + 30,
-        KEEP_SHORT_MIN,
-      ]);
-    if (cfg.cutdownsEnabled)
-      due.push([
-        "cutdown",
-        cfg.cutdownSlot,
-        cfg.slotLeadMinutes,
-        KEEP_SHORT_MIN,
-      ]);
-    if (
-      cfg.longformEnabled &&
-      cfg.longformDays.includes(day) &&
-      !cfg.longformSkip.includes(d)
-    )
-      due.push([
-        "longform",
-        cfg.longformSlot,
-        cfg.slotLeadMinutes + 420,
-        KEEP_LONG_MIN,
-      ]);
-    if (
-      cfg.docEnabled &&
-      cfg.docDays.includes(day) &&
-      cfg.docWeeks.includes(Math.ceil(Number(d.slice(8)) / 7))
-    )
-      due.push(["documentary", cfg.docSlot, cfg.docLeadMinutes, KEEP_DOC_MIN]);
-    for (const [lane, hhmm, lead, keep] of due) {
+    for (const [lane, hhmm, lead, keep] of slotsOnDay(cfg, d)) {
       const at = localTime(d, hhmm, tz);
       if (at > now && at.getTime() - now.getTime() <= hours * 3600_000)
         out.push({ lane, at, lead, keep });

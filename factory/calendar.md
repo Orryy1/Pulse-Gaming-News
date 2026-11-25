@@ -5,6 +5,31 @@ sees the next three days. One entry a line: `YYYY-MM-DD lane: the angle`, lane b
 evergreen, long, doc or any. Advice, not orders: the editor still judges the day's candidates and never
 invents a story to fit the plan. Dates and claims in an angle are checked against the sources on the day.
 
+## Weekly long videos (from 19 November 2026)
+
+Every week: long rankings or guides on Monday, Thursday and Saturday at 17:00, a documentary on Wednesday at 19:00 and the round-up or the week's biggest story explained on Friday at 20:00 (UK). Vary the long formats week to week (ranking, guide, versus, every-game list) so a breakout shows which shape works; pick games people search for. One subject a documentary: a turning point, a comeback or a failure, never a franchise survey. GTA 6 story spoilers stay out until 18 December, and GTA is at most one long video a week while its Shorts are saturated.
+
+2026-11-25 doc: The Wii at 20 (US launch 19 November 2006): how a cheaper, less powerful console outsold its rivals, told from Nintendo's sales figures and statements on record. [https://en.wikipedia.org/wiki/Wii]
+2026-12-02 doc: Halo and the first Xbox at 25 (15 November 2001): how Microsoft built a console around one launch game, from Microsoft's and Bungie's statements on record. [https://en.wikipedia.org/wiki/Halo:_Combat_Evolved]
+2026-12-05 long: Every mainline Fallout game ranked, from Fallout (1997) to Fallout 76, using review aggregates; attribute a review only to an article the sources actually supply. [https://en.wikipedia.org/wiki/Fallout_(series)]
+2026-12-09 doc: No Man's Sky's comeback: from the August 2016 launch backlash to years of free updates, told through Hello Games' patch notes and statements on record. [https://en.wikipedia.org/wiki/No_Man%27s_Sky]
+2026-12-16 doc: Cyberpunk 2077's comeback: the December 2020 launch, Sony pulling it from the PlayStation Store on 17 December 2020, and the road to update 2.0, from CD Projekt's statements and reports. [https://en.wikipedia.org/wiki/Cyberpunk_2077]
+2026-12-19 long: Every mainline Final Fantasy game ranked, timed to Final Fantasy X's 25th US anniversary (18 December), using review aggregates. [https://en.wikipedia.org/wiki/Final_Fantasy]
+2026-12-23 doc: How Minecraft became the best-selling game ever: from Markus Persson's 2009 test build to Microsoft's purchase and beyond, from Mojang's and Microsoft's figures on record. [https://en.wikipedia.org/wiki/Minecraft]
+2026-11-23 long: Every main series Pokemon game ranked, timed to Sun and Moon's 10th anniversary (18 November), using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Pok%C3%A9mon_(video_game_series)]
+2026-11-26 long: Every Nintendo home and handheld console ranked by lifetime sales, from Nintendo's own figures, with what each one changed. [https://www.nintendo.co.jp/ir/en/finance/hard_soft/index.html]
+2026-11-30 long: Every mainline Legend of Zelda game ranked, ahead of the Ocarina of Time remake, using review aggregates. [https://en.wikipedia.org/wiki/The_Legend_of_Zelda]
+2026-12-03 long: Every Super Smash Bros. game ranked, timed to Melee's 25th US anniversary, using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Super_Smash_Bros.]
+2026-12-07 long: The longest development gaps in gaming ranked, from The Last Guardian to Duke Nukem Forever, using announcement and release dates on record; GTA 6 counted only by its official dates. [https://en.wikipedia.org/wiki/The_Last_Guardian]
+2026-12-10 long: Every Game of the Year winner at The Game Awards ranked, 2014 to 2025, on the night of the 2026 show, using review aggregates. [https://thegameawards.com/history]
+2026-12-14 long: Every PlayStation console ranked by lifetime sales, from Sony's own figures, with the games that sold each one. [https://en.wikipedia.org/wiki/PlayStation]
+2026-12-17 long: The best well-reviewed games in the Steam Winter Sale ranked by discount, prices in dollars first, checked on the day. [https://partner.steamgames.com/doc/marketing/upcoming_events]
+2026-12-21 long: Every Mario Kart game ranked, using review aggregates and sales on record. [https://en.wikipedia.org/wiki/Mario_Kart]
+2026-12-24 long: The best-selling game of every year in the US since 2000, from Circana and NPD charts on record. [https://en.wikipedia.org/wiki/Circana]
+2026-12-28 long: Every main Elder Scrolls game ranked, from Arena to Skyrim, using review aggregates. [https://en.wikipedia.org/wiki/The_Elder_Scrolls]
+2026-12-31 long: Every Xbox console ranked, from the original Xbox to Series X and S, from Microsoft's figures and reporting of record. [https://en.wikipedia.org/wiki/Xbox]
+2027-01-09 long: Every mainline Resident Evil game ranked, using review aggregates, a run-up to the 27 January documentary. [https://en.wikipedia.org/wiki/Resident_Evil]
+
 ## GTA 6 launch (19 November 2026)
 
 2026-11-10 why: Why did GTA 6 take thirteen years? The gap since GTA V, what Rockstar shipped in between, and what the wait bought.
@@ -37,7 +62,7 @@ The likeliest breakout is a Short about something hidden, cut or surprising in t
 2026-11-20 any: Second hidden detail Short, a different part of the map from yesterday's; keep the template "GTA 6's [thing] hides [detail]".
 2026-11-21 any: Third hidden detail Short in the same template, so the series reads as a set.
 2026-11-22 evergreen: GTA 6's biggest secrets so far, ranked: only details confirmed by Rockstar material or our gameplay, each one shown.
-2026-11-25 long: Everything hidden in GTA 6's map so far, explained: 15-25 minutes, one chapter per area, from official material and our own gameplay; title names GTA 6 and the promise, thumbnail text in 1-4 words.
+2026-11-28 long: Everything hidden in GTA 6's map so far, explained: 15-25 minutes, one chapter per area, from official material and our own gameplay; title names GTA 6 and the promise, thumbnail text in 1-4 words.
 
 ## Forward calendar, 27 Oct 2026 to 31 Jan 2027 (demand research, 26 Oct)
 
@@ -74,7 +99,6 @@ Each line ends with its source in brackets; check the date on the day.
 2026-11-18 evergreen: Minecraft 1.0 turns 15, GameCube turns 25 in the US and Pokemon Sun and Moon turn 10. Pick one; Minecraft has the widest US reach, and "what happened to Minecraft's art style" is an unanswered search to fold in from Mojang's changelogs. [https://en.wikipedia.org/wiki/Minecraft]
 2026-11-19 any: Ubisoft half-year results land on GTA 6 day. Watch for the net bookings decline it guided to and any Assassin's Creed plans; keep it short and second to GTA. [https://www.ubisoft.com/en-us/company/about-us/investors]
 2026-11-20 why: Can GTA 6 win Game of the Year? Explain The Game Awards eligibility cutoff (20 November, 9pm PT) and the Players' Voice cutoff (30 November) and how the jury votes. [https://thegameawards.com/faq]
-2026-11-21 doc: The Wii at 20 (US launch 19 November 2006): how a cheaper, less powerful console outsold its rivals, from sales figures on record. Second November documentary option if the Xbox film slips; publish after GTA launch weekend. [https://en.wikipedia.org/wiki/Wii]
 2026-11-25 why: Why is the Switch 2 more expensive now than at launch? Nintendo's stated reasons for the rise to $499.99 on 1 September, framed for Black Friday shoppers; add PS5 and Xbox list prices only from their official stores on the day. [https://www.videogameschronicle.com/news/nintendo-confirms-switch-2-price-rises-consoles-now-500-in-the-us/]
 2026-11-27 news: Black Friday. Watch for real console and game deals at US retailers and on the PlayStation, Xbox and Nintendo stores; say "was" and "now" prices in dollars and never call a list price a deal. [https://en.wikipedia.org/wiki/Black_Friday_(shopping)]
 2026-11-27 why: Why there is no Steam sale this Black Friday: Valve moved the Autumn Sale to early October and the Winter Sale starts 17 December. Confirm on Steamworks first. [https://partner.steamgames.com/doc/marketing/upcoming_events]
@@ -91,15 +115,15 @@ Each line ends with its source in brackets; check the date on the day.
 2026-12-09 why: Why does The Game Awards divide players? Ads, world premieres and how the jury votes, from the show's FAQ. Neutral tone, the night before the show. [https://thegameawards.com/faq]
 2026-12-10 news: The Game Awards night, Peacock Theater, 4:30pm PT / 7:30pm ET. Watch for Game of the Year, world premieres and surprise reveals; post the GOTY result fast and the reveals as separate Shorts. [https://thegameawards.com/faq]
 2026-12-10 any: Professor Layton and the New World of Steam and Attack on Titan 3 also launch today; mention only if the awards leave room. [https://gameinformer.com/2026/09/09/professor-layton-and-the-new-world-of-steam-arrives-this-december]
-2026-12-11 long: Weekly long ranking: every world premiere from The Game Awards 2026 ranked, with release windows only as announced. [https://thegameawards.com/faq]
+2026-12-12 long: Weekly long ranking: every world premiere from The Game Awards 2026 ranked, with release windows only as announced. [https://thegameawards.com/faq]
 2026-12-11 news: Path of Exile 2 reaches 1.0, goes free-to-play and adds the Duelist. Watch for player counts on Steam. [https://www.rpgsite.net/news/21188-path-exile-2-reaches-its-10-full-release-on-december-11]
 2026-12-15 any: Steam Replay has launched mid-December in past years; nothing is announced. Explain how to see yours if it lands. [https://insider-gaming.com/steam-wrapped-2025-steam-replay-release-date-stats/]
 2026-12-17 news: Steam Winter Sale starts (17 December to 4 January). Lead with the biggest verified discounts on games people are searching for. [https://partner.steamgames.com/doc/marketing/upcoming_events]
 2026-12-17 evergreen: Best Steam Winter Sale deals ranked by discount on well-reviewed games, prices in dollars first; rerun the numbers on the day. [https://partner.steamgames.com/doc/marketing/upcoming_events]
 2026-12-18 evergreen: Final Fantasy X turns 25 in the US. Pairs with the "what happened to Final Fantasy" question. [https://en.wikipedia.org/wiki/Final_Fantasy_X]
-2026-12-24 long: The best games of 2026 ranked, using review aggregates and award wins up to The Game Awards. [https://thegameawards.com/faq]
-2026-12-31 long: The biggest gaming stories of 2026 ranked: GTA 6's launch, console price rises, Switch 2's second year, Steam hardware. Facts from reporting of record only. [https://www.videogameschronicle.com/news/nintendo-confirms-switch-2-price-rises-consoles-now-500-in-the-us/]
-2026-12-31 doc: Monthly documentary for December, publish in the week before: thirty years of Diablo, from Blizzard North's original to Diablo IV, through Blizzard's own milestones and sales statements. "What happened to Diablo games" is an under-served search. [https://en.wikipedia.org/wiki/Diablo_(video_game)]
+2026-12-26 long: The best games of 2026 ranked, using review aggregates and award wins up to The Game Awards. [https://thegameawards.com/faq]
+2027-01-02 long: The biggest gaming stories of 2026 ranked: GTA 6's launch, console price rises, Switch 2's second year, Steam hardware. Facts from reporting of record only. [https://www.videogameschronicle.com/news/nintendo-confirms-switch-2-price-rises-consoles-now-500-in-the-us/]
+2026-12-30 doc: Weekly documentary: thirty years of Diablo, from Blizzard North's original to Diablo IV, through Blizzard's own milestones and sales statements. "What happened to Diablo games" is an under-served search. [https://en.wikipedia.org/wiki/Diablo_(video_game)]
 2026-12-31 evergreen: Diablo turns 30 (commonly cited 31 December 1996; Blizzard uses 3 January 1997). Say the date is disputed. [https://en.wikipedia.org/wiki/Diablo_(video_game)]
 
 ### January
@@ -112,7 +136,7 @@ Each line ends with its source in brackets; check the date on the day.
 2027-01-15 any: NetEase's free-to-play Ananta launches on PS5, PC and mobile. Watch for server load and player counts. [https://www.rpgsite.net/news/21186-ananta-launches-on-january-15-2027-for-ps5-pc-mobile]
 2027-01-19 any: Titan Quest II leaves early access and reaches PS5 and Xbox. [https://www.rpgsite.net/news/21506-titan-quest-ii-exits-early-access-launches-on-january-19-2027-for-playstation-5-xbox-series-xs-pc]
 2027-01-24 why: Resident Evil 7 turns 10. Why it is called Biohazard in Japan and how RE7 turned the series around; feeds the Resident Evil questions people search for. [https://en.wikipedia.org/wiki/Resident_Evil_7:_Biohazard]
-2027-01-24 doc: Monthly documentary candidate for January: how Resident Evil came back from Resident Evil 6 to RE7 and the remakes, told from sales figures and developer interviews on record. [https://en.wikipedia.org/wiki/Resident_Evil_7:_Biohazard]
+2027-01-27 doc: Weekly documentary candidate: how Resident Evil came back from Resident Evil 6 to RE7 and the remakes, told from sales figures and developer interviews on record. [https://en.wikipedia.org/wiki/Resident_Evil_7:_Biohazard]
 2027-01-27 any: Microsoft FY27 Q2 results are projected for about now (not yet announced; Microsoft confirms about three weeks ahead). The first Xbox quarter with GTA 6. [https://www.wallstreethorizon.com/microsoft-earnings-calendar]
 2027-01-28 news: Big release day: Metroid Ravenous (Switch 2), Until Dawn 2 (PS5) and Tropico 7. Watch reviews for all three; lead with Metroid for Nintendo fans and Until Dawn 2 for PlayStation. [https://www.gematsu.com/2026/09/metroid-ravenous-announced-for-switch-2]
 2027-01-28 evergreen: Every 2D Metroid ranked, timed to Metroid Ravenous; use review aggregates, not opinion. [https://engadget.com/2253801/metroid-ravenous-the-latest-2d-adventure-for-samus-aran-arrives-on-january-28-2027/]

@@ -7,6 +7,7 @@ import { safeScale } from "../../safetransform.ts";
 import React from "react";
 import { Easing, interpolate, spring } from "remotion";
 import { COLOUR } from "../../brand.ts";
+import { useLook, withAlpha } from "../../gamelook.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
 import { SPRING } from "../../motion.ts";
 import { Label, Stage, useStage } from "../DocGraphics.tsx";
@@ -97,6 +98,8 @@ const Heading: React.FC<{
 }) => {
   const head = spring({ frame: frame - 2, fps, config: SPRING.ENTER });
   const kick = spring({ frame: frame - 6, fps, config: SPRING.ENTER });
+  // GAME_LOOK: the rule and kicker take the game's accent (Pulse amber when the look is off).
+  const { accent } = useLook();
   const rule = interpolate(frame, [0, 14], [0, 1], {
     ...clamp,
     easing: EASE_OUT,
@@ -119,7 +122,7 @@ const Heading: React.FC<{
           style={{
             width: 64 * rule,
             height: 6,
-            background: COLOUR.amber,
+            background: accent,
             borderRadius: 3,
             flex: "none",
           }}
@@ -131,7 +134,7 @@ const Heading: React.FC<{
               fontWeight: 900,
               fontSize: kicker.length > 34 ? 24 : 28,
               letterSpacing: 4,
-              color: COLOUR.amber,
+              color: accent,
               textTransform: "uppercase",
               opacity: kick,
               transform: `translateX(${(1 - kick) * -24}px)`,
@@ -179,7 +182,10 @@ const MarkerLoop: React.FC<{
   p: number;
   seed: number;
   colour?: string;
-}> = ({ p, seed, colour = COLOUR.amber }) => {
+}> = ({ p, seed, colour: colourProp }) => {
+  // GAME_LOOK: the game's accent (Pulse amber when the look is off), unless a colour is given.
+  const { accent } = useLook();
+  const colour = colourProp ?? accent;
   if (p <= 0) return null;
   const N = 64;
   const turns = 1.14;
@@ -237,6 +243,7 @@ const MarkerLoop: React.FC<{
 
 const Bars: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
   const { frame, fps, showFor, dim, visible } = useStage(len, 200);
+  const { accent } = useLook();
   const rows = rankedRows(g.items);
   if (!visible || rows.length < 2) return null;
   const k = paceFor(showFor);
@@ -339,7 +346,7 @@ const Bars: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                       fontFamily: DISPLAY,
                       fontSize: Math.round(barH * 0.95),
                       lineHeight: `${barH}px`,
-                      color: top ? COLOUR.amber : "rgba(245,245,242,0.5)",
+                      color: top ? accent : "rgba(245,245,242,0.5)",
                       opacity: inP,
                     }}
                   >
@@ -381,10 +388,12 @@ const Bars: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                           borderRadius: `0 ${radius}px ${radius}px 0`,
                           overflow: "hidden",
                           background: top
-                            ? `linear-gradient(90deg, #D9500E 0%, ${COLOUR.amber} 55%, #FF8B4A 100%)`
+                            ? accent === COLOUR.amber
+                              ? `linear-gradient(90deg, #D9500E 0%, ${accent} 55%, #FF8B4A 100%)`
+                              : `linear-gradient(90deg, ${accent} 0%, ${accent} 100%)`
                             : "linear-gradient(90deg, rgba(150,150,160,0.55), rgba(196,196,204,0.78))",
                           boxShadow: top
-                            ? "0 12px 36px rgba(255,107,26,0.35), inset 0 3px 0 rgba(255,255,255,0.32), inset 0 -3px 0 rgba(0,0,0,0.18)"
+                            ? `0 12px 36px ${withAlpha(accent, 0.35)}, inset 0 3px 0 rgba(255,255,255,0.32), inset 0 -3px 0 rgba(0,0,0,0.18)`
                             : "inset 0 2px 0 rgba(255,255,255,0.22), 0 8px 24px rgba(0,0,0,0.3)",
                         }}
                       >
@@ -405,7 +414,7 @@ const Bars: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                           fontFamily: DISPLAY,
                           fontSize: top ? valFs : Math.round(valFs * 0.84),
                           lineHeight: 1,
-                          color: top ? COLOUR.amber : "rgba(245,245,242,0.92)",
+                          color: top ? accent : "rgba(245,245,242,0.92)",
                           whiteSpace: "nowrap",
                           opacity: Math.min(1, p * 3),
                           transform: `scale(${1 + 0.08 * land * (1 - land) * 4})`,
@@ -795,6 +804,7 @@ function sector(
 }
 
 const Donut: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
+  const { accent } = useLook();
   const { frame, fps, showFor, dim, visible } = useStage(len, 190);
   const sh = shareRows(g.items);
   if (!visible || !sh) return null;
@@ -821,7 +831,7 @@ const Donut: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
     ...rows.map((row, i) => ({
       share: row.share,
       colour:
-        i === 0 ? COLOUR.amber : DONUT_TONES[(i - 1) % DONUT_TONES.length]!,
+        i === 0 ? accent : DONUT_TONES[(i - 1) % DONUT_TONES.length]!,
       row,
     })),
     ...(rest
@@ -962,7 +972,7 @@ const Donut: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
             fontFamily: DISPLAY,
             fontSize: bigFs,
             lineHeight: 1,
-            color: COLOUR.amber,
+            color: accent,
             whiteSpace: "nowrap",
           }}
         >
@@ -1050,7 +1060,7 @@ const Donut: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                   fontFamily: DISPLAY,
                   fontSize: s.row.fig.text.length > 10 ? 44 : 58,
                   lineHeight: 1,
-                  color: i === 0 ? COLOUR.amber : COLOUR.paper,
+                  color: i === 0 ? accent : COLOUR.paper,
                   whiteSpace: "nowrap",
                   textShadow: SHADOW,
                 }}
@@ -1138,6 +1148,7 @@ function wheelPos(
 }
 
 const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
+  const { accent } = useLook();
   const { frame, fps, showFor, dim, visible } = useStage(len, 170);
   const primary = clean(g.primary);
   const label = clean(g.secondary);
@@ -1209,7 +1220,7 @@ const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                       fontFamily: DISPLAY,
                       fontSize: Math.round(fs * 0.8),
                       lineHeight: 1,
-                      color: COLOUR.amber,
+                      color: accent,
                       textTransform: "uppercase",
                       whiteSpace: "nowrap",
                       textShadow: "0 10px 40px rgba(0,0,0,0.6)",
@@ -1348,7 +1359,7 @@ const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                         borderTop: `${Math.round(fs * 0.07)}px solid transparent`,
                         borderBottom: `${Math.round(fs * 0.07)}px solid transparent`,
                         [side < 0 ? "borderLeft" : "borderRight"]:
-                          `${Math.round(fs * 0.08)}px solid ${COLOUR.amber}`,
+                          `${Math.round(fs * 0.08)}px solid ${accent}`,
                       }}
                     />
                   ))}
@@ -1372,7 +1383,7 @@ const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                   width: 70 * rule,
                   height: 6,
                   borderRadius: 3,
-                  background: COLOUR.amber,
+                  background: accent,
                 }}
               />
               <div
@@ -1396,7 +1407,7 @@ const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                   width: 70 * rule,
                   height: 6,
                   borderRadius: 3,
-                  background: COLOUR.amber,
+                  background: accent,
                 }}
               />
             </div>
@@ -1412,6 +1423,7 @@ const Odometer: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
 /* ------------------------------------------------------------------------------------------------ */
 
 const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
+  const { accent } = useLook();
   const { frame, fps, showFor, dim, visible } = useStage(len, 190);
   const rows = reviewRows(g.items);
   const hi = rows.findIndex((r) => r.parsed);
@@ -1460,7 +1472,7 @@ const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
         y1={y0}
         x2={x1}
         y2={y1}
-        stroke={a <= v + 0.001 ? COLOUR.amber : "rgba(245,245,242,0.38)"}
+        stroke={a <= v + 0.001 ? accent : "rgba(245,245,242,0.38)"}
         strokeWidth={major ? 6 : 3}
         strokeLinecap="round"
       />,
@@ -1596,14 +1608,14 @@ const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                   <path
                     d={valueArc}
                     fill="none"
-                    stroke="rgba(255,107,26,0.18)"
+                    stroke={withAlpha(accent, 0.18)}
                     strokeWidth={30}
                     strokeLinecap="round"
                   />
                   <path
                     d={valueArc}
                     fill="none"
-                    stroke={COLOUR.amber}
+                    stroke={accent}
                     strokeWidth={18}
                     strokeLinecap="round"
                   />
@@ -1653,7 +1665,7 @@ const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 />
                 <path
                   d={`M${cx + L * 0.62} ${cy - 7}L${cx + L} ${cy - 3}L${cx + L} ${cy + 3}L${cx + L * 0.62} ${cy + 7}Z`}
-                  fill={COLOUR.amber}
+                  fill={accent}
                 />
               </g>
               <circle
@@ -1661,10 +1673,10 @@ const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 cy={cy}
                 r={38}
                 fill="#101013"
-                stroke={COLOUR.amber}
+                stroke={accent}
                 strokeWidth={7}
               />
-              <circle cx={cx} cy={cy} r={11} fill={COLOUR.amber} />
+              <circle cx={cx} cy={cy} r={11} fill={accent} />
             </svg>
           </div>
           <div style={{ marginTop: 18, textAlign: "center", opacity: face }}>
@@ -1674,7 +1686,7 @@ const Gauge: React.FC<GfxProps> = ({ g, len, bg, variant = 0 }) => {
                 fontWeight: 900,
                 fontSize: nameFs,
                 letterSpacing: 5,
-                color: COLOUR.amber,
+                color: accent,
                 textTransform: "uppercase",
                 textShadow: SHADOW,
                 whiteSpace: "nowrap",

@@ -1,0 +1,489 @@
+{
+  "from": "claude/stage room.ts, before the shared panel",
+  "direct": [
+    {
+      "site": "room.critic",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a tough editor at a top human gaming Shorts channel. You get one to three drafts of the same story, each as its title and its narration, heard once. You know nothing else about the story, the channel or what the writer meant. Mark each draft from 1 to 10:\n\n- clarity: one plain point, easy on ONE listen, not too many names or numbers to hold.\n- hook: the first sentence opens a real question or surprise and makes you want the next line.\n- payoff: something held back, paid late and worth the wait.\n- voice: a real person with a view talking to a friend, not a news desk and not a try-hard.\n- human: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings.\n- promise_kept: the ending is as big as the first line promised.\n- overall: would a tough editor at a top human gaming Shorts channel publish it as it stands.\n\n5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out) with drop_reason. Pick the draft you would publish.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20. That's the same as the first game, eight years on. Publishers hate it. I love it.\n\nDRAFT B\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT C\nTITLE: The $20 game that embarrassed a $70 industry\nNARRATION: Every big publisher says games cost more to make. Then a three-person studio shipped Silksong at $20.",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "The draft's label"
+                },
+                "clarity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "clarity, 1 to 10: one plain point, easy on ONE listen, not too many names or numbers to hold"
+                },
+                "hook": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "hook, 1 to 10: the first sentence opens a real question or surprise and makes you want the next line"
+                },
+                "payoff": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "payoff, 1 to 10: something held back, paid late and worth the wait"
+                },
+                "voice": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "voice, 1 to 10: a real person with a view talking to a friend, not a news desk and not a try-hard"
+                },
+                "human": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "human, 1 to 10: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings"
+                },
+                "promise_kept": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "promise_kept, 1 to 10: the ending is as big as the first line promised"
+                },
+                "overall": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "overall, 1 to 10: would a tough editor at a top human gaming Shorts channel publish it as it stands"
+                },
+                "swipe": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The sentence number (1 is the first) where a scrolling viewer leaves; 0 if they finish"
+                },
+                "weakness": {
+                  "type": "string",
+                  "description": "The single biggest weakness, quoting the exact line"
+                },
+                "fix": {
+                  "type": "string",
+                  "description": "One concrete instruction"
+                },
+                "second_thread": {
+                  "type": "string",
+                  "description": "A second thread or story the middle splits into, quoted; empty when there is one thread"
+                },
+                "drop": {
+                  "type": "boolean",
+                  "description": "True when even the best version of this story should not be published"
+                },
+                "drop_reason": {
+                  "type": "string",
+                  "description": "Why, in one plain sentence, when drop is true; empty otherwise"
+                }
+              },
+              "required": [
+                "label",
+                "clarity",
+                "hook",
+                "payoff",
+                "voice",
+                "human",
+                "promise_kept",
+                "overall",
+                "swipe",
+                "weakness",
+                "fix",
+                "second_thread",
+                "drop",
+                "drop_reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pick": {
+            "type": "string",
+            "description": "The label of the draft you would publish"
+          }
+        },
+        "required": [
+          "reads",
+          "pick"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "site": "room.viewer",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a general gamer scrolling YouTube Shorts late at night. You play a few big games and follow the news loosely; you do not know every studio or every name. You get one to three drafts of the same story, each as a title and the narration you would hear once. Mark each from 1 to 10:\n\n- stop: would you stop scrolling on the first line.\n- stay: would you stay to the end.\n- got_it: did you get it on one listen.\n- worth_it: was the ending worth the wait.\n- comment: would you want to comment.\n- share: would you send it to a friend.\n- overall: how good a Short this is for you.\n\nBe honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you) with drop_reason.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20. That's the same as the first game, eight years on. Publishers hate it. I love it.\n\nDRAFT B\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT C\nTITLE: The $20 game that embarrassed a $70 industry\nNARRATION: Every big publisher says games cost more to make. Then a three-person studio shipped Silksong at $20.",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "stop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "stop, 1 to 10: would you stop scrolling on the first line"
+                },
+                "stay": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "stay, 1 to 10: would you stay to the end"
+                },
+                "got_it": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "got_it, 1 to 10: did you get it on one listen"
+                },
+                "worth_it": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "worth_it, 1 to 10: was the ending worth the wait"
+                },
+                "comment": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "comment, 1 to 10: would you want to comment"
+                },
+                "share": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "share, 1 to 10: would you send it to a friend"
+                },
+                "overall": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "overall, 1 to 10: how good a Short this is for you"
+                },
+                "swipe": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The sentence number where you would swipe away; 0 if you finish"
+                },
+                "lost_me": {
+                  "type": "string",
+                  "description": "The exact phrase where your attention drops; empty if it never did"
+                },
+                "fix": {
+                  "type": "string",
+                  "description": "One concrete instruction"
+                },
+                "drop": {
+                  "type": "boolean",
+                  "description": "True when nothing here is at stake for a general gamer and you would not want it at all"
+                },
+                "drop_reason": {
+                  "type": "string",
+                  "description": "Why, in one plain sentence, when drop is true; empty otherwise"
+                }
+              },
+              "required": [
+                "label",
+                "stop",
+                "stay",
+                "got_it",
+                "worth_it",
+                "comment",
+                "share",
+                "overall",
+                "swipe",
+                "lost_me",
+                "fix",
+                "drop",
+                "drop_reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "reads"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "site": "room.critic",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a tough editor at a top human gaming Shorts channel. You get one to three drafts of the same story, each as its title and its narration, heard once. You know nothing else about the story, the channel or what the writer meant. Mark each draft from 1 to 10:\n\n- clarity: one plain point, easy on ONE listen, not too many names or numbers to hold.\n- hook: the first sentence opens a real question or surprise and makes you want the next line.\n- payoff: something held back, paid late and worth the wait.\n- voice: a real person with a view talking to a friend, not a news desk and not a try-hard.\n- human: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings.\n- promise_kept: the ending is as big as the first line promised.\n- overall: would a tough editor at a top human gaming Shorts channel publish it as it stands.\n\n5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out) with drop_reason. Pick the draft you would publish.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20, the same as the first game. I think that's the bravest call this year.",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "description": "The draft's label"
+                },
+                "clarity": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "clarity, 1 to 10: one plain point, easy on ONE listen, not too many names or numbers to hold"
+                },
+                "hook": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "hook, 1 to 10: the first sentence opens a real question or surprise and makes you want the next line"
+                },
+                "payoff": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "payoff, 1 to 10: something held back, paid late and worth the wait"
+                },
+                "voice": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "voice, 1 to 10: a real person with a view talking to a friend, not a news desk and not a try-hard"
+                },
+                "human": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "human, 1 to 10: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings"
+                },
+                "promise_kept": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "promise_kept, 1 to 10: the ending is as big as the first line promised"
+                },
+                "overall": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "overall, 1 to 10: would a tough editor at a top human gaming Shorts channel publish it as it stands"
+                },
+                "swipe": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The sentence number (1 is the first) where a scrolling viewer leaves; 0 if they finish"
+                },
+                "weakness": {
+                  "type": "string",
+                  "description": "The single biggest weakness, quoting the exact line"
+                },
+                "fix": {
+                  "type": "string",
+                  "description": "One concrete instruction"
+                },
+                "second_thread": {
+                  "type": "string",
+                  "description": "A second thread or story the middle splits into, quoted; empty when there is one thread"
+                },
+                "drop": {
+                  "type": "boolean",
+                  "description": "True when even the best version of this story should not be published"
+                },
+                "drop_reason": {
+                  "type": "string",
+                  "description": "Why, in one plain sentence, when drop is true; empty otherwise"
+                }
+              },
+              "required": [
+                "label",
+                "clarity",
+                "hook",
+                "payoff",
+                "voice",
+                "human",
+                "promise_kept",
+                "overall",
+                "swipe",
+                "weakness",
+                "fix",
+                "second_thread",
+                "drop",
+                "drop_reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "pick": {
+            "type": "string",
+            "description": "The label of the draft you would publish"
+          }
+        },
+        "required": [
+          "reads",
+          "pick"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "site": "room.viewer",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a general gamer scrolling YouTube Shorts late at night. You play a few big games and follow the news loosely; you do not know every studio or every name. You get one to three drafts of the same story, each as a title and the narration you would hear once. Mark each from 1 to 10:\n\n- stop: would you stop scrolling on the first line.\n- stay: would you stay to the end.\n- got_it: did you get it on one listen.\n- worth_it: was the ending worth the wait.\n- comment: would you want to comment.\n- share: would you send it to a friend.\n- overall: how good a Short this is for you.\n\nBe honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you) with drop_reason.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20, the same as the first game. I think that's the bravest call this year.",
+      "schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "reads": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "stop": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "stop, 1 to 10: would you stop scrolling on the first line"
+                },
+                "stay": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "stay, 1 to 10: would you stay to the end"
+                },
+                "got_it": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "got_it, 1 to 10: did you get it on one listen"
+                },
+                "worth_it": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "worth_it, 1 to 10: was the ending worth the wait"
+                },
+                "comment": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "comment, 1 to 10: would you want to comment"
+                },
+                "share": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "share, 1 to 10: would you send it to a friend"
+                },
+                "overall": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "overall, 1 to 10: how good a Short this is for you"
+                },
+                "swipe": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991,
+                  "description": "The sentence number where you would swipe away; 0 if you finish"
+                },
+                "lost_me": {
+                  "type": "string",
+                  "description": "The exact phrase where your attention drops; empty if it never did"
+                },
+                "fix": {
+                  "type": "string",
+                  "description": "One concrete instruction"
+                },
+                "drop": {
+                  "type": "boolean",
+                  "description": "True when nothing here is at stake for a general gamer and you would not want it at all"
+                },
+                "drop_reason": {
+                  "type": "string",
+                  "description": "Why, in one plain sentence, when drop is true; empty otherwise"
+                }
+              },
+              "required": [
+                "label",
+                "stop",
+                "stay",
+                "got_it",
+                "worth_it",
+                "comment",
+                "share",
+                "overall",
+                "swipe",
+                "lost_me",
+                "fix",
+                "drop",
+                "drop_reason"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "reads"
+        ],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "run": [
+    {
+      "site": "room.critic",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a tough editor at a top human gaming Shorts channel. You get one to three drafts of the same story, each as its title and its narration, heard once. You know nothing else about the story, the channel or what the writer meant. Mark each draft from 1 to 10:\n\n- clarity: one plain point, easy on ONE listen, not too many names or numbers to hold.\n- hook: the first sentence opens a real question or surprise and makes you want the next line.\n- payoff: something held back, paid late and worth the wait.\n- voice: a real person with a view talking to a friend, not a news desk and not a try-hard.\n- human: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings.\n- promise_kept: the ending is as big as the first line promised.\n- overall: would a tough editor at a top human gaming Shorts channel publish it as it stands.\n\n5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out) with drop_reason. Pick the draft you would publish.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20. That's the same as the first game, eight years on. Publishers hate it. I love it.\n\nDRAFT B\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT C\nTITLE: The $20 game that embarrassed a $70 industry\nNARRATION: Every big publisher says games cost more to make. Then a three-person studio shipped Silksong at $20."
+    },
+    {
+      "site": "room.viewer",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a general gamer scrolling YouTube Shorts late at night. You play a few big games and follow the news loosely; you do not know every studio or every name. You get one to three drafts of the same story, each as a title and the narration you would hear once. Mark each from 1 to 10:\n\n- stop: would you stop scrolling on the first line.\n- stay: would you stay to the end.\n- got_it: did you get it on one listen.\n- worth_it: was the ending worth the wait.\n- comment: would you want to comment.\n- share: would you send it to a friend.\n- overall: how good a Short this is for you.\n\nBe honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you) with drop_reason.",
+      "content": "DRAFT A\nTITLE: Hollow Knight Silksong's price is the twist\nNARRATION: Team Cherry priced Silksong at $20. That's the same as the first game, eight years on. Publishers hate it. I love it.\n\nDRAFT B\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT C\nTITLE: The $20 game that embarrassed a $70 industry\nNARRATION: Every big publisher says games cost more to make. Then a three-person studio shipped Silksong at $20."
+    },
+    {
+      "site": "room.critic",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a tough editor at a top human gaming Shorts channel. You get one to three drafts of the same story, each as its title and its narration, heard once. You know nothing else about the story, the channel or what the writer meant. Mark each draft from 1 to 10:\n\n- clarity: one plain point, easy on ONE listen, not too many names or numbers to hold.\n- hook: the first sentence opens a real question or surprise and makes you want the next line.\n- payoff: something held back, paid late and worth the wait.\n- voice: a real person with a view talking to a friend, not a news desk and not a try-hard.\n- human: free of AI tells: stiff connectives, stock phrases, forced you, tidy slogan endings.\n- promise_kept: the ending is as big as the first line promised.\n- overall: would a tough editor at a top human gaming Shorts channel publish it as it stands.\n\n5 is average for a competent channel. Use the full range: 8 or more only for a draft you would publish as it stands. Don't reward length, and don't mark a fact down because you doubt it. Then give swipe (the sentence where a scrolling viewer leaves, 0 if they finish), weakness (the single biggest, quoting the exact line), fix (one concrete instruction), second_thread (quote any second thread the middle splits into) and drop (true when even the best version of this story should not go out) with drop_reason. Pick the draft you would publish.",
+      "content": "DRAFT O\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT E\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\" Edited once.\n\nDRAFT V\nTITLE: Silksong costs less than you think (voiced)\nNARRATION: Said by ear: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\" Edited once."
+    },
+    {
+      "site": "room.viewer",
+      "tier": "mid",
+      "effort": "medium",
+      "system": "You are a general gamer scrolling YouTube Shorts late at night. You play a few big games and follow the news loosely; you do not know every studio or every name. You get one to three drafts of the same story, each as a title and the narration you would hear once. Mark each from 1 to 10:\n\n- stop: would you stop scrolling on the first line.\n- stay: would you stay to the end.\n- got_it: did you get it on one listen.\n- worth_it: was the ending worth the wait.\n- comment: would you want to comment.\n- share: would you send it to a friend.\n- overall: how good a Short this is for you.\n\nBe honest: most Shorts lose you in five seconds. Then give swipe (the sentence where you would swipe, 0 if you finish), lost_me (the exact phrase where your attention drops), fix (one concrete instruction) and drop (true when nothing here is at stake for someone like you) with drop_reason.",
+      "content": "DRAFT O\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\"\n\nDRAFT E\nTITLE: Silksong costs less than you think\nNARRATION: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\" Edited once.\n\nDRAFT V\nTITLE: Silksong costs less than you think (voiced)\nNARRATION: Said by ear: Silksong is $20. Why? Team Cherry said it simply: \"we just want people to play it.\" Edited once."
+    }
+  ]
+}

@@ -48,6 +48,8 @@ import {
 } from "./components/Accents.tsx";
 import { ChannelStatic, STATIC_FRAMES } from "./components/Retro.tsx";
 import { OLD_YEAR } from "./retroplan.ts";
+import { ExplainerShot } from "./components/explainers/index.tsx";
+import { shortExplainer } from "./components/explainers/ground.ts";
 import { keyTime } from "./longplan.ts";
 import { HookPoster } from "./components/HookPoster.tsx";
 import { CommentCard, commentCardFrames } from "./components/CommentCard.tsx";
@@ -59,10 +61,17 @@ import { HOUSE, SHORT_TRACK_FRAMES, spanWindow } from "./shortcraft.ts";
 import { arbitrate, keptSpan, OPENING_LABEL_FRAMES, overlaySpans, shortLayout, yieldingSpans } from "./cleanframe.ts";
 import { peopleGroups } from "./people.ts";
 import { PeopleRow, TracklistCard } from "./components/PeopleInsets.tsx";
+import { MentionInsetView } from "./components/MentionInsets.tsx";
 import { ENTRY_CARD_TOP, ENTRY_CARD_TOP_CHROME, isEntryCard } from "./rankcard.ts";
 import { motifsFor } from "./components/motifs/index.ts";
 import { CodeSceneView } from "./components/codescene/CodeScenes.tsx";
-import { QuoteMoment, inQuote } from "./components/QuoteMoment.tsx";
+import { QuoteMoment, inQuote, quoteBedFactor } from "./components/QuoteMoment.tsx";
+import { GameMap3DShort } from "./components/GameMap3D.tsx";
+import { DepthType } from "./components/BoldIdeas.tsx";
+import { DepthOrbit } from "./components/DepthOrbit.tsx";
+import { CompareWipeTall, ShortBlenderClip } from "./components/ShortUpgrades.tsx";
+import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
+import { lookTitleAt } from "./shortupgrades.ts";
 import { musicDipAt } from "./gamebed.ts";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
@@ -155,6 +164,18 @@ export const Short: React.FC<ShortProps> = (props) => {
   const { fps, durationInFrames } = useVideoConfig();
   const theme = themeFor(props.storyType, props.isRumour);
   const accent = theme.accent;
+  // SHORT_* upgrades (src/render/shortupgrades.ts): planned in the pipeline, drawn here.
+  const up = props.upgrades ?? {};
+  // SHORT_GAME_LOOK: a line's card wears its game's look (a ranking: the entry's game); the take, the captions and the
+  // logo stay Pulse's, and a rumour Short is never planned with the look (its colour says rumour).
+  const lookOf = (i: number): GameLook =>
+    up.look && props.segments[i]?.kind !== "take"
+      ? (gameLookFor(lookTitleAt(props.segments, i, props.gameTitle)) ?? PULSE_LOOK)
+      : PULSE_LOOK;
+  const cardAccent = (i: number) => (lookOf(i) === PULSE_LOOK ? accent : lookOf(i).accent);
+  // Full-frame upgrades (the map, the 3D clip, the wipe): the shelf steps back under them like under a full card.
+  const upgradeOver = (f: number) =>
+    [...(up.maps ?? []), ...(up.blender ?? []), ...(up.wipes ?? [])].some((m) => f >= m.from - 4 && f < m.from + m.len + 4);
   const words = props.words.length ? props.words : synthWords(props);
   const pages = useMemo(() => pageCaptions(displayWords(words)), [words]);
   const pipShown = useMemo(
@@ -243,7 +264,14 @@ export const Short: React.FC<ShortProps> = (props) => {
   }, 1);
   // The shelf also steps back under a full-width card or a filler, which draw over its band.
   const overShelf = (f: number) =>
+    upgradeOver(f) ||
     (plan.craft?.fillers ?? []).some((x) => f >= x.from - 4 && f < x.from + x.len + 4) ||
+    // EXPLAINERS: an explainer fills the frame.
+    props.segments.some((sg, i) => {
+      if (!explainerShown(i)) return false;
+      const w = cardAt(i);
+      return !!w && f >= w.from - 4 && f < w.from + w.len + 4;
+    }) ||
     (plan.craft?.photos ?? []).some((p) => {
       const s = plan.shots[p.shot];
       return !!s && f >= s.start - 4 && f < s.end + 4;
@@ -283,12 +311,18 @@ export const Short: React.FC<ShortProps> = (props) => {
   );
   // A graphic lands on the word it is about and stays a beat or two, not for the whole sentence (owner,
   // 29 Oct 2026: cards sat for 4-10 s and covered the footage). Its words: the figure or name it shows.
+  // EXPLAINERS: a line's explainer is drawn when it clears the hook and has time to be read; otherwise its card.
+  const explainerShown = (i: number) =>
+    !!shortExplainer(props.segments[i]!.explainer, words, { start: segmentStarts[i]!, end: segmentEnds[i]! }, fps);
   const graphicWindow = (i: number): { from: number; len: number } => {
     const s = props.segments[i]!;
     const start = segmentStarts[i]!;
     const end = segmentEnds[i]!;
     // A rank card stays up for its whole entry (src/render/rankcard.ts); word-level timing is for the small graphics.
     if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
+    // EXPLAINERS: an explainer explains the whole line (shortcraft.ts cardWindow does the same for the clean frame).
+    const shown = shortExplainer(s.explainer, words, { start, end }, fps);
+    if (shown) return shown;
     const v = s.visual;
     // GRAPHICS_AUDIT moved or held the card (src/qa/gfxaudit.ts): drawn exactly there.
     if (v?.span) return spanWindow(v.span, fps, durationInFrames);
@@ -523,13 +557,17 @@ export const Short: React.FC<ShortProps> = (props) => {
         sting: stingOn && stingAt ? stingAt : false,
         people: props.people,
         tracklist: props.tracklist,
+        mentions: props.mentions,
       }),
-    [props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.people, props.tracklist],
+    [props.segments, words, plan, layout, props.stamps, stingOn, stingAt?.from, stingAt?.frames, props.people, props.tracklist, props.mentions],
   );
   const kept = useMemo(() => (clean ? arbitrate(allSpans) : undefined), [clean, allSpans]);
   // PEOPLE_INSETS (src/render/people.ts): the insets and the tracklist never cover another overlay, clean or not.
   const peopleKept = useMemo(
-    () => (kept ?? yieldingSpans(allSpans, ["people", "tracklist"])).filter((k) => k.kind === "people" || k.kind === "tracklist"),
+    () =>
+      (kept ?? yieldingSpans(allSpans, ["people", "tracklist", "mention"])).filter(
+        (k) => k.kind === "people" || k.kind === "tracklist" || k.kind === "mention",
+      ),
     [kept, allSpans],
   );
   const rows = useMemo(() => peopleGroups(props.people ?? [], fps, durationInFrames), [props.people, fps, durationInFrames]);
@@ -543,8 +581,12 @@ export const Short: React.FC<ShortProps> = (props) => {
   const headlineAside =
     !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
   const cardAt = (i: number) =>
+    // SHORT_MAP_PINS: the line's map stands in for its card where they would overlap.
+    (up.maps ?? []).some((m) => m.segment === i && m.replacesCard) ||
     // The tracklist card stands in for its line's own card.
-    props.tracklist?.segment === i
+    props.tracklist?.segment === i ||
+    // MENTION_*: an inset stands in for its beat's card (cleanframe.ts settleMentions left the card out of the spans).
+    (props.mentions?.length && !allSpans.some((x) => x.key === `card${i}`))
       ? undefined
       : sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
@@ -613,7 +655,7 @@ export const Short: React.FC<ShortProps> = (props) => {
     return (
       fadeIn *
       (bedLevels[Math.min(durationInFrames, Math.max(0, f))] ?? 0.085) *
-      (inQuote(quoteSpans, f) ? 0.45 : 1) *
+      quoteBedFactor(quoteSpans, f) *
       // GAME_AUDIO_BED: the music steps back where the game itself is heard.
       (props.gameBed ? musicDipAt(props.gameBed.spans, f, fps, props.gameBed.dip) : 1)
     );
@@ -631,6 +673,52 @@ export const Short: React.FC<ShortProps> = (props) => {
         dress={dressing.dress}
         clean={clean}
       />
+      {/* SHORT_* upgrades over the picture, under the cards: the wipe, the depth type and the orbit each stand in for
+          their shot's own picture (src/render/shortupgrades.ts). */}
+      {(up.wipes ?? []).map((w) =>
+        props.images[w.left] && props.images[w.right] ? (
+          <Sequence key={w.key} from={w.from} durationInFrames={w.len} layout="none">
+            <CompareWipeTall
+              top={props.images[w.left]!.src}
+              bottom={props.images[w.right]!.src}
+              topLabel={w.leftGame}
+              bottomLabel={w.rightGame}
+              topPosition={focusPosition(props.images[w.left]!)}
+              bottomPosition={focusPosition(props.images[w.right]!)}
+              len={w.len}
+              accent={accent}
+            />
+          </Sequence>
+        ) : null,
+      )}
+      {(up.depthTypes ?? []).map((d) =>
+        props.images[d.image]?.layers ? (
+          <Sequence key={d.key} from={d.from} durationInFrames={d.len} layout="none">
+            <DepthType
+              layers={props.images[d.image]!.layers!}
+              phrase={d.phrase}
+              at={d.at}
+              len={d.len}
+              dir={props.variant % 2 ? -1 : 1}
+              position={focusPosition(props.images[d.image]!)}
+              until={d.until}
+            />
+          </Sequence>
+        ) : null,
+      )}
+      {(up.orbits ?? []).map((o) =>
+        props.images[o.image]?.layers?.mesh ? (
+          <Sequence key={o.key} from={o.from} durationInFrames={o.len} layout="none">
+            <DepthOrbit
+              src={props.images[o.image]!.src}
+              mesh={props.images[o.image]!.layers!.mesh!}
+              aspect={props.images[o.image]!.aspect}
+              len={o.len}
+              dir={o.dir}
+            />
+          </Sequence>
+        ) : null,
+      )}
       {dressing.accents.map((a, k) => (
         <Sequence
           key={`acc${k}`}
@@ -742,7 +830,20 @@ export const Short: React.FC<ShortProps> = (props) => {
             durationInFrames={cardAt(i)!.len}
             layout="none"
           >
-            {vstyleOf.get(i) ? (
+            <LookContext.Provider value={lookOf(i)}>
+            {s.explainer && explainerShown(i) ? (
+              <ExplainerShot
+                e={s.explainer}
+                len={cardAt(i)!.len}
+                fps={fps}
+                accent={cardAccent(i)}
+                backdrop={resolveSrc(props.images.find((im) => im.aspect >= 1.2)?.src ?? null) ?? undefined}
+                seed={props.variant + i}
+                words={words
+                  .filter((w) => w.start >= cardAt(i)!.from / fps - 0.05 && w.start < (cardAt(i)!.from + cardAt(i)!.len) / fps)
+                  .map((w) => ({ text: w.text, start: w.start - cardAt(i)!.from / fps, end: w.end - cardAt(i)!.from / fps }))}
+              />
+            ) : vstyleOf.get(i) ? (
               <div
                 style={
                   vstyleOf.get(i)!.frame === "full"
@@ -770,7 +871,7 @@ export const Short: React.FC<ShortProps> = (props) => {
                     madeYear,
                   ),
                   len: cardAt(i)!.len,
-                  accent,
+                  accent: cardAccent(i),
                   variant: props.variant + i,
                   src: props.images.find((im) => im.aspect >= 1.2)?.src,
                   year,
@@ -779,7 +880,7 @@ export const Short: React.FC<ShortProps> = (props) => {
             ) : (
               <FactCard
                 segment={s}
-                accent={accent}
+                accent={cardAccent(i)}
                 takeLabel={theme.takeLabel}
                 durationInFrames={cardAt(i)!.len}
                 renderDate={props.renderDate}
@@ -790,8 +891,31 @@ export const Short: React.FC<ShortProps> = (props) => {
                 steamPrices={props.steam?.prices}
                 quickFigures={props.quickFigures}
                 chrono={props.chrono}
+                box3d={up.box3d}
               />
             )}
+            </LookContext.Provider>
+          </Sequence>
+        ) : null,
+      )}
+      {/* SHORT_MAP_PINS: the game's map, full frame over its line, the pin landing on the place's word. */}
+      {(up.maps ?? []).map((m) =>
+        m.graphic.gameMap.src ? (
+          <Sequence key={m.key} from={m.from} durationInFrames={m.len} layout="none">
+            <LookContext.Provider value={lookOf(m.segment)}>
+              <GameMap3DShort
+                g={{ kind: "map", primary: m.graphic.primary, secondary: m.graphic.secondary, items: m.graphic.items, gameMap: m.graphic.gameMap }}
+                len={m.len}
+              />
+            </LookContext.Provider>
+          </Sequence>
+        ) : null,
+      )}
+      {/* SHORT_BLENDER: the number one's 3D podium opens its entry; its card follows. */}
+      {(up.blender ?? []).map((b) =>
+        b.src ? (
+          <Sequence key={b.key} from={b.from} durationInFrames={b.len} layout="none">
+            <ShortBlenderClip src={b.src} len={b.len} />
           </Sequence>
         ) : null,
       )}
@@ -819,6 +943,13 @@ export const Short: React.FC<ShortProps> = (props) => {
               <PeopleRow group={g} from={k.from} len={k.to - k.from} accent={accent} />
             </Sequence>
           );
+        const mention = k.kind === "mention" ? props.mentions?.find((x) => x.key === k.key) : undefined;
+        if (mention)
+          return (
+            <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
+              <MentionInsetView m={mention.m} len={k.to - k.from} accent={accent} layout="short" />
+            </Sequence>
+          );
         if (k.kind === "tracklist" && props.tracklist)
           return (
             <Sequence key={k.key} from={k.from} durationInFrames={k.to - k.from} layout="none">
@@ -827,7 +958,7 @@ export const Short: React.FC<ShortProps> = (props) => {
           );
         return null;
       })}
-      {(props.stamps ?? []).map((st, i) => (
+      {(props.stamps ?? []).map((st, i) => (up.depthTypes ?? []).some((d) => d.stamp === i) ? null : (
         <Sequence
           key={`stamp${i}`}
           from={placed(`stamp${i}`, Math.round(st.at * fps), STAMP_FRAMES)?.from ?? Math.round(st.at * fps)}

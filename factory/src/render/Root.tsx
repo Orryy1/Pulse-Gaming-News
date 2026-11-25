@@ -16,6 +16,8 @@ import {
 } from "./GameplayShort.tsx";
 import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
+import { DepthProof, SAMPLE_DEPTH_PROOF, type DepthProofProps } from "./DepthProof.tsx";
+import { IdeasProof, SAMPLE_IDEAS_PROOF, ideasProofScenes, type IdeasProofProps } from "./IdeasProof.tsx";
 import { MascotSheet, SHEET_H, SHEET_W } from "./MascotSheet.tsx";
 import {
   StreamWeekly,
@@ -353,6 +355,34 @@ export const RemotionRoot: React.FC = () => (
           30,
           Math.ceil(props.durationSeconds * LONG_FPS),
         ),
+      })}
+    />
+    {/* PARALLAX_DEEP proof reel: real stills, the three-layer drift or the depth camera (src/render/DepthProof.tsx). */}
+    <Composition
+      id="PulseDepthProof"
+      component={DepthProof}
+      fps={LONG_FPS}
+      width={SAMPLE_DEPTH_PROOF.width}
+      height={SAMPLE_DEPTH_PROOF.height}
+      durationInFrames={LONG_FPS * 4}
+      defaultProps={SAMPLE_DEPTH_PROOF}
+      calculateMetadata={({ props }: { props: DepthProofProps }) => ({
+        width: props.width,
+        height: props.height,
+        durationInFrames: Math.max(1, props.items.length) * Math.round(props.seconds * LONG_FPS),
+      })}
+    />
+    {/* CHAPTER_WALL, DEPTH_TYPE and COMPARE_WIPE proof reel (src/render/IdeasProof.tsx). */}
+    <Composition
+      id="PulseIdeasProof"
+      component={IdeasProof}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={LONG_FPS * 4}
+      defaultProps={SAMPLE_IDEAS_PROOF}
+      calculateMetadata={({ props }: { props: IdeasProofProps }) => ({
+        durationInFrames: Math.max(1, ideasProofScenes(props)) * Math.round(props.seconds * LONG_FPS),
       })}
     />
   </>

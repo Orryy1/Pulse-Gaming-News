@@ -489,10 +489,58 @@ export function usUk(w: string): string {
     .replace(/ll(ed|ing|er|ers)$/, "l$1");
 }
 
-const DIGIT_WORDS = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+const DIGIT_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+  "thirteen",
+  "fourteen",
+  "fifteen",
+  "sixteen",
+  "seventeen",
+  "eighteen",
+  "nineteen",
+  "twenty",
+];
 /** Figures up to 20 as words, and no spaces, hyphens or apostrophes, so "a6's" and "asixs" compare equal. */
 export function spellDigits(s: string): string {
-  return s.replace(/\d+/g, (n) => DIGIT_WORDS[Number(n)] ?? n).replace(/[\s'’-]/g, "");
+  return s
+    .replace(/\d+/g, (n) => DIGIT_WORDS[Number(n)] ?? n)
+    .replace(/[\s'’-]/g, "");
+}
+
+/** Abbreviations Whisper writes for a word the voice said in full. Only unambiguous ones: "St" (Saint or Street) is left out. */
+const SPOKEN_ABBREVIATIONS: Record<string, string> = {
+  mt: "mount",
+  mr: "mister",
+  mrs: "missus",
+  dr: "doctor",
+  ft: "feet",
+  vs: "versus",
+};
+
+/** How a run of words sounds, roughly: abbreviations spelt out, and hard C, CK, Q and PH written one way. */
+export function soundKey(words: string[]): string {
+  return spellDigits(
+    words
+      .map((w) => SPOKEN_ABBREVIATIONS[w.replace(/\.$/, "")] ?? w)
+      .map(usUk)
+      .join(""),
+  )
+    .replace(/ph/g, "f")
+    .replace(/ck/g, "k")
+    .replace(/qu/g, "kw")
+    .replace(/c(?=[aoulr]|$)/g, "k");
 }
 
 function benign(meant: string[], heard: string[]): boolean {
@@ -504,6 +552,10 @@ function benign(meant: string[], heard: string[]): boolean {
   // The same number written as a figure or a word, split anywhere ("GTA six's" heard as "GT A6's", 15 Nov 2026).
   const spoken = (xs: string[]) => spellDigits(xs.map(usUk).join(""));
   if (spoken(meant) === spoken(heard)) return true;
+  // Whisper's own spelling of the same sounds: "Mount Kalaga" written as "Mt. Calaga" (20 Nov 2026) was logged as a
+  // voice fault and the video went ahead with a warning. Abbreviations it writes, and a hard C, CK, Q or PH spelt
+  // differently, are the same words spoken.
+  if (soundKey(meant) === soundKey(heard)) return true;
   const content = (xs: string[]) => xs.filter((x) => !FILLER.has(x));
   if (!content(meant).length && !content(heard).length) return true; // "and", "the"
   // Nothing that changes the claim may differ, a number's possessive ("five's", "sixty-four's") included.

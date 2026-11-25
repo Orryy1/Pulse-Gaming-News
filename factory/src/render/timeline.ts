@@ -48,6 +48,8 @@ export interface Segment {
   end: number;
   visual?: Visual;
   label?: string;
+  /** EXPLAINERS: the line's animated explainer (src/render/components/explainers), drawn in place of its card. */
+  explainer?: import("./components/explainers/types.ts").Explainer;
 }
 
 export interface SegmentInput {
@@ -55,6 +57,7 @@ export interface SegmentInput {
   text: string;
   visual?: Visual;
   label?: string;
+  explainer?: import("./components/explainers/types.ts").Explainer;
 }
 
 const tokensOf = (t: string) => t.split(/\s+/).filter(Boolean);

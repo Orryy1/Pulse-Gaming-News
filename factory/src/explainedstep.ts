@@ -21,6 +21,7 @@ import {
   type Demand,
 } from "./discovery/searchdemand.ts";
 import { guardScript } from "./writerguard.ts";
+import { spoilerProblems } from "./sceneindex/spoilers.ts";
 import {
   chapterRefusal,
   checkChapter,
@@ -193,6 +194,7 @@ export async function chooseWeekStory(
       lookups: s.cfg.demandLookups,
       minViews: s.cfg.demandMinViews,
       now,
+      staleDays: s.cfg.demandStaleDays,
     }).catch((err) => {
       log("warn", "explained demand check failed", {
         error: errorMessage(err),
@@ -318,10 +320,16 @@ export async function stepScriptExplained(
   const source = explainedSource(story, articles, narrations, background);
   const warnings: string[] = [];
   let packaging = await packageExplained(s.llm, story, source);
-  const pp = packagingProblems(packaging, story);
+  const packSpoilers = (p: typeof packaging) =>
+    spoilerProblems(
+      [p.title, p.kicker, p.youtube.title, p.youtube.description, ...(p.chapter_titles ?? [])].filter(Boolean).join(". "),
+      s.now(),
+      [story.game],
+    );
+  const pp = [...packagingProblems(packaging, story), ...packSpoilers(packaging)];
   if (pp.length) {
     packaging = await packageExplained(s.llm, story, source, pp);
-    warnings.push(...packagingProblems(packaging, story));
+    warnings.push(...packagingProblems(packaging, story), ...packSpoilers(packaging));
   }
   const year = Number(dayKey(s.now(), s.cfg.timezone).slice(0, 4));
   const outline = explainedOutline(story, packaging, year);
@@ -332,6 +340,9 @@ export async function stepScriptExplained(
   }> = [];
   const games = [story.game || outline.title];
   const youFloor = longRulesFor(s.cfg, "explained").youFloor;
+  // Parts dropped because the writer still found no source for them (20 Nov 2026: one part stopped the whole weekly
+  // explainer). At most one, never the first, and only with DOC_DROP_REFUSED_CHAPTER on, as for documentaries.
+  const dropped = new Set<number>();
   for (const [index] of EXPLAINED_PARTS.entries()) {
     let chapter: DocChapter | undefined;
     let feedback: string[] = [];
@@ -365,6 +376,15 @@ export async function stepScriptExplained(
           index,
         }),
         ...(you ? [you] : []),
+        // Story spoilers go back to the writer on every draft, not to the final door (20 Nov 2026: one
+        // "how the game ends" in part 4 stopped the whole weekly explainer).
+        ...spoilerProblems(
+          chapter.paragraphs
+            .map((x) => [x.narration, x.callout?.primary, x.callout?.secondary].filter(Boolean).join(". "))
+            .join(" "),
+          s.now(),
+          games,
+        ),
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
@@ -374,6 +394,21 @@ export async function stepScriptExplained(
         warnings.push(
           ...feedback.map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
         );
+    }
+    // A spoiler that survives the last rewrite: its sentences are cut, so one phrase never stops the whole video.
+    chapter = {
+      ...chapter!,
+      paragraphs: chapter!.paragraphs.map((p) => {
+        const kept = sentencesOf(p.narration).filter((x) => !spoilerProblems(x, s.now(), games).length);
+        return kept.length === sentencesOf(p.narration).length ? p : { ...p, narration: kept.join(" ") };
+      }),
+    };
+    if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length && s.cfg.docDropRefusedChapter && index > 0 && dropped.size === 0) {
+      dropped.add(index);
+      warnings.push(`${EXPLAINED_PARTS[index]!.label}: dropped, the writer found no source for it (${chapterRefusal(chapter!)[0]!.slice(0, 160)})`);
+      await logEvent(s.db, ep.id, "explained_part_dropped", { part: EXPLAINED_PARTS[index]!.label, why: chapterRefusal(chapter!)[0]!.slice(0, 300) }).catch(() => undefined);
+      log("warn", "explained part dropped", { episode: ep.id, part: EXPLAINED_PARTS[index]!.label });
+      continue;
     }
     if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
       throw new FatalError(
@@ -427,15 +462,24 @@ export async function stepScriptExplained(
     });
   }
   const chapters = done.map((d) => d.chapter);
-  let bookends = await writeExplainedBookends(s.llm, outline, chapters, story);
+  // The plan without the dropped part, so each written part keeps its own title.
+  const plan = dropped.size ? { ...outline, chapters: outline.chapters.filter((_, i) => !dropped.has(i)) } : outline;
+  let bookends = await writeExplainedBookends(s.llm, plan, chapters, story);
+  const bookendSpoilers = (b: typeof bookends) =>
+    spoilerProblems(
+      [b.intro.narration, b.intro.on_screen, b.outro.narration, b.outro.on_screen].filter(Boolean).join(" "),
+      s.now(),
+      games,
+    );
   const endProblems = [
     ...validateBookends(bookends),
     ...explainedBookendProblems(bookends, story),
+    ...bookendSpoilers(bookends),
   ];
   if (endProblems.length) {
     bookends = await writeExplainedBookends(
       s.llm,
-      outline,
+      plan,
       chapters,
       story,
       endProblems,
@@ -443,6 +487,7 @@ export async function stepScriptExplained(
     warnings.push(
       ...validateBookends(bookends),
       ...explainedBookendProblems(bookends, story),
+      ...bookendSpoilers(bookends),
     );
   }
   const words = explainedWords(chapters, bookends);
@@ -452,12 +497,14 @@ export async function stepScriptExplained(
     );
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
-  const script = explainedToScript(story, outline, done, bookends);
+  const script = explainedToScript(story, plan, done, bookends);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
       explained: true,
+      // Parts dropped for want of a source, so the weekly round-up test can tell a shorter explainer apart.
+      ...(dropped.size ? { dropped: [...dropped].map((i) => EXPLAINED_PARTS[i]!.label) } : {}),
       story,
       words,
       sources: script.sources,

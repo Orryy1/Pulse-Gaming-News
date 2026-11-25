@@ -79,6 +79,11 @@ function spoken(
 export function unquotable(
   index: SceneIndex,
   line: DialogueLine,
+  o: {
+    verbatim?: boolean;
+    /** Speakers on demand: the line's speaker is a placeholder until named, so its checks wait. */
+    anySpeaker?: boolean;
+  } = {},
 ): string | undefined {
   if (line.via === "textbox") return "read off the screen, never heard";
   const span = spoken(line);
@@ -106,12 +111,100 @@ export function unquotable(
   const agree =
     said.filter((w) => heard.has(w)).length / Math.max(1, said.length);
   if (agree < 0.6) return "the heard words do not match the line";
+  if (o.verbatim) {
+    const miss = misreadWords(index, said, heard);
+    if (miss.length) return `words the voice never says ("${miss.slice(0, 3).join(", ")}")`;
+    // A label the game showed must be one it showed often; a name read from the dialogue was checked against the cast.
+    // A trailer never names who speaks: its lines carry the trailer's own name and need no cast check.
+    const named = !o.anySpeaker && index.origin !== "trailer";
+    const who = named ? speakerProblem(index, line.speaker) : undefined;
+    if (who) return who;
+    if (
+      named &&
+      line.speakerFrom !== "context" &&
+      (speakerCounts(index).get(line.speaker!.trim()) ?? 0) < MIN_SPEAKER_LINES
+    )
+      return `"${line.speaker}" speaks too rarely in the index to trust the label`;
+  }
   return undefined;
+}
+
+/** A speaker label the game showed counts in dialogue mode once it labels this many heard lines. */
+export const MIN_SPEAKER_LINES = 5;
+const counted = new WeakMap<object, Map<string, number>>();
+/** Heard lines per game-shown speaker label (cached per index object). */
+function speakerCounts(index: Pick<SceneIndex, "lines">): Map<string, number> {
+  const hit = counted.get(index);
+  if (hit) return hit;
+  const m = new Map<string, number>();
+  for (const l of index.lines)
+    if (l.speaker && !l.speakerGuessed && l.speakerFrom !== "context" && l.via !== "textbox")
+      m.set(l.speaker.trim(), (m.get(l.speaker.trim()) ?? 0) + 1);
+  counted.set(index, m);
+  return m;
+}
+
+/** Words that make a "speaker" a place, a building or an organisation, not a character. */
+const PLACE_WORD =
+  /\b(?:desert|canyon|hills?|glen|park|sea|heights|mount|county|city|street|mesa|bay|beach|island|keys|lake|valley|ranch|penitentiary|terminal|depository|bureau|agency|department|records)\b/i;
+/** Place names open with these more often than people do ("San Andreas", "North Yankton", "Del Perro"). */
+const PLACE_START = /^(?:san|santa|los|las|el|la|del|north|south|east|west|little|port|mount|lake|fort)\s/i;
+/** Screen labels read as speakers (heist boards, chapter cards, menus). */
+const LABEL_WORD = /^(?:todo|connected|crew|approach|getaway|loud|cut|driver|pick crew|news|time|bank|mma|chapter|final chapter|objective|mission|tip|help|menu)$/i;
+/** A name with a capital inside a word ("OUGRideR") or in capitals only ("APPROACH"): how the text reader writes labels. */
+const oddCase = (s: string): boolean =>
+  /[a-z][A-Z]/.test(s) || (/[A-Z]{3,}/.test(s) && !/[a-z]/.test(s));
+
+/**
+ * Why a line's speaker is not a character the caption may name, or undefined (pure; GAME_SPEECH_DIALOGUE). The text
+ * reader takes some screen labels for speakers (GTA V's index: "CONNECTED", "APPROACH", "Grand Senora Desert"), and
+ * the cast list collects them too. A speaker passes when it is, word for word and in any case, a cleanly written name
+ * on the cast list ("RydeR" is Ryder, "Cesar vialPando" is Cesar Vialpando), and is no place or label.
+ */
+export function speakerProblem(
+  index: Pick<SceneIndex, "cast" | "places">,
+  speaker: string | undefined,
+): string | undefined {
+  const who = (speaker ?? "").trim();
+  if (!who) return "no speaker";
+  const key = (s: string) => plainWords(s).join(" ");
+  if (
+    LABEL_WORD.test(who) ||
+    PLACE_WORD.test(who) ||
+    PLACE_START.test(who) ||
+    index.places.some((p) => key(p) === key(who))
+  )
+    return `"${who}" is a place or a screen label, not a character`;
+  const clean = index.cast.filter((c) => !oddCase(c) && !PLACE_WORD.test(c));
+  const words = plainWords(who);
+  const named = clean.some((c) => {
+    const cw = new Set(plainWords(c));
+    return words.length > 0 && words.every((w) => cw.has(w));
+  });
+  return named ? undefined : `"${who}" is not a cleanly written name on the cast list`;
+}
+
+/**
+ * GAME_SPEECH_DIALOGUE: the line's words the voice never says (pure), names aside (Whisper hears "Vig" for "Link").
+ * A line read off burned-in subtitles can carry the reader's slips ("ljust", "Let me gol" in GTA VI's index): the
+ * caption shows the line's text, so in dialogue mode every other word must be heard too.
+ */
+export function misreadWords(
+  index: Pick<SceneIndex, "cast" | "places">,
+  said: readonly string[],
+  heard: ReadonlySet<string>,
+): string[] {
+  const names = new Set([...index.cast, ...index.places].flatMap(plainWords));
+  return said.filter((w) => !heard.has(w) && !names.has(w) && !/^\d+$/.test(w));
 }
 
 export interface QuoteCandidateOptions {
   /** At most this many candidates (default 10). */
   max?: number;
+  /** GAME_SPEECH_DIALOGUE: every word of the line but names must be heard (see misreadWords). */
+  verbatim?: boolean;
+  /** Speakers on demand: the lines' speakers are placeholders, so the speaker checks wait. */
+  anySpeaker?: boolean;
   /** Story candidates need at least this score (default 1). */
   minScore?: number;
   /** Lines that only fill the list when too few fit the story (default: up to max). 0 for story fits only. */
@@ -179,7 +272,7 @@ export function quoteCandidates(
   const now = o.now ?? new Date();
   const own = new Set(gameAliases(index.game).flatMap(tokens));
   const eligible = index.lines.filter((line) => {
-    if (unquotable(index, line)) return false;
+    if (unquotable(index, line, { verbatim: o.verbatim, anySpeaker: o.anySpeaker })) return false;
     if (!o.window) return true;
     const span = spoken(line)!;
     const use = o.use ?? "short";
@@ -295,6 +388,7 @@ export function quoteCandidates(
 export function verifyQuote(
   index: SceneIndex,
   q: Pick<QuoteCandidate, "id" | "text" | "speaker" | "videoId">,
+  o: { verbatim?: boolean } = {},
 ): { ok: boolean; reason: string; line?: DialogueLine } {
   if (index.source.videoId !== q.videoId)
     return { ok: false, reason: "the index was rebuilt from another upload" };
@@ -304,7 +398,7 @@ export function verifyQuote(
     return { ok: false, reason: "the words differ from the index's line" };
   if ((line.speaker ?? "").trim() !== q.speaker.trim())
     return { ok: false, reason: "another speaker says it" };
-  const why = unquotable(index, line);
+  const why = unquotable(index, line, o);
   if (why) return { ok: false, reason: why };
   const hit = findQuote(index, q.text, { speaker: q.speaker, max: 1 })[0];
   if (!hit || hit.confidence < 1 || !hit.lines.includes(line.id))

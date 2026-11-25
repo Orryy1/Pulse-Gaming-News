@@ -21,6 +21,8 @@ import {
   nameWidth,
 } from "../../rankcard.ts";
 import { BODY, DISPLAY } from "../fonts.ts";
+import { Box3D } from "../Box3D.tsx";
+import { boxShape } from "../../boxart.ts";
 
 /** A box-art capsule's width beside the name (a Steam capsule stands 2:3). */
 const BOX_WIDTH = 124;
@@ -45,6 +47,8 @@ export const RankingCard: React.FC<{
   requirement?: string;
   /** A series in release order (src/editorial/everygame.ts): the badge shows the year, and its place in the run under it. */
   chrono?: boolean;
+  /** SHORT_BOX_3D (src/render/boxart.ts): the cover turns in as the game's box, at the flat cover's width. */
+  box3d?: boolean;
 }> = ({
   rank,
   total,
@@ -57,6 +61,7 @@ export const RankingCard: React.FC<{
   date,
   requirement,
   chrono,
+  box3d = false,
 }) => {
   const day = date?.match(/^(\d{4})-(\d{2})-(\d{2})/);
   const dayName = day
@@ -225,7 +230,21 @@ export const RankingCard: React.FC<{
             {day ? dayName : yearBadge ? `${total - rank + 1} OF ${total}` : `OF ${total}`}
           </div>
         </div>
-        {capsuleSrc ? (
+        {capsuleSrc && box3d && !achievement ? (
+          <div style={{ flex: "none", width: artWidth, opacity: card }}>
+            <Box3D
+              src={capsuleSrc}
+              portrait
+              title={title}
+              year={year}
+              platforms={platforms}
+              // As wide as the flat cover, so the name keeps its room.
+              height={Math.round(BOX_WIDTH / boxShape(Number(year) || undefined).aspect)}
+              len={600}
+              startAt={FRAMES.ruleLead + 4}
+            />
+          </div>
+        ) : capsuleSrc ? (
           <div
             style={{
               flex: "none",

@@ -25,6 +25,7 @@ import { decodedSeconds, synthesiseLocal } from "./local.ts";
 import { quietBreaths } from "./breaths.ts";
 import { dropTagWords, stripVoiceTags } from "./tags.ts";
 import { bestHook, hookOf } from "./hooktakes.ts";
+import { MAX_REVOICES } from "./takecheck.ts";
 
 const run = promisify(execFile);
 
@@ -48,22 +49,113 @@ export function providerOrder(
 let lastCredits: { left: number; at: number } | undefined;
 /** How long a known balance stands in for an unanswered check (job spend since then is subtracted by the caller's cushion). */
 const CREDITS_STALE_MS = 2 * 60 * 60 * 1000;
+/**
+ * Spend the factory cannot see (sandbox runs on the PC, a manual voice test) is assumed at this many characters a day
+ * when a balance read from disk stands in: the older the reading, the more is taken off it.
+ */
+export const UNSEEN_CHARS_PER_DAY = 50_000;
 
 /** Test hook: forget the remembered balance. */
 export function resetElevenLabsCreditsCache(): void {
   lastCredits = undefined;
 }
 
+export interface ElevenLabsBalance {
+  left: number;
+  /** live: the API answered now; memory: a reading from the last two hours; disk: an older reading kept across restarts. */
+  source: "live" | "memory" | "disk";
+  /** Age of the reading in milliseconds (0 when live). */
+  ageMs: number;
+}
+
+export interface CreditsOpts {
+  tries?: number;
+  waitMs?: number;
+  now?: () => number;
+  /**
+   * ELEVENLABS_BALANCE_STALE_HOURS: the balance is kept in this file, so a factory restart during an ElevenLabs blip
+   * does not leave the narrator with no balance at all (18 Nov: two restarts while the subscription check was not
+   * answering stopped 5 Shorts over 3.5 hours with 619,000 characters left, while voicing itself still worked).
+   */
+  file?: string;
+  /** How old a reading from the file may be and still stand in; 0 or unset never reads the file. */
+  staleMs?: number;
+}
+
+async function readBalanceFile(
+  file: string,
+): Promise<{ left: number; at: number } | undefined> {
+  try {
+    const j = JSON.parse(await fs.readFile(file, "utf8")) as {
+      left?: unknown;
+      at?: unknown;
+    };
+    if (
+      typeof j.left === "number" &&
+      typeof j.at === "number" &&
+      Number.isFinite(j.left) &&
+      Number.isFinite(j.at)
+    )
+      return { left: j.left, at: j.at };
+  } catch {
+    /* no file yet, or unreadable */
+  }
+  return undefined;
+}
+
+/** Every write of the balance file goes through this one chain, so jobs finishing together never lose a spend. */
+let balanceChain: Promise<unknown> = Promise.resolve();
+let balanceTmpSeq = 0;
+function serialBalance<T>(fn: () => Promise<T>): Promise<T> {
+  const next = balanceChain.then(fn, fn);
+  balanceChain = next.catch(() => undefined);
+  return next;
+}
+
+async function writeBalanceFile(
+  file: string,
+  b: { left: number; at: number },
+): Promise<void> {
+  try {
+    const tmp = `${file}.${process.pid}.${++balanceTmpSeq}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(b));
+    await fs.rename(tmp, file);
+  } catch (err) {
+    log("warn", "could not keep the ElevenLabs balance on disk", {
+      error: errorMessage(err),
+    });
+  }
+}
+
 /**
- * Characters left this month on the ElevenLabs plan, or undefined if unknown (bad key, API down).
- * The subscription check is asked up to three times (it went unanswered 28 times on 18 Nov and
- * stopped every Short it hit); when it still does not answer, a balance read in the last two hours
- * stands in. A 401 (bad key) never uses the remembered balance.
+ * Characters just spent on ElevenLabs, taken off the remembered balance (in memory and on disk) so a reading that
+ * stands in for an unanswered check is never the balance from before this spend.
  */
-export async function elevenLabsCreditsLeft(
+export async function noteElevenLabsSpend(
+  chars: number,
+  file?: string,
+): Promise<void> {
+  if (!(chars > 0)) return;
+  if (lastCredits)
+    lastCredits = { ...lastCredits, left: lastCredits.left - chars };
+  if (!file) return;
+  await serialBalance(async () => {
+    const b = await readBalanceFile(file);
+    if (b) await writeBalanceFile(file, { left: b.left - chars, at: b.at });
+  });
+}
+
+/**
+ * Characters left this month on the ElevenLabs plan, with where the figure came from, or undefined if unknown (bad
+ * key, API down and nothing remembered). The subscription check is asked up to three times (it went unanswered 28
+ * times on 18 Nov and stopped every Short it hit); when it still does not answer, a balance read in the last two
+ * hours stands in, then (with `file` and `staleMs`) a reading kept on disk, less the unseen-spend allowance for its
+ * age. A 401 (bad key) never uses a remembered balance.
+ */
+export async function elevenLabsBalance(
   apiKey: string,
-  opts: { tries?: number; waitMs?: number; now?: () => number } = {},
-): Promise<number | undefined> {
+  opts: CreditsOpts = {},
+): Promise<ElevenLabsBalance | undefined> {
   const tries = opts.tries ?? 3;
   const waitMs = opts.waitMs ?? 2_000;
   const now = opts.now ?? Date.now;
@@ -84,14 +176,50 @@ export async function elevenLabsCreditsLeft(
       if (s.character_limit == null || s.character_count == null) continue;
       const left = s.character_limit - s.character_count;
       lastCredits = { left, at: now() };
-      return left;
+      const reading = lastCredits;
+      if (opts.file) {
+        const f = opts.file;
+        await serialBalance(() => writeBalanceFile(f, reading));
+      }
+      return { left, source: "live", ageMs: 0 };
     } catch {
       /* try again */
     }
   }
   if (lastCredits && now() - lastCredits.at < CREDITS_STALE_MS)
-    return lastCredits.left;
+    return {
+      left: lastCredits.left,
+      source: "memory",
+      ageMs: now() - lastCredits.at,
+    };
+  if (opts.file && opts.staleMs && opts.staleMs > 0) {
+    const b = await readBalanceFile(opts.file);
+    const age = b ? now() - b.at : Infinity;
+    if (b && age >= 0 && age < opts.staleMs) {
+      const unseen = Math.ceil(
+        (UNSEEN_CHARS_PER_DAY * Math.max(age, 60 * 60 * 1000)) / 86_400_000,
+      );
+      return { left: Math.max(0, b.left - unseen), source: "disk", ageMs: age };
+    }
+  }
   return undefined;
+}
+
+/** Where the balance is kept across restarts, or undefined when ELEVENLABS_BALANCE_STALE_HOURS is 0 (the old behaviour). */
+export function elevenLabsBalanceFile(
+  cfg: Pick<Config, "dataDir" | "elevenLabsBalanceStaleHours">,
+): string | undefined {
+  return (cfg.elevenLabsBalanceStaleHours ?? 0) > 0
+    ? path.join(cfg.dataDir, "elevenlabs_balance.json")
+    : undefined;
+}
+
+/** Characters left this month on the ElevenLabs plan, or undefined if unknown (see elevenLabsBalance). */
+export async function elevenLabsCreditsLeft(
+  apiKey: string,
+  opts: CreditsOpts = {},
+): Promise<number | undefined> {
+  return (await elevenLabsBalance(apiKey, opts))?.left;
 }
 
 /**
@@ -267,7 +395,22 @@ export async function narrate(
       } else {
         if (!cfg.elevenLabsApiKey)
           throw new Error("ElevenLabs is not configured");
-        const left = await elevenLabsCreditsLeft(cfg.elevenLabsApiKey);
+        const balanceFile = elevenLabsBalanceFile(cfg);
+        const balance = await elevenLabsBalance(cfg.elevenLabsApiKey, {
+          file: balanceFile,
+          staleMs: (cfg.elevenLabsBalanceStaleHours ?? 0) * 60 * 60 * 1000,
+        });
+        const left = balance?.left;
+        if (balance?.source === "disk") {
+          log("info", "ElevenLabs balance: older reading used", {
+            left: balance.left,
+            hours: (balance.ageMs / 3_600_000).toFixed(1),
+          });
+          await hooks.onEvent?.("elevenlabs_balance_stale", {
+            left: balance.left,
+            hours: Number((balance.ageMs / 3_600_000).toFixed(1)),
+          });
+        }
         // Unknown balance (invalid key, API down) is a refusal when ElevenLabs is merely preferred:
         // the point of elevenlabs-first is to use paid-for credits, not to risk a bill.
         if (left === undefined && cfg.voiceProvider === "elevenlabs-first")
@@ -286,12 +429,22 @@ export async function narrate(
         };
         // A long-form script is spoken in takes: the timestamps endpoint takes a few thousand characters at a time.
         // Re-voicing a stray take spends extra characters, only out of what the balance holds beyond this job and the reserve.
+        // An older reading from disk pays for the job itself, never for extra takes (0, not undefined: undefined
+        // means no limit to synthesiseElevenLabsLong).
         const revoiceChars =
-          left === undefined
-            ? undefined
-            : Math.max(0, left - spoken.length * 1.2 - cfg.elevenLabsReserve);
-        n =
-          spoken.length > LONG_TEXT_CHARS
+          balance?.source === "disk"
+            ? 0
+            : left === undefined
+              ? undefined
+              : Math.max(0, left - spoken.length * 1.2 - cfg.elevenLabsReserve);
+        // What this job may spend at most, taken off the remembered balance even if it fails part-way (an upper
+        // bound errs low, which is the safe side; the next live reading corrects it).
+        const longJob = spoken.length > LONG_TEXT_CHARS;
+        const maxRevoice = longJob
+          ? Math.min(revoiceChars ?? Infinity, MAX_REVOICES * LONG_TEXT_CHARS)
+          : 0;
+        try {
+          n = longJob
             ? await synthesiseElevenLabsLong(spoken, outPath, {
                 ...elOpts,
                 takeCheck: cfg.voiceTakeCheck,
@@ -299,13 +452,17 @@ export async function narrate(
                 onEvent: hooks.onEvent,
               })
             : await synthesiseElevenLabs(spoken, outPath, elOpts);
+        } finally {
+          await noteElevenLabsSpend(spoken.length + maxRevoice, balanceFile);
+        }
         // HOOK_TAKES: a Short's hook line voiced again, the best read spliced in (src/voice/hooktakes.ts). Only out
         // of what the balance holds beyond this job and the reserve; an unknown balance spends nothing extra.
         if (
           hooks.hookTakes &&
           cfg.hookTakes > 0 &&
           spoken.length <= LONG_TEXT_CHARS &&
-          revoiceChars !== undefined
+          revoiceChars !== undefined &&
+          revoiceChars > 0
         ) {
           const hook = hookOf(spoken);
           if (hook && hook.length * cfg.hookTakes <= revoiceChars) {
@@ -324,14 +481,19 @@ export async function narrate(
                 voice: elOpts.voiceId,
                 model: elOpts.modelId,
               },
-            }).catch((err) => {
-              log(
-                "warn",
-                "hook takes failed; keeping the narration's own hook",
-                { error: errorMessage(err) },
+            })
+              .catch((err) => {
+                log(
+                  "warn",
+                  "hook takes failed; keeping the narration's own hook",
+                  { error: errorMessage(err) },
+                );
+                return undefined;
+              })
+              // The takes' upper bound, spent or not, so a part-way failure is still counted.
+              .finally(() =>
+                noteElevenLabsSpend(hook.length * cfg.hookTakes, balanceFile),
               );
-              return undefined;
-            });
             if (r) {
               if (r.words && r.shift !== undefined)
                 n = {

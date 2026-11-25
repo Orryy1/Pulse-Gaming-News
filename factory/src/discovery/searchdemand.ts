@@ -14,6 +14,8 @@ import { errorMessage, log } from "../lib/util.ts";
 /** YouTube's search-page filter: uploaded this week, sorted by view count. */
 export const WEEK_BY_VIEWS = "CAMSAggD";
 export const CACHE_HOURS = 24;
+/** The weight an older (stale) reading's views carry when ranked against fresh ones. */
+export const STALE_WEIGHT = 0.5;
 /** The recent hits a topic's demand is measured on. */
 const TOP = 5;
 
@@ -33,6 +35,11 @@ export interface Demand {
   top?: { title: string; views: number };
   level: "none" | "low" | "medium" | "high";
   at: string;
+  /**
+   * True when this figure is an older cached reading used because no fresh one could be had (DEMAND_STALE_DAYS):
+   * the search was paused or failed, or the pick's lookups ran out. It ranks candidates but never skips one.
+   */
+  stale?: boolean;
 }
 
 /** The search page for a topic: this week's uploads, most viewed first. */
@@ -131,27 +138,35 @@ export function scoreDemand(
 export interface DemandCache {
   get(query: string): Promise<Demand | undefined>;
   set(query: string, d: Demand): Promise<void>;
+  /** A cached reading of any age within `maxHours` (for the stale fallback); optional, so plain caches still work. */
+  getAged?(query: string, maxHours: number): Promise<Demand | undefined>;
+}
+
+/** True when a cached reading is younger than `hours` at `now` (pure). */
+export function demandYoungerThan(d: Demand, hours: number, now: Date): boolean {
+  const age = now.getTime() - Date.parse(d.at);
+  return Number.isFinite(age) && age < hours * 3600_000;
 }
 
 /** The cache in the settings table: one row per topic, good for CACHE_HOURS. */
 export function dbDemandCache(db: Db, now: () => Date): DemandCache {
   const key = (q: string) => `demand:${q.toLowerCase().trim()}`;
+  const read = async (q: string, hours: number): Promise<Demand | undefined> => {
+    const [row] = await db.query<{ value: string }>(
+      `SELECT value FROM settings WHERE key = $1`,
+      [key(q)],
+    );
+    if (!row) return undefined;
+    try {
+      const d = JSON.parse(row.value) as Demand;
+      return demandYoungerThan(d, hours, now()) ? d : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   return {
-    async get(q) {
-      const [row] = await db.query<{ value: string }>(
-        `SELECT value FROM settings WHERE key = $1`,
-        [key(q)],
-      );
-      if (!row) return undefined;
-      try {
-        const d = JSON.parse(row.value) as Demand;
-        return now().getTime() - Date.parse(d.at) < CACHE_HOURS * 3600_000
-          ? d
-          : undefined;
-      } catch {
-        return undefined;
-      }
-    },
+    get: (q) => read(q, CACHE_HOURS),
+    getAged: (q, maxHours) => read(q, maxHours),
     async set(q, d) {
       await db.query(
         `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
@@ -163,7 +178,10 @@ export function dbDemandCache(db: Db, now: () => Date): DemandCache {
 
 /**
  * The demand of each candidate: from the cache, else one search page each, at most `lookups` pages. A
- * candidate not looked up, or whose search failed, is absent (unknown).
+ * candidate not looked up, or whose search failed, is absent (unknown), unless `staleDays` is set: then its
+ * newest cached reading from the last `staleDays` days stands in, marked `stale` (DEMAND_STALE_DAYS, 20 Nov
+ * 2026: 20 of 26 picks from 12 to 19 Nov went out with no figure, mostly while YouTube's bot check paused
+ * searching, though the same topics had been measured a few days earlier).
  */
 export async function demandFor(
   candidates: EvergreenCandidate[],
@@ -173,6 +191,8 @@ export async function demandFor(
     lookups: number;
     minViews: number;
     now: Date;
+    /** Days an older cached reading may stand in for a missing one; 0 or unset: never. */
+    staleDays?: number;
   },
 ): Promise<Map<string, Demand>> {
   const out = new Map<string, Demand>();
@@ -201,6 +221,18 @@ export async function demandFor(
       });
     }
   }
+  const staleHours = Math.max(0, o.staleDays ?? 0) * 24;
+  if (staleHours > 0 && o.cache.getAged) {
+    let used = 0;
+    for (const c of candidates) {
+      if (out.has(c.name)) continue;
+      const old = await o.cache.getAged(c.name, staleHours).catch(() => undefined);
+      if (!old) continue;
+      out.set(c.name, { ...old, stale: true });
+      used++;
+    }
+    if (used) log("info", "demand: older readings used where no fresh one could be had", { used });
+  }
   return out;
 }
 
@@ -222,17 +254,26 @@ export function rankByDemand(
   demand: Map<string, Demand>,
   minViews: number,
 ): { kept: EvergreenCandidate[]; skipped: EvergreenCandidate[] } {
-  const skipped = candidates.filter(
-    (c) => demand.get(c.name)?.level === "none",
-  );
+  // Only a fresh "none" skips a topic: an older reading ranks it but never drops it.
+  const none = (c: EvergreenCandidate) => {
+    const d = demand.get(c.name);
+    return d?.level === "none" && !d.stale;
+  };
+  const skipped = candidates.filter(none);
   const kept = candidates
-    .filter((c) => demand.get(c.name)?.level !== "none")
-    .map((c, i) => ({ c, i, v: demand.get(c.name)?.views ?? minViews }))
+    .filter((c) => !none(c))
+    // An older reading counts half against fresh ones, so a launch-week spike does not keep winning for days.
+    .map((c, i) => {
+      const d = demand.get(c.name);
+      return { c, i, v: d ? (d.stale ? d.views * STALE_WEIGHT : d.views) : minViews };
+    })
     .sort((a, b) => b.v - a.v || a.i - b.i)
     .map(({ c }) => {
       const d = demand.get(c.name);
       if (!d) return c;
-      const fig = `YouTube this week: ${viewsLabel(d.views)} views on its top videos`;
+      const fig = d.stale
+        ? `YouTube, last measured ${d.at.slice(0, 10)}: ${viewsLabel(d.views)} views on its top videos that week`
+        : `YouTube this week: ${viewsLabel(d.views)} views on its top videos`;
       return { ...c, note: c.note ? `${c.note}; ${fig}` : fig };
     });
   return { kept, skipped };
@@ -244,10 +285,15 @@ export function demandLine(
   picked: string,
   d: Demand | undefined,
   skipped: number,
+  now?: Date,
 ): string {
-  const fig = d
-    ? `${viewsLabel(d.views)} views on its top YouTube videos this week (${d.hits} recent video${d.hits === 1 ? " names" : "s name"} it, ${d.level} demand)`
-    : "demand not checked (search unavailable or over the lookup limit)";
+  const ago = d?.stale && now ? Math.max(1, Math.round((now.getTime() - Date.parse(d.at)) / 86_400_000)) : undefined;
+  const when = ago ? `${ago} day${ago === 1 ? "" : "s"} ago` : `on ${d?.at.slice(0, 10)}`;
+  const fig = !d
+    ? "demand not checked (search unavailable or over the lookup limit)"
+    : d.stale
+      ? `${viewsLabel(d.views)} views on its top YouTube videos when last measured ${when} (${d.level} demand; a fresh search was not possible)`
+      : `${viewsLabel(d.views)} views on its top YouTube videos this week (${d.hits} recent video${d.hits === 1 ? " names" : "s name"} it, ${d.level} demand)`;
   const skip = skipped
     ? ` ${skipped} candidate${skipped === 1 ? "" : "s"} skipped for no recent demand.`
     : "";

@@ -78,6 +78,14 @@ const NOT_YET =
   /\b(?:(?:is not|isn't|not)\s+(?:out|live|unlocked|available)\s+yet|(?:unlocks?|comes? out|arrives?|launch(?:es)?)\s+(?:on|at|in|tomorrow|tonight)|countdown|pre-?load|pre-?order)/i;
 
 /**
+ * Wording that treats GTA VI's launch as still to come, out of date after the last unlock. Two Shorts on 19 Nov 2026
+ * went public hours after launch still saying "you can hear the music before launch" and "the US has to wait longer"
+ * (an album Short written on 16 Nov, a New Zealand unlock Short written from a day-old article).
+ */
+const STILL_TO_COME =
+  /\b(?:unlocks?|comes? out|arrives?)\s+(?:tonight|tomorrow|in a few hours|soon)\b|\bnot out yet\b|\bisn't out yet\b|\b(?:hear|try|play|get|grab|watch|listen to|download|pre-?load|finish|beat|do|buy|read|build|set up|make)\b[^.!?]{0,40}\bbefore (?:the |its )?(?:launch|release)\b(?!\s+(?:day|trailer|date|week))|\bbefore you can play\b|\b(?:us|u\.s\.|america|americans|europe|uk|the west)\b[^.!?]{0,30}\b(?:has|have) to wait (?:longer|a few more hours|until midnight)\b|\bstill (?:be )?nov(?:ember)? 18\b|\b(?:american|us|u\.s\.|north american) launch (?:could|will|may|might)\b/i;
+
+/**
  * Time words checked against the moment the Short goes public (`airsAt`), for GTA VI: before the first unlock it
  * may not say the game is out; after the last unlock it may not say it unlocks tonight or tomorrow. A planned Short
  * made days early (RUN_PREMAKE_HOURS) is written for its slot, and this is the guard that it still reads true then.
@@ -94,11 +102,7 @@ export function airTimeProblems(text: string, airsAt: Date): string[] {
       );
   }
   if (airsAt.getTime() >= LAST_UNLOCK.getTime()) {
-    const bad = lines.find((l) =>
-      /\b(?:unlocks?|comes? out|arrives?)\s+(?:tonight|tomorrow|in a few hours|soon)\b|\bnot out yet\b|\bisn't out yet\b/i.test(
-        l,
-      ),
-    );
+    const bad = lines.find((l) => STILL_TO_COME.test(l));
     if (bad)
       out.push(
         `This Short goes public after GTA 6 has unlocked everywhere, so it cannot say it is still to come: "${bad.trim().slice(0, 120)}".`,

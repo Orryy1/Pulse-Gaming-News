@@ -1,5 +1,7 @@
 // Trailer voice lines, made once per library trailer on the PC (TRAILER_QUOTES, src/assets/trailerlines.ts).
 //   npx tsx src/tools/trailerlines.ts "Grand Theft Auto VI" [--audio-dir=DIR] [--force]
+//   npx tsx src/tools/trailerlines.ts --all     every game in the library with an official trailer not yet processed
+//                                               (about 4 minutes a trailer: give orch --est for the whole list)
 // For each official trailer in the game's library: its sound (from DIR/<item>.m4a when given, else read from the
 // publisher's own file, picture skipped: the library keeps the picture only), Demucs's isolated voice and the music
 // under it (src/tools/trailervoice.py, htdemucs_ft from the torch cache), Whisper's word timings of the voice
@@ -87,14 +89,51 @@ async function monoLevels(file: string, step: number): Promise<number[]> {
   );
 }
 
+/** Every game in the library with an official trailer whose lines are not made yet (pure over the read libraries). */
+export function gamesNeedingLines(
+  libs: ReadonlyArray<{ game: string; items: Parameters<typeof isLibraryTrailer>[0][] }>,
+  done: (game: string, item: string) => boolean,
+): string[] {
+  return libs
+    .filter((l) => l.items.some((i) => isLibraryTrailer(i) && !done(l.game, i.id)))
+    .map((l) => l.game);
+}
+
 async function main(): Promise<void> {
   if (!game0)
     throw new Error(
-      'usage: trailerlines.ts "<game>" [--audio-dir=DIR] [--force]',
+      'usage: trailerlines.ts "<game>"|--all [--audio-dir=DIR] [--force]',
     );
   if (!DEMUCS_PY) throw new Error("no Python with Demucs (DEMUCS_PYTHON)");
   if (!WHISPER_PY) throw new Error("no Python with Whisper (WHISPER_PYTHON)");
   const root = libraryRoot(process.env.DATA_DIR || "data");
+  if (game0 === "--all") {
+    // Every library game with an official trailer, not just GTA VI (20 Nov 2026: not one trailer had been processed).
+    const libs = [];
+    for (const d of await fsp.readdir(root, { withFileTypes: true }).catch(() => [])) {
+      if (!d.isDirectory()) continue;
+      try {
+        libs.push(JSON.parse(await fsp.readFile(path.join(root, d.name, "library.json"), "utf8")));
+      } catch {
+        // not a library
+      }
+    }
+    const games = gamesNeedingLines(libs, (game, item) =>
+      !flag("force") && fs.existsSync(path.join(libraryDir(root, game), voicelinesFile(item))),
+    );
+    console.log(`${games.length} games with trailers to process: ${games.join(", ")}`);
+    // One game's failure (its publisher's file gone, a Demucs crash) never stops the rest.
+    for (const g of games)
+      await processGame(root, g).catch((err) => {
+        console.log(`${g}: failed: ${errorMessage(err).slice(0, 300)}`);
+        process.exitCode = 1;
+      });
+    return;
+  }
+  await processGame(root, game0);
+}
+
+async function processGame(root: string, game0: string): Promise<void> {
   const game = canonicalGame(game0);
   const lib = await readLibrary(root, game);
   if (!lib) throw new Error(`no library for ${game} under ${root}`);
@@ -222,7 +261,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(errorMessage(err));
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+  main().catch((err) => {
+    console.error(errorMessage(err));
+    process.exit(1);
+  });

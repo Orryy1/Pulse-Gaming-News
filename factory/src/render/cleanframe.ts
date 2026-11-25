@@ -21,6 +21,7 @@ import type { Segment } from "./timeline.ts";
 import { cardWindow } from "./shortcraft.ts";
 import { isEntryCard } from "./rankcard.ts";
 import { peopleGroups, type PersonInset } from "./people.ts";
+import { YIELDS_TO_CARD, mentionNeedFrames, type MentionKind, type MentionSlot } from "./mentions.ts";
 
 export type OverlayKind =
   | "entry"
@@ -32,6 +33,7 @@ export type OverlayKind =
   | "sting"
   | "shelf"
   | "people"
+  | "mention"
   | "tracklist";
 
 /** Higher wins. A ranked Short's rank card (src/render/rankcard.ts) stays up for its whole entry: the rest gives way. */
@@ -45,6 +47,9 @@ export const PRIORITY: Record<OverlayKind, number> = {
   // card (which the graphics audit then moves to the free stretch beside it); the tracklist card stands in for its
   // line's own card and meets the others as a card.
   people: 3.5,
+  // MENTION_* (src/render/mentions.ts): the picture of the thing a word names, on that word; it stands in for its
+  // beat's card (overlaySpans leaves that card out), so it only meets the overlays above it here.
+  mention: 3.3,
   tracklist: 3.2,
   card: 3,
   sting: 2,
@@ -62,6 +67,7 @@ export const MIN_KEEP: Record<OverlayKind, number> = {
   sting: 20,
   shelf: 30,
   people: 45,
+  mention: 36,
   tracklist: 45,
 };
 
@@ -104,6 +110,11 @@ function freePieces(
 /** The opening frames that always show the hook's headline: frame 0 is the thumbnail. */
 export const THUMB_FRAMES = 12;
 
+/** A mention inset kept later than its word by more than this (frames) would land on the wrong words: dropped. */
+export const MENTION_LATE_FRAMES = 12;
+/** A receipt may land up to a second late: its attribution runs a few words ("Bloomberg's Jason Schreier reports"). */
+export const MENTION_LATE: Partial<Record<MentionKind, number>> = { receipt: 30 };
+
 export function arbitrate(input: Span[]): Span[] {
   // A word moment never covers the thumbnail: one that would land in the first frames waits for them to pass.
   const spans = input.map((s) =>
@@ -125,9 +136,13 @@ export function arbitrate(input: Span[]): Span[] {
       continue;
     }
     // The longest piece, the earliest on a tie, so a card still lands as near its word as it can.
-    const best = pieces.sort(
-      (x, y) => y[1] - y[0] - (x[1] - x[0]) || x[0] - y[0],
-    )[0];
+    // A mention inset belongs on its word: it keeps the stretch that starts there (or within a beat of it), or nothing.
+    const best =
+      s.kind === "mention"
+        ? pieces.find(([a, z]) => a - s.from <= MENTION_LATE_FRAMES && z - a >= MIN_KEEP.mention)
+        : pieces.sort(
+            (x, y) => y[1] - y[0] - (x[1] - x[0]) || x[0] - y[0],
+          )[0];
     if (!best || best[1] - best[0] < MIN_KEEP[s.kind]) continue;
     kept.push({ ...s, from: best[0], to: best[1] });
   }
@@ -282,6 +297,8 @@ export function overlaySpans(input: {
   people?: Array<Pick<PersonInset, "name" | "src" | "credit" | "at">>;
   /** PEOPLE_INSETS: the tracklist card; its line's own card gives way to it. */
   tracklist?: { segment: number; from: number; frames: number };
+  /** MENTION_* (src/render/mentions.ts mentionSlots): the scheduled insets; each replaces the card its beat would draw. */
+  mentions?: MentionSlot[];
 }): Span[] {
   const { segments, words, plan, layout, stamps } = input;
   const fps = plan.fps;
@@ -295,13 +312,23 @@ export function overlaySpans(input: {
     if (m.kind === "freeze") out.push({ key: `freeze${i}`, kind: "freeze", from: m.at, to: m.at + m.hold + 8 });
   });
   (plan.craft?.fillers ?? []).forEach((f, i) => out.push({ key: `fill${i}`, kind: "filler", from: f.from, to: f.from + f.len }));
+  // An inset meets the overlays above it before it decides on a card: the hook, word moments, freezes, fillers and the
+  // people insets hold their frames, and an inset they would push off its word is not shown (its card stays).
+  const blockers: Span[] = [
+    ...out,
+    ...peopleGroups(input.people ?? [], fps, plan.totalFrames).map((g) => ({ key: g.key, kind: "people" as const, from: g.from, to: g.to })),
+  ];
+  const settled = settleMentions({ segments, words, plan, mentions: input.mentions ?? [], tracklist: input.tracklist, blockers });
   segments.forEach((s, i) => {
     if (s.kind !== "beat" && s.kind !== "take") return;
-    if (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim()) return;
+    // EXPLAINERS: a line's explainer takes its card's place, card or not.
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
     if (input.tracklist?.segment === i) return;
+    if (settled.replaced.has(i)) return;
     const w = cardWindow(segments, words, i, fps, plan.totalFrames);
     out.push({ key: `card${i}`, kind: isEntryCard(s) ? "entry" : "card", from: w.from, to: w.from + w.len });
   });
+  for (const m of settled.slots) out.push({ key: m.key, kind: "mention", from: m.from, to: m.to });
   if (typeof input.sting === "object") out.push({ key: "sting", kind: "sting", from: input.sting.from, to: input.sting.from + input.sting.frames });
   else if (input.sting) out.push({ key: "sting", kind: "sting", from: layout.hookEnd, to: layout.hookEnd + STING_FRAMES });
   plan.shelf.forEach((it, i) => {
@@ -313,6 +340,53 @@ export function overlaySpans(input: {
   if (input.tracklist && input.tracklist.frames > 0)
     out.push({ key: "tracklist", kind: "tracklist", from: input.tracklist.from, to: input.tracklist.from + input.tracklist.frames });
   return out;
+}
+
+/**
+ * An inset never adds a layer (the top-creator study, 18 Nov 2026: breakout Shorts carry about 0.9 overlays per 10 s and
+ * Pulse already runs about 1.2): where an inset and its beat's card would overlap, one goes (pure). A logo chip or the
+ * platform row gives way to the card (a fact on a card beats a picture of a name); a game, a receipt, a place or a
+ * character replaces the card (the picture is the noun). Rank cards are never replaced: the inset gives way.
+ */
+export function settleMentions(input: {
+  segments: Segment[];
+  words: Array<{ text?: string; start: number }>;
+  plan: Pick<RenderPlan, "fps" | "totalFrames">;
+  mentions: MentionSlot[];
+  tracklist?: { segment: number };
+  /** Overlays above the insets (the hook, word moments, freezes, fillers, the people insets). */
+  blockers?: Span[];
+}): { slots: MentionSlot[]; replaced: Set<number> } {
+  const { segments, words, plan } = input;
+  const blockers = [...(input.blockers ?? [])].sort((a, b) => a.from - b.from);
+  const cards: Array<{ i: number; from: number; to: number; entry: boolean }> = [];
+  segments.forEach((s, i) => {
+    if (s.kind !== "beat" && s.kind !== "take") return;
+    if (!s.explainer && (!s.visual || s.visual.kind === "none" || !s.visual.primary.trim())) return;
+    if (input.tracklist?.segment === i) return;
+    const w = cardWindow(segments, words, i, plan.fps, plan.totalFrames);
+    cards.push({ i, from: w.from, to: w.from + w.len, entry: isEntryCard(s) });
+  });
+  const replaced = new Set<number>();
+  const slots: MentionSlot[] = [];
+  for (const slot of input.mentions) {
+    // Past an overlay that holds its word, by no more than the kind allows (a receipt's attribution runs a few words:
+    // "Bloomberg's Jason Schreier reports"); cut short where the next one starts; never under its reading time.
+    let from = slot.from;
+    for (const b of blockers) if (b.from <= from && b.to > from) from = b.to;
+    if (from - slot.from > (MENTION_LATE[slot.m.kind] ?? MENTION_LATE_FRAMES)) continue;
+    // Pushed past an overlay, it still gets its reading time, up to where the next inset arrives.
+    const next = input.mentions.find((x) => x.from > slot.from);
+    let to = Math.min(Math.max(slot.to, from + mentionNeedFrames(slot.m, plan.fps)), next?.from ?? Infinity, plan.totalFrames);
+    for (const b of blockers) if (b.from > from && b.from < to) to = b.from;
+    if (to - from < Math.max(MIN_KEEP.mention, mentionNeedFrames(slot.m, plan.fps))) continue;
+    const m = { ...slot, from, to };
+    const over = cards.filter((c) => c.from < m.to && c.to > m.from);
+    if (over.some((c) => c.entry) || (over.length && YIELDS_TO_CARD.has(m.m.kind))) continue;
+    for (const c of over) replaced.add(c.i);
+    slots.push(m);
+  }
+  return { slots, replaced };
 }
 
 /**

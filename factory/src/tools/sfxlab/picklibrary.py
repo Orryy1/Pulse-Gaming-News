@@ -1,6 +1,6 @@
 """Chooses the second round of music beds (data/sfxlab/library, made by genlibrary.py) by pickbeds.py's own
 measurement and adds them to public/music beside the beds already there, which are never touched: house takes
-become bed_5.wav onwards, mood takes mood_<mood>_<n>.wav after the mood's existing ones. Every take gets the
+become bed_5.flac onwards, mood takes mood_<mood>_<n>.flac after the mood's existing ones. Every take gets the
 same finishing as before (a seamless beat-cut loop, moved to D or E major so the tuned sounds fit, matched to
 -12.7 LUFS) and the same scoring (little in the speech band, no lead melody, steady, not frantic, no breakdown,
 a clean loop, not bass-heavy, a sane tempo).
@@ -181,18 +181,19 @@ def main():
 
     def keep(r, dest_rel, entry):
         dest = os.path.join("public", dest_rel)
+        # Stored as FLAC (18 Nov 2026): lossless, so the samples match the WAV and the pocket copy exactly, at
+        # under half the size in git.
         if not dry:
-            with open(r["file"], "rb") as f, open(dest, "wb") as g:
-                g.write(f.read())
+            P["ff"]("-i", r["file"], "-c:a", "flac", "-compression_level", "8", dest)
         kept_profiles[dest_rel] = r["z"]
         entry.update(
             file=dest_rel,
             key=r["key"],
-            sha256=hashlib.sha256(open(r["file"], "rb").read()).hexdigest(),
+            sha256=hashlib.sha256(open(dest if not dry else r["file"], "rb").read()).hexdigest(),
             origin=(f"ElevenLabs Music, generated 2026-10-21 ({r['name'][3:]})" if r["name"].startswith("r1_")
                     else f"ElevenLabs Music, generated {DATE} ({r['name']})"),
             licence=LICENCE,
-            finishing=f"beat-aligned seamless loop, pitch {r['shift']:+d} semitones (rubberband, tempo kept), {P['TARGET_LUFS']} LUFS (src/tools/sfxlab/picklibrary.py)",
+            finishing=f"beat-aligned seamless loop, pitch {r['shift']:+d} semitones (rubberband, tempo kept), {P['TARGET_LUFS']} LUFS, stored as FLAC (src/tools/sfxlab/picklibrary.py)",
         )
         added.append(dict(entry, penalty=r["penalty"], grid=grid(r["file"])))
 
@@ -205,7 +206,7 @@ def main():
             continue
         house_n += 1
         entry = {}
-        keep(r, f"music/bed_{house_n}.wav", entry)
+        keep(r, f"music/bed_{house_n}.flac", entry)
         rights["beds"].append(entry)
         print(f"KEEP bed_{house_n} <- {r['name']} ({r['key']} major, penalty {r['penalty']})")
     moods = rights.setdefault("moods", [])
@@ -221,7 +222,7 @@ def main():
                 continue
             n += 1
             entry = {"mood": mood}
-            keep(r, f"music/mood_{mood}_{n}.wav", entry)
+            keep(r, f"music/mood_{mood}_{n}.flac", entry)
             moods.append(entry)
             have.append(entry)
             print(f"KEEP mood_{mood}_{n} <- {r['name']} ({r['key']} major, penalty {r['penalty']})")

@@ -25,6 +25,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import { loudness } from "../qa/media.ts";
 import { classifySound } from "../../mac/gameplay/soundtags.mjs";
 import { trailerSoundFor } from "./trailerlines.ts";
+import { gameSfxFor } from "./gamesfx.ts";
 
 export { musicDipAt } from "../render/gamebed.ts";
 
@@ -102,6 +103,8 @@ export interface HeardClip {
   swell: boolean;
   /** A trailer clip heard through its isolated voice (TRAILER_QUOTES, src/assets/trailerlines.ts): its stretch is mostly speech. */
   voice?: boolean;
+  /** Heard through its game-sound stem, score and voices taken out (GAME_SFX_STEMS, src/assets/gamesfx.ts). */
+  stem?: boolean;
 }
 
 /** Music share at which a clip is not used, and at which it is lowered and kept down. */
@@ -302,6 +305,8 @@ export async function hearClips(
     only?: ReadonlySet<number>;
     /** TRAILER_QUOTES: a trailer clip whose stretch is mostly speech is heard through its voice mix, music 20 dB down. */
     trailerVoice?: boolean;
+    /** GAME_SFX_STEMS: trailers and picture-only library clips heard through their game-sound stems. */
+    sfxStems?: boolean;
   },
 ): Promise<{
   heard: HeardClip[];
@@ -321,7 +326,55 @@ export async function hearClips(
           const p = trailerVoicePolicy(lufs);
           if ("skip" in p) skipped.push({ index, why: p.skip });
           else
-            heard.push({ index, kind, file: v.file, lufs, speech: v.share, voice: true, ...p });
+            heard.push({
+              index,
+              kind,
+              file: v.file,
+              lufs,
+              speech: v.share,
+              voice: true,
+              ...p,
+            });
+          continue;
+        }
+      }
+      // GAME_SFX_STEMS: a trailer, or a library clip kept as picture only, heard through its stem (the game's sound,
+      // score and voices taken out, src/assets/gamesfx.ts); a clip with no stem falls through to the old rules.
+      if (
+        o.sfxStems &&
+        !c.stock &&
+        (kind === "trailer" ? !o.trailers : kind === "none")
+      ) {
+        const s = await gameSfxFor(dir, c, o.dataDir);
+        if (s && "skip" in s) {
+          skipped.push({ index, why: s.skip });
+          continue;
+        }
+        if (s) {
+          const lufs = await loudness(path.join(dir, s.file));
+          const windows = await classifySound(path.join(dir, s.file), {
+            ffmpeg: FFMPEG,
+          }).catch(() => undefined);
+          const music = windows
+            ? labelShare(windows, ["music", "singing", "song"])
+            : undefined;
+          const speech = windows
+            ? labelShare(windows, ["speech", "whispering", "conversation"])
+            : undefined;
+          // Judged as gameplay: Apple's classifier, where it runs, still skips a stretch that is mostly music.
+          const p = soundPolicy("gameplay", { lufs, music, speech }, o);
+          if ("skip" in p) skipped.push({ index, why: `stem ${p.skip}` });
+          else
+            heard.push({
+              index,
+              kind: kind === "none" ? "gameplay" : kind,
+              file: s.file,
+              lufs,
+              music,
+              speech,
+              stem: true,
+              ...p,
+            });
           continue;
         }
       }
@@ -603,6 +656,8 @@ export async function buildShortBed(o: {
   gapLufs: number;
   trailers: boolean;
   trailerVoice?: boolean;
+  /** GAME_SFX_STEMS (src/assets/gamesfx.ts). */
+  sfxStems?: boolean;
 }): Promise<ShortBed | undefined> {
   const work = await fs.mkdtemp(path.join(os.tmpdir(), "pulse-bed-"));
   try {
@@ -615,6 +670,7 @@ export async function buildShortBed(o: {
       trailers: o.trailers,
       only: used,
       trailerVoice: o.trailerVoice,
+      sfxStems: o.sfxStems,
     });
     if (!heard.length) {
       log("info", "game audio: no clip on screen can be heard", { skipped });
@@ -700,6 +756,8 @@ export async function longSoundClips<T extends SoundClip>(o: {
   underGain: number;
   trailers: boolean;
   trailerVoice?: boolean;
+  /** GAME_SFX_STEMS (src/assets/gamesfx.ts). */
+  sfxStems?: boolean;
 }): Promise<{
   clips: T[];
   heard: number;
@@ -708,7 +766,9 @@ export async function longSoundClips<T extends SoundClip>(o: {
   const target = o.underLufs - 20 * Math.log10(o.underGain);
   const only = new Set(
     o.clips.flatMap((c, i) =>
-      !c.audio && clipSoundKind(c) !== "none" ? [i] : [],
+      !c.audio && (clipSoundKind(c) !== "none" || (o.sfxStems && !c.stock))
+        ? [i]
+        : [],
     ),
   );
   try {
@@ -718,11 +778,15 @@ export async function longSoundClips<T extends SoundClip>(o: {
       trailers: o.trailers,
       only,
       trailerVoice: o.trailerVoice,
+      sfxStems: o.sfxStems,
     });
     const out = [...o.clips];
     for (const h of heard) {
       const c = o.clips[h.index]!;
-      const file = c.file.replace(/\.[a-z0-9]+$/i, "") + ".sound.mp4";
+      // A stem gets its own name: a clip muxed earlier with another sound is never reused for it.
+      const file =
+        c.file.replace(/\.[a-z0-9]+$/i, "") +
+        (h.stem ? ".sfx.mp4" : ".sound.mp4");
       const gain = Math.min(MAX_LIFT_DB, target - h.lufs) + h.trimDb;
       try {
         if (!(await exists(path.join(o.dir, file))))

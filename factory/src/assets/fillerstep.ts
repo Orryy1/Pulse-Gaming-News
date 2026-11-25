@@ -127,6 +127,8 @@ export async function chooseEpisodeFillers(args: {
   headline: string;
   /** LONG_CARD_SHARE (./fillers.ts ChooseOptions). */
   cardShare?: number;
+  /** EXPLAINERS on for long videos (fillers.ts ChooseOptions.explainers). */
+  explainers?: boolean;
   /** The owner's word for the format in the notice (src/longformat.ts longKindLabel); default Documentary. */
   kind?: string;
   logEvent: (kind: string, detail: Record<string, unknown>) => Promise<void>;
@@ -147,6 +149,7 @@ export async function chooseEpisodeFillers(args: {
       sketches: args.sketches,
       pickedWords: args.pickedWords,
       cardShare: args.cardShare,
+      explainers: args.explainers,
     });
     applyFillers(args.chapters, choice);
     const sketches = args.images.filter(

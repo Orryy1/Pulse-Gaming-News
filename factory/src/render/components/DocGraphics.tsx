@@ -14,6 +14,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLOUR } from "../brand.ts";
+import { useLook, withAlpha } from "../gamelook.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
@@ -64,7 +65,10 @@ export const Stage: React.FC<{
   bg?: BackgroundKind;
   variant?: number;
   children: React.ReactNode;
-}> = ({ dim, blur = 10, bg, variant = 0, children }) => (
+}> = ({ dim, blur = 10, bg, variant = 0, children }) => {
+  // GAME_LOOK: the plate takes the game's ink (Pulse's own ink when the look is off).
+  const look = useLook();
+  return (
   <AbsoluteFill style={{ pointerEvents: "none" }}>
     {bg ? (
       <AbsoluteFill style={{ opacity: dim }}>
@@ -74,7 +78,7 @@ export const Stage: React.FC<{
       <AbsoluteFill
         style={{
           backdropFilter: `blur(${blur * dim}px)`,
-          background: `rgba(11,11,14,${0.6 * dim})`,
+          background: withAlpha(look.ink, 0.6 * dim),
         }}
       />
     )}
@@ -84,25 +88,29 @@ export const Stage: React.FC<{
       {children}
     </AbsoluteFill>
   </AbsoluteFill>
-);
+  );
+};
 
 export const Label: React.FC<{
   children: React.ReactNode;
   colour?: string;
-}> = ({ children, colour = COLOUR.amber }) => (
+}> = ({ children, colour }) => {
+  const look = useLook();
+  return (
   <div
     style={{
       fontFamily: BODY,
       fontWeight: 900,
       fontSize: 26,
       letterSpacing: 4,
-      color: colour,
+      color: colour ?? look.accent,
       textTransform: "uppercase",
     }}
   >
     {children}
   </div>
-);
+  );
+};
 
 /** "label: value" rows. */
 export function pairs(items: string[]): Array<{ a: string; b: string }> {

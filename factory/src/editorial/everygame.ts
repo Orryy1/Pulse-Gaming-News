@@ -941,7 +941,7 @@ export const EveryGameOutlineSchema = z.object({
     thumb_text: z
       .string()
       .describe(
-        "1-4 words in capitals for the thumbnail: the hook, not the title",
+        "2-5 words in capitals for the thumbnail: the hook that opens a question the title answers, never the title's own words again",
       ),
     description: z
       .string()

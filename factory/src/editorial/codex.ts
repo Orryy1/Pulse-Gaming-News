@@ -7,6 +7,7 @@
 // CODEX_CALLS; the news lane's Short writing stays on Claude because it sits on a slot's critical path and
 // Codex takes seconds to minutes.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -14,6 +15,7 @@ import path from "node:path";
 import { z } from "zod";
 import { log } from "../lib/util.ts";
 import {
+  isGrammarTooLarge,
   jobOf,
   recordUsage,
   type Llm,
@@ -23,6 +25,19 @@ import {
 } from "./llm.ts";
 
 export type CodexKind = "quick" | "bulk" | "code" | "review" | "frontier";
+
+const routeHint = new AsyncLocalStorage<"claude" | "codex">();
+
+/**
+ * WRITER_SPLIT: every call fn makes goes to this provider whatever CODEX_CALLS says (Claude's limit still sends a call
+ * to Codex, and a Codex failure still falls back to Claude). Undefined: the usual routing. Ignored with Codex off.
+ */
+export function withRoute<T>(
+  route: "claude" | "codex" | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return route ? routeHint.run(route, fn) : fn();
+}
 
 /** What one Codex run is asked to do; the runner (real or a test double) answers with the raw text. */
 export interface CodexRequest {
@@ -59,6 +74,13 @@ export interface CodexOptions {
   run?: (req: CodexRequest) => Promise<string>;
   /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
   onLimitRouted?: (site: string) => void;
+  /**
+   * CODEX_GRAMMAR_FALLBACK: a call Claude rejects because its answer format is too big to compile ("The compiled
+   * grammar is too large") goes to Codex, which has no such limit, instead of failing the step. Off: the error stands.
+   */
+  grammarFallback?: boolean;
+  /** A call went to Codex because its format was too big for Claude: say which step, for fixing its schema. */
+  onGrammarRouted?: (site: string) => void;
 }
 
 /**
@@ -76,6 +98,12 @@ export function isUsageLimit(err: unknown): boolean {
     (err as Error)?.message ?? String(err),
   );
 }
+
+/**
+ * Claude's refusal of an answer format too big for its constrained decoding (a 400, never billed): the same call
+ * will fail every time, so retrying it on Claude is pointless. Seen 19 Nov 2026 on the writers' room layout.
+ */
+export { isGrammarTooLarge };
 
 export const DEFAULT_RUNNER_DIR = "C:\\Claude\\orchestrator";
 
@@ -335,10 +363,17 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     o: StructuredOptions<S>,
     site: string,
     hasImages: boolean,
+    afterCodex = false,
   ): Promise<z.infer<S>> => {
     try {
       return await fallback.structured(o);
     } catch (err) {
+      // A format too big for Claude: Codex takes the call (never back here again after Codex itself failed).
+      if (opts.grammarFallback && !afterCodex && isGrammarTooLarge(err) && (!hasImages || opts.vision)) {
+        log("warn", "answer format too big for Claude, Codex answers", { site });
+        opts.onGrammarRouted?.(site);
+        return viaCodex(o, site, imagesOf(o.content), true);
+      }
       if (!isUsageLimit(err)) throw err;
       limitUntil = Date.now() + LIMIT_HOLD_MS;
       if (hasImages && !opts.vision) throw err;
@@ -351,6 +386,7 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     o: StructuredOptions<S>,
     site: string,
     images: ReturnType<typeof imagesOf>,
+    fromClaude = false,
   ): Promise<z.infer<S>> => {
       const callTimeout = siteListed(site, opts.sites)
         ? timeoutMs
@@ -435,7 +471,9 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
         });
         // Claude is out of allowance too: fail the step so it retries, rather than asking it again.
         if (claudeOut()) throw err;
-        const result = await claude(o, site, images.length > 0);
+        // Claude already turned this call down as too big: nothing more to ask it.
+        if (fromClaude) throw err;
+        const result = await claude(o, site, images.length > 0, true);
         log("info", "claude answered after codex", {
           site,
           ms: Date.now() - started,
@@ -452,6 +490,11 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     ): Promise<z.infer<S>> {
       const images = imagesOf(o.content);
       const site = siteOf(o.site);
+      const hint = opts.enabled ? routeHint.getStore() : undefined;
+      if (hint === "claude" && !claudeOut())
+        return claude(o, site, images.length > 0);
+      if (hint === "codex" && (images.length === 0 || opts.vision))
+        return viaCodex(o, site, images);
       const routed = routeToCodex(opts, site, images.length > 0, claudeOut());
       const outageRoute =
         !routed &&

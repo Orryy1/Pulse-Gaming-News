@@ -3,11 +3,14 @@
 // the status moves, so any step can crash and be retried safely.
 
 import { captureCtr, ctrCaptureDue, type ReachClient } from "./reach.ts";
-import { packBeforeUpload, pickHookWords } from "./packaging/lab.ts";
+import { packBeforeUpload, pickHookWords, rankTitles } from "./packaging/lab.ts";
+import { loadModel } from "./packaging/score.ts";
+import { strandThumbWords, strandTitleProblems } from "./strandframe.ts";
 import { runSecondChance } from "./packaging/secondchance.ts";
 import { packagingAtLeast } from "./packaging/settings.ts";
 import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
 import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
+import { repairBlockers } from "./factrepair.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -49,8 +52,10 @@ import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
 import { cutsceneBudgetSeconds, cutscenePublisher, gatherCutsceneSources, reconcileCutsceneBudgets, type CutsceneClip, type CutsceneJob } from "./assets/cutscenes.ts";
 import { hasUsableIndex } from "./sceneindex/footage.ts";
+import { backgroundFor, embedderFor } from "./semantic/hook.ts";
+import { pinChapterMoments, pinShortStills, type ShortPins } from "./semantic/stills.ts";
 import { gamesOfScript, requestSceneIndexes } from "./sceneindex/job.ts";
-import { hasSpoilerWarning, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
+import { hasSpoilerWarning, spoilerProblems as storySpoilerProblems, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import {
   adSafeGateProblems,
   checkFirstSeconds,
@@ -72,6 +77,7 @@ import {
   validateEvergreen,
   writeEvergreen,
   type EvergreenCandidate,
+  type EvergreenTopic,
 } from "./editorial/evergreen.ts";
 import {
   longformToScript,
@@ -101,7 +107,7 @@ import {
   photoSourcesLine,
 } from "./assets/libraries.ts";
 import { pressForShort, reportLibraries } from "./assets/librarystep.ts";
-import { comfyReachable, createSketchRun } from "./assets/illustrate.ts";
+import { createSketchRun, sketchReachable } from "./assets/illustrate.ts";
 import {
   animateSketches,
   chooseEpisodeFillers,
@@ -110,9 +116,16 @@ import {
 
 /** The share of a long video's sentences that should have a picture, clip or graphic of their own. */
 export const MEDIA_RICH_TARGET = 0.85;
-import { makeParallax, LAYERED_KINDS, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { makeMeshes, makeParallax, LAYERED_KINDS, SHORT_DEPTH_MAX, shortDepthArm, shortDepthWanted } from "./render/parallax.ts";
+import { planBlender, fetchBlenderClips, type BlenderClip } from "./render/blender.ts";
 import { appleCut, readBoxes, smartCrop } from "./assets/applevision.ts";
 import { frameTarget } from "./render/smartcrop.ts";
+import {
+  depthDeps,
+  meshStills,
+  upscaleOldFootage,
+  upscaleOldStills,
+} from "./depthstep.ts";
 import { annotationLabel, locate } from "./assets/annotate.ts";
 import { unloadLocalVision } from "./assets/localvision.ts";
 import {
@@ -152,7 +165,6 @@ import {
   groundDocMoments,
   type DocMoment,
   docWordCount,
-  DOC_CHAPTERS_MIN,
   DOC_WORDS_MIN,
   DOC_WORDS_MAX,
   type DocTopic,
@@ -161,6 +173,13 @@ import {
   loopsOfScript,
 } from "./editorial/documentary.ts";
 import { groundOpenLoops, openLoopsLine } from "./editorial/openloops.ts";
+import {
+  chooseLongformTopic,
+  loopsWithoutChapter,
+  pollWinnerOf,
+  refusedChapterFate,
+  sameSeries,
+} from "./editorial/longrescue.ts";
 import {
   LONG_RULE_REVISIONS,
   writerNoteProblems,
@@ -215,7 +234,9 @@ import {
   LONG_TAIL_SECONDS,
   entryOf,
   realWorldImage,
+  splitSentences,
 } from "./render/longplan.ts";
+import { markGameMaps, stageGameMaps } from "./assets/gamemaps.ts";
 import type { LongRenderInput, LongStillsInput } from "./render/render.ts";
 import { motifPictureOrder } from "./render/motifpictures.ts";
 import { heroLook } from "./assets/localvision.ts";
@@ -224,6 +245,7 @@ import {
   artVerdict,
   cutoutProblems,
   heroRuleDesigns,
+  designProblems,
   heroRuleFallback,
   posterProblems,
 } from "./qa/thumbrule.ts";
@@ -272,7 +294,7 @@ import { cutPortrait } from "./assets/localvision.ts";
 import { normTitle } from "./assets/igdb.ts";
 import type { RenderInput } from "./render/render.ts";
 import type { TechQa } from "./qa/media.ts";
-import type { VisionQa } from "./editorial/schema.ts";
+import type { FactCheck, VisionQa } from "./editorial/schema.ts";
 import { narrationSummary, type NarrationCheck } from "./qa/narration.ts";
 import type { YouTubeClient } from "./youtube/upload.ts";
 import type { DiscordMessage } from "./approval/discord.ts";
@@ -306,6 +328,7 @@ import {
   humaniseDrift,
 } from "./editorial/humanise/humanise.ts";
 import { humaniseStep } from "./humanisestep.ts";
+import { anatomyPictures, explainersOn, explainerTexts, longExplainersStep, shortExplainersStep } from "./explainerstep.ts";
 import {
   clarityGate,
   clarityLog,
@@ -363,11 +386,15 @@ import {
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
-import { leadFrames, LEVEL, SFX, sfxFile } from "./render/soundscape.ts";
+import { planPanelStep } from "./planpanelstep.ts";
+import { frameFocusStep } from "./framefocusstep.ts";
+import { leadFrames, LEVEL, MOOD_BEDS, SFX, sfxFile } from "./render/soundscape.ts";
 import { BEDS } from "./render/soundscape.ts";
 import { bedSeed, chooseBed } from "./render/bedrotation.ts";
 import { shortMusic, signatureFor, signatureSeriesOf, withSignatureSting } from "./render/signature.ts";
 import { SIGNATURE_LIBRARY } from "./render/signaturelib.ts";
+import { ACE_LIBRARY } from "./render/acebedlib.ts";
+import { aceExtraBeds, aceIdent, acePool, aceShortMood, withIdent } from "./render/acebeds.ts";
 import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
@@ -410,8 +437,18 @@ import {
   guessKind,
   loopLessonLines,
   loopWeights,
-  storyWeight,
+  pickWeight,
+  strongFandom,
+  withoutFandomWeight,
 } from "./loopfeedback.ts";
+import {
+  captureCalls,
+  writerRecord,
+  writerSplit,
+  type WriterProvider,
+} from "./editorial/authorship.ts";
+import { siteListed, withRoute } from "./editorial/codex.ts";
+import type { UsageLine } from "./editorial/llm.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { directorStep, retrainTick } from "./retentionstep.ts";
 import {
@@ -544,10 +581,13 @@ import {
 } from "./storyrecap.ts";
 import { sceneSlug as recapSlug } from "./sceneindex/schema.ts";
 import {
+  lengthArm,
   lengthFormatOf,
   SHORT_NARRATION_CAP_SECONDS,
   shortTarget,
+  withLengthArm,
   withWhyTarget,
+  type LengthArm,
   type ShortLengths,
 } from "./shortlengths.ts";
 import { inboxFiles } from "./assets/library.ts";
@@ -583,6 +623,9 @@ import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } from "./gfxauditstep.ts";
 import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
+import { shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
+import { checksClearOfUpgrades } from "./render/shortupgrades.ts";
+import { probe as probeMedia } from "./qa/media.ts";
 import {
   cardRequirement,
   entryCardProblems,
@@ -647,6 +690,7 @@ import {
   seriesPulseCheckNote,
 } from "./editorial/newssegment.ts";
 import {
+  isSerial,
   FLOOR_LANES,
   breakingAllowed,
   floorBackFactor,
@@ -670,6 +714,7 @@ import {
   quotaCalls,
   dueSlot,
   evergreenDue,
+  evergreenWhyNot,
   franchiseKey,
   inWindow,
   isBreaking,
@@ -693,6 +738,65 @@ import { signToken } from "./lib/crypto.ts";
 import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
+import {
+  firstFrameText,
+  payoffApplies,
+  payoffArm,
+  payoffFeedback,
+  payoffFindings,
+  payoffKeepNote,
+  payoffRecord,
+  readFindings,
+  readPayoff,
+  SEGMENT_OPENERS,
+  ABSENCE_PROBLEM,
+  type PayoffArm,
+  type PayoffFinding,
+  type PayoffRead,
+} from "./editorial/payoff.ts";
+import {
+  DESK_REWRITE_SITE,
+  deskArm,
+  deskChecks,
+  deskKill,
+  deskLines,
+  deskRecord,
+  deskShortProblems,
+  judgeDesk,
+  runDesk,
+  type DeskArm,
+  type DeskRecord,
+} from "./editorial/desk.ts";
+import { roomArm, roomRecord, type RoomArm, type RoomRecord } from "./editorial/room.ts";
+import {
+  roomCheckStep,
+  roomControlRecord,
+  roomEvent,
+  roomWriteStep,
+  recentShapesFrom,
+  type RoomStepInput,
+} from "./roomstep.ts";
+import { leadPrimaries, readWikiLeads, wikiLeadsRoot } from "./sources/wikileads.ts";
+import { ensureWikiLeads } from "./sources/refresh.ts";
+import {
+  firstSecondArmFor,
+  firstSecondEvent,
+  readFirstEditor,
+  readFirstViewer,
+  runFirstSecond,
+  writeFirst,
+  type FirstSecondArm,
+} from "./panel/firstsecond.ts";
+import {
+  loadReferenceTitles,
+  packagingCandidates,
+  packagingPanelEvent,
+  packagingPanelRuns,
+  readPackaging,
+  runPackagingPanel,
+} from "./panel/packagingpanel.ts";
+import { FEEDS } from "./discovery/feeds.ts";
+import { fetchOutboundLinks } from "./discovery/article.ts";
 import { detailListProblems, dropWait, isOfficialDrop } from "./editorial/dropangle.ts";
 import { arguesCheck, arguesWriterProblems } from "./qa/argues.ts";
 import { cleanBookends, cutSentences, resolveTestRecords, testOutlineNote, unbackedTestClaims, withTestRecords } from "./editorial/testevidence.ts";
@@ -859,6 +963,23 @@ import { namesGame } from "./assets/linevisuals.ts";
 import { stingPlacement } from "./render/cleanframe.ts";
 import { nameSpokenAt, placeTracklist, soundtrackStory, MAX_PEOPLE } from "./render/people.ts";
 import { peopleCandidates, tracksFromScript } from "./assets/people.ts";
+import { mentionsOnWords, type MentionsFound, type MentionInput } from "./assets/mentions.ts";
+import { readLaunches } from "./discovery/launches.ts";
+import {
+  footageRetryAssets,
+  footageWaitPlan,
+  FOOTAGE_RETRY_DAYS,
+  isFootageHold,
+  keepMadeFiles,
+  planFootageShare,
+  premakeNextLook,
+  premakeRefreshDecision,
+  putMadeFilesBack,
+  refreshAssets,
+  remakeVerdict,
+  restoredAssets,
+} from "./premakerefresh.ts";
+import { mentionCap, mentionSlots, type MentionKind, type MentionLayout, type MentionInset, type MentionSlot } from "./render/mentions.ts";
 import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisuals.ts";
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
@@ -869,6 +990,7 @@ import {
   prepareQuotes,
   quoteLongStep,
   quoteRenderFiles,
+  dialogueOn,
   quoteScriptStep,
 } from "./charquotestep.ts";
 import {
@@ -885,6 +1007,8 @@ export interface Services {
   discover(): Promise<StoryCluster[]>;
   discoverEvergreen(): Promise<EvergreenCandidate[]>;
   fetchArticle(url: string): Promise<ArticleText | undefined>;
+  /** SCRIPT_ROOM_LINKS: an article's outbound links (absent: src/discovery/article.ts fetchOutboundLinks). */
+  fetchLinks?(url: string): Promise<string[]>;
   synthesise(
     text: string,
     outPath: string,
@@ -912,6 +1036,12 @@ export interface Services {
     dir: string,
     slot: number,
   ): Promise<import("./assets/people.ts").PersonPortrait | undefined>;
+  /** The anonymous YouTube lane's bot-check pause (src/lib/ytguard.ts), for SHORT_FOOTAGE_WAIT; absent in tests. */
+  youtubePause?(): Promise<{ since?: number; until?: number } | undefined>;
+  /** MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts); absent in tests. */
+  findMentions?(
+    input: import("./assets/mentions.ts").MentionInput,
+  ): Promise<import("./assets/mentions.ts").MentionAsset[]>;
   /** Publishers' press pictures of a game (src/assets/press.ts, LIBRARY_PRESS); absent in tests. */
   searchPress?(
     game: string,
@@ -2094,12 +2224,19 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   // ANALYTICS_LOOP_SCORING (src/loopfeedback.ts): the weekly report's small multiplier per story type and format
   // reorders the slot's candidates (sightings arrive best score first, so with no multipliers nothing moves).
   // Breaking news above never passes through it: speed matters more than format.
-  const weights = loopWeights(cfg, now);
+  // LOOP_FANDOM_WEIGHT: the report's strong-fandom key lifts (or lowers) a story in a strong-identity fandom too.
+  const loopW = loopWeights(cfg, now);
+  const weights = cfg.loopFandomWeight ? loopW : withoutFandomWeight(loopW);
   const weighted = (x: (typeof eligible)[number]) => {
     const k = guessKind(x.cluster.headline, x.cluster.rumourSignals);
     return (
       breakingScore(x.cluster, x.sighting) *
-      storyWeight(weights, k.storyType, k.format)
+      pickWeight(
+        weights,
+        k.storyType,
+        k.format,
+        strongFandom({ title: x.cluster.headline, game: x.cluster.gameHint }),
+      )
     );
   };
   const candidates = (
@@ -2133,15 +2270,35 @@ export async function franchiseOwnFootage(
   return Boolean(franchiseClip(file, await inboxFiles(cfg.gameplayRoot)));
 }
 
-/** The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS). */
+/**
+ * The Short length lanes with The Why's serial band laid over them (WHY_SERIAL_ENABLED, WHY_TARGET_SECONDS), and on
+ * a short-arm day of the Why length test (WHY_LENGTH_AB) The Why and The GTA File at 30-35 s.
+ */
 export function lengthsFor(
   cfg: Pick<Config, "shortLengths" | "whySerialEnabled" | "whyTargetSeconds">,
+  arm?: LengthArm,
 ): ShortLengths {
-  return withWhyTarget(
-    cfg.shortLengths,
-    cfg.whySerialEnabled,
-    cfg.whyTargetSeconds,
+  return withLengthArm(
+    withWhyTarget(cfg.shortLengths, cfg.whySerialEnabled, cfg.whyTargetSeconds),
+    arm,
   );
+}
+
+/**
+ * A Short's arm in the Why length test (WHY_LENGTH_AB): the one on its script once written, so the voice step and a
+ * rewrite keep it; else, for a serial Why or GTA File part, the UTC day of its slot (or of its making). Undefined for
+ * every other Short, and while the test or the serial is off.
+ */
+export function lengthArmFor(
+  cfg: Pick<Config, "whyLengthAb" | "whySerialEnabled" | "whyTargetSeconds">,
+  ep: Pick<Episode, "lane" | "story_json" | "script_json" | "slot_at" | "created_at">,
+): LengthArm | undefined {
+  if (ep.script_json?.length_arm) return ep.script_json.length_arm.arm;
+  if (!cfg.whyLengthAb || !cfg.whySerialEnabled || !cfg.whyTargetSeconds) return undefined;
+  const format = lengthFormatOf(ep);
+  if (format !== "why" && format !== "gta_file") return undefined;
+  const day = ep.slot_at ?? ep.created_at;
+  return day ? lengthArm(new Date(day).toISOString()) : undefined;
 }
 
 /** A Why's place in the numbered series (WHY_SERIAL_ENABLED); undefined when the serial is off. */
@@ -2415,7 +2572,9 @@ async function stepScriptEveryGame(
       attempt,
       facts,
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!factual.length) break;
@@ -2639,6 +2798,7 @@ export async function selectRunWhy(
       ...(e.title ? { title: e.title } : {}),
       follow,
       ...(how.premade && due ? { airs_at: due.toISOString() } : {}),
+      ...(e.kind === "why" && e.key_date ? { key_date: e.key_date } : {}),
       ...(serial ? { serial } : {}),
     },
     ...(how.premade ? { premade: true } : {}),
@@ -3242,6 +3402,7 @@ async function demandRanked(
     lookups: s.cfg.demandLookups,
     minViews: s.cfg.demandMinViews,
     now: s.now(),
+    staleDays: s.cfg.demandStaleDays,
   }).catch((err) => {
     log("warn", "demand check failed", { error: errorMessage(err) });
     return new Map<string, Demand>();
@@ -3264,7 +3425,7 @@ async function reportDemand(
 ): Promise<void> {
   if (!s.cfg.demandCheck || !s.searchDemand) return;
   await s
-    .notify({ content: demandLine(lane, picked, d, skipped) })
+    .notify({ content: demandLine(lane, picked, d, skipped, s.now()) })
     .catch(() => undefined);
 }
 
@@ -3878,7 +4039,14 @@ export async function maybeSelectDocumentary(
   s: Services,
 ): Promise<string | undefined> {
   const { db, cfg } = s;
-  if (!cfg.docEnabled || !cfg.longformEnabled) return undefined;
+  const quiet = (reason: string, extra?: Record<string, unknown>) => {
+    quietLog("documentary", reason, extra, s.now().getTime());
+    return undefined;
+  };
+  if (!cfg.docEnabled || !cfg.longformEnabled)
+    return quiet(
+      cfg.docEnabled ? "LONGFORM_ENABLED is off" : "DOC_ENABLED is off",
+    );
   const now = s.now();
   // A long video planned by date (the launch run, src/shortrun.ts): started early enough to be finished and
   // scheduled well ahead, so the PC is free when it goes out.
@@ -3962,11 +4130,34 @@ export async function maybeSelectDocumentary(
     : undefined;
   let banked = false;
   if (!due) {
+    const week = weekOfMonth(now, cfg.timezone);
+    const why = cfg.docWeeks.includes(week)
+      ? evergreenWhyNot(
+          now,
+          {
+            days: cfg.docDays,
+            slot: cfg.docSlot,
+            leadMinutes: Math.max(cfg.docLeadMinutes, cfg.longLeadMinutes),
+            graceMinutes: cfg.slotGraceMinutes,
+            timeZone: cfg.timezone,
+          },
+          await takenSlots(db),
+        )
+      : { reason: `week ${week} of the month is not in DOC_WEEKS` };
+    const extra = {
+      days: cfg.docDays.join(","),
+      weeks: cfg.docWeeks.join(","),
+      slot: "slot" in why ? why.slot?.toISOString() : undefined,
+      opensAt: "opensAt" in why ? why.opensAt?.toISOString() : undefined,
+    };
     // Overnight only: a documentary holds the factory for hours, and the day's Shorts come first.
-    if (!inWindow(now, cfg.bankWindow, cfg.timezone)) return undefined;
-    if (!(await surplusDocumentary(s))) return undefined;
+    if (!inWindow(now, cfg.bankWindow, cfg.timezone))
+      return quiet(`${why.reason}; outside the banking window`, extra);
+    if (!(await surplusDocumentary(s)))
+      return quiet(`${why.reason}; no credit surplus to bank one`, extra);
     due = nextBankSlot(cfg, now, await takenSlots(db));
-    if (!due) return undefined;
+    if (!due)
+      return quiet(`${why.reason}; no free evening to bank one into`, extra);
     banked = true;
   }
   const covered = (
@@ -4052,7 +4243,10 @@ export async function maybeSelectDocumentary(
     priority: LANE_PRIORITY.longform,
     slotAt: due,
   });
-  if (!created) return undefined;
+  if (!created)
+    return quiet("an episode with the same documentary and day already exists", {
+      hash: cluster.hash,
+    });
   await db.query(
     `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
     [id, JSON.stringify({ doc: true, topic })],
@@ -4081,6 +4275,7 @@ export async function maybeSelectDocumentary(
       publishes: due.toISOString(),
     },
   );
+  quietReset("documentary");
   return id;
 }
 
@@ -4335,11 +4530,15 @@ async function stepScriptDocumentary(
   const pick = retro ? retroSandboxChapters(s.cfg.retroSandboxChapters, retro.chapters ?? []) : undefined;
   const written: number[] = [];
   // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
-  for (const index of pick ??
+  const order =
+    pick ??
     (s.cfg.docSandboxChapters
-    ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
-    : outline.chapters
-    ).map((_, i) => i)) {
+      ? outline.chapters.slice(0, s.cfg.docSandboxChapters)
+      : outline.chapters
+    ).map((_, i) => i);
+  // Chapters dropped because the writer still refused them after widening (DOC_DROP_REFUSED_CHAPTER).
+  const droppedRefused: number[] = [];
+  for (const [position, index] of order.entries()) {
     const plan = outline.chapters[index]!;
     const article = await s.research(
       plan.wiki_title,
@@ -4442,6 +4641,17 @@ async function stepScriptDocumentary(
         problems.push(
           ...retroChapterProblems(chapter.paragraphs.map((x) => x.narration).join(" "), source, topic.franchise),
         );
+      // A story spoiler for a game in its spoiler window goes back to the writer here, every draft, rather than
+      // stopping the finished script at the door (20 Nov 2026: one "how the game ends" stopped a whole long video).
+      problems.push(
+        ...storySpoilerProblems(
+          chapter.paragraphs
+            .map((x) => [x.narration, x.callout?.primary, x.callout?.secondary].filter(Boolean).join(". "))
+            .join(" "),
+          s.now(),
+          [topic.franchise, ...outline.chapters.map((c) => c.game_title)],
+        ),
+      );
       // A note to the editor instead of narration goes back every time (DOC_META_GUARD).
       if (s.cfg.docMetaGuard)
         problems.push(
@@ -4535,7 +4745,9 @@ async function stepScriptDocumentary(
       // Lines the source doesn't back: the next try has more of the record in front of it.
       else if (unsupported.length && s.cfg.writerNotesGuard) await widen();
     }
-    // Still a refusal after the wider sources: this chapter can't be told, so the video stops here. Never a warning.
+    // Still a refusal after the wider sources: this chapter can't be told. Never a warning: it is dropped and the
+    // rest goes on while the documentary can still reach DOC_MIN_CHAPTERS (18 Nov 2026: chapter 7 of "GTA 6 Map
+    // Explained: Leonida" stopped a documentary with six chapters already written), otherwise the video stops here.
     if (s.cfg.writerNotesGuard) {
       const refused = chapterRefusal(chapter!);
       if (refused.length) {
@@ -4545,9 +4757,42 @@ async function stepScriptDocumentary(
           final: true,
           why: refused.slice(0, 3),
         });
+        const fate = refusedChapterFate({
+          on: s.cfg.docDropRefusedChapter,
+          // Nothing written yet (an earlier chapter had no article) counts as the first: the video can't open two in.
+          position: chapters.length ? position : 0,
+          written: chapters.length,
+          left: order.length - position - 1,
+          // A sandbox or a picked set of chapters has no minimum at the end either.
+          min: s.cfg.docSandboxChapters || pick ? 1 : s.cfg.docMinChapters,
+        });
+        if (fate.drop) {
+          droppedRefused.push(index + 1);
+          // A question raised or answered in this chapter would be left hanging: it goes with the chapter.
+          const kept = loopsWithoutChapter(openLoops.loops, index + 1);
+          openLoops.loops = kept.loops;
+          openLoops.removed.push(...kept.removed);
+          // A question an earlier chapter already asked now has no answer: named for the release checks.
+          warnings.push(...kept.hanging.map((h) => `${plan.game_title}: ${h}`));
+          warnings.push(
+            `${plan.game_title}: chapter ${index + 1} ("${plan.chapter_title}") dropped, the writer still refused it after widening its sources.`,
+          );
+          await logEvent(s.db, ep.id, "doc_chapter_dropped", {
+            chapter: index + 1,
+            title: plan.chapter_title,
+            why: refused.slice(0, 3),
+            fate: fate.why,
+            loopsRemoved: kept.removed,
+            loopsHanging: kept.hanging,
+          });
+          await s.notify({
+            content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), it still can't be written after widening its sources; the documentary goes on without it (${fate.why}). ${refused[0]!.slice(0, 240)}`,
+          });
+          continue;
+        }
         await s.notify({
           ping: true,
-          content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still can't be written after widening its sources. ${refused[0]!.slice(0, 300)}`,
+          content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still can't be written after widening its sources, and it can't be dropped: ${fate.why}. ${refused[0]!.slice(0, 300)}`,
         });
         throw new FatalError(
           `documentary chapter ${index + 1} refused after widening its sources: ${refused[0]!.slice(0, 200)}`,
@@ -4802,9 +5047,9 @@ async function stepScriptDocumentary(
       game: plan.game_title,
     });
   }
-  if (!s.cfg.docSandboxChapters && !pick && chapters.length < DOC_CHAPTERS_MIN)
+  if (!s.cfg.docSandboxChapters && !pick && chapters.length < s.cfg.docMinChapters)
     throw new FatalError(
-      `documentary has only ${chapters.length} chapters with sources`,
+      `documentary has only ${chapters.length} chapters with sources${droppedRefused.length ? ` (chapter${droppedRefused.length === 1 ? "" : "s"} ${droppedRefused.join(", ")} dropped after refusals)` : ""}`,
     );
   // LONG_OPENING_CONTRACT and LONG_ARGUES: with both off nothing below reads, measures or calls anything new, so an
   // older or mocked outline (no youtube block, no sources) runs exactly as before.
@@ -5190,27 +5435,136 @@ async function longSequels(s: Services, now: Date) {
   );
 }
 
+/**
+ * One info line when a lane goes quiet, naming why (20 Nov 2026: the long ranking lane published nothing for a week
+ * and the log said nothing at all; LONGFORM_DAYS was "sat" only). Said again only when the reason changes or after
+ * `everyMs`, so the selection tick, which runs every few minutes, does not repeat it. Returns whether it was said.
+ */
+const quietSaid = new Map<string, { reason: string; at: number }>();
+export function quietLog(
+  lane: string,
+  reason: string,
+  extra: Record<string, unknown> = {},
+  now = Date.now(),
+  everyMs = 6 * 3_600_000,
+): boolean {
+  const was = quietSaid.get(lane);
+  if (was && was.reason === reason && now - was.at < everyMs) return false;
+  quietSaid.set(lane, { reason, at: now });
+  log("info", `${lane}: nothing picked`, { reason, ...extra });
+  return true;
+}
+
+/** A lane picked something: its next quiet spell is said afresh. */
+export function quietReset(lane: string): void {
+  quietSaid.delete(lane);
+}
+
+/** Who holds a slot, for the quiet log: "news ep_..." or undefined. */
+async function slotHolder(
+  db: Db,
+  slot: Date | undefined,
+): Promise<string | undefined> {
+  if (!slot) return undefined;
+  const [row] = await db.query<{ id: string; lane: string }>(
+    `SELECT id, lane FROM episodes WHERE slot_at = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+    [slot],
+  );
+  return row ? `${row.lane} ${row.id}` : undefined;
+}
+
+/**
+ * The long ranking's shortlist after the demand check: the topics it kept or, when it would drop every one (fresh
+ * "no demand" readings for all of them), the whole pool, so the demand check alone never leaves a long slot empty.
+ * A topic whose search could not run (YouTube's bot check) is already kept as "not checked" (rankByDemand).
+ */
+export function longShortlist<T>(
+  kept: T[],
+  base: T[],
+): { list: T[]; demandIgnored: boolean } {
+  if (kept.length || !base.length) return { list: kept, demandIgnored: false };
+  return { list: base, demandIgnored: true };
+}
+
+/** The shortlist without topics that failed recently: a candidate goes when its name and a failed theme overlap. */
+export function dropFailedThemes<T extends { name: string }>(list: T[], failedThemes: string[]): T[] {
+  // Bracketed descriptions are set aside: a failed theme is stored as "Half-Life and Portal (Valve's shared universe:
+  // ...)", which matched no shorter name, so the same topic was picked four times on 20 Nov.
+  const norm = (x: string) => x.replace(/\([^)]*\)?/g, " ").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const failed = failedThemes.map(norm).filter(Boolean);
+  if (!failed.length) return list;
+  // Whole words only, so "Ys" is not left out because a failed theme says "Days Gone".
+  const has = (x: string, y: string) => ` ${x} `.includes(` ${y} `);
+  return list.filter((c) => {
+    const n = norm(c.name);
+    return !n || !failed.some((f) => has(f, n) || has(n, f));
+  });
+}
+
+/**
+ * The picker writes its own theme, so a topic that failed can come back under a new name ("Valve's Half-Life and
+ * Portal games" after three Half-Life and Portal failures, 20 Nov). A picked theme that overlaps a recent failure is
+ * swapped for the top shortlist topic that neither failed nor was ranked lately; undefined when there is none.
+ */
+export function avoidFailedTheme(
+  topic: EvergreenTopic,
+  candidates: EvergreenCandidate[],
+  failedThemes: string[],
+  covered: string[],
+): EvergreenTopic | undefined {
+  if (!failedThemes.length || dropFailedThemes([{ name: topic.theme }], failedThemes).length) return topic;
+  const clean = new Set(dropFailedThemes(candidates, failedThemes));
+  const ok = (c: EvergreenCandidate | undefined) => !!c && clean.has(c) && !covered.some((h) => sameSeries(h, c.name));
+  // The picker's own candidate first: often only its free-text theme overlapped the failure.
+  const at = ok(candidates[topic.candidate_index]) ? topic.candidate_index : candidates.findIndex(ok);
+  if (at < 0) return undefined;
+  const best = candidates[at]!;
+  return {
+    candidate_index: at,
+    format: "ranking",
+    theme: best.name,
+    title_idea: `Every ${best.name} Game Ranked Worst to Best`.slice(0, 60),
+    criterion: "How each game plays today, what it changed and whether it still holds up.",
+    reason: `Swapped from "${topic.theme}": that topic failed in the last two days.`,
+  };
+}
+
 export async function maybeSelectLongform(
   s: Services,
 ): Promise<string | undefined> {
   const { db, cfg } = s;
-  if (!cfg.longformEnabled) return undefined;
+  const quiet = (reason: string, extra?: Record<string, unknown>) => {
+    quietLog("long ranking", reason, extra, s.now().getTime());
+    return undefined;
+  };
+  if (!cfg.longformEnabled) return quiet("LONGFORM_ENABLED is off");
   const now = s.now();
-  if (cfg.longformSkip.includes(dayKey(now, cfg.timezone))) return undefined;
-  const due = evergreenDue(
-    now,
-    {
-      days: cfg.longformDays,
-      slot: cfg.longformSlot,
-      // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render; the day
-      // before, so the owner's recordings can join and the render can wait for a gap between Shorts.
-      leadMinutes: Math.max(cfg.slotLeadMinutes + 420, cfg.longLeadMinutes),
-      graceMinutes: cfg.slotGraceMinutes,
-      timeZone: cfg.timezone,
-    },
-    await takenSlots(db),
-  );
-  if (!due) return undefined;
+  if (cfg.longformSkip.includes(dayKey(now, cfg.timezone)))
+    return quiet("today is in LONGFORM_SKIP", {
+      day: dayKey(now, cfg.timezone),
+    });
+  const plan = {
+    days: cfg.longformDays,
+    slot: cfg.longformSlot,
+    // Fifteen to twenty minutes of footage takes four hours or more to gather, voice and render; the day
+    // before, so the owner's recordings can join and the render can wait for a gap between Shorts.
+    leadMinutes: Math.max(cfg.slotLeadMinutes + 420, cfg.longLeadMinutes),
+    graceMinutes: cfg.slotGraceMinutes,
+    timeZone: cfg.timezone,
+  };
+  const taken = await takenSlots(db);
+  const due = evergreenDue(now, plan, taken);
+  if (!due) {
+    const why = evergreenWhyNot(now, plan, taken);
+    return quiet(why.reason, {
+      days: cfg.longformDays.join(","),
+      slot: why.slot?.toISOString(),
+      opensAt: why.opensAt?.toISOString(),
+      heldBy: /taken/.test(why.reason)
+        ? await slotHolder(db, why.slot)
+        : undefined,
+    });
+  }
   const covered = (
     await db.query<{ headline: string }>(
       `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
@@ -5218,30 +5572,89 @@ export async function maybeSelectLongform(
     )
   ).map((r) => r.headline);
   // Ranked by recent YouTube demand, topics with none skipped (src/discovery/searchdemand.ts).
-  const ranked = await demandRanked(s, await s.discoverEvergreen());
+  const base = await s.discoverEvergreen();
+  const ranked = await demandRanked(s, base);
   const { demand, skipped } = ranked;
+  // Never emptied by the demand check alone: with every topic dropped, the whole pool stays on the list.
+  const pool = longShortlist(ranked.candidates, base);
+  if (pool.demandIgnored)
+    log("info", "long ranking: every topic showed no demand, so the demand check is set aside for this pick", {
+      topics: base.length,
+    });
   // The long version of a ranking Short that did well (SEQUEL_WINNERS, src/sequels.ts): already proven on our own
   // channel, so it joins the list whatever the demand check says, and its Short does not count as covering it.
   const sequels = s.cfg.sequelWinners ? await longSequels(s, now) : undefined;
-  const candidates = [
-    ...(sequels?.candidates ?? []),
-    ...ranked.candidates.filter(
-      (c) => !sequels?.candidates.some((x) => x.name === c.name),
-    ),
-  ];
-  if (!candidates.length) return undefined;
-  const topic = await selectLongformTopic(
-    s.llm,
-    candidates,
-    covered.filter((h) => !sequels?.headlines.includes(h)),
-    [await topicDemand(s, "long"), sequels?.block ?? ""]
-      .filter(Boolean)
-      .join("\n\n"),
+  // A topic whose long ranking failed in the last two days (fact-check, QA) is left out of this pick: chosen again,
+  // the same day's duplicate check refuses it and the slot stays empty (Half-Life and Portal, 20 Nov).
+  const failedThemes = (
+    await db.query<{ theme: string | null }>(
+      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days'`,
+      [now],
+    )
+  )
+    .map((r) => r.theme ?? "")
+    .filter(Boolean);
+  if (failedThemes.length) log("info", "long ranking: recently failed topics left out", { themes: failedThemes });
+  const shortlist = dropFailedThemes(
+    [
+      ...(sequels?.candidates ?? []),
+      ...pool.list.filter(
+        (c) => !sequels?.candidates.some((x) => x.name === c.name),
+      ),
+    ],
+    failedThemes,
   );
-  if (topic.candidate_index < 0 || !candidates[topic.candidate_index]) {
+  if (!shortlist.length)
+    return quiet("no topic candidates: the evergreen topic pool is empty", {
+      slot: due.toISOString(),
+    });
+  const notCovered = covered.filter((h) => !sequels?.headlines.includes(h));
+  const demandText = [await topicDemand(s, "long"), sequels?.block ?? ""]
+    .filter(Boolean)
+    .join("\n\n");
+  // The viewer poll's winner joins the shortlist (LONG_POLL_CANDIDATE), and a refusal that leans on the poll is asked
+  // again without it, then falls back to the top of the shortlist (LONG_POLL_FALLBACK), src/editorial/longrescue.ts.
+  const poll = await readPoll(db).catch(() => undefined);
+  const pollWinner = pollWinnerOf(poll, now);
+  const winnerFailed = !!pollWinner && dropFailedThemes([{ name: pollWinner.name }], failedThemes).length === 0;
+  if (winnerFailed) log("info", "long ranking: the poll winner failed recently, so it is not pushed this pick", { winner: pollWinner!.name });
+  const chosen = await chooseLongformTopic({
+    select: (c, d) => selectLongformTopic(s.llm, c, notCovered, d),
+    candidates: shortlist,
+    // The poll block is part of the demand notes too (topicDemand): with the winner held back it comes out of both,
+    // or the picker is told to pick a topic it may not have and refuses the week (code review, 20 Nov).
+    demand: winnerFailed ? demandText.replace(pollBlock(poll, s.now()), "").trim() : demandText,
+    // A poll winner whose ranking failed in the last two days is not pushed again (it failed four times on 20 Nov).
+    pollLine: winnerFailed ? "" : pollBlock(poll, now),
+    winner: winnerFailed ? undefined : pollWinner,
+    covered: notCovered,
+    addWinner: cfg.longPollCandidate,
+    fallback: cfg.longPollFallback,
+  });
+  const candidates = chosen.candidates;
+  const swapped = chosen.how === "none" ? chosen.topic : avoidFailedTheme(chosen.topic, candidates, failedThemes, notCovered);
+  if (!swapped) return quiet("the picked topic failed recently and no other topic is left", { theme: chosen.topic.theme });
+  if (swapped !== chosen.topic)
+    log("info", "long ranking: picked topic failed recently, swapped", { from: chosen.topic.theme, to: swapped.theme });
+  const topic = swapped;
+  if (chosen.how === "none") {
     log("info", "no long-form topic today", { reason: topic.reason });
+    // Kept as an event so the output audit (src/outputaudit.ts) can say why a long slot went empty.
+    await logEvent(db, null, "long_topic_skipped", {
+      reason: topic.reason,
+      // The picker runs every tick while the slot is due: the audit counts slots, not ticks.
+      slot_at: due.toISOString(),
+      pollWinnerAdded: chosen.added,
+    }).catch(() => undefined);
     return undefined;
   }
+  if (chosen.how !== "picked" || chosen.added)
+    await logEvent(db, null, "long_topic_rescue", {
+      how: chosen.how,
+      pollWinnerAdded: chosen.added,
+      theme: topic.theme,
+      refusal: chosen.refusal ?? null,
+    }).catch(() => undefined);
   const cluster: StoryCluster = {
     hash: `longform:${dayKey(now, cfg.timezone)}:${topic.theme.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     headline: topic.title_idea,
@@ -5260,7 +5673,10 @@ export async function maybeSelectLongform(
     priority: LANE_PRIORITY.longform,
     slotAt: due,
   });
-  if (!created) return undefined;
+  if (!created)
+    return quiet("an episode with the same topic and day already exists", {
+      hash: cluster.hash,
+    });
   await db.query(
     `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
     [id, JSON.stringify({ topic })],
@@ -5283,6 +5699,7 @@ export async function maybeSelectLongform(
     skipped.length,
   );
   log("info", "long-form topic selected", { id, theme: topic.theme });
+  quietReset("long ranking");
   return id;
 }
 
@@ -6945,7 +7362,7 @@ async function adjudicateRanking(
   attempt: number,
   extra: Array<{ title: string; facts: string }> = [],
   /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
-  fix?: (fixes: VaultFix[]) => void,
+  fix?: (fixes: VaultFix[]) => void | number,
 ): Promise<string[]> {
   // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
   const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
@@ -6955,11 +7372,13 @@ async function adjudicateRanking(
     ...(vault?.brief && !facts.some((f) => f.facts.vault) ? [{ title: "Pulse Fact Vault", facts: vault.brief }] : []),
     ...(verified ? [{ title: "Pulse Fact Vault pre-check", facts: verified }] : []),
   ];
-  const check = await factCheckRanking(s.llm, script, [
+  const factList = [
     ...facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
     ...extra,
     ...vaultFacts,
-  ]);
+  ];
+  const check = await factCheckRanking(s.llm, script, factList);
+  let vaultFixes: VaultFix[] = [];
   let blockers = check.issues
     .filter((i) => i.severity === "blocker")
     .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
@@ -6973,7 +7392,12 @@ async function adjudicateRanking(
   if (vault && blockers.length) {
     const settled = await vault.settle(script, blockers, ep.id, `ranking attempt ${attempt}`);
     const fixedOnes = settled.resolutions.filter((r) => r.status === "fixed");
-    if (fixedOnes.length && fix) fix(settled.fixes);
+    if (fixedOnes.length && fix) {
+      for (const vf of settled.fixes) {
+        const took = fix([vf]);
+        if (typeof took !== "number" || took >= 1) vaultFixes.push(vf);
+      }
+    }
     const unfixable = fix ? [] : fixedOnes.map((r) => `Fact-check: "${r.blocker.quote}" - ${r.blocker.problem}`);
     const before = blockers.length;
     blockers = [...settled.remaining, ...unfixable];
@@ -6982,9 +7406,71 @@ async function adjudicateRanking(
   if (check.verdict !== "fail" && !blockers.length) return [];
   if (attempt === 0)
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
+  // FACT_REPAIR (src/factrepair.ts): one or two lines still wrong after the rewrite are mended without a model
+  // and the mended script is checked again; only a clean second check saves the episode.
+  if (s.cfg.factRepair && fix && blockers.length) {
+    const base = vaultFixes.length ? applyVaultFixes(script, vaultFixes).value : script;
+    if (await repairRanking(s, ep, base, blockers, factList, fix)) return [];
+  }
   throw new FatalError(
     `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
   );
+}
+
+/** FACT_REPAIR: mends the surviving blockers, re-checks, and hands the fixes to the caller's draft on a pass. */
+async function repairRanking(
+  s: Services,
+  ep: Episode,
+  script: Script,
+  blockers: string[],
+  factList: Array<{ title: string; facts: string }>,
+  fix: (fixes: VaultFix[]) => void | number,
+): Promise<boolean> {
+  const ctx = speakContext(script.say_as);
+  const fields = [script.hook, ...script.beats.map((b) => b.narration), script.pulse_take.narration, script.loop_line];
+  const mended = repairBlockers(fields, blockers, (t) => speakable(t, ctx));
+  if (mended.unrepaired.length || !mended.fixes.length) {
+    await logEvent(s.db, ep.id, "fact_repair", { outcome: "not_repairable", blockers, unrepaired: mended.unrepaired });
+    return false;
+  }
+  const fixes: VaultFix[] = mended.fixes.map((f) => ({ ...f, factId: 0, why: "fact repair" }));
+  // Every fix must land at least once in the script that gets re-checked.
+  let mendedScript = script;
+  let missed = false;
+  for (const f of fixes) {
+    const r = applyVaultFixes(mendedScript, [f]);
+    if (r.applied < 1) missed = true;
+    mendedScript = r.value;
+  }
+  if (missed) {
+    await logEvent(s.db, ep.id, "fact_repair", { outcome: "not_applied", repairs: mended.repairs });
+    return false;
+  }
+  const recheck = await factCheckRanking(s.llm, mendedScript, factList);
+  const left = recheck.issues
+    .filter((i) => i.severity === "blocker")
+    .map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+  const passed = recheck.verdict !== "fail" && !left.length;
+  await logEvent(s.db, ep.id, "fact_repair", {
+    outcome: passed ? "repaired" : "recheck_failed",
+    repairs: mended.repairs,
+    left,
+    summary: recheck.summary,
+  });
+  log(passed ? "info" : "warn", passed ? "fact-check blockers repaired" : "fact repair did not pass the re-check", {
+    id: ep.id,
+    repairs: mended.repairs.map((r) => `${r.kind}: ${r.quote}`),
+  });
+  if (!passed) return false;
+  // The draft must take every fix, or the line the checker rejected would still go out.
+  for (const f of fixes) {
+    const took = fix([f]);
+    if (typeof took === "number" && took < 1) {
+      await logEvent(s.db, ep.id, "fact_repair", { outcome: "draft_mismatch", from: f.from });
+      return false;
+    }
+  }
+  return true;
 }
 
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
@@ -7066,7 +7552,9 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       attempt,
       [],
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!problems.length && !factual.length) break;
@@ -7483,6 +7971,7 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
         },
       ]
     : [];
+  let factRepaired = false;
   for (let attempt = 0; attempt < 2; attempt++) {
     const factual = await adjudicateRanking(
       s,
@@ -7492,7 +7981,10 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
       attempt,
       dataFacts,
       (fx) => {
-        draft = applyVaultFixes(draft!, fx).value;
+        if (fx.some((x) => x.why === "fact repair")) factRepaired = true;
+        const r = applyVaultFixes(draft!, fx);
+        draft = r.value;
+        return r.applied;
       },
     );
     if (!factual.length) break;
@@ -7500,6 +7992,8 @@ async function stepScriptEvergreen(s: Services, ep: Episode): Promise<void> {
   }
   // The fact-check's rewrite and a stubborn writer both get a last look: one more rewrite, then the plain wording.
   let left = mustFix(draft);
+  // FACT_REPAIR mended this draft after its last check: a fresh rewrite would ship unchecked, so run the step again.
+  if (left.length && factRepaired) throw new Error(`ranking script not fit to voice after fact repair: ${left[0]}`);
   if (left.length) {
     await logEvent(s.db, ep.id, "style_warnings", { problems: left });
     draft = await writeEvergreen(s.llm, topic, facts, left, brief);
@@ -7599,7 +8093,23 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // A holdout Short (LEARN_HOLDOUT_SHARE, src/learn/holdout.ts) is the factory as pinned: no test arm, and the winners
   // the tests had settled when the baseline was pinned.
   const holdout = holdoutOf(s.cfg);
-  const testAssigned = await (cluster.run || cluster.reply || holdout
+  // SCRIPT_ROOM (src/editorial/room.ts, src/roomstep.ts): the same Shorts the desk covers, split by episode into the
+  // room's arm and the control arm. Under "on" the room writes its arm's script on its own short brief, so the stacked
+  // experiments (the growth test, the voice test) are not assigned to that arm and stay clean; a fallback to the normal
+  // writer writes without them.
+  const roomArmOf: RoomArm | undefined =
+    s.cfg.scriptRoom !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? roomArm(ep.id, s.cfg.scriptRoomShare)
+      : undefined;
+  const roomOn = roomArmOf === "room" && s.cfg.scriptRoom === "on";
+  const testAssigned = await (cluster.run || cluster.reply || holdout || roomOn
     ? Promise.resolve(undefined)
     : growthAssign(s.db, s.cfg, s.now(), ep, (m) => s.notify(m))
   ).catch((err) => {
@@ -7613,7 +8123,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // test's variant and the other factors' arms come from the bandit; shadow records its draws only. growth.ts's
   // bootstrap stays the verdict, reading assets_json.test as before.
   const { test, defaults: testDefaults } =
-    holdout || cluster.run || cluster.reply
+    holdout || cluster.run || cluster.reply || roomOn
       ? { test: testAssigned, defaults: testDefaultsBase }
       : await banditForShort(s, ep, testAssigned, testDefaultsBase);
   // LEARN_PLAYBOOK=on (src/learn/playbook.ts): the tracked lessons, recorded against this Short; never for a holdout.
@@ -7624,6 +8134,42 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     await logEvent(s.db, ep.id, "short_argument", { arm: "argument" });
   // DROP_ANGLE (src/editorial/dropangle.ts): an official drop is written as one reframing idea, never a detail list.
   const drop = s.cfg.dropAngle && !cluster.why && !cluster.reply && isOfficialDrop(cluster);
+  // SHORT_PAYOFF_GATE (src/editorial/payoff.ts): news, breaking and Why Shorts split by episode into the gate's arm
+  // (one question planned, the answer held past 60% and kept out of the hook, headline and title) and the control arm.
+  // The arm is kept on the script so the weekly report can compare them; a retry keeps its arm.
+  const payoffArmOf: PayoffArm | undefined =
+    s.cfg.shortPayoffGate !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? payoffArm(ep.id, s.cfg.shortPayoffShare)
+      : undefined;
+  const payoffGated = payoffArmOf === "gate";
+  // "fix": the deterministic rules join the house rules (the draft goes back once, then out with a note).
+  const payoffFix = payoffGated && s.cfg.shortPayoffGate === "fix";
+  const payoffSentBack: string[] = [];
+  let payoffFallback: { script: Script; check: FactCheck } | undefined;
+  // SCRIPT_DESK (src/editorial/desk.ts): the same Shorts split by episode into the desk's arm (the writer states its
+  // angle first, an editor reads the settled script and, under "fix", the biggest weakness is rewritten) and the control
+  // arm (read once, unchanged), so the weekly report can set the desk's score against real retention.
+  const deskArmOf: DeskArm | undefined =
+    s.cfg.scriptDesk !== "off" &&
+    payoffApplies({
+      lane: ep.lane,
+      why: !!cluster.why,
+      reply: !!cluster.reply,
+      search: !!cluster.search,
+      gtaFile: !!cluster.gtaFile,
+    })
+      ? deskArm(ep.id, s.cfg.scriptDeskShare)
+      : undefined;
+  const deskPlanned = deskArmOf === "desk";
+  const deskFix = deskPlanned && s.cfg.scriptDesk === "fix";
+  let deskKilled: DeskRecord["kill"] | undefined;
   // SHORT_SKELETONS (src/editorial/skeletons.ts): a news Short's structure, none of the newest 30 Shorts' own. A Why
   // Short and a planned run topic keep the structure their own brief sets; a running hook-style test keeps its hook.
   const skeleton =
@@ -7633,12 +8179,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           argument,
           openings: hookStyleOpenings(test, testDefaults),
           ...(drop ? { orders: ["call_then_proof", "one_detail"] } : {}),
+          ...(payoffGated ? { payoff: true } : {}),
         })
       : undefined;
   // The voice test (6 Nov 2026): the owner's examples, same story and day, 260k views against our 130, all lead
   // with a person's take. Half the Shorts get that voice; assignment by episode, so a retry keeps its side.
-  const personal = s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
-  if (s.cfg.voiceTestShare > 0)
+  const personal = !roomOn && s.cfg.voiceTestShare > 0 && unitHash(ep.id) < s.cfg.voiceTestShare;
+  if (s.cfg.voiceTestShare > 0 && !roomOn)
     await logEvent(s.db, ep.id, "voice_test", { personal }).catch(() => undefined);
   // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
   const series = seriesTagFor(ep);
@@ -7680,10 +8227,13 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       )
     : [];
   // SHORT_LENGTHS (src/shortlengths.ts): the lane's seconds, word budget and beats; unset, the old 25-40 s and 70-100 words.
-  const length = shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep), s.cfg.shortSpeed);
+  // WHY_LENGTH_AB: on a short-arm day a serial Why or GTA File part is written to 30-35 s; the arm goes on the script.
+  const lengthAb = lengthArmFor(s.cfg, ep);
+  const length = shortTarget(lengthsFor(s.cfg, lengthAb), lengthFormatOf(ep), s.cfg.shortSpeed);
   // Every house rule a news Short answers to, besides the fact check: run on each draft and on the friend pass.
   const houseProblems = (sc: Script) => {
-    const problems = validateScript(sc, recent, length);
+    // SHORT_PAYOFF_GATE's arm may keep a source's own quoted question ("Wait, what's this?"); elsewhere as before.
+    const problems = validateScript(sc, recent, length, payoffGated ? { quotedQuestionsOk: true } : {});
     // A GTA File part (src/gtafile.ts) never reads as an announcement and says its part number first; a numbered
     // Why is titled "Why [game] [claim]" and opens on a claim (src/editorial/why.ts).
     if (cluster.gtaFile)
@@ -7718,6 +8268,19 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
+    if (payoffFix) {
+      const gateFindings = payoffFindings({
+        script: sc,
+        recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+        exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+        endingChecked: s.cfg.shortEndPayoff,
+        planned: true,
+      }).findings;
+      problems.push(...payoffFeedback(gateFindings));
+      // An answer that is only "the sources don't say" is a thin story: after the one rewrite its slot goes to the
+      // next story (a big story still goes out, as with any thin one), never a held-back non-answer.
+      if (gateFindings.some((f) => f.rule === "absence_answer")) thin.push(ABSENCE_PROBLEM);
+    }
     if (drop) problems.push(...detailListProblems(sc));
     // SHORT_ARGUES_CHECK (src/qa/argues.ts): a draft that only narrates its picture goes back to the writer once.
     if (s.cfg.shortArguesCheck) problems.push(...arguesWriterProblems(sc, ep.lane));
@@ -7798,8 +8361,134 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     const said = [narrationOf(sc), sc.headline, sc.youtube.title, ...sc.beats.map((b) => cardText(b.visual))];
     return `${newsVault.brief}${newsVault.verified(said)}`.trim() || undefined;
   };
+  // SCRIPT_ROOM's variety memory: the kept shapes of the last room Shorts, from their records ("on" only).
+  const roomRecent = roomOn
+    ? recentShapesFrom(
+        (
+          await s.db
+            .query<{ room: RoomRecord | null }>(
+              `SELECT script_json->'room' AS room FROM episodes
+                WHERE id <> $1 AND script_json->'room'->>'wrote' = 'true'
+                ORDER BY created_at DESC LIMIT 8`,
+              [ep.id],
+            )
+            .catch(() => [])
+        ).map((r) => r.room),
+      )
+    : [];
+  // WIKI_LEADS: primary sources that back fan wiki leads about this game, read from the stored leads (no fetch here).
+  // A missing or week-old leads file is refreshed in the background for the next story about the game.
+  if (s.cfg.wikiLeads && cluster.gameHint) void ensureWikiLeads(wikiLeadsRoot(s.cfg.dataDir), cluster.gameHint).catch(() => false);
+  const leadSources =
+    s.cfg.wikiLeads && cluster.gameHint
+      ? await readWikiLeads(wikiLeadsRoot(s.cfg.dataDir), cluster.gameHint)
+          .then((f) => leadPrimaries(f, 2, [cluster.headline, ...cluster.items.map((i) => `${i.title} ${i.summary}`)].join("\n")))
+          .catch(() => [])
+      : [];
+  // SCRIPT_ROOM's inputs: the story's sources, the vault and the length lane, as the normal writer has them.
+  const roomInput = (): RoomStepInput => ({
+    ...(leadSources.length ? { leadPrimaries: leadSources } : {}),
+    recent: roomRecent,
+    llm: s.llm,
+    cfg: s.cfg,
+    cluster,
+    articles,
+    ...(storeData ? { storeData } : {}),
+    vaultBrief: newsVault?.brief || CREDIT_RULE,
+    ...(newsVault?.brief ? { vaultNote: newsVault.brief } : {}),
+    ...(length ? { length } : {}),
+    mustLabelRumour,
+    feedUrls: FEEDS.map((f) => f.url),
+    fetchLinks: (u) => (s.fetchLinks ? s.fetchLinks(u) : fetchOutboundLinks(u)),
+    fetchArticle: (u) => s.fetchArticle(u),
+  });
+  // SCRIPT_ROOM=on, the room's arm: the room writes the Short. Its script meets the fact check, rumour labelling, the
+  // air-time words and the house safety checks (one edits-only repair); otherwise the normal writer writes it below.
+  let roomRec: RoomRecord | undefined;
+  let roomWrote = false;
+  if (roomOn) {
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const outlets = cluster.items.map((i) => i.source.toLowerCase());
+    const room = await roomWriteStep(
+      roomInput(),
+      {
+        // The house rules that guard facts, money and the render, not the stacked style rules.
+        safety: (sc) => [
+          ...validateScript(sc, undefined, length).filter((p) => ROOM_SAFETY.test(p)),
+          ...absenceProblems(narrationOf(sc)),
+          ...preorderProblems(
+            narrationOf(sc),
+            [...articles.map((a) => a.text), ...cluster.items.map((i) => `${i.title} ${i.summary}`)].join("\n"),
+          ),
+          ...(s.cfg.shortLabelsClean ? cardFigureProblems(sc.beats) : []),
+          ...releaseDateProblems(publicText(sc)),
+          ...videoPlugProblems(narrationOf(sc)),
+          ...sc.beats
+            .filter(
+              (b) =>
+                b.visual.kind === "report" &&
+                !outlets.some(
+                  (o) =>
+                    o.includes(b.visual.secondary.toLowerCase().trim()) ||
+                    b.visual.secondary.toLowerCase().includes(o),
+                ),
+            )
+            .map((b) => `Report card names "${b.visual.secondary}", which is not one of this story's sources.`),
+        ],
+        factCheck: (sc) => factCheck(s.llm, sc, cluster, articles, storeData, undefined, vaultNote(sc)),
+        airTime: (sc) => (airsAt ? airTimeProblems(publicText(sc), new Date(airsAt)) : []),
+        ...(newsVault
+          ? { settle: (sc: Script, blockers: string[]) => newsVault.settle(sc, blockers, ep.id, "room") }
+          : {}),
+        ...(s.cfg.creditScrub
+          ? {
+              scrub: (sc: Script) =>
+                scrubScriptCredits(
+                  sc,
+                  givenSources({
+                    outlets: [
+                      ...cluster.items.map((i) => i.source),
+                      ...articles.map((a) => a.via),
+                      storeData ? "Steam" : undefined,
+                    ],
+                    vault: newsVault?.brief,
+                  }),
+                ).script,
+            }
+          : {}),
+      },
+      roomSkipped(s.cfg, { pulseCheck, skeleton: !!skeleton }),
+    ).catch((err) => {
+      log("warn", "writers' room failed; the normal writer writes the Short", { episode: ep.id, error: errorMessage(err) });
+      return {
+        record: roomRecord({ arm: "room", mode: "on", fallback: `the room failed: ${errorMessage(err)}`.slice(0, 300), wrote: false }),
+        script: undefined,
+        check: undefined,
+        warnings: undefined,
+      };
+    });
+    roomRec = room.record;
+    if (room.script && room.check) {
+      script = room.script;
+      check = room.check;
+      roomWrote = true;
+      if (room.warnings?.length)
+        await logEvent(s.db, ep.id, "style_warnings", { problems: room.warnings, room: true }).catch(() => undefined);
+    }
+  }
+  // WRITER_SPLIT (src/editorial/authorship.ts): Claude for the Shorts most likely to travel, Codex for the rest. The
+  // writer is recorded on the script either way, from the model calls the main draft made.
+  const split = s.cfg.writerSplit
+    ? writerSplit({
+        maxSeconds: length?.seconds.max,
+        strongFandom: strongFandom({ title: cluster.headline, game: cluster.gameHint }),
+        serial: isSerial(series),
+      })
+    : undefined;
+  const writerCalls: UsageLine[] = [];
+  if (!roomWrote)
   for (let attempt = 0; attempt < 2; attempt++) {
-    script = await writeScript(s.llm, cluster, articles, {
+    script = await captureCalls(writerCalls, () => withRoute(split?.route, async () => writeScript(s.llm, cluster, articles, {
       // The credit rule reaches every Short writer, also when the vault had nothing on the game (it lived only in the
       // vault's brief until 14 Nov 2026, so most invented-credit drops were stories the vault knew nothing about).
       vault: newsVault?.brief || CREDIT_RULE,
@@ -7827,13 +8516,15 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       skeleton,
       dropAngle: drop,
       length,
+      ...(payoffGated ? { payoff: true } : {}),
+      ...(deskPlanned ? { deskPlan: true } : {}),
       // The search lane and a reply Short each write on their own step, so CODEX_CALLS can route them.
       ...(cluster.search
         ? { site: SEARCH_WRITE_SITE }
         : cluster.reply
           ? { site: "reply.write" }
           : {}),
-    });
+    })));
     // LEARN_HOOKS (src/learn/breadth.ts): 4 to 6 hooks from distinct angle briefs in one call, refused when they break a
     // house rule the draft kept or read like the last 30 hooks, scored and clarity-judged; the winner is fact-checked
     // below like every other word. A plain news Short's first draft only; never a holdout Short.
@@ -7889,6 +8580,35 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         await logEvent(s.db, ep.id, "credits_scrubbed", { attempt, removed: scrubbed.removed });
       }
     }
+    // SCRIPT_DESK: the writer's own answer said whether the story can carry a Short. Under "fix" a killed story takes the
+    // thin route before its fact check is paid for (a big story still goes out, with a note); "check" only records it.
+    if (deskPlanned && attempt === 0 && !deskKilled) {
+      const k = deskKill(script.desk_plan, script.payoff);
+      if (k) {
+        deskKilled = { ...k, acted: deskFix, ...(cluster.bigStory ? { big_story: true } : {}) };
+        await logEvent(s.db, ep.id, "desk_kill", { ...deskKilled }).catch(() => undefined);
+        if (deskFix && !cluster.bigStory) {
+          await markSeen(s.db, cluster.hash, cluster.headline, "rejected", "too thin");
+          await transition(s.db, ep.id, "selected", "rejected", {
+            script_json: {
+              ...script,
+              desk: deskRecord({ arm: "desk", mode: "fix", plan: script.desk_plan, kill: deskKilled }),
+            },
+            last_error: `too thin: editor's desk: ${k.why}`,
+          });
+          await s.notify({
+            level: "info",
+            content: `Dropped as too thin, the slot goes to the next story: "${cluster.headline}". The editor's desk: ${k.why}`.slice(0, 900),
+          });
+          return;
+        }
+        if (deskFix)
+          await s.notify({
+            level: "info",
+            content: `Big story "${cluster.headline}" can't carry a Short by the editor's desk but is going out, since big stories are always made: ${k.why}`.slice(0, 900),
+          });
+      }
+    }
     const { problems, thin } = houseProblems(script);
     check = await factCheck(
       s.llm,
@@ -7922,18 +8642,53 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     }
     // A line that repeats a claim our fact check already rejected goes back to the writer (FACT_VAULT=read and above).
     if (newsVault) problems.push(...newsVault.warnings([narrationOf(script)]));
-    if (
-      check.verdict === "pass" &&
-      check.rumour_labelling_ok &&
-      blockers.length === 0 &&
-      problems.length === 0
-    )
-      break;
+    // SHORT_PAYOFF_GATE=fix: the first draft's title, first-frame text and hook read cold (the one model step); what
+    // gives the answer away, or leaves the subject unclear, goes back to the writer with the rest.
+    if (payoffFix && attempt === 0 && script.payoff) {
+      const draft = script;
+      const read = await readPayoff(s.llm, {
+        title: draft.youtube.title,
+        firstFrame: firstFrameText(draft),
+        hook: draft.hook,
+        question: draft.payoff!.question,
+        answer: draft.payoff!.answer,
+      }).catch((err) => {
+        log("warn", "payoff cold read failed; the draft goes on unread", { episode: ep.id, error: errorMessage(err) });
+        return undefined;
+      });
+      if (read) problems.push(...payoffFeedback(readFindings(read)));
+    }
+    const factsPassed = check.verdict === "pass" && check.rumour_labelling_ok && blockers.length === 0;
+    if (factsPassed && problems.length === 0) break;
     feedback = [
       ...blockers,
       ...problems,
       ...(check.rumour_labelling_ok ? [] : ["Rumour labelling is inadequate."]),
     ];
+    // A first draft whose facts passed and that went back only for the held-answer rules is kept: if the rewrite then
+    // fails its fact check, this draft goes out instead, so the gate never costs a story its slot.
+    if (attempt === 0 && payoffFix) {
+      payoffSentBack.push(...problems.filter((p) => p.startsWith("Held answer: ")));
+      if (
+        factsPassed &&
+        problems.every((p) => p.startsWith("Held answer: ")) &&
+        !problems.some((p) => p.includes(ABSENCE_PROBLEM))
+      )
+        // The facts passed, so its verdict is "pass" (the vault's override widens the inferred type to string).
+        payoffFallback = { script, check: { ...check, verdict: "pass" as const } };
+    }
+    if (
+      attempt === 1 &&
+      payoffFallback &&
+      (check.verdict === "fail" || blockers.length > 0 || !check.rumour_labelling_ok)
+    ) {
+      await logEvent(s.db, ep.id, "payoff_gate_fallback", {
+        why: feedback.slice(0, 6),
+      }).catch(() => undefined);
+      script = payoffFallback.script;
+      check = payoffFallback.check;
+      break;
+    }
     if (attempt === 1) {
       // House-style misses alone are accepted with a warning; facts are not.
       if (
@@ -8012,6 +8767,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The friend pass (FRIEND_PASS): with the facts settled, one rewrite of the delivery, kept only when nothing
   // factual moved, no house rule newly breaks and the fact check passes it again.
   if (
+    !roomWrote &&
     friendPassOn(s.cfg, "shorts") &&
     check.verdict === "pass" &&
     check.rumour_labelling_ok &&
@@ -8072,6 +8828,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // plain rewrite; under CLARITY_MIN the writer revises once first. Each version is kept only when no fact moved, no
   // house rule newly breaks and the fact check passes it, so the worst case is the script as it was.
   if (
+    !roomWrote &&
     friendPassOn({ friendPass: s.cfg.clarityGate }, "shorts") &&
     check.verdict === "pass" &&
     check.rumour_labelling_ok &&
@@ -8122,6 +8879,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           skeleton,
           dropAngle: drop,
           length,
+          ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
           ...(cluster.search
             ? { site: SEARCH_WRITE_SITE }
             : cluster.reply
@@ -8133,6 +8892,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           plain,
           min: s.cfg.clarityMin,
           wordsMax: wordsLimits.wordsMax,
+          // SHORT_PAYOFF_GATE: a plainer hook still plants the question; the answer stays where the writer held it.
+          ...(payoffGated && v.payoff ? { extra: [payoffKeepNote(v.payoff)] } : {}),
         }),
       accept,
     });
@@ -8154,6 +8915,103 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       before_text: shortText(settled),
     }).catch(() => undefined);
   }
+  // The editor's desk (SCRIPT_DESK, src/editorial/desk.ts): an editor reads the settled Short as a viewer meets it
+  // (title, first-frame text, narration; never the plan or the sources) and scores it. "fix" on the desk's arm: under
+  // the bar, one instruction a round (the biggest weakness) through the edit-based reviser, the fact guard, the house
+  // rules (the payoff gate's included) and the fact check, then a fresh read; the best version that passed is kept.
+  // "check" and the control arm: one read, recorded, nothing changed. The record goes on the script at the end.
+  let deskRec: DeskRecord | undefined;
+  if (deskArmOf) {
+    const factsOk =
+      check.verdict === "pass" &&
+      check.rumour_labelling_ok &&
+      !check.issues.some((i) => i.severity === "blocker");
+    const wordsLimits = {
+      wordsMin: length?.wordsMin ?? WORDS_MIN,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+    };
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    let deskFactChecks = 0;
+    const passedCheck = new Map<Script, typeof check>();
+    const loop = await runDesk<Script>({
+      value: script,
+      // A room script is read and recorded, never rewritten for style.
+      mode: deskFix && factsOk && !deskKilled && !roomWrote ? "fix" : "check",
+      min: s.cfg.scriptDeskMin,
+      rounds: s.cfg.scriptDeskRounds,
+      angle: script.desk_plan?.angle,
+      judge: (v) =>
+        judgeDesk(s.llm, {
+          title: v.youtube.title,
+          firstFrame: firstFrameText(v),
+          narration: deskLines(v),
+        }),
+      checks: (v) => deskChecks({ lines: deskLines(v), game: v.game_title, segment: pulseCheck }),
+      rewrite: async (v, instruction) => ({
+        ...v,
+        ...(await writeScript(s.llm, cluster, articles, {
+          desk: s.cfg.deskShare > 0,
+          variantNote,
+          mustLabelRumour,
+          feedback: [instruction],
+          storeData,
+          recent,
+          draft: v,
+          segment: pulseCheck,
+          noSeriesFollow: s.cfg.shortEndPayoff,
+          skeleton,
+          dropAngle: drop,
+          length,
+          ...(payoffGated ? { payoff: true } : {}),
+          ...(deskPlanned ? { deskPlan: true } : {}),
+          site: DESK_REWRITE_SITE,
+          editsOnly: true,
+        })),
+      }),
+      accept: async (before, after) => {
+        const guard = [
+          ...deskShortProblems(before, after, wordsLimits),
+          ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+        ];
+        if (guard.length) return guard;
+        deskFactChecks++;
+        const v = friendCheckVerdict(
+          await factCheck(s.llm, after, cluster, articles, storeData, undefined, vaultNote(after)),
+          shortSettledText(before),
+        );
+        const late = airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : [];
+        if (v.blockers.length || late.length) return [...v.blockers, ...late];
+        passedCheck.set(after, v.check);
+        return [];
+      },
+      // SHORT_PAYOFF_GATE: a rewrite keeps the held answer where the writer put it.
+      extra: (v) => (payoffGated && v.payoff ? [payoffKeepNote(v.payoff)] : []),
+    });
+    const keptCheck = passedCheck.get(loop.value);
+    if (loop.value !== script && keptCheck) {
+      script = loop.value;
+      check = keptCheck;
+    }
+    deskRec = deskRecord({
+      arm: deskArmOf,
+      mode: s.cfg.scriptDesk === "fix" ? "fix" : "check",
+      plan: script.desk_plan,
+      kill: deskKilled,
+      loop,
+      checks: deskFactChecks,
+    });
+    await logEvent(s.db, ep.id, "script_desk", {
+      arm: deskRec.arm,
+      mode: deskRec.mode,
+      scores: deskRec.rounds.map((r) => r.scores?.overall ?? null),
+      kept: deskRec.kept,
+      cleared: deskRec.cleared,
+      stop: deskRec.stop,
+      calls: deskRec.calls,
+      ...(deskRec.kill ? { kill: deskRec.kill.kind } : {}),
+      ...(deskRec.source_gap ? { source_gap: deskRec.source_gap } : {}),
+    }).catch(() => undefined);
+  }
   // The humaniser (HUMANISE, src/editorial/humanise): the full name once and the short form after, no repeated openings,
   // contractions, no AI-tell words or em dashes, relative dates against the publish time. Runs last before voicing;
   // the fact check then reads the humanised words, and anything that fails leaves the settled script as it was.
@@ -8171,7 +9029,8 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     };
     let humanCheck: typeof check | undefined;
     const human = await humaniseStep<Script>({
-      mode: s.cfg.humanise,
+      // A room script is measured and logged, never rewritten for style.
+      mode: roomWrote && s.cfg.humanise === "fix" ? "check" : s.cfg.humanise,
       value: script,
       run: (v, mode) => {
         const r = humaniseShort(v, { mode, ...(publishAt ? { publishAt } : {}) });
@@ -8243,15 +9102,32 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     return;
   }
   // CHARACTER_QUOTES (src/charquotestep.ts): one real line from the game's cutscene, set up and answered by the narrator.
-  script = await quoteScriptStep(s, ep, script, {
-    house: (sc) => houseProblems(sc).problems,
-    wordsMax: length?.wordsMax ?? WORDS_MAX,
-    capSeconds: length?.capSeconds ?? SHORT_NARRATION_CAP_SECONDS,
-    story: cluster.headline,
-  });
+  // A room script keeps its words: no cutscene line is woven into it, unless GAME_SPEECH_DIALOGUE is on (the quote
+  // writer keeps every fact and house rule of the beat it touches, and the owner asked for the exchange everywhere).
+  if (!roomWrote || s.cfg.gameSpeechDialogue)
+    script = await quoteScriptStep(s, ep, script, {
+      house: (sc) => houseProblems(sc).problems,
+      wordsMax: length?.wordsMax ?? WORDS_MAX,
+      capSeconds: length?.capSeconds ?? SHORT_NARRATION_CAP_SECONDS,
+      story: cluster.headline,
+    });
+  else if (s.cfg.characterQuotes)
+    await logEvent(s.db, ep.id, "character_quote", { used: false, why: "a room-written script keeps its words" }).catch(
+      () => undefined,
+    );
   // The series tag (src/series.ts) and the next-part line's arm go on the script: the weekly report reads both.
   const tag = seriesTagFor(ep, script);
   if (tag) script = { ...script, series: tag };
+  // Who wrote it (always recorded): the main draft's calls; a room-written script is the room's.
+  if (!roomWrote) {
+    const site = cluster.search ? SEARCH_WRITE_SITE : cluster.reply ? "reply.write" : "editorial";
+    const intended: WriterProvider | undefined =
+      split?.route ??
+      (s.cfg.codexLlm ? (siteListed(site, s.cfg.codexCalls) ? "codex" : "claude") : "claude");
+    script = { ...script, writer: writerRecord(writerCalls, intended, split?.why) };
+  }
+  if (lengthAb && length)
+    script = { ...script, length_arm: { arm: lengthAb, band: `${length.seconds.min}-${length.seconds.max}` } };
   if (lineArm)
     script = {
       ...script,
@@ -8261,9 +9137,119 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ...(nextPart ? { part: nextPart.part, day: nextPart.day } : {}),
       },
     };
+  // FIRST_SECOND_PANEL (src/panel/firstsecond.ts): the same Shorts the desk covers, split by episode. What a viewer
+  // meets in the first second (the first sentence, the first-frame text, the opening picture as planned) read blind:
+  // "check" and the control arm, one audience read recorded and nothing changed; "on" for the panel's arm, alternative
+  // first-frame texts (and first sentences, never on a room script) from one call, marked blind by the audience and the
+  // editor critic, the best kept and the current version winning ties. A new first sentence must pass the house rules
+  // and the air-time check unchanged; a failure anywhere leaves the script as it was.
+  const firstArm: FirstSecondArm | undefined = firstSecondArmFor(
+    s.cfg.firstSecondPanel,
+    s.cfg.firstSecondShare,
+    ep.id,
+    s.cfg.firstSecondPanel !== "off" &&
+      payoffApplies({
+        lane: ep.lane,
+        why: !!cluster.why,
+        reply: !!cluster.reply,
+        search: !!cluster.search,
+        gtaFile: !!cluster.gtaFile,
+      }),
+  );
+  if (firstArm) {
+    const before = script;
+    const airsAt = cluster.why?.airs_at ?? ep.slot_at;
+    const first = await runFirstSecond({
+      script,
+      narration: narrationOf(script),
+      episodeId: ep.id,
+      arm: firstArm,
+      mode: s.cfg.firstSecondPanel === "on" ? "on" : "check",
+      roomWrote,
+      deps: {
+        viewer: (content) => readFirstViewer(s.llm, content),
+        editor: (content) => readFirstEditor(s.llm, content),
+        write: (sentences) => writeFirst(s.llm, before, narrationOf(before), sentences),
+        accept: (after) => [
+          ...newProblems(houseProblems(before).problems, houseProblems(after).problems),
+          ...(airsAt ? airTimeProblems(publicText(after), new Date(airsAt)) : []),
+        ],
+      },
+    }).catch((err) => {
+      log("warn", "first-second panel failed; the opening stands", { episode: ep.id, error: errorMessage(err) });
+      return undefined;
+    });
+    if (first) {
+      script = { ...first.script, first_second: first.record };
+      await logEvent(s.db, ep.id, "first_second", firstSecondEvent(first.record)).catch(() => undefined);
+    }
+  }
   await guardScript(s, ep, script, "after writing");
+  // SHORT_PAYOFF_GATE: the finished script measured against the held-answer rules, recorded on it with its arm (the
+  // weekly report compares the arms). The gate's arm gets the cold read of title, first frame and hook too; the control
+  // arm only the rules that need no plan. Measuring never changes the script.
+  if (payoffArmOf) {
+    // A room script carries no payoff plan: it is measured on the rules that need none.
+    const gated = payoffArmOf === "gate" && !roomWrote;
+    const measured = payoffFindings({
+      script,
+      recentTakes: recent?.scripts?.length ? recent.scripts : recent?.takes,
+            exemptOpeners: pulseCheck ? SEGMENT_OPENERS : [],
+      endingChecked: false,
+      planned: gated,
+    });
+    const settledScript = script;
+    const read: PayoffRead | undefined =
+      gated && settledScript.payoff
+        ? await readPayoff(s.llm, {
+            title: settledScript.youtube.title,
+            firstFrame: firstFrameText(settledScript),
+            hook: settledScript.hook,
+            question: settledScript.payoff.question,
+            answer: settledScript.payoff.answer,
+          }).catch((err) => {
+            log("warn", "payoff cold read failed; recorded without it", { episode: ep.id, error: errorMessage(err) });
+            return undefined;
+          })
+        : undefined;
+    const record = payoffRecord({
+      arm: payoffArmOf,
+      mode: s.cfg.shortPayoffGate === "fix" ? "fix" : "check",
+      findings: measured.findings,
+      answerAt: measured.answerAt,
+      pivot: measured.pivot,
+      read,
+      sentBack: payoffSentBack,
+    });
+    script = { ...script, payoff_gate: record };
+    await logEvent(s.db, ep.id, "payoff_gate", {
+      arm: record.arm,
+      mode: record.mode,
+      pass: record.pass,
+      rules: record.findings.map((f: PayoffFinding) => f.rule),
+      findings: record.findings.slice(0, 8).map((f: PayoffFinding) => f.problem),
+      answer_at: record.answer_at,
+      pivot_at: record.pivot_at,
+      sent_back: payoffSentBack.length,
+    }).catch(() => undefined);
+  }
+  // SCRIPT_DESK: the desk's record rides on the script beside payoff_gate (the weekly report reads arm and score).
+  if (deskRec) script = { ...script, desk: deskRec };
+  // SCRIPT_ROOM: "check" builds the room's pack beside the published script (one call, nothing changed); the control arm
+  // is recorded with no call; "on" carries what the room did, or why the normal writer wrote it.
+  if (roomArmOf) {
+    if (!roomOn)
+      roomRec =
+        roomArmOf === "room"
+          ? await roomCheckStep(roomInput(), script).catch(() => undefined)
+          : roomControlRecord(s.cfg.scriptRoom === "on" ? "on" : "check");
+    if (roomRec) {
+      script = { ...script, room: roomRec };
+      await logEvent(s.db, ep.id, "script_room", roomEvent(roomRec)).catch(() => undefined);
+    }
+  }
   // The structure is kept on the script: the next Shorts' writer and the weekly analytics read it.
-  if (skeleton) script = { ...script, skeleton: skeleton.key };
+  if (skeleton && !roomWrote) script = { ...script, skeleton: skeleton.key };
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: check,
@@ -8272,6 +9258,30 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
         ? { ...(steam ? { steam } : {}), ...(test ? { test } : {}) }
         : null,
   });
+}
+
+/** SCRIPT_ROOM: the house rules from validateScript that guard facts, money and the render (not the stacked style). */
+const ROOM_SAFETY =
+  /^Banned phrase matched|^A rumour script must attribute|^The stamp|^There must be|card|^On-screen text|^The YouTube title is over|^The on-screen headline is longer|^The Pulse take is empty|^The loop line .* is unfinished/;
+
+/** SCRIPT_ROOM: what a room script skipped or ran record-only, for its record (pure). */
+function roomSkipped(cfg: Config, o: { pulseCheck: boolean; skeleton: boolean }): string[] {
+  return [
+    "take_shape",
+    "desk_question",
+    "loop_question",
+    ...(o.skeleton ? ["skeleton"] : []),
+    ...(o.pulseCheck ? ["pulse_check"] : []),
+    ...(cfg.voiceTestShare > 0 ? ["voice_test"] : []),
+    "growth_test",
+    ...(cfg.learn.hooks !== "off" ? ["learn_hooks"] : []),
+    ...(friendPassOn(cfg, "shorts") ? ["friend_pass"] : []),
+    ...(friendPassOn({ friendPass: cfg.clarityGate }, "shorts") ? ["clarity_gate"] : []),
+    ...(cfg.shortPayoffGate === "fix" ? ["payoff_fix (record only)"] : []),
+    ...(cfg.scriptDesk === "fix" ? ["desk_fix (record only)"] : []),
+    ...(cfg.humanise === "fix" ? ["humanise (record only)"] : []),
+    "character_quotes",
+  ];
 }
 
 /**
@@ -8818,7 +9828,7 @@ async function stepVoice(s: Services, ep: Episode): Promise<void> {
           ? s.cfg.docMaxSeconds
           : s.cfg.longformMaxSeconds
         : // SHORT_LENGTHS and WHY_TARGET_SECONDS: a lane past the minute needs room; every other Short keeps 58 s.
-          (shortTarget(lengthsFor(s.cfg), lengthFormatOf(ep))?.capSeconds ??
+          (shortTarget(lengthsFor(s.cfg, lengthArmFor(s.cfg, ep)), lengthFormatOf(ep))?.capSeconds ??
           SHORT_NARRATION_CAP_SECONDS);
   if (narration.durationSeconds > maxSeconds)
     throw new FatalError(
@@ -9471,7 +10481,7 @@ export async function gatherMedia(
         const entries = [...script.entries].sort((a, b) => b.rank - a.rank);
         for (const [beatIndex, entry] of entries.entries()) {
           if (!entry.game_title || entry.year > s.now().getFullYear() ||
-              (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now()))) continue;
+              (script.evergreen_format === "documentary" && upcomingGame(entry.year, s.now(), entry.game_title, readLaunches(s.cfg.launchCalendarFile)))) continue;
           // LONG_INDEX_FIRST: the first pass takes the scene index's clips alone, for the chapters whose game has one;
           // the second pass searches cutscene uploads for those chapters' lines the index left (after the trailers
           // and gameplay, so the slow search never spends the gather's time first) and does the rest as before.
@@ -10171,6 +11181,80 @@ async function gatherPeople(
   return out;
 }
 
+/** MENTION_*: the mention kinds switched on (src/render/mentions.ts), in a fixed order. */
+export function mentionKinds(cfg: Pick<Config, "mentionGames" | "mentionLogos" | "mentionCharacters" | "mentionRealPlaces" | "mentionPlatforms" | "mentionReceipts" | "mentionOutlets" | "mentionInworld">): MentionKind[] {
+  const on: Array<[MentionKind, boolean]> = [
+    ["game", cfg.mentionGames],
+    ["logo", cfg.mentionLogos],
+    ["character", cfg.mentionCharacters],
+    ["realplace", cfg.mentionRealPlaces],
+    ["platform", cfg.mentionPlatforms],
+    ["receipt", cfg.mentionReceipts],
+    ["outlet", cfg.mentionOutlets],
+    ["inworld", cfg.mentionInworld],
+  ];
+  return on.filter(([, v]) => v).map(([k]) => k);
+}
+
+/** What the mention gather reads from a script, a story and its assets (pure). */
+export function mentionInputOf(o: {
+  dir: string;
+  kinds: MentionKind[];
+  script: {
+    hook?: string;
+    beats?: Array<{ narration?: string; footage?: { keywords?: string[] } }>;
+    pulse_take?: { narration?: string };
+    loop_line?: string;
+    game_title?: string;
+    attribution?: string;
+    youtube?: { tags?: string[] };
+    sources?: string[];
+  };
+  story?: { items?: Array<{ url?: string; title?: string; source?: string; summary?: string; sourceKind?: string; publishedAt?: string }> } | null;
+  assets: { steam?: { appId: number; name: string }; images?: Array<{ file: string; label?: string; kind?: string; sourceUrl?: string; provenance?: string; aspect?: number }> };
+  docSources?: Array<string | { url?: string; source?: string }>;
+}): MentionInput {
+  const sc = o.script;
+  const spoken = [sc.hook ?? "", ...(sc.beats ?? []).map((b) => b.narration ?? ""), sc.pulse_take?.narration ?? "", sc.loop_line ?? ""].join(" ");
+  return {
+    dir: o.dir,
+    kinds: o.kinds,
+    spoken,
+    listed: [...(sc.beats ?? []).flatMap((b) => b.footage?.keywords ?? []), ...(sc.youtube?.tags ?? [])],
+    mainGame: sc.game_title ?? "",
+    ...(o.assets.steam ? { mainSteam: { appId: o.assets.steam.appId, name: o.assets.steam.name } } : {}),
+    attribution: sc.attribution,
+    items: o.story?.items ?? [],
+    docSources: o.docSources ?? sc.sources,
+    images: o.assets.images,
+  };
+}
+
+/** Whether the gather kept in an episode's assets looked for these kinds (otherwise it runs again). */
+export const mentionsCover = (found: MentionsFound | undefined, kinds: MentionKind[]): boolean =>
+  !!found && kinds.every((k) => found.kinds.includes(k));
+
+/**
+ * MENTION_*: the mention insets of a video on its words, scheduled (src/render/mentions.ts mentionSlots), the pictures
+ * as episode-relative paths. [] when every kind is off. A long video passes no schedule here: its composition fits the
+ * insets around its own sentence graphics (Long.tsx), so it gets the placed list and the cap instead.
+ */
+export function mentionPlacement(
+  cfg: Parameters<typeof mentionKinds>[0] & Pick<Config, "mentionMaxPerShort">,
+  found: MentionsFound | undefined,
+  words: Array<{ text: string; start: number }>,
+  plan: { fps: number; totalFrames: number },
+  layout: MentionLayout,
+  /** Frames something else always holds (a Short's hook headline): never entered. */
+  taken: Array<{ from: number; to: number }> = [],
+): { insets: MentionInset[]; slots: MentionSlot[]; max: number } {
+  const kinds = new Set(mentionKinds(cfg));
+  const max = mentionCap(layout, cfg.mentionMaxPerShort, plan.totalFrames / plan.fps);
+  if (!kinds.size || !max) return { insets: [], slots: [], max };
+  const insets = mentionsOnWords(found?.items ?? [], words, { kinds });
+  return { insets, slots: mentionSlots(insets, { fps: plan.fps, totalFrames: plan.totalFrames, max, layout, taken }), max };
+}
+
 /** The people with a photo whose names are said, with when (seconds); one never said gets no inset. */
 export function peopleOnWords(
   people: NonNullable<EpisodeAssets["people"]>,
@@ -10720,7 +11804,7 @@ export async function gatherChapterMedia(
   // Not for a game from this year on (30 Oct 2026 review: the GTA VI chapter's "gameplay" was a fake upload full
   // of Spider-Man, Sonic and Minions mods, and re-uploads of Rockstar's trailers wrongly marked Creative Commons).
   // Before a game is out, uploaded "gameplay" can only be fake or someone else's trailer.
-  const upcoming = upcomingGame(entry.year);
+  const upcoming = upcomingGame(entry.year, s.now(), entry.game_title, readLaunches(s.cfg.launchCalendarFile));
   if (upcoming)
     log("info", "documentary gameplay skipped: the game is not out", {
       game: entry.game_title,
@@ -11035,12 +12119,28 @@ export async function gatherChapterMedia(
   }
 }
 
-/** A game from this calendar year or later: its uploaded "gameplay" is not trusted in a documentary. */
+/**
+ * A game from this calendar year or later: its uploaded "gameplay" is not trusted in a documentary. A game the launch
+ * calendar says is out (launches.json, launch day passed) is not upcoming any more: GTA VI's documentaries skipped
+ * real gameplay after its 19 Nov 2026 launch because it was still "this year's".
+ */
 export function upcomingGame(
   year: number | undefined,
   now = new Date(),
+  title?: string,
+  launches: Array<{ match: string; launch: string }> = [],
 ): boolean {
-  return !!year && year >= now.getFullYear();
+  if (!year || year < now.getFullYear()) return false;
+  const out = title
+    ? launches.find((l) => {
+        try {
+          return new RegExp(l.match, "i").test(title) && Date.parse(`${l.launch}T00:00:00Z`) <= now.getTime();
+        } catch {
+          return false;
+        }
+      })
+    : undefined;
+  return !out;
 }
 
 /** The share of a long video's sentences with a clip or still chosen for that sentence (moments[entry][k]). */
@@ -11138,16 +12238,23 @@ export async function steamAppForEntry(
   return app;
 }
 
+/** EXPLAINERS: a beat's or the take's explainer, as a segment field (none: nothing added, so old scripts render as before). */
+function explainerOf(script: Script, part: "beat" | "take", index: number) {
+  const x = script.explainers?.find((e) => e.part === part && e.index === index);
+  return x ? { explainer: x.explainer } : {};
+}
+
 export function segmentInputs(script: Script, desk = false): SegmentInput[] {
   // One context in spoken order, as the voice was given it (narrationOf and the desk parts do the same).
   const ctx = speakContext(script.say_as);
   return [
     // The same speakable text the voice was given, so segment timings line up word for word.
     { kind: "hook", text: speakable(script.hook, ctx) },
-    ...script.beats.map((b) => ({
+    ...script.beats.map((b, i) => ({
       kind: "beat" as const,
       text: speakable(b.narration, ctx),
       visual: b.visual,
+      ...explainerOf(script, "beat", i),
     })),
     // The desk partner's question sits between the facts and the take when the Short has one.
     ...(desk && script.desk_question
@@ -11162,6 +12269,7 @@ export function segmentInputs(script: Script, desk = false): SegmentInput[] {
         primary: script.pulse_take.on_screen,
         secondary: "",
       },
+      ...explainerOf(script, "take", 0),
     },
     // The same tidied last line the voice was given, so timings line up.
     { kind: "loop", text: speakable(tidyLoopLine(script.loop_line), ctx) },
@@ -11395,6 +12503,19 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     });
     // A plan made before the new clips existed would never play them.
     if (assets.footageFirst.kept) delete assets.longPlan;
+    // Old games' small sources redrawn at 1080 by the local upscaler (src/depthstep.ts, UPSCALE).
+    await upscaleOldFootage(
+      depthDeps(
+        s.cfg,
+        (k, d) => logEvent(s.db, ep.id, k, d),
+        (m) => s.notify(m),
+      ),
+      { headline: script.headline, episodeDir: dir, clips: assets.clips },
+    ).catch((err) =>
+      log("warn", "footage upscaling failed; plain resize kept", {
+        error: errorMessage(err),
+      }),
+    );
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
       ep.id,
       JSON.stringify(assets),
@@ -11428,32 +12549,47 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.clips ??= [];
     // Scene lines nothing filmed can show get a drawn concept sketch, tagged ILLUSTRATION, when switched on
     // (ILLUSTRATE_ENABLED, off by default; src/assets/illustrate.ts). Off, nothing here changes. A server that
-    // does not answer (closed on the PC, or none on the Mac) skips them for this video, said once.
-    const comfyUp =
+    // does not answer (the Mac's sketch service down or its weights missing, or ComfyUI closed on the PC) skips them
+    // for this video, said once; a sketch that is late or fails later leaves its line on the normal footage.
+    const sketchesUp =
       s.cfg.illustrate &&
-      (s.cfg.illustrateStub || (await comfyReachable(s.cfg.illustrateUrl)));
-    if (s.cfg.illustrate && !comfyUp) {
+      (s.cfg.illustrateStub ||
+        (await sketchReachable(s.cfg.illustrateUrl, s.cfg.illustrateBackend)));
+    if (s.cfg.illustrate && !sketchesUp) {
       await logEvent(s.db, ep.id, "sketches_skipped", {
         url: s.cfg.illustrateUrl,
       });
       await s.notify({
         level: "info",
-        content: `${kind} "${script.headline}": no concept sketches this time, because the image server (ComfyUI at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
+        content: `${kind} "${script.headline}": no concept sketches this time, because the sketch server (${s.cfg.illustrateBackend === "comfy" ? "ComfyUI" : "the sketch service, mac/sketch.sh"} at ${s.cfg.illustrateUrl}) is not answering. Those lines get a graphic or stay on the game's pictures. Setting: ILLUSTRATE_URL.`,
       });
     }
-    const sketches = comfyUp
+    const sketches = sketchesUp
       ? createSketchRun({
           llm: s.llm,
           dir,
           episodeId: ep.id,
           url: s.cfg.illustrateUrl,
+          backend: s.cfg.illustrateBackend,
           max: s.cfg.illustrateMax,
           stub: s.cfg.illustrateStub,
           timeoutMs: s.cfg.illustrateTimeoutSeconds * 1000,
+          budgetMs: s.cfg.illustrateBudgetSeconds * 1000,
         })
       : undefined;
+    // MATCH_SEMANTIC: the chapter's own pictures and clips the meaning model is sure of are pinned before the editor's
+    // pass over the bin (src/semantic/stills.ts); the services are borrowed as they are, only the pin is added.
+    const semDeps = s.cfg.semantic.enabled
+      ? Object.assign(Object.create(s) as typeof s, {
+          semanticPin: async (ch: Parameters<typeof pinChapterMoments>[3], open: number[], images: Parameters<typeof pinChapterMoments>[5], clips: Parameters<typeof pinChapterMoments>[6]) => {
+            const pins = await pinChapterMoments(embedderFor(s.cfg.dataDir, s.cfg.semantic), dir, path.join(dir, `entry_${ch.entry}`, "fill"), ch, open, images, clips, { ...s.cfg.semantic, background: await backgroundFor(s.cfg.dataDir, s.cfg.semantic, ch.game ?? "") });
+            if (pins.length) await logEvent(s.db, ep.id, "semantic_pins", { entry: ch.entry, pins }).catch(() => undefined);
+            return pins.length;
+          },
+        })
+      : s;
     const r = await fillSentencePictures(
-      s,
+      semDeps,
       dir,
       chapters,
       assets.images,
@@ -11507,7 +12643,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           clips: assets.clips as never,
           dir,
           episodeId: ep.id,
-          url: s.cfg.illustrateUrl,
+          url: s.cfg.illustrateVideoUrl,
           max: s.cfg.illustrateVideoMax,
           stub: s.cfg.illustrateVideoStub,
           timeoutMs: s.cfg.illustrateVideoTimeoutSeconds * 1000,
@@ -11531,7 +12667,38 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     assets.images &&
     script.entries?.some((e) => e.moments?.length)
   ) {
+    // EXPLAINERS (src/explainerstep.ts): the chapters' "how it works" lines are marked first, so the chooser gives
+    // them explainer shots. The guard checks every word against the documentary's own narration and graphics.
+    const asked = assets as { explainersAsked?: boolean };
+    if (explainersOn(s.cfg.explainers, "long") && !asked.explainersAsked) {
+      const ordered = [...script.entries].sort((a, b) => b.rank - a.rank);
+      await longExplainersStep(
+        s,
+        ep,
+        ordered.map((e, i) => ({
+          game: e.game_title,
+          sentences: chapterSentences(script, i),
+          // Each chapter is checked against its own narration and graphics only.
+          source: ((e.moments ?? []) as Array<{ graphic?: { primary?: string; secondary?: string; items?: string[] } }>)
+            .flatMap((m) => (m.graphic ? [m.graphic.primary ?? "", m.graphic.secondary ?? "", ...(m.graphic.items ?? [])] : []))
+            .join(" "),
+          moments: (e.moments ?? []) as never,
+          // The chapter's own pictures, so a callout never lands on another game.
+          pictures: anatomyPictures(
+            (assets.images ?? []).filter((x) => (x as { beatIndex?: number }).beatIndex === i) as never,
+            dir,
+          ),
+        })),
+      );
+      asked.explainersAsked = true;
+      await s.db.query(`UPDATE episodes SET assets_json = $2, script_json = $3 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+        JSON.stringify(script),
+      ]);
+    }
     const done = await chooseEpisodeFillers({
+      explainers: explainersOn(s.cfg.explainers, "long"),
       cardShare: s.cfg.longCardShare,
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
@@ -11577,6 +12744,20 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const musicFile = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "long", seed: bedSeed(ep.id) })
     : null;
+  // Small old stills upscaled first, so the layers and 3D photos are cut from the sharper copy (src/depthstep.ts).
+  const depth = depthDeps(
+    s.cfg,
+    (k, d) => logEvent(s.db, ep.id, k, d),
+    (m) => s.notify(m),
+  );
+  if (assets.images?.length)
+    await upscaleOldStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch((err) =>
+      log("warn", "still upscaling failed", { error: errorMessage(err) }),
+    );
   // 2.5D: the wide stills get depth layers on this machine's GPU, once per video (kept in assets).
   if (s.cfg.parallax && s.cfg.parallaxPython && assets.images?.length) {
     const want = assets.images.filter(
@@ -11598,6 +12779,17 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           JSON.stringify(assets),
         ]);
     }
+    // The 3D photo maps for the orbit and the subject pop-out (src/depthstep.ts; DEPTH_ORBIT, SUBJECT_POP).
+    const meshed = await meshStills(depth, {
+      headline: script.headline,
+      episodeDir: dir,
+      images: assets.images,
+    }).catch(() => 0);
+    if (meshed)
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify(assets),
+      ]);
   }
   // Some pictures were stored without their shape (older episodes, some entry art); measure them now, since
   // the framing and the zoom-to-detail maths need it.
@@ -11621,6 +12813,23 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
   const hasMoments = moments.some((m) => m.length);
+  // MAP_PINS (src/assets/gamemaps.ts): a sentence naming a place in its game, with nothing else on screen, shows the
+  // game's own map in 3D with that place pinned. Only places the game's table has checked; never a guessed spot.
+  if (s.cfg.mapPins && hasMoments) {
+    const ranked = [...(script.entries ?? [])].sort((a, b) => b.rank - a.rank);
+    for (let e = 0; e < moments.length; e++) {
+      const sentences = segments.flatMap((seg, i) =>
+        seg.kind === "beat" && entryOf(segments, i) === e ? splitSentences(seg.text) : [],
+      );
+      const game = ranked[e]?.game_title ?? script.game_title;
+      if (!moments[e]!.length || sentences.length !== moments[e]!.length) continue;
+      const marked = markGameMaps(moments[e]!, sentences, game);
+      if (!marked.added.length) continue;
+      const staged = await stageGameMaps(marked.moments, dir, path.join(s.cfg.dataDir, "gamemaps"), { before: moments[e] });
+      moments[e] = staged.moments;
+      await logEvent(s.db, ep.id, "game_maps", { entry: e, game, added: marked.added, failed: staged.failed }).catch(() => undefined);
+    }
+  }
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the cutscenes' own sound goes into their clips and
   // the long render's game-sound envelope plays it (under the voice, up in long pauses, silent under a quote).
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -11635,6 +12844,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           underGain: GAME_UNDER,
           trailers: s.cfg.gameAudioTrailers,
           trailerVoice: s.cfg.trailerQuotes,
+          sfxStems: s.cfg.gameSfxStems,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -11979,7 +13189,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // Named details written in the pictures (src/assets/ocr.ts): a sign or shop front the narrator names gets
   // a hand-drawn circle or arrow from the long video's camera (LONG_CAMERA detail). Once per video.
-  const docCamera = craft.camera;
+  // The orbit needs its own switch: the depth camera's maps (PARALLAX_DEEP) must not start orbits on their own.
+  const docCamera = s.cfg.depthOrbit ? craft.camera : craft.camera.filter((t) => t !== "orbit");
   if (docCamera.length && hasMoments && !assets.textDetails) {
     assets.textDetails = !docCamera.includes("detail")
       ? []
@@ -12144,6 +13355,48 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   );
   if (strand)
     await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+  // PACKAGING_PANEL (src/panel/packagingpanel.ts), long videos: the factory's own title candidates (the Packaging Lab's
+  // top five when it is on, else the current title and its variants) and thumbnail words, read blind by the audience
+  // critic among reference titles when data/frontier/reference_titles.json exists. "check" records its order beside the
+  // factory's choice; "on" uses its first choice among our own (never a reference), held to the strand's frame. Before
+  // the designs, so the thumbnails carry the words it chose. A failure leaves the packaging as it was.
+  const packagingMode = s.cfg.packagingPanel;
+  if (packagingPanelRuns(packagingMode, { long: true, script })) {
+    const model = packagingAtLeast(s.cfg.packaging, "score") ? loadModel(s.cfg.dataDir) : undefined;
+    const lab = model
+      ? rankTitles(model, script, s.cfg.packaging.candidates)
+          .filter((r) => r.clarity.ok)
+          .slice(0, 5)
+          .map((r) => ({ text: r.text, origin: r.origin }))
+      : undefined;
+    const game = script.why_died?.game ?? script.game_title;
+    const panel = await runPackagingPanel({
+      script,
+      mode: packagingMode,
+      episodeId: ep.id,
+      candidates: packagingCandidates(script, lab),
+      references: loadReferenceTitles(s.cfg.dataDir),
+      read: (content) => readPackaging(s.llm, content),
+      ...(strand
+        ? {
+            eligible: {
+              // The guide's plan fixes its title: only its thumbnail words may move.
+              title: (t: string) => strand !== "guide" && !strandTitleProblems(strand, t, game).length,
+              thumb: (t: string) => strandThumbWords(strand, t) === t,
+            },
+          }
+        : {}),
+    }).catch((err) => {
+      log("warn", "packaging panel failed; the packaging stands", { episode: ep.id, error: errorMessage(err) });
+      return undefined;
+    });
+    if (panel) {
+      script.youtube = panel.script.youtube;
+      script.packaging_panel = panel.record;
+      await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(script)]);
+      await logEvent(s.db, ep.id, "packaging_panel", packagingPanelEvent(panel.record)).catch(() => undefined);
+    }
+  }
   const footageCredit = clips.length
     ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
     : "";
@@ -12444,6 +13697,56 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   // The render runs past the narration's tail by the end card; the plan and the chapter marks do not change.
   const renderSeconds = duration + (endCard ? END_CARD_SECONDS : 0);
+  // MENTION_* (src/assets/mentions.ts): the mention insets' pictures, found once for the kinds switched on, from what
+  // the narration actually says; the composition fits them around its own sentence graphics (Long.tsx).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !mentionsCover(assets.mentions, kinds)) {
+      const input = mentionInputOf({ dir, kinds, script: script as never, story: ep.story_json as never, assets: assets as never });
+      input.spoken = words.map((w) => w.text).join(" ");
+      const items = await s.findMentions(input).catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
+  const longMentions = mentionPlacement(s.cfg, assets.mentions, words, { fps: 30, totalFrames: Math.round(renderSeconds * 30) }, "long");
+  // BLENDER_SCENES (src/render/blender.ts): the PC renders original 3D for the reveals, breathers, charts, maps and
+  // the ending; whatever is not back in time keeps its flat graphic. Never stops the video.
+  let blenderFiles: BlenderClip[] = [];
+  if (s.cfg.blender.on) {
+    try {
+      const plan3d = planBlender({
+        episodeId: ep.id,
+        documentary: doc,
+        segments,
+        windows: hasMoments
+          ? momentWindows(segments, words, moments.map((m) => m.length), moments.map((e) => e.map(momentKeys)))
+          : [],
+        graphicOf: (e, m) =>
+          (assets.quietMoments ?? []).includes(`${e}:${m}`) ? undefined : moments[e]?.[m]?.graphic,
+        breaks: assets.breaks,
+        images: images.map((i) => ({ file: i.file, kind: i.kind, beatIndex: i.beatIndex })),
+        entryOf: (i) => entryOf(segments, i),
+        durationSeconds: renderSeconds,
+        narrationEnd: words.length ? words[words.length - 1]!.end : duration,
+        settings: s.cfg.blender,
+        titleDrop: craft.titleDrop,
+      });
+      if (plan3d.length) {
+        blenderFiles = await fetchBlenderClips(plan3d, s.cfg.blender, dir);
+        await logEvent(s.db, ep.id, "blender_clips", {
+          planned: plan3d.map((r) => ({ scene: r.scene, at: Math.round(r.at), key: r.key })),
+          made: blenderFiles.length,
+        }).catch(() => undefined);
+      }
+    } catch (err) {
+      log("warn", "3D clips skipped", { episode: ep.id, error: errorMessage(err) });
+      blenderFiles = [];
+    }
+  }
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -12488,11 +13791,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         segments,
         words,
         durationSeconds: renderSeconds,
+        ...(blenderFiles.length ? { blenderFiles } : {}),
         // The documentary bookends (src/render/bookends.ts): the signature opening's line and the end card.
         // A weekly guide opens on its subject: no cold open with the mark (upgrade queue item 18).
         coldOpenLine: craft.coldOpen && !isWeeklyGuide(ep.factcheck_json) ? coldOpenLine(script.hook) : undefined,
     // The structure devices (src/render/structure.ts), each behind its setting, for every long format.
     codeScenes: s.cfg.codeScenes,
+    // GAME_LOOK (src/render/gamelook.ts): the graphics in the game's own look where it has a style profile.
+    gameLook: s.cfg.gameLook,
     titleDrop: craft.titleDrop,
     chapterIndex: craft.chapterIndex,
     loops: docLoops,
@@ -12509,11 +13815,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         musicFile,
         // SIGNATURE_MUSIC: documentaries open on the docs sting, lead with its bed and rise into chapters.
         signature: s.cfg.signatureMusic && doc ? signatureFor(SIGNATURE_LIBRARY, "docs") : undefined,
+        // ACE_BEDS: Pulse's own era and genre beds join the music plan's choice (src/render/acebeds.ts).
+        extraBeds: s.cfg.aceBeds ? aceExtraBeds(ACE_LIBRARY) : undefined,
         imageFiles: images,
         clipFiles: clips,
         plan,
         renderDate: s.now().toISOString().slice(0, 10),
-        quoteFiles: quoteRenderFiles(assets),
+        quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
+        ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
         breaks: assets.breaks,
         quietBreaks: assets.quietBreaks,
         palette: assets.palette,
@@ -12527,6 +13836,15 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     // Photos and portraits as instant prints, tape, pins, trays and screens; screenshots in the display
     // of their day (src/render/photoplan.ts).
     photoTreatments: s.cfg.photoTreatments,
+    // The depth craft (src/depthstep.ts), each behind its own switch: the subject pop-out, the 3D boxes and the
+    // depth camera (SUBJECT_POP, BOX_3D, PARALLAX_DEEP).
+    subjectPop: s.cfg.subjectPop,
+    box3d: s.cfg.box3d,
+    parallaxDeep: s.cfg.parallaxDeep,
+    // The research devices (src/render/boldideas.ts), each behind its own switch.
+    chapterWall: s.cfg.chapterWall,
+    depthType: s.cfg.depthType,
+    compareWipe: s.cfg.compareWipe,
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
@@ -12926,9 +14244,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     ];
     for (const [name, thumb] of rendered) {
       const t = thumb as { layout?: string; fgFile?: string | null; imageFile?: string | null };
-      let problems: string[] = [];
-      if (t.layout === "poster" && ruled.length)
-        problems = await posterProblems(path.join(dir, name), thumb as never);
+      // The design itself under the rule (19 Nov 2026 review): words that repeat the title, more than three
+      // pictures, lines too small to read at 168x94, words cut off.
+      let problems: string[] = s.cfg.thumbHeroRule
+        ? designProblems(thumb as Record<string, unknown>, script, motif?.id)
+        : [];
+      if (t.layout === "poster")
+        problems = [...problems, ...(await posterProblems(path.join(dir, name), thumb as never))];
       // Any older design that draws a depth cut-out must keep the face whole, rule or no rule.
       else if ((t.layout === "hero" || t.layout === "depth") && t.fgFile && t.imageFile) {
         const face = await heroLook(path.join(dir, t.imageFile));
@@ -13091,10 +14413,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       throw new Error(`every-game pictures not fit to render: ${era.problems[0]}`);
   }
   if (await belowMediaFloor(s, ep, assets)) return;
+  // EXPLAINERS (src/explainerstep.ts): lines that explain how something works get an animated explainer, once.
+  await shortExplainersStep(s, ep, script, assets, dir);
   const duration = (assets.durationSeconds ?? 30) + TAIL_SECONDS;
   const words = assets.words ?? [];
   const segments = buildSegments(
-    segmentInputs(script, Boolean(assets.desk)),
+    // Switched off, explainers kept from an earlier render are not drawn.
+    segmentInputs(explainersOn(s.cfg.explainers, "short") ? script : { ...script, explainers: undefined }, Boolean(assets.desk)),
     words,
     duration,
   );
@@ -13107,6 +14432,28 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   let musicFile: string | null = s.cfg.musicBed
     ? chooseBed(s.cfg.dataDir, BEDS.map((b) => b.file), { ep: ep.id, lane: "short", seed: bedSeed(ep.id) })
     : null;
+  // ACE_BEDS (src/render/acebeds.ts): a Short about an old game, Vice City or a fantasy world plays an era or genre bed:
+  // Pulse's own ACE beds of that mood with the house mood beds of the same mood, by the same rotation (none of the last
+  // few Shorts' beds while the pool allows, else the one heard longest ago). A Short whose series has its own sting
+  // keeps the series music (SIGNATURE_MUSIC below), so no ACE bed is chosen for it.
+  const seriesSting =
+    s.cfg.signatureMusic &&
+    !!signatureFor(SIGNATURE_LIBRARY, signatureSeriesOf({ series: seriesTagFor(ep, script) ?? script.series ?? ep.story_json?.series }))?.sting;
+  const aceMood =
+    s.cfg.aceBeds && musicFile && !seriesSting
+      ? aceShortMood(
+          {
+            text: [script.headline, ...segments.map((g) => g.text)].join(" "),
+            year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+          },
+          ACE_LIBRARY,
+        )
+      : undefined;
+  if (aceMood) {
+    const pool = [...acePool(aceMood, ACE_LIBRARY), ...MOOD_BEDS[aceMood].map((b) => b.file)];
+    musicFile = chooseBed(s.cfg.dataDir, pool, { ep: ep.id, lane: "short", seed: bedSeed(ep.id) }) ?? musicFile;
+    await logEvent(s.db, ep.id, "ace_bed", { mood: aceMood, bed: musicFile }).catch(() => undefined);
+  }
   // Blurred plates sit behind framed footage; made once per asset, idempotent on retry.
   for (const img of assets.images ?? [])
     if (!img.blurFile)
@@ -13182,6 +14529,37 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     for (const i of todo) {
       const a = coverWorth(scores.get(path.join(dir, i.file)));
       if (a !== undefined) i.aesthetic = a;
+    }
+  }
+  // MATCH_SEMANTIC (src/semantic/stills.ts): a still nobody tagged for a line is tagged for the beat it clearly shows,
+  // so "a phone app that delivers your car" is no longer shown over a controller. Fresh plans only, rankings excluded
+  // (their art belongs to its entry); a still the model is unsure of stays in turn as before.
+  if (s.cfg.semantic.enabled && !assets.plan && !script.entries?.length && (assets.images ?? []).length) {
+    const got = await pinShortStills(
+      embedderFor(s.cfg.dataDir, s.cfg.semantic),
+      dir,
+      assets.images ?? [],
+      (script.beats ?? []).map((b) => ({
+        text: b.narration,
+        note: [b.footage?.want, ...(b.footage?.keywords ?? [])].filter(Boolean).join(", "),
+      })),
+      { ...s.cfg.semantic, background: await backgroundFor(s.cfg.dataDir, s.cfg.semantic, script.game_title ?? "") },
+    ).catch((err): ShortPins => {
+      log("warn", "semantic: Short stills not pinned", { episode: ep.id, error: errorMessage(err) });
+      return { pins: [], offTopic: [] };
+    });
+    if (got.pins.length)
+      await logEvent(s.db, ep.id, "semantic_pins", {
+        pins: got.pins.map((p) => ({ file: assets.images![p.image]!.file, beat: p.beat, score: p.score })),
+      }).catch(() => undefined);
+    // Stills about something else than every line (a controller press shot under a story about a phone app) go while
+    // at least four other pictures are left, like lettered art above.
+    const keep = (assets.images ?? []).filter((_, i) => !got.offTopic.includes(i));
+    if (got.offTopic.length && keep.length >= 4) {
+      await logEvent(s.db, ep.id, "semantic_offtopic_dropped", {
+        files: got.offTopic.map((i) => assets.images![i]!.file),
+      }).catch(() => undefined);
+      assets.images = keep;
     }
   }
   // SHORT_OPEN_FOOTAGE (src/openingstep.ts): frame one is the game's own moving footage, cut out and tagged for the hook.
@@ -13276,6 +14654,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     });
   let plan = assets.plan ?? buildPlan(planInput);
   let rubric = rubricFor(plan);
+  // SHOT_PLAN_PANEL (src/planpanelstep.ts, off by default): a blind picture editor critic reads the plan as text before
+  // any render; under "on" up to three plans from the same media are marked and the best kept. A red plan is never
+  // kept, so the rebuild below and every later gate see the panel's plan exactly as they would any other.
+  if (!assets.plan && s.cfg.shotPlanPanel !== "off") {
+    plan = await planPanelStep(s, ep, {
+      assets,
+      script,
+      words,
+      segments,
+      input: planInput,
+      plan,
+      rubric: rubricFor,
+      segmentsOf: segmentInputs,
+      gameAudio: { on: gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json)) },
+    });
+    rubric = rubricFor(plan);
+  }
   if (rubric.grade === "red" && !assets.plan) {
     log("warn", "plan rejected by rubric, rebuilding", {
       episode: ep.id,
@@ -13425,6 +14820,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "signature_music", { series: id, sting: sig.sting, bed: musicFile });
     }
   }
+  // ACE_BEDS: the Pulse ident on the opening sting, in the bed's key (src/render/acebeds.ts); a series sting stays.
+  if (s.cfg.aceBeds) {
+    const ident = aceIdent(ACE_LIBRARY, bedSeed(ep.id));
+    if (ident) plan.sfx = withIdent(plan.sfx, sfxFile(SFX.sting), sfxFile(ident.sting));
+  }
   // RETENTION_DIRECTOR (src/retentionstep.ts): the retention model's predicted curve for this plan, its weakest moments
   // and, under "fix", the safe fixes (fresh footage for stills, the strongest picture first, shorter card text), before
   // the first-seconds check and the render, so no re-render is ever needed. Off by default; never throws.
@@ -13469,6 +14869,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
       throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
     }
+    if (verdict === "hold" && s.cfg.shortFootageWait && (await waitForYouTube(s, ep, assets))) return;
     if (verdict === "hold") {
       const why = `"${script.headline}" is held: no moving footage of ${script.game_title} on screen (footage share ${Math.round(footageShare * 100)}%${opening?.ok === false ? `, no footage to open on: ${opening.why ?? "none"}` : ""}) although footage of the game exists. The slot goes to the next ready Short.`;
       await s.notify({ level: "info", content: `🎞️ ${why}` });
@@ -13476,6 +14877,33 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
+  // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
+  const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
+  const blender3d = await shortBlenderStep({
+    cfg: s.cfg,
+    episodeDir: dir,
+    segments,
+    now: s.now(),
+    slotAt: ep.slot_at,
+    state: blenderState,
+    probe: probeMedia,
+    fps: plan.fps,
+  });
+  if (blender3d.verdict === "wait") {
+    (assets as { shortBlender?: ShortBlenderState }).shortBlender = blender3d.state;
+    await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [
+      ep.id,
+      JSON.stringify(assets),
+      blender3d.retryAt,
+    ]);
+    if (!blenderState) await logEvent(s.db, ep.id, "short_blender_wait", { until: blender3d.retryAt.toISOString(), keys: blender3d.state.keys }).catch(() => undefined);
+    return;
+  }
+  // The wait is over (clips back, or not to be had): a later re-render never resumes it.
+  if (blenderState) delete (assets as { shortBlender?: ShortBlenderState }).shortBlender;
+  if (blender3d.asked)
+    await logEvent(s.db, ep.id, "short_blender", { asked: blender3d.asked, made: blender3d.clips.length }).catch(() => undefined);
   // How much of the narration has something chosen for its own words on screen (src/qa/mediarich.ts): measured
   // on every Short and kept in qa_json; under SHORT_MEDIA_RICH_TARGET it is a line in the evening summary.
   // The long videos' craft on the new-look Shorts (src/shortcraftstep.ts): planned once, stored on the plan.
@@ -13592,6 +15020,26 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       }
       log("info", "short depth layers", { ep: ep.id, wanted: want.length, made: made.size });
     }
+    // PARALLAX_DEEP: the layered stills also get the depth camera's maps, painted from the background only.
+    if (s.cfg.parallaxDeep) {
+      const deep = assets.images
+        .filter((i) => i.layers && !i.layers.mesh && !i.wordy)
+        .slice(0, SHORT_DEPTH_MAX);
+      if (deep.length) {
+        const maps = await makeMeshes(
+          s.cfg.parallaxPython,
+          dir,
+          deep.map((i) => i.file),
+          undefined,
+          "pushpull",
+        );
+        for (const i of deep) {
+          const m = maps.get(i.file.split(path.sep).join("/"));
+          if (m && i.layers) i.layers.mesh = m;
+        }
+        log("info", "short depth camera maps", { ep: ep.id, wanted: deep.length, made: maps.size });
+      }
+    }
   }
   if (
     assets.suite &&
@@ -13618,6 +15066,21 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     !script.every_game
   )
     assets.people = await gatherPeople(s, ep.id, dir, script, assets.images ?? []);
+  // MENTION_* (src/assets/mentions.ts): the pictures behind the mention insets, found once for the kinds switched on
+  // (kept in assets, so a re-render shows the same pictures).
+  {
+    const kinds = mentionKinds(s.cfg);
+    if (kinds.length && s.findMentions && !script.every_game && !mentionsCover(assets.mentions, kinds)) {
+      const items = await s
+        .findMentions(mentionInputOf({ dir, kinds, script, story: ep.story_json as never, assets }))
+        .catch(() => []);
+      assets.mentions = { kinds, items };
+      await logEvent(s.db, ep.id, "mention_insets", {
+        kinds,
+        found: items.map((i) => ({ kind: i.kind, key: i.key, from: i.pictures.map((p) => p.sourceUrl) })),
+      }).catch(() => undefined);
+    }
+  }
   await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
     ep.id,
     JSON.stringify(assets),
@@ -13673,10 +15136,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tracklist = s.cfg.peopleInsets
     ? tracklistOf(script, segments, words, plan, people.map((p) => p.at))
     : undefined;
+  // MENTION_*: the mention insets on their words, scheduled once here so the audit and the render agree.
+  const mentions = mentionPlacement(s.cfg, assets.mentions, words, plan, "short", [
+    { from: 0, to: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames).hookEnd },
+  ]).slots;
   const gfxIn = () => ({
     ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean }),
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
   const gated = await graphicsGateShort(s, ep.id, gfxIn(), assets.gfxMuted ?? []);
   if (gated) {
@@ -13694,7 +15162,59 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     sting: false,
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
+    mentions,
   });
+  // The game collage card's place (cleanframe.ts stingPlacement), worked out once for the upgrades and the render.
+  const stingAt = assets.suite
+    ? (stingPlacement({
+        segments,
+        words,
+        fps: plan.fps,
+        totalFrames: plan.totalFrames,
+        names: (t) => namesGame(t, script.game_title),
+        pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
+      }) ?? null)
+    : undefined;
+  // SHORT_* upgrades (src/shortupgradestep.ts): the game map, depth type, orbit, compare wipe, look and 3D box,
+  // placed round every overlay the Short keeps. Mention insets of a place the map pins give way to it.
+  const shortLayoutNow = shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames);
+  const upgraded = await shortUpgradesFor({
+    cfg: s.cfg,
+    episodeDir: dir,
+    game: script.game_title,
+    segments,
+    words,
+    plan: { ...plan, scenes: plan.scenes ?? [] },
+    layout: shortLayoutNow,
+    images: (assets.images ?? []).map((i) => ({
+      kind: i.kind,
+      aspect: i.aspect,
+      wordy: i.wordy,
+      focusX: i.focusX,
+      beatIndex: i.beatIndex,
+      ...(depthArm === "depth" && i.layers
+        ? { layers: { ...i.layers, mesh: s.cfg.parallaxDeep ? i.layers.mesh : undefined } }
+        : {}),
+    })),
+    stamps: shownStamps,
+    kept: [
+      ...(shortClean ? arbitrate(entrySpans) : entrySpans),
+      ...(stingAt ? [{ key: "sting", kind: "sting", from: stingAt.from, to: stingAt.from + stingAt.frames }] : []),
+    ],
+    mentions,
+    blender: blender3d.clips,
+    isRumour: !!script.is_rumour,
+  }).catch((err) => {
+    log("warn", "Short upgrades skipped", { episode: ep.id, error: errorMessage(err) });
+    return undefined;
+  });
+  if (upgraded) {
+    mentions.splice(0, mentions.length, ...upgraded.mentions);
+    await logEvent(s.db, ep.id, "short_upgrades", {
+      devices: Object.keys(upgraded.upgrades).filter((k) => (upgraded.upgrades as Record<string, unknown>)[k]),
+      notes: upgraded.notes,
+    }).catch(() => undefined);
+  }
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -13712,6 +15232,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           gapLufs: s.cfg.gameAudioGapLufs,
           trailers: s.cfg.gameAudioTrailers,
           trailerVoice: s.cfg.trailerQuotes,
+          sfxStems: s.cfg.gameSfxStems,
         })
       : undefined;
   if (s.cfg.gameAudioBed)
@@ -13743,15 +15264,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       // The game collage card only on a line that names the game, held 2.5 s, never with hardware (cleanframe.ts).
       ...(assets.suite
         ? {
-            motifSting:
-              stingPlacement({
-                segments,
-                words,
-                fps: plan.fps,
-                totalFrames: plan.totalFrames,
-                names: (t) => namesGame(t, script.game_title),
-                pictures: (assets.images ?? []).filter((i) => i.aspect >= 1.2 && !isHardwareAsset(i)).length,
-              }) ?? null,
+            motifSting: stingAt ?? null,
           }
         : {}),
       // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
@@ -13791,7 +15304,14 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         ...(isHardwareAsset(i) ? { noCollage: true } : {}),
         // SHORT_PARALLAX: the depth layers made above; the long render's layers ride along only when it is on.
         ...(depthArm === "depth" && i.layers
-          ? { layers: { bg: i.layers.bg, mid: i.layers.mid, fg: i.layers.fg } }
+          ? {
+              layers: {
+                bg: i.layers.bg,
+                mid: i.layers.mid,
+                fg: i.layers.fg,
+                ...(s.cfg.parallaxDeep && i.layers.mesh ? { mesh: i.layers.mesh } : {}),
+              },
+            }
           : {}),
       })),
       clipFiles: (assets.clips ?? []).map((c) => ({
@@ -13823,9 +15343,11 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(ep.story_json.reply
         ? { reply: { handle: ep.story_json.reply.handle, text: ep.story_json.reply.card } }
         : {}),
-      quoteFiles: quoteRenderFiles(assets),
+      quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
+      ...(mentions.length ? { mentionFiles: mentions } : {}),
+      ...(upgraded && Object.keys(upgraded.upgrades).length ? { upgrades: upgraded.upgrades } : {}),
       ...(gameBed
         ? {
             gameBedFile: {
@@ -13873,7 +15395,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     // building up reads as a fault (ep_20261105_d8d0e098 at 0:05.3).
     times = shortSampleTimes(
       segments.map((g, i) =>
-        g.visual && g.visual.kind !== "none"
+        g.explainer || (g.visual && g.visual.kind !== "none")
           ? Math.max(
               g.start,
               cardWindow(segments, words, i, plan.fps, plan.totalFrames).from /
@@ -13890,20 +15412,23 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       headline: script.headline,
       gameTitle: script.game_title,
       narration: narrationOf(script),
-      cardTexts: segments.flatMap((g) =>
-        g.visual && g.visual.kind !== "none"
+      cardTexts: segments.flatMap((g) => [
+        ...(g.visual && g.visual.kind !== "none"
           ? [g.visual.primary, g.visual.secondary, ...(g.visual.items ?? [])].filter(
               (t): t is string => !!t,
             )
-          : [],
-      ),
+          : []),
+        // EXPLAINERS: the explainer's own words and its kicker are graphics, not burned-in text.
+        ...(g.explainer ? explainerTexts(g.explainer) : []),
+      ]),
     });
   }
   // GRAPHICS_FRAME_CHECK: each card at its settled frame, for text cut off, overlapping or unreadable. A faulted card
   // is remembered (assets.gfxMuted) so the retry's audit leaves it out.
   const frameProblems: string[] = [];
   if (tech.ok && s.cfg.visionQa && s.cfg.graphicsFrameCheck) {
-    const checked = cardCheckTimes(gfxIn());
+    // SHORT_* upgrades: never a card sampled under the map or the 3D podium (src/render/shortupgrades.ts).
+    const checked = checksClearOfUpgrades(cardCheckTimes(gfxIn()), upgraded?.upgrades, plan.fps);
     if (checked.length) {
       const gfxFrames = await s.extractFrames(final, path.join(dir, "qa", "gfx"), checked.map((c) => c.t));
       const look = await s.visionQa(gfxFrames, {
@@ -14029,6 +15554,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     );
     throw new Error(`QA failed: ${problems.join(" | ")}`);
   }
+  // FRAME_FOCUS (src/framefocusstep.ts, off by default): one frame per spoken line to the free local vision model, asking
+  // whether the line's subject is visible, large and centred. Recorded on assets.frame_focus; the video never changes and
+  // a failure or a slow model never fails or holds the episode (time-boxed inside the step).
+  if (s.cfg.frameFocus !== "off")
+    await frameFocusStep(s, ep, {
+      assets,
+      game: script.game_title,
+      segments,
+      duration,
+      video: final,
+      dir,
+    });
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,
@@ -14383,6 +15920,181 @@ export function choosePublishAt(
   return at;
 }
 
+/**
+ * PREMAKE_REFRESH: a held pre-made Short is made again when its game came out (or its story's date passed) after its
+ * media was gathered, or it is under half moving footage, and the slot leaves time (src/premakerefresh.ts). A remake
+ * back here is kept when it has at least the made video's footage, otherwise the made video is put back. True when
+ * the Short went back to be made again (this step is done for now).
+ */
+export async function premakeRefreshStep(s: Services, ep: Episode): Promise<boolean> {
+  const assets = (ep.assets_json ?? {}) as Record<string, unknown>;
+  const record = ep.assets_json?.premadeRefresh;
+  if (record?.state === "remaking") {
+    const verdict = remakeVerdict({
+      status: "approved",
+      now: s.now(),
+      slotAt: ep.slot_at!,
+      originalShare: record.share,
+      newShare: planFootageShare(ep.assets_json?.plan),
+    });
+    if (verdict.action === "restore") await restorePremade(s, ep, verdict.why);
+    else {
+      const { original: _drop, originalQa: _qa, ...kept } = record;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [
+        ep.id,
+        JSON.stringify({ ...assets, premadeRefresh: { ...kept, state: "done", outcome: verdict.why } }),
+      ]);
+      await logEvent(s.db, ep.id, "premake_refresh", { outcome: "kept", why: verdict.why }).catch(() => undefined);
+    }
+    return false;
+  }
+  if (record) return false;
+  const decision = premakeRefreshDecision({
+    now: s.now(),
+    slotAt: ep.slot_at!,
+    gatheredAt: ep.created_at ?? s.now().toISOString(),
+    launches: readLaunches(s.cfg.launchCalendarFile),
+    // The writer's game and the story's own hint (the run entry's game) both count.
+    game: [ep.script_json?.game_title, ep.story_json.gameHint].filter(Boolean).join(" | "),
+    headline: [ep.script_json?.headline, ep.story_json.headline].filter(Boolean).join(" | "),
+    keyDate: ep.story_json.why?.key_date,
+    plan: ep.assets_json?.plan,
+  });
+  if (!decision.refresh) return false;
+  const dir = episodeDir(s.cfg, ep.id);
+  const kept = await keepMadeFiles(dir);
+  if (!kept.video) return false;
+  const next = refreshAssets(assets, { at: s.now(), why: decision.why, share: decision.share, qa: ep.qa_json ?? undefined, ...kept });
+  if (!(await transition(s.db, ep.id, "approved", "voiced", { assets_json: next }))) return false;
+  await logEvent(s.db, ep.id, "premake_refresh", { outcome: "remaking", why: decision.why, share: decision.share }).catch(() => undefined);
+  log("info", "pre-made Short made again before upload", { id: ep.id, why: decision.why });
+  await s
+    .notify({
+      level: "info",
+      content: `🔁 The pre-made "${ep.script_json?.youtube?.title ?? ep.story_json.headline}" is being made again before it goes out: ${decision.why}. If the remake is not ready, or is worse, it goes out as made.`,
+    })
+    .catch(() => undefined);
+  return true;
+}
+
+/** Puts a pre-made Short's made video, poster, assets and quality record back (the remake failed, was worse or late). */
+async function restorePremade(s: Services, ep: Episode, why: string): Promise<boolean> {
+  const back = restoredAssets((ep.assets_json ?? {}) as Record<string, unknown>, why);
+  if (!back) return false;
+  if (!(await putMadeFilesBack(episodeDir(s.cfg, ep.id)))) {
+    log("warn", "pre-made Short: the made video is gone, the remake stays", { id: ep.id, why });
+    return false;
+  }
+  const qa = ep.assets_json?.premadeRefresh?.originalQa;
+  await s.db.query(
+    `UPDATE episodes SET status = 'approved', attempts = 0, next_attempt_at = NULL, last_error = NULL, updated_at = now(),
+            assets_json = $3${qa !== undefined ? ", qa_json = $4" : ""} WHERE id = $1 AND status = $2`,
+    [ep.id, ep.status, JSON.stringify(back), ...(qa !== undefined ? [JSON.stringify(qa)] : [])],
+  );
+  await logEvent(s.db, ep.id, "premake_refresh", { outcome: "restored", why }).catch(() => undefined);
+  log("info", "pre-made Short goes out as made", { id: ep.id, why });
+  return true;
+}
+
+/**
+ * SHORT_FOOTAGE_WAIT: a Short the footage gate would hold while the anonymous YouTube lane is paused (or was, during its
+ * gather) waits for the pause to lift and gathers again from nothing, once. A slot it would miss goes to the next ready
+ * Short and it becomes a spare for the next empty one. True when it was set to wait (src/premakerefresh.ts).
+ */
+async function waitForYouTube(s: Services, ep: Episode, assets: EpisodeAssets): Promise<boolean> {
+  // A pre-made Short being made again fails as before, so the made video goes back and keeps its slot.
+  if (assets.premadeRefresh?.state === "remaking") return false;
+  const pause = await s.youtubePause?.().catch(() => undefined);
+  const now = s.now().getTime();
+  const plan = footageWaitPlan({
+    now,
+    blockUntil: pause?.until,
+    // The pause ended within the last hour: the gather that just ran most likely met it.
+    metPause: Boolean(pause?.until && pause.until > now - 3_600_000),
+    waitedBefore: Boolean(assets.footageWait),
+  });
+  if (!plan.wait) return false;
+  // A slot it would miss can only be made up as a spare, and spares go out only for Why and launch run Shorts with a
+  // run file (fillSpareGaps); anything else is held as before.
+  const loses = Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < plan.at.getTime() + 45 * 60_000);
+  if (loses && !canBeSpare(s, ep)) return false;
+  await requeueForFootage(s, ep, assets as Record<string, unknown>, plan.at, "YouTube downloads were paused while its footage was gathered");
+  await s
+    .notify({
+      level: "info",
+      content: `🎞️ "${ep.script_json?.headline ?? ep.story_json.headline}" has no moving footage only because YouTube downloads are paused; it gathers again after ${plan.at.toISOString().slice(11, 16)} UTC${ep.slot_at && new Date(ep.slot_at).getTime() < plan.at.getTime() + 45 * 60_000 ? " and waits as a spare for the next empty slot (its own slot goes to the next ready Short)" : ""}.`,
+    })
+    .catch(() => undefined);
+  return true;
+}
+
+/** Whether a Short may wait as a spare: a Why or launch run Short while a run file fills empty slots (fillSpareGaps). */
+const canBeSpare = (s: Services, ep: Episode): boolean =>
+  Boolean(s.cfg.shortRunFile) && (Boolean(ep.story_json.why) || Boolean(ep.story_json.run));
+
+/**
+ * Back to "voiced" with the gathered media dropped, gathering at `at`; a slot it cannot make (or, with `spare`, any
+ * slot: a held Short's slot may have gone to another Short since) goes and it waits as a spare.
+ */
+async function requeueForFootage(s: Services, ep: Episode, assets: Record<string, unknown>, at: Date, why: string, spare = false): Promise<void> {
+  const loseSlot = spare || Boolean(ep.slot_at && new Date(ep.slot_at).getTime() < at.getTime() + 45 * 60_000);
+  const story = loseSlot ? { ...ep.story_json, spare: ep.story_json.spare ?? {} } : ep.story_json;
+  await s.db.query(
+    `UPDATE episodes SET status = 'voiced', attempts = 0, last_error = NULL, next_attempt_at = $2, updated_at = now(),
+            assets_json = $3, story_json = $4${loseSlot ? ", slot_at = NULL" : ""} WHERE id = $1 AND status = $5`,
+    [ep.id, at, JSON.stringify(footageRetryAssets(assets, { at: s.now(), why })), JSON.stringify(story), ep.status],
+  );
+  await logEvent(s.db, ep.id, "footage_wait", { until: at.toISOString(), why, spare: loseSlot }).catch(() => undefined);
+  log("info", "Short waits for YouTube to gather footage again", { id: ep.id, at: at.toISOString(), spare: loseSlot });
+}
+
+/**
+ * SHORT_FOOTAGE_WAIT for Shorts the footage gate already held: a Why or evergreen Short held for no moving footage in the
+ * last FOOTAGE_RETRY_DAYS days is tried once more, from nothing, as a spare, once the anonymous YouTube lane is open
+ * (17 Nov 2026: two Shorts held only because every fetch met the bot-check pause). One a tick.
+ */
+export async function retryFootageHolds(s: Services): Promise<string | undefined> {
+  const pause = await s.youtubePause?.().catch(() => undefined);
+  const now = s.now();
+  if (pause?.until && pause.until > now.getTime()) return undefined;
+  const rows = await s.db.query<Episode>(
+    `SELECT * FROM episodes WHERE status = 'failed' AND updated_at > $1::timestamptz - make_interval(days => $2)
+        AND assets_json ? 'audio' AND NOT (assets_json ? 'footageWait') AND last_error LIKE 'QA held:%'
+      ORDER BY updated_at DESC`,
+    [now, FOOTAGE_RETRY_DAYS],
+  );
+  // Only Shorts that can wait as a spare: a failed Short's slot is free for others, so it never takes it back.
+  const ep = rows.find((e) => isFootageHold(e.last_error) && canBeSpare(s, e));
+  if (!ep) return undefined;
+  await requeueForFootage(s, ep, (ep.assets_json ?? {}) as Record<string, unknown>, now, "held for no moving footage while YouTube downloads were paused; tried once more", true);
+  await s
+    .notify({
+      level: "info",
+      content: `🎞️ "${ep.script_json?.headline ?? ep.story_json.headline}" was held for no moving footage while YouTube downloads were paused. It is gathering again now and waits as a spare for the next empty slot.`,
+    })
+    .catch(() => undefined);
+  return ep.id;
+}
+
+/**
+ * Every remaking pre-made Short not back at approval: the made video goes back when the remake failed or is not ready
+ * PREMAKE_FALLBACK_MINUTES before the slot (src/premakerefresh.ts remakeVerdict). Runs each tick.
+ */
+export async function settlePremakeRefreshes(s: Services): Promise<number> {
+  const rows = await s.db.query<Episode>(
+    `SELECT * FROM episodes WHERE assets_json->'premadeRefresh'->>'state' = 'remaking'
+        AND status NOT IN ('approved','uploading','uploaded','published','rejected') AND slot_at IS NOT NULL`,
+  );
+  let n = 0;
+  for (const ep of rows) {
+    const record = ep.assets_json?.premadeRefresh;
+    if (!record) continue;
+    const verdict = remakeVerdict({ status: ep.status, now: s.now(), slotAt: ep.slot_at!, originalShare: record.share });
+    if (verdict.action === "restore" && (await restorePremade(s, ep, verdict.why))) n++;
+  }
+  return n;
+}
+
 async function stepApproved(s: Services, ep: Episode): Promise<void> {
   // A spare from the launch run waits, approved and checked, until a slot would go out empty (fillSpareGaps).
   if (ep.story_json.spare && !ep.slot_at) {
@@ -14396,13 +16108,15 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   // RUN_PREMAKE_UPLOAD_HOURS before the slot, so a slot moved by the 03:00 rule or a late correction never meets a
   // video already scheduled, and nothing that spaces uploads sees a publish time days out.
   if (ep.story_json.premade && ep.slot_at) {
+    // PREMAKE_REFRESH (src/premakerefresh.ts): made again first when its game came out since, or it is short of footage.
+    if (s.cfg.premakeRefresh && (await premakeRefreshStep(s, ep))) return;
     const holdUntil = new Date(
       new Date(ep.slot_at).getTime() - s.cfg.runPremakeUploadHours * 3600_000,
     );
     if (holdUntil > s.now()) {
       await s.db.query(`UPDATE episodes SET next_attempt_at = $2 WHERE id = $1`, [
         ep.id,
-        holdUntil,
+        premakeNextLook(holdUntil, s.now(), s.cfg.premakeRefresh && !ep.assets_json?.premadeRefresh),
       ]);
       return;
     }
@@ -14627,6 +16341,11 @@ export function reviewerPackFor(cfg: Pick<Config, "reviewerPack" | "siteUrl" | "
   return cfg.reviewerPack && siteBase ? { siteBase } : undefined;
 }
 
+/** Owner rule: never an em dash in anything public (19 Nov 2026: a writer's "Steam News — https://..." reached a
+ * description). Before a link it becomes a colon, elsewhere a comma; a spaced en dash is treated the same. */
+export const noDash = (s: string): string =>
+  s.replace(/[ 	]*(?:—|[ 	]–)[ 	]*(?=https?:)/g, ": ").replace(/[ 	]*(?:—|[ 	]–[ 	])[ 	]*/g, ", ");
+
 export function videoMetadata(
   ep: Episode,
   privacy: Config["youtubePrivacy"],
@@ -14787,8 +16506,8 @@ export function videoMetadata(
   );
   return {
     // A launch-run Why keeps the title the run planned (story_json.why.title), word for word.
-    title: ep.story_json.why?.title?.trim() || polishTitle(script),
-    description,
+    title: noDash(ep.story_json.why?.title?.trim() || polishTitle(script)),
+    description: noDash(description),
     tags: [
       ...new Set([
         ...buildTags(script).slice(0, 2),
@@ -14940,6 +16659,44 @@ async function stepUpload(s: Services, ep: Episode): Promise<void> {
         youtube_video_id: existing,
       });
       await logEvent(s.db, ep.id, "upload_adopted", { videoId: existing });
+      return;
+    }
+  }
+  // A time word checked again at upload, against the moment it goes public, for every Short (scheduled or going
+  // out now): one written days earlier, or from a day-old article, can still say "before launch" after launch (two
+  // did on 19 Nov 2026). Only the owner's approval of a draft this check already held lets it through unchanged.
+  {
+    const now = s.now();
+    const airs =
+      ep.publish_at && new Date(ep.publish_at).getTime() > now.getTime()
+        ? new Date(ep.publish_at)
+        : now;
+    const late = airTimeProblems(publicText(ep.script_json!), airs);
+    const ownerPassed =
+      late.length > 0 &&
+      ep.approved_by === "human" &&
+      (
+        await s.db.query(
+          `SELECT 1 FROM events WHERE episode_id = $1 AND kind = 'stale_review' AND detail ? 'reason' LIMIT 1`,
+          [ep.id],
+        )
+      ).length > 0;
+    if (late.length && !ownerPassed) {
+      await transition(s.db, ep.id, "uploading", "awaiting_approval", {
+        approval_mode: "manual",
+        approval_requested_at: now,
+        publish_at: null,
+        upload_session_uri: null,
+      });
+      const links = approvalLinks(s.cfg, ep.id);
+      await logEvent(s.db, ep.id, "stale_review", {
+        planned: ep.publish_at ?? null,
+        reason: late[0],
+      });
+      await s.notify({
+        content: `⏳ "${ep.script_json!.youtube.title}" was held before upload: ${late[0]} It stays unpublished unless you approve it.
+▶️ [Watch](${links.preview}) · ✅ [Approve](${links.approve}) · ❌ [Reject](${links.reject})`,
+      });
       return;
     }
   }
@@ -15856,6 +17613,14 @@ export async function tick(
     await fillSpareGaps(s).catch((err) =>
       log("warn", "spare gap fill failed", { error: errorMessage(err) }),
     );
+    if (s.cfg.premakeRefresh)
+      await settlePremakeRefreshes(s).catch((err) =>
+        log("warn", "pre-made remake check failed", { error: errorMessage(err) }),
+      );
+    if (s.cfg.shortFootageWait)
+      await retryFootageHolds(s).catch((err) =>
+        log("warn", "footage hold retry failed", { error: errorMessage(err) }),
+      );
     await docUploadLate(s).catch((err) =>
       log("warn", "documentary deadline check failed", { error: errorMessage(err) }),
     );

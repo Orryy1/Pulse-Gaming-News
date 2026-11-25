@@ -35,6 +35,8 @@ const RunWhySchema = z.object({
   make_at: z.string().datetime({ offset: true }).optional(),
   /** False: never pre-made (a topic that needs launch-day sources); made in the slot's usual lead time. */
   premake: z.boolean().optional(),
+  /** The story's own date (a launch, a showcase): pre-made before it, the Short is made again once it passes (PREMAKE_REFRESH). */
+  key_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 export type RunWhy = z.infer<typeof RunWhySchema>;
 

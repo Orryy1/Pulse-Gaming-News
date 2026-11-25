@@ -31,6 +31,7 @@ import type { Segment } from "./timeline.ts";
 import type { RenderPlan } from "./plan.ts";
 import { keyTime } from "./longplan.ts";
 import { isEntryCard } from "./rankcard.ts";
+import { shortExplainer } from "./components/explainers/ground.ts";
 import { V_STYLES } from "./components/vertical/index.ts";
 import type { VGfxProps } from "./components/vertical/types.ts";
 import { storyYearOf } from "./components/vertical/pulse/map.ts";
@@ -181,6 +182,9 @@ export function cardWindow(
       : Math.round(segments[i + 1]!.start * fps);
   // A rank card is what the viewer came to read: it stays from the start of its entry to the start of the next.
   if (isEntryCard(s)) return { from: start, len: Math.max(1, end - start) };
+  // EXPLAINERS: an explainer explains the whole line, so it stays from just before its first item to the line's end.
+  const shown = shortExplainer(s.explainer, words as Array<{ text: string; start: number }>, { start, end }, fps);
+  if (shown) return shown;
   const v = s.visual;
   // GRAPHICS_AUDIT moved or held the card (src/qa/gfxaudit.ts): drawn exactly there.
   if (v?.span) return spanWindow(v.span, fps, totalFrames);

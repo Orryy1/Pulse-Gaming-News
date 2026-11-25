@@ -15,6 +15,7 @@ import { WORLD } from "./worldmap.ts";
 import { placeFor, type Place } from "../places.ts";
 import { useStage } from "./DocGraphics.tsx";
 import { COLOUR } from "../brand.ts";
+import { useLook, withAlpha } from "../gamelook.ts";
 import { BODY, DISPLAY } from "./fonts.ts";
 import { SPRING } from "../motion.ts";
 import { displayText } from "../timeline.ts";
@@ -84,6 +85,8 @@ const ease = (t: number) =>
 
 export const MapMoment: React.FC<GfxProps> = ({ g, len }) => {
   const { frame, fps, showFor, dim, visible } = useStage(len, 210);
+  // GAME_LOOK: pins and rules take the game's accent (Pulse amber when the look is off).
+  const { accent } = useLook();
   const places = useMemo(() => mapPlaces(g.items), [g.items]);
   const end = useMemo(
     () => (places.length ? target(places) : undefined),
@@ -292,7 +295,7 @@ export const MapMoment: React.FC<GfxProps> = ({ g, len }) => {
                 width: 120,
                 height: 120,
                 borderRadius: 60,
-                border: `3px solid ${COLOUR.amber}`,
+                border: `3px solid ${accent}`,
                 transform: `scale(${0.2 + pulse * 0.8})`,
                 opacity: (1 - pulse) * 0.7 * s,
               }}
@@ -305,10 +308,10 @@ export const MapMoment: React.FC<GfxProps> = ({ g, len }) => {
                 width: 26,
                 height: 26,
                 borderRadius: 13,
-                background: COLOUR.amber,
+                background: accent,
                 border: "4px solid #fff",
                 boxShadow:
-                  "0 6px 18px rgba(0,0,0,0.6), 0 0 24px rgba(255,107,26,0.8)",
+                  `0 6px 18px rgba(0,0,0,0.6), 0 0 24px ${withAlpha(accent, 0.8)}`,
                 opacity: Math.min(1, s * 2),
               }}
             />
@@ -319,8 +322,8 @@ export const MapMoment: React.FC<GfxProps> = ({ g, len }) => {
                 ...(right ? { left: x + 30 } : { right: W - x + 30 }),
                 padding: "10px 20px 10px 18px",
                 background: "rgba(8,12,20,0.82)",
-                borderLeft: right ? `6px solid ${COLOUR.amber}` : undefined,
-                borderRight: right ? undefined : `6px solid ${COLOUR.amber}`,
+                borderLeft: right ? `6px solid ${accent}` : undefined,
+                borderRight: right ? undefined : `6px solid ${accent}`,
                 borderRadius: 6,
                 fontFamily: BODY,
                 fontWeight: 900,
@@ -354,7 +357,7 @@ export const MapMoment: React.FC<GfxProps> = ({ g, len }) => {
             style={{
               width: 90,
               height: 7,
-              background: COLOUR.amber,
+              background: accent,
               marginBottom: 18,
             }}
           />

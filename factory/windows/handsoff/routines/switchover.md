@@ -78,3 +78,12 @@ And add at the start of EACH RUN: "0. If D:\pulse-data\handsoff\merge-gate\pendi
 Scheduled Claude sessions per day for Pulse, before (25 Nov) and a week after: hourly watch 24 -> fix sessions (shadow
 estimate in the report; cap 6), director + sprint 2 -> 1, QA review 1/week -> folded into the weekly review, Studio
 routines 7/day -> about 7 short NONE runs plus the ones with work.
+
+## Known limits (from the code review, left on purpose)
+
+- The stage worktree the gate merges into lives in a Claude session scratchpad
+  (C:\Users\MORR\AppData\Local\Temp\claude\...\scratchpad\stage). It is shared with other routines, so it was not moved;
+  the gate refuses cleanly if it is missing or not on claude/stage, and MERGE_GATE_STAGE points it elsewhere.
+- An approved Short whose slot passed without upload is not flagged as stuck (approved Shorts wait for slots and gaps
+  by design); the missed-slot check catches the empty slot instead.
+- The PC watchdog's own task entries (exit 0x41306) come through as pc: faults; that noise is the watchdog's.

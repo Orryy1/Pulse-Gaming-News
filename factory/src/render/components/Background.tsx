@@ -24,6 +24,9 @@ import {
 import { BANDS, CREDIT_TOP, SAFE, WIDTH } from "../layout.ts";
 import { BODY } from "./fonts.ts";
 import { FILL_LABEL } from "../../gpuvis/label.ts";
+
+/** FILL_FRAME's label in a Short: under the hero band (the original spans y 360 to about 968), above the captions. */
+const FILL_LABEL_TOP = 990;
 import { CrtLook, VhsLook } from "./Retro.tsx";
 import { ShotCamera } from "./CameraMoves.tsx";
 import { VPhotoShot } from "./vertical/craft.tsx";
@@ -303,10 +306,11 @@ const Clip: React.FC<{
 };
 
 /** "FOOTAGE: PUBLISHER · OFFICIAL TRAILER" tag in the soft margin during clip shots. */
-const FootageCredit: React.FC<{ credit: string; durationFrames: number; small?: boolean }> = ({
+const FootageCredit: React.FC<{ credit: string; durationFrames: number; small?: boolean; top?: number }> = ({
   credit,
   durationFrames,
   small = false,
+  top = CREDIT_TOP,
 }) => {
   const frame = useCurrentFrame();
   // Fades in and out over 8 frames, shorter on a short shot: overlapping fades gave Remotion a
@@ -327,7 +331,7 @@ const FootageCredit: React.FC<{ credit: string; durationFrames: number; small?: 
       style={{
         position: "absolute",
         left: SAFE.left,
-        top: CREDIT_TOP,
+        top,
         fontFamily: BODY,
         // Bolder and on a darker plate: the visual check kept calling the credit "very low contrast".
         fontWeight: 800,
@@ -458,7 +462,14 @@ export const ArtTrack: React.FC<{
             durationFrames={len}
           />
         ) : fillShown ? (
-          <FootageCredit credit={image?.credit ? `${FILL_LABEL} · ${image.credit}` : FILL_LABEL} durationFrames={len} small={clean} />
+          // Just under the original picture, in the AI-made margin itself: the usual credit line sits under the
+          // captions' dark shade, where the 21 Nov 2026 proof render showed the label all but unreadable.
+          <FootageCredit
+            credit={image?.credit ? `${FILL_LABEL} · ${image.credit}` : FILL_LABEL}
+            durationFrames={len}
+            small={clean}
+            top={FILL_LABEL_TOP}
+          />
         ) : clean ? (
           (clip?.credit ?? image?.credit) ? (
             <FootageCredit credit={(clip?.credit ?? image?.credit)!} durationFrames={len} small />

@@ -158,7 +158,7 @@ const EVENTS: ReadonlyArray<readonly [StoryEvent, RegExp]> = [
   ],
   [
     "commercial",
-    /\bmillion\b|\bsold\b|\bsales\b|\brecords?\b|\bpeaks?\b|concurrent|best[- ]selling|fastest[- ]selling|biggest launch/i,
+    /\bmillion\b|\bbillion\b|\bsold\b|\bsales\b|\brecords?\b|\bpeaks?\b|concurrent|best[- ]selling|fastest[- ]selling|biggest (?:\w+ )?launch/i,
   ],
   [
     "reveal",
@@ -297,9 +297,21 @@ export function figureChange(
   return shared ? "changed" : "none";
 }
 
+/**
+ * A sales record: money or copies, a "biggest launch", a best seller. It is commercial news even when it says "of all
+ * time" (20 Nov 2026: "GTA 6 Is the Biggest Entertainment Launch of All Time at $3.79 Billion on Day One" scored as
+ * acclaim and was reported as made by the review-score Short).
+ */
+const SALES_RECORD =
+  /\$[\d.,]+ ?(?:million|billion|m\b|bn\b)|million (?:copies|units)|copies sold|\bunits sold\b|biggest (?:\w+ )?launch|best[- ]selling|fastest[- ]selling/i;
+
+const REVIEW_WORD = /\breviews?\b|metacritic|opencritic|\bcritics?\b|\bscores?\b|\brated\b/i;
+
 /** The kind of news a headline carries (pure). */
 export function storyEvent(title: string): StoryEvent {
-  return EVENTS.find(([, re]) => re.test(title))?.[0] ?? "other";
+  const event = EVENTS.find(([, re]) => re.test(title))?.[0] ?? "other";
+  // A review headline that mentions a best seller is still a review.
+  return event === "acclaim" && SALES_RECORD.test(title) && !REVIEW_WORD.test(title) ? "commercial" : event;
 }
 
 /** Is this article a deals post, a guide or site furniture? */
@@ -563,7 +575,11 @@ export function sizeStories(
         official,
         // Half the headlines hedging makes it a report; one outlet's "reportedly" among eight firm ones does not.
         rumour: !official && rumourShare >= 0.5,
-        leak: titles.some((t) => LEAK.test(t)),
+        // Half the headlines, or the central one: 20 Nov 2026 GTA 6's $4 billion day was held as a leak over one
+        // outlet's "leaked" among eleven.
+        leak:
+          titles.filter((t) => LEAK.test(t)).length / titles.length >= 0.5 ||
+          LEAK.test(centralHeadline(its)),
         unsafe: titles.some((t) => UNSAFE.test(t)),
         firstAt: its[its.length - 1]!.publishedAt,
         newestAt: its[0]!.publishedAt,

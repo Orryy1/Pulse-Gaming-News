@@ -289,6 +289,7 @@ export function testConfig(
     gameLibrary: false,
     shortFootageGate: false,
     shortFootageWait: false,
+    shortFootageWaitMaxHours: 4,
     voiceProvider: "local",
     localTtsUrl: "http://127.0.0.1:1",
     localVoiceId: "TX3LPaxmHKxFdv7VOQHJ",

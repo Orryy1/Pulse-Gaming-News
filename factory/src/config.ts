@@ -1330,6 +1330,8 @@ export interface Config {
    * pause to lift and gathers again from scratch, once, as a spare for the next empty slot; one already held that way is
    * tried once more after the pause lifts (src/premakerefresh.ts footageWaitPlan). */
   shortFootageWait: boolean;
+  /** SHORT_FOOTAGE_WAIT_MAX_HOURS (default 4): a YouTube download pause with more than this left is not waited out; the Short goes out on its stills. */
+  shortFootageWaitMaxHours: number;
   pexelsApiKey: string; // licensed stock for the real-world part of picture stories
   /**
    * More picture libraries (src/assets/libraries.ts, press.ts, stock.ts), each screened, licence-recorded and
@@ -2469,6 +2471,7 @@ export function loadConfig(): Config {
     gameLibrary: bool("GAME_LIBRARY", true),
     shortFootageGate: bool("SHORT_FOOTAGE_GATE", true),
     shortFootageWait: bool("SHORT_FOOTAGE_WAIT", true),
+    shortFootageWaitMaxHours: Math.max(0, int("SHORT_FOOTAGE_WAIT_MAX_HOURS", 4)),
     pexelsApiKey: str("PEXELS_API_KEY"),
     libraryPress: bool("LIBRARY_PRESS", true),
     pressKits: bool("PRESS_KITS", true),

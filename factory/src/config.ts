@@ -1694,6 +1694,12 @@ export interface Config {
   longNamedArt: boolean;
   /** LONG_NAMED_ART_MAX: named pictures fetched per entry at most. */
   longNamedArtMax: number;
+  /**
+   * LONG_THIN_CARD_SHARE: a chapter whose footage and pictures cannot give its sentences a picture each under
+   * LONG_STILL_MAX_SHOWS takes graphics cards up to this share of its lines, before any repeat (src/assets/fillers.ts
+   * thinChapter). 0: off. Default 0.6.
+   */
+  longThinCardShare: number;
   /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
   longCardShare: number;
   /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
@@ -2670,6 +2676,7 @@ export function loadConfig(): Config {
     steamEditions: bool("STEAM_EDITIONS", true),
     longNamedArt: bool("LONG_NAMED_ART", true),
     longNamedArtMax: Math.min(20, Math.max(0, int("LONG_NAMED_ART_MAX", 8))),
+    longThinCardShare: Math.min(1, Math.max(0, Number(str("LONG_THIN_CARD_SHARE", "0.6")) || 0)),
     longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
     longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
     longMinWpm: int("LONG_MIN_WPM", 0),

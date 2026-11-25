@@ -751,6 +751,7 @@ export function testConfig(
     steamEditions: true,
     longNamedArt: true,
     longNamedArtMax: 8,
+    longThinCardShare: 0.6,
     longCardShare: 0,
     longStillXfadeFrames: 9,
     longMinWpm: 0,

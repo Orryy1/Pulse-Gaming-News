@@ -12831,6 +12831,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const done = await chooseEpisodeFillers({
       explainers: explainersOn(s.cfg.explainers, "long"),
       cardShare: s.cfg.longCardShare,
+      // A chapter short of pictures under the cap gets cards before repeats (LONG_THIN_CARD_SHARE).
+      ...((s.cfg.longThinCardShare ?? 0) > 0 && (s.cfg.longStillMaxShows ?? 0) > 0
+        ? { thin: { share: s.cfg.longThinCardShare, maxShows: s.cfg.longStillMaxShows } }
+        : {}),
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
         .map((e, i) => ({

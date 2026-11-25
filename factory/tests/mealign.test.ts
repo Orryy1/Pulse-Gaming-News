@@ -18,6 +18,7 @@ import {
 } from "../src/assets/namedart.ts";
 import { parseIgdbCharacters, fetchIgdbArt } from "../src/assets/igdb.ts";
 import { loadConfig } from "../src/config.ts";
+import { chooseFillers, thinChapter } from "../src/assets/fillers.ts";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -657,4 +658,45 @@ test("pickIgdbCharacter: the same name, with a picture, in a game of this series
   assert.equal(pickIgdbCharacter(rows, "Saren", "Mass Effect"), undefined);
   assert.equal(pickIgdbCharacter(rows, "Jacob Frye", "Mass Effect"), undefined);
   assert.equal(pickIgdbCharacter(rows, "Garrus Vakarian", "Halo"), undefined);
+});
+
+test("LONG_THIN_CARD_SHARE: a chapter its pictures cannot fill under the cap takes more cards than LONG_CARD_SHARE alone", () => {
+  const moments = Array.from({ length: 12 }, () => ({
+    show: "x",
+    graphic: { kind: "none", primary: "", secondary: "", items: [] },
+    emphasis: "",
+    person: "",
+  }));
+  const ch = {
+    entry: 0,
+    game: "G",
+    year: 2020,
+    sentences: moments.map((_, k) =>
+      k % 2
+        ? "Players with limited free time shaped the design too."
+        : "The replacement announcement presents a separate sourcing gap.",
+    ),
+    moments,
+  };
+  // Two IGDB pictures, each downloaded into two folders and pinned to six lines: two pictures, not twelve.
+  const images = moments.map((_, k) => ({
+    file: `entry_0/${k % 4 < 2 ? "assets" : "more/assets"}/igdb-${k % 2 ? "a" : "b"}.jpg`,
+    sourceUrl: `https://images.igdb.com/igdb/image/upload/t_1080p/${k % 2 ? "a" : "b"}.jpg`,
+    kind: "screenshot",
+    beatIndex: 0,
+    moment: k,
+  }));
+  assert.equal(thinChapter(ch as never, images, [] as never, 2), true);
+  // With footage enough for every line it is not thin.
+  const clips = moments.map((_, k) => ({ beatIndex: 0, moment: k, durationSeconds: 4 }));
+  assert.equal(thinChapter(ch as never, images, clips as never, 2), false);
+  const share = chooseFillers([ch] as never, { images, clips: [], seed: 1, cardShare: 0.3 });
+  const thin = chooseFillers([ch] as never, {
+    images,
+    clips: [],
+    seed: 1,
+    cardShare: 0.3,
+    thin: { share: 0.6, maxShows: 2 },
+  });
+  assert.ok(thin.picks.length > share.picks.length, `${thin.picks.length} > ${share.picks.length}`);
 });

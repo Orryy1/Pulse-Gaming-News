@@ -269,7 +269,7 @@ class FakeYt implements LiveApi {
   }
 }
 
-function fakePipe() {
+function fakePipe(clock: () => number = () => Date.now()) {
   const p = {
     restarts: [] as string[],
     stopped: false,
@@ -279,7 +279,8 @@ function fakePipe() {
   };
   const handle: PipeHandle = {
     alive: () => !p.stopped,
-    lastData: () => p.lastData ?? Date.now(),
+    // The rig's clock, not the real one: from 22 Nov 2026 the real clock was past the rig's and the warm-up tests broke.
+    lastData: () => p.lastData ?? clock(),
     restart: (why) => p.restarts.push(why),
     stop: () => {
       p.stopped = true;
@@ -316,7 +317,7 @@ async function rig(env: NodeJS.ProcessEnv = {}) {
     yt,
     startPipe: (url) => {
       urls.push(url);
-      const f = fakePipe();
+      const f = fakePipe(() => now);
       pipes.push(f);
       return f.handle;
     },

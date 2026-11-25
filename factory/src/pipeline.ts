@@ -14767,8 +14767,16 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
       throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
     }
-    if (verdict === "hold" && s.cfg.shortFootageWait && (await waitForYouTube(s, ep, assets))) return;
-    if (verdict === "hold") {
+    // A YouTube download pause that still has hours to run (24-26 Nov 2026: two days, nothing published for 24 hours)
+    // is not worth waiting out: the Short goes out on its stills, filmed by the depth camera, rather than not at all.
+    const pause = verdict === "hold" ? await s.youtubePause?.().catch(() => undefined) : undefined;
+    const longPause = Boolean(pause?.until && pause.until - s.now().getTime() > s.cfg.shortFootageWaitMaxHours * 3_600_000);
+    if (verdict === "hold" && longPause) {
+      log("info", "footage gate: YouTube downloads are paused for hours, so the Short goes out on its stills", { id: ep.id, until: new Date(pause!.until!).toISOString() });
+      await logEvent(s.db, ep.id, "footage_gate_stills", { until: new Date(pause!.until!).toISOString(), footageShare: Math.round(footageShare * 100) / 100 }).catch(() => undefined);
+    }
+    if (verdict === "hold" && !longPause && s.cfg.shortFootageWait && (await waitForYouTube(s, ep, assets))) return;
+    if (verdict === "hold" && !longPause) {
       const why = `"${script.headline}" is held: no moving footage of ${script.game_title} on screen (footage share ${Math.round(footageShare * 100)}%${opening?.ok === false ? `, no footage to open on: ${opening.why ?? "none"}` : ""}) although footage of the game exists. The slot goes to the next ready Short.`;
       await s.notify({ level: "info", content: `🎞️ ${why}` });
       throw new FatalError(`QA held: ${why}`);

@@ -753,8 +753,9 @@ export const Still: React.FC<{
             position: "absolute",
             // Top right, under the footage credit: the lower part of the frame sits under the titles' dark shade,
             // which left the label unreadable (21 Nov 2026 proof render).
+            // Under the footage credit (about y 55 to 88 at the top right), never on it.
             right: 40,
-            top: 64,
+            top: 104,
             padding: "4px 10px",
             background: "rgba(11,11,14,0.78)",
             borderRadius: 6,

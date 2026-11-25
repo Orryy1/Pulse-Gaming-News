@@ -455,7 +455,29 @@ async function main(): Promise<void> {
     const port = Number(flag("port") ?? process.env.GAMELIB_SERVE_PORT ?? 8793);
     // 127.0.0.1 only: the orchestrator's LAN relay owns 192.168.0.93:8793 and forwards it here.
     const host = "127.0.0.1";
-    createLibraryServer(root).listen(port, host, () => console.log(`game library: serving ${root} on http://${host}:${port}`));
+    // The stream recordings (src/vodindex/serve.ts): their indexes and clips cut here, for the Mac's footage search.
+    // A setting that will not load leaves them out; the library and the wiki art are still served.
+    let vod: import("../vodindex/serve.ts").VodServeContext | undefined;
+    try {
+      const { vodServeContext, pruneClips } = await import("../vodindex/serve.ts");
+      const { loadConfig } = await import("../config.ts");
+      const { embedderFor } = await import("../semantic/hook.ts");
+      const cfg = loadConfig();
+      const vodData = vodServeContext(process.env, { model: cfg.semantic.model }).dataDir;
+      const ctx = vodServeContext(process.env, {
+        model: cfg.semantic.model,
+        embedder: () => embedderFor(vodData, cfg.semantic),
+        spoilerDays: cfg.spoilerWindowDays,
+        openingShare: cfg.spoilerOpeningShare,
+      });
+      setInterval(() => void pruneClips(ctx).catch(() => undefined), 3_600_000).unref();
+      vod = ctx;
+    } catch (err) {
+      console.log(`game library: stream recordings not served (${err instanceof Error ? err.message : String(err)})`);
+    }
+    createLibraryServer(root, vod).listen(port, host, () =>
+      console.log(`game library: serving ${root}${vod ? ` and stream recordings from ${vod.dataDir}` : ""} on http://${host}:${port}`),
+    );
     return;
   }
   if (command === "sync" || command === "cache") {

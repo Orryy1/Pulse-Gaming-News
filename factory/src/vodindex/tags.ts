@@ -65,6 +65,12 @@ export interface VodTags {
   story: boolean;
   /** A menu, map, loading or pause screen: never offered as footage. */
   menu: boolean;
+  /**
+   * A facecam or webcam box, a person filmed by a camera, or a stream overlay (chat, alerts, a donation bar) on the
+   * picture: never offered as footage (owner, 25 Nov 2026: a streamer's face is never shown). Absent on tags made
+   * before 25 Nov: unknown, which a permitted channel's footage treats as present.
+   */
+  overlay?: boolean;
   /** Extra search words. */
   words: string[];
 }
@@ -126,6 +132,7 @@ export function tagPrompt(c: TagContext): string {
     `time_of_day: one of day, dusk, night, dawn, indoors.`,
     `story: true when this looks like the game's story: a cutscene (cinema bars, a camera that is not the player's), characters talking in a scripted scene, or a mission briefing; false for ordinary play.`,
     `menu: true only for a menu, map, phone screen filling the frame, loading or pause screen.`,
+    `overlay: true when either frame shows a webcam or facecam box, a real person filmed by a camera, or a streaming overlay (a chat box, follower alerts, a donation or subscriber bar) over the game; false for the game's own picture and HUD alone.`,
     `words: 3 to 6 extra single search words (objects, weather, colours).`,
     c.seen.length
       ? `What the shots show: ${c.seen.slice(0, 4).join(" | ").slice(0, 400)}`
@@ -150,6 +157,7 @@ const SCHEMA = {
     },
     story: { type: "boolean" },
     menu: { type: "boolean" },
+    overlay: { type: "boolean" },
     words: { type: "array", items: { type: "string" } },
   },
   required: [
@@ -160,6 +168,7 @@ const SCHEMA = {
     "time_of_day",
     "story",
     "menu",
+    "overlay",
     "words",
   ],
 };
@@ -201,6 +210,7 @@ export function parseTags(
       : "",
     story: raw.story === true,
     menu: raw.menu === true,
+    overlay: raw.overlay === true,
     words: [
       ...new Set<string>(
         (Array.isArray(raw.words) ? raw.words : [])
@@ -294,7 +304,9 @@ export function untagged(
   v: VodIndex,
   t: VodTagFile,
 ): Array<{ from: number; to: number; shots: number[] }> {
-  const described = v.shots.filter((s) => s.desc && s.desc !== "-");
+  // Stretch mode: every picture shot is tagged through its stretch, described or not.
+  const described =
+    v.describe === "stretch" ? v.shots.filter((s) => !s.blank && !s.menu) : v.shots.filter((s) => s.desc && s.desc !== "-");
   return stretchesOf(described).filter((s) => !t.stretches[stretchKey(s)]);
 }
 
@@ -312,7 +324,7 @@ export async function vodTagsReady(
 
 /** Tags for a stretch nobody could read (pure): story until shown otherwise, so the spoiler guard holds it. */
 export function unknownTags(span: { from: number; to: number }): VodTags {
-  return { from: span.from, to: span.to, place: "", activity: "", vehicle: "", brands: [], timeOfDay: "", story: true, menu: false, words: [] };
+  return { from: span.from, to: span.to, place: "", activity: "", vehicle: "", brands: [], timeOfDay: "", story: true, menu: false, overlay: true, words: [] };
 }
 
 export interface TagDeps {
@@ -393,7 +405,7 @@ export async function tagVodStretches(
           {
             game: v.game || v.title,
             places: o.places,
-            seen: shots.map((s) => s.desc),
+            seen: shots.map((s) => s.desc).filter((d) => d && d !== "-"),
             text: [...new Set(shots.map((s) => s.text).filter(Boolean))].join(
               " | ",
             ),
@@ -429,6 +441,24 @@ export async function tagVodStretches(
   return { tagged, left: todo.length - tagged };
 }
 
+/**
+ * Stretch mode: each picture shot without words takes them from its stretch's tags (pure): what he is doing, the
+ * vehicle and the place, and a menu stretch makes its shots menus. Returns how many shots changed.
+ */
+export function wordsFromTags(v: VodIndex, t: VodTagFile): number {
+  let n = 0;
+  for (const s of v.shots) {
+    if (s.blank || s.menu || s.desc) continue;
+    const tag = tagsAt(t, (s.start + s.end) / 2);
+    if (!tag) continue;
+    if (tag.menu) s.menu = true;
+    s.desc =
+      [tag.activity, tag.vehicle, tag.place ? `in ${tag.place}` : ""].filter(Boolean).join(", ") || "-";
+    n++;
+  }
+  return n;
+}
+
 /** The tags of the stretch a moment falls in (pure). */
 export function tagsAt(t: VodTagFile, at: number): VodTags | undefined {
   for (const x of Object.values(t.stretches))
@@ -438,9 +468,11 @@ export function tagsAt(t: VodTagFile, at: number): VodTags | undefined {
 
 /**
  * The recording as a scene index whose shots also carry their stretch's tags (pure), so the scene index's word lookup
- * (findShots) finds "Scooter Bros", "Vice Beach", "night" or "speedboat" in them. A shot in a menu stretch is a menu.
+ * (findShots) finds "Scooter Bros", "Vice Beach", "night" or "speedboat" in them. A shot in a menu stretch is a menu,
+ * and so is one under a facecam or stream overlay (vodMomentBlocked).
  */
 export function taggedSceneIndex(v: VodIndex, t: VodTagFile): SceneIndex {
+  const own = !v.channel || v.channel === "tinotv";
   const base = asSceneIndex(v);
   const places = new Set<string>();
   const shots = base.shots.map((s) => {
@@ -463,7 +495,8 @@ export function taggedSceneIndex(v: VodIndex, t: VodTagFile): SceneIndex {
             : []),
         ]),
       ],
-      ...(tag.menu ? { menu: true } : {}),
+      // A menu, or a facecam or stream overlay on the picture: never a match.
+      ...(vodMomentBlocked(tag, own) ? { menu: true } : {}),
     };
   });
   return { ...base, places: [...places], shots };
@@ -483,6 +516,19 @@ export function vodMomentHeld(
   if (!tag) return "not tagged yet, held during the spoiler window";
   const r = streamClipHold(w, undefined, { reviewSpoiler: tag.story }, now);
   return r.hold ? r.reason : undefined;
+}
+
+/**
+ * Why a moment of a stream is never offered as footage, whatever the date (pure): a menu, or a facecam, webcam or
+ * stream overlay on the picture. A permitted channel's stretch tagged before overlays were asked about counts as one.
+ */
+export function vodMomentBlocked(tag: VodTags | undefined, own: boolean): string | undefined {
+  // No tags (a blank or undescribed shot): fine in the owner's own play, never offered from a permitted channel.
+  if (!tag) return own ? undefined : "not tagged, may show a facecam";
+  if (tag.menu) return "a menu or map";
+  if (tag.overlay === true) return "a facecam or stream overlay on the picture";
+  if (tag.overlay === undefined && !own) return "not checked for a facecam or overlay";
+  return undefined;
 }
 
 export interface VodMoment {
@@ -535,6 +581,7 @@ export async function findVodMoments(
     const semantic =
       q && vecs.size ? shotMeaning(index.shots, vecs, q) : undefined;
     const w = windowFor(o.windows ?? spoilerWindows(), v.game, o.now);
+    const own = !v.channel || v.channel === "tinotv";
     const hits: ShotHit[] = findShots(index, target, {
       max: o.max ?? 5,
       minConfidence: o.minConfidence ?? 0.3,
@@ -543,7 +590,7 @@ export async function findVodMoments(
     });
     for (const h of hits) {
       const tag = tagsAt(t, (h.start + h.end) / 2);
-      const held = vodMomentHeld(w, tag, o.now);
+      const held = vodMomentBlocked(tag, own) ?? vodMomentHeld(w, tag, o.now);
       out.push({
         vodId: v.vodId,
         file: v.file,

@@ -159,6 +159,8 @@ export interface EpisodeAssets {
     }; // 2.5D depth layers (src/render/parallax.ts)
     /** The picture before it was upscaled (src/assets/upscale.ts); `file` is then the upscaled copy. */
     upscaledFrom?: string;
+    /** LONG_NAMED_ART: the character the picture shows; it opens the sentence naming them (src/assets/namedart.ts). */
+    named?: string;
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;

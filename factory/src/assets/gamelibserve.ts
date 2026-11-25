@@ -7,6 +7,7 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { handleWikiart } from "../wikiart/serve.ts";
+import { handleVod, type VodServeContext } from "../vodindex/serve.ts";
 
 /** A Range header against a file of `size` bytes (pure): the inclusive span, "bad" when it cannot be met, undefined when absent. */
 export function parseRange(
@@ -74,8 +75,10 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
-export function createLibraryServer(root: string): http.Server {
+export function createLibraryServer(root: string, vod?: VodServeContext): http.Server {
   return http.createServer(async (req, res) => {
+    // The stream recordings and their clips (src/vodindex/serve.ts), the only routes that take a POST.
+    if (vod && req.url?.startsWith("/vod/") && (await handleVod(req, res, vod))) return;
     if (req.method !== "GET" && req.method !== "HEAD")
       return res.writeHead(405).end();
     if (req.url === "/health")

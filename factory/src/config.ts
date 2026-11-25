@@ -1696,6 +1696,47 @@ export interface Config {
   funnelClearDays: number;
   /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
   longSamePictureMaxSeconds: number;
+  /**
+   * LONG_STILL_MAX_SHOWS (25 Nov 2026, the Mass Effect ranking: one IGDB screenshot shown 11 times for 52 s, because the
+   * same picture downloaded into two folders counted as two): a hard cap on how many times one picture (by its source,
+   * src/render/stillcap.ts pictureKey) is put on screen in a long video. Past it a line gets unplayed footage, then one
+   * more showing on the depth camera of a picture not seen for a minute, and only then (counted) a repeat. 0: off, the
+   * plan as before. Default 2.
+   */
+  longStillMaxShows: number;
+  /**
+   * LONG_MIN_MOVING_SHARE (25 Nov 2026: the same video was 0.6% moving footage): the share of every chapter that should
+   * be moving footage where footage exists, 0-1. Each ranking entry asks its Steam trailers for that many seconds of
+   * clean moments on top of the ones matched to its sentences, and the planner plays a chapter's unplayed footage
+   * before any still (as LONG_MOVING_FIRST does). 0: off. Default 0.5.
+   */
+  longMinMovingShare: number;
+  /**
+   * LONG_ENTRY_CLIP_TARGETS: how many of a ranking entry's sentences ask the trailers for their own moment (was 6, the
+   * first six; the rest only ever got stills). Default 24.
+   */
+  longEntryClipTargets: number;
+  /**
+   * STEAM_EDITIONS: a ranking entry may take a later Steam edition of the same game (a Legendary, Deluxe or "(2010)
+   * Edition", a remaster or a collection that contains it) where the year rule used to refuse any page more than a
+   * year off: Mass Effect 1, 2, 3 and Andromeda all lost their Steam trailers and screenshots to it. Remakes and
+   * reboots are still refused (src/assets/steamedition.ts). Default on.
+   */
+  steamEditions: boolean;
+  /**
+   * LONG_NAMED_ART: a ranking sentence that names a character (the writer's `person`, or a name in its keywords)
+   * gets that character's official IGDB picture, only when IGDB lists them in a game of the series, pinned to that
+   * sentence and opening it (src/assets/namedart.ts). Default on.
+   */
+  longNamedArt: boolean;
+  /** LONG_NAMED_ART_MAX: named pictures fetched per entry at most. */
+  longNamedArtMax: number;
+  /**
+   * LONG_THIN_CARD_SHARE: a chapter whose footage and pictures cannot give its sentences a picture each under
+   * LONG_STILL_MAX_SHOWS takes graphics cards up to this share of its lines, before any repeat (src/assets/fillers.ts
+   * thinChapter). 0: off. Default 0.6.
+   */
+  longThinCardShare: number;
   /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
   longCardShare: number;
   /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
@@ -2683,6 +2724,13 @@ export function loadConfig(): Config {
     funnelDays: Math.max(1, int("FUNNEL_DAYS", 3)),
     funnelClearDays: Math.max(0, int("FUNNEL_CLEAR_DAYS", 60)),
     longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
+    longStillMaxShows: Math.max(0, int("LONG_STILL_MAX_SHOWS", 2)),
+    longMinMovingShare: Math.min(0.9, Math.max(0, Number(str("LONG_MIN_MOVING_SHARE", "0.5")) || 0)),
+    longEntryClipTargets: Math.min(40, Math.max(1, int("LONG_ENTRY_CLIP_TARGETS", 24))),
+    steamEditions: bool("STEAM_EDITIONS", true),
+    longNamedArt: bool("LONG_NAMED_ART", true),
+    longNamedArtMax: Math.min(20, Math.max(0, int("LONG_NAMED_ART_MAX", 8))),
+    longThinCardShare: Math.min(1, Math.max(0, Number(str("LONG_THIN_CARD_SHARE", "0.6")) || 0)),
     longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
     longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
     longMinWpm: int("LONG_MIN_WPM", 0),

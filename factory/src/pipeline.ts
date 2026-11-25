@@ -49,6 +49,9 @@ import { thinSourceProblem, type ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
+import { steamEditionOf } from "./assets/steamedition.ts";
+import { namedSubjects } from "./assets/namedart.ts";
+import { pictureKey } from "./render/stillcap.ts";
 import { capFootage, defaultFootageSeconds, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
@@ -228,6 +231,7 @@ import type { ExplainedStory } from "./editorial/explained.ts";
 import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
 import {
   buildLongPlan,
+  chapterPictureAudit,
   momentKeys,
   planGaps,
   openChaptersAtBreaks,
@@ -1066,7 +1070,19 @@ export interface Services {
     year: number | undefined,
     episodeDir: string,
     max: number,
+    /** IGDB picture ids already held: a top-up skips them and brings the next ones. */
+    skip?: ReadonlySet<string>,
   ): Promise<VisualAsset[]>;
+  /**
+   * LONG_NAMED_ART: the official IGDB picture of a character a sentence names, only when IGDB lists them in a game of
+   * this series (src/assets/namedart.ts). Optional: undefined in tests and wherever IGDB is not set up.
+   */
+  characterArt?(
+    name: string,
+    /** The games whose series the character must be in (any of them). */
+    gameTitles: string[],
+    episodeDir: string,
+  ): Promise<(VisualAsset & { named: string }) | undefined>;
   /** Licensed gameplay (Creative Commons, then the publisher's own uploads) matched to the given lines. */
   gameplayClips(
     game: string,
@@ -1130,6 +1146,8 @@ export interface Services {
     spoilerWarned?: boolean;
     /** LONG_INDEX_FIRST: the scene index's clips alone ("index"), or the cutscene search alone ("search"). */
     mode?: "index" | "search";
+    /** The stream recordings' own allowance (src/sceneindex/footage.ts indexFirstCutscenes). */
+    ownMaxSeconds?: number;
   }): Promise<CutsceneClip[]>;
   /**
    * SCENE_MATCH for a stills-only publisher (Nintendo): one checked still of each named moment from the game's scene
@@ -10714,9 +10732,13 @@ export async function gatherMedia(
           ? retroCaps.reduce((n, x) => n + x, 0)
           : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
         jobs, existing: clips, shouldStop: () => gatherBudget.over(),
+        // Stream recordings (the owner's own, then permitted channels') fill up to 85% of the narration on their own
+        // allowance, outside every publisher's cap (owner, 25 Nov 2026).
+        ...(s.cfg.semantic?.vodTags ? { streamSeconds: Math.max(10, narrationSeconds * 0.85) } : {}),
         fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
           targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
           maxSeconds: job.maxSeconds, publisher: job.publisher, ...(job.mode ? { mode: job.mode } : {}),
+          ...(job.ownMaxSeconds !== undefined ? { ownMaxSeconds: job.ownMaxSeconds } : {}),
           // A weekly guide never shows late story, warning or not (src/longguide.ts).
           long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
       });
@@ -11173,6 +11195,8 @@ export async function gatherMedia(
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
       ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
+      // LONG_NAMED_ART: the character the picture shows travels with it to the planner.
+      ...(a.named ? { named: a.named } : {}),
       ...((a as { libKey?: string }).libKey ? { libKey: (a as { libKey?: string }).libKey } : {}),
     });
   }
@@ -11570,7 +11594,11 @@ export async function gatherLongEntryMedia(
   const moments = entry.moments ?? [];
   const sentences = sentencesOf(script.beats[beatIndex]?.narration ?? "");
   const scope = scopeOf(script);
-  const targets: FootageTarget[] = moments.slice(0, 6).map((m, k) => ({
+  // LONG_ENTRY_CLIP_TARGETS: every sentence (up to the dial) asks the trailers for its own moment; the first six alone
+  // did before, and the rest of a 21-sentence entry only ever got stills (Mass Effect ranking, 25 Nov 2026).
+  const targets: FootageTarget[] = moments
+    .slice(0, script.evergreen_format === "ranking" ? (s.cfg.longEntryClipTargets ?? 6) : 6)
+    .map((m, k) => ({
     key: `beat:${beatIndex}#m${k}`,
     text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
@@ -11612,6 +11640,13 @@ export async function gatherLongEntryMedia(
             targets,
             targets.length,
             scopeOf(script),
+            // LONG_MIN_MOVING_SHARE: past the sentences' own moments, clean moments of the trailers up to that share
+            // of the chapter, untagged (the meaning match pins them to lines later, the planner spreads the rest).
+            entryFillSeconds(
+              script.beats[beatIndex]?.narration ?? "",
+              // Only a ranking plans its footage first under LONG_MIN_MOVING_SHARE, so only a ranking asks for it.
+              script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
+            ),
           ),
           Math.max(
             footageBudgetSeconds(eapp),
@@ -11776,6 +11811,41 @@ export async function gatherLongEntryMedia(
   for (const a of mine)
     if (!(a as { drop?: boolean }).drop)
       images.push({ ...a, file: rel(a.file), beatIndex });
+  // LONG_NAMED_ART: the character a sentence names gets their own official picture on that sentence (IGDB's
+  // character pictures, only for a character IGDB lists in this series; src/assets/namedart.ts).
+  if (s.cfg.longNamedArt && s.characterArt) {
+    const asked = new Map<string, (VisualAsset & { named: string }) | undefined>();
+    let got = 0;
+    // Lookups, found or not, are bounded too: a line-by-line roll of unknown names must not hold the gather.
+    const most = s.cfg.longNamedArtMax ?? 8;
+    for (const [k, m] of moments.entries()) {
+      if (got >= most || asked.size >= most * 2 || budget?.over()) break;
+      for (const name of namedSubjects(m, entry.game_title)) {
+        const key = name.toLowerCase();
+        if (!asked.has(key)) {
+          if (asked.size >= most * 2) break;
+          // The series of the entry's own title or of the video's (a ranking's title may be a topic): one search.
+          asked.set(
+            key,
+            await s
+              .characterArt(name, [entry.game_title, script.game_title].filter(Boolean), edir)
+              .catch(() => undefined),
+          );
+        }
+        const pic = asked.get(key);
+        if (!pic) continue;
+        images.push({ ...pic, file: rel(pic.file), beatIndex, moment: k });
+        got++;
+        break;
+      }
+    }
+    if (got)
+      log("info", "named character pictures", {
+        game: entry.game_title,
+        pictures: got,
+        names: [...asked].filter(([, p]) => p).map(([n]) => n),
+      });
+  }
   // A face for every sentence that names a person, cut from the footage chosen for that sentence.
   for (const [k, m] of moments.entries()) {
     const person = (m as { person?: string }).person?.trim();
@@ -12393,6 +12463,22 @@ const DOC_BROLL_PER_CHAPTER = 5;
 /** Named real people a documentary chapter looks up photos of. */
 const DOC_PEOPLE_PER_CHAPTER = 5;
 
+/** Spoken words a second in a long video (about 160 a minute): how long a chapter runs before its voice exists. */
+export const LONG_WORDS_PER_SECOND = 2.7;
+
+/**
+ * LONG_MIN_MOVING_SHARE: how many seconds of footage a ranking entry asks its trailers for, as fetchClips' fill
+ * (pure): the share of the chapter's estimated length. Undefined (no fill) when the share is 0 or the chapter empty.
+ */
+export function entryFillSeconds(
+  narration: string,
+  share: number,
+): { seconds: number } | undefined {
+  const words = narration.split(/\s+/).filter(Boolean).length;
+  if (share <= 0 || !words) return undefined;
+  return { seconds: Math.round((words / LONG_WORDS_PER_SECOND) * share) };
+}
+
 /**
  * The Steam page for a ranking entry, only when it is that release: Steam's
  * search hands "Call of Duty 4: Modern Warfare" (2007) the 2019 reboot, and
@@ -12400,7 +12486,7 @@ const DOC_PEOPLE_PER_CHAPTER = 5;
  * is refused, and the entry's pictures come from IGDB by exact title instead.
  */
 export async function steamAppForEntry(
-  s: Pick<Services, "findGame">,
+  s: Pick<Services, "findGame"> & { cfg?: { steamEditions?: boolean } },
   entry: { steam_search_term: string; year?: number; game_title: string },
 ): Promise<SteamApp | undefined> {
   if (!entry.steam_search_term) return undefined;
@@ -12413,6 +12499,28 @@ export async function steamAppForEntry(
       )?.[0],
     ) || undefined;
   if (appYear && Math.abs(appYear - entry.year) > 1) {
+    // STEAM_EDITIONS: a later edition of the same game, or the series collection that contains it, is still this
+    // game (src/assets/steamedition.ts); a remake or a reboot is not.
+    const edition =
+      s.cfg?.steamEditions !== false
+        ? steamEditionOf(
+            entry.game_title,
+            app.name,
+            appYear - entry.year,
+            entry.steam_search_term,
+            entry.year,
+          )
+        : undefined;
+    if (edition) {
+      log("info", "steam page taken: a later edition of the game", {
+        entry: entry.game_title,
+        year: entry.year,
+        store: app.name,
+        storeYear: appYear,
+        edition,
+      });
+      return app;
+    }
     log("info", "steam page refused: another release of the game", {
       entry: entry.game_title,
       year: entry.year,
@@ -12886,6 +12994,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const done = await chooseEpisodeFillers({
       explainers: explainersOn(s.cfg.explainers, "long"),
       cardShare: s.cfg.longCardShare,
+      // A chapter short of pictures under the cap gets cards before repeats (LONG_THIN_CARD_SHARE).
+      ...((s.cfg.longThinCardShare ?? 0) > 0 && (s.cfg.longStillMaxShows ?? 0) > 0
+        ? { thin: { share: s.cfg.longThinCardShare, maxShows: s.cfg.longStillMaxShows } }
+        : {}),
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
         .map((e, i) => ({
@@ -12992,6 +13104,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   }
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
+    sourceUrl: i.sourceUrl,
+    named: i.named,
     kind: i.kind,
     aspect: i.aspect,
     beatIndex: i.beatIndex,
@@ -13085,6 +13199,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         beatIndex: i.beatIndex,
         moment: i.moment,
         file: i.file,
+        sourceUrl: i.sourceUrl,
+        named: i.named,
       })),
       clips: clips.map((c) => ({
         durationSeconds: c.durationSeconds,
@@ -13144,6 +13260,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       oneGame: isRetrospective(ep.factcheck_json),
       // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast as the body (src/render/structure.ts).
       twoSpeed: s.cfg.longOpeningContract === "fix",
+      // No picture on screen past LONG_STILL_MAX_SHOWS times, every copy counted as one (src/render/stillcap.ts).
+      stillMaxShows: s.cfg.longStillMaxShows ?? 0,
+      // A ranking chapter's footage before its stills (LONG_MIN_MOVING_SHARE): only a ranking's gather asks its
+      // trailers for that share, so documentaries and the rest keep LONG_MOVING_FIRST's own say.
+      minMovingShare: script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();
@@ -13169,22 +13290,37 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       segments,
       script.take_entry,
       s.cfg.longSamePictureMaxSeconds,
+      // With LONG_STILL_MAX_SHOWS on, every copy of one picture counted as one (src/render/stillcap.ts).
+      (s.cfg.longStillMaxShows ?? 0) > 0 ? images : undefined,
     );
     let added = 0;
     for (const g of gaps) {
       const entry = ranked[g.entry];
       if (!entry) continue;
+      // The IGDB pictures this entry already has are skipped: IGDB lists a game's pictures in one order, so the
+      // top-up used to download the first eight again and add nothing new (Mass Effect ranking, 25 Nov 2026).
+      const held = new Set(
+        (assets.images ?? []).flatMap((i) => {
+          const k = pictureKey(i);
+          return k.startsWith("igdb:") ? [k.slice(5)] : [];
+        }),
+      );
       const more = await s
         .igdbArt(
           entry.game_title,
           entry.year,
           path.join(dir, `entry_${g.entry}`, "more"),
           8,
+          held,
         )
         .catch(() => [] as VisualAsset[]);
       for (const a of more.filter((x) => x.kind !== "capsule")) {
         const file = path.join(`entry_${g.entry}`, "more", a.file);
         if ((assets.images ?? []).some((i) => i.file === file)) continue;
+        // The same IGDB picture the entry already has, under a new folder, is no new picture (Mass Effect ranking,
+        // 25 Nov 2026: every "more" picture was a second copy, and each copy was counted and shown apart).
+        const key = pictureKey({ sourceUrl: a.sourceUrl, file });
+        if ((assets.images ?? []).some((i) => pictureKey(i) === key)) continue;
         const aspect = await s
           .imageAspect(path.join(dir, file))
           .catch(() => 16 / 9);
@@ -13192,6 +13328,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         (assets.images ??= []).push(img);
         images.push({
           file,
+          sourceUrl: a.sourceUrl,
+          named: undefined,
           kind: a.kind,
           aspect,
           beatIndex: g.entry,
@@ -13211,6 +13349,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       segments,
       script.take_entry,
       s.cfg.longSamePictureMaxSeconds,
+      // With LONG_STILL_MAX_SHOWS on, every copy of one picture counted as one (src/render/stillcap.ts).
+      (s.cfg.longStillMaxShows ?? 0) > 0 ? images : undefined,
     );
     if (gaps.length)
       log(left.length ? "warn" : "info", "thin entries topped up", {
@@ -13257,7 +13397,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // for the growth report's QA line.
   if (freshPlan) {
     const ms = movingShare({ shots: plan.shots, fps: plan.fps, words, clips: assets.clips ?? [] });
-    await logEvent(s.db, ep.id, "moving_share", { ...ms, movingFirst: s.cfg.longMovingFirst }).catch(() => undefined);
+    await logEvent(s.db, ep.id, "moving_share", {
+      ...ms,
+      // What the planner did: LONG_MOVING_FIRST, or a ranking under LONG_MIN_MOVING_SHARE.
+      movingFirst:
+        s.cfg.longMovingFirst ||
+        (script.evergreen_format === "ranking" && (s.cfg.longMinMovingShare ?? 0) > 0),
+    }).catch(() => undefined);
+    // LONG_STILL_MAX_SHOWS and LONG_MIN_MOVING_SHARE: each chapter's share of moving footage, the most any one picture
+    // was shown (every copy counted as one) and what went past the cap, so a thin chapter is named, not guessed at.
+    const audit = chapterPictureAudit(plan, segments, images, script.take_entry);
+    await logEvent(s.db, ep.id, "still_cap", {
+      max: s.cfg.longStillMaxShows ?? 0,
+      minMovingShare: s.cfg.longMinMovingShare ?? 0,
+      notes: plan.notes ?? null,
+      ...audit,
+    }).catch(() => undefined);
   }
   // How much of the game chapters' narration plays on moving game footage, against FOOTAGE_SHARE_TARGET.
   if (freshPlan && hasMoments && s.cfg.footageFirst) {

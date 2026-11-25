@@ -2,6 +2,23 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 25 Nov 2026, 23:00 UK: Friday's long video is still picked once the day's Shorts are made
+
+**Change:** once the day's Shorts allowance (5) was used, the selector only tried the documentary and the long ranking. Friday's long video (the round-up of the week's Shorts, or the explainer on test weeks) sat inside the weekly lane, which also makes Shorts, so it was never tried past the allowance and its 20:00 slot could pass empty. It is now its own picker, tried in its usual place and again after the allowance. Same keys and the same once-a-day marker, so it can't make two and spends no extra model calls. Branch `claude/engine-weeklylong` (f6652ff0a), merged into `claude/stage` (b5123c2a3) and `C:\PulseFactory`. **Deploy waiting** (the 23:30 slot was within 50 minutes; the next run finishes it with `--deploy-only`).
+
+**Evidence:**
+
+- Queue item 54, written by tonight's fix session when it moved the documentary and long ranking past the allowance (969f362f9) and left the Friday long video out. Weekly output audit tonight: weekly 0 of 3 public, longform 1 of 3.
+- Shorts made ahead for a slot count on their slot's day from midnight (countToday), and the 20 Nov ledger row shows the long pickers stop after the 5th Short. Honest note: I found no Friday that has lost its long video to this yet (on 20 Nov the explainer was picked at 12:02, inside the launch-week allowance of 8); this closes the gap before it costs one.
+- 3 new tests: picked past the allowance on a Friday at 16:00 UK, slot 20:00, only one made; setting off gives none (the old behaviour); still made by the weekly lane in its usual place and never on a Thursday. A fresh-eyes review found no behaviour change on the normal path; its line-ending and test-precondition notes are fixed.
+- Typecheck clean; 3,460 of 3,460 tests pass (merge gate run).
+
+**Setting:** `LONG_WEEKLY_AFTER_TARGET` (on by default; `false` restores the old behaviour).
+
+**Judged:** on Sat 28 Nov morning (after Friday 27 Nov). Pass mark: a weekly long video (round-up or explainer) selected on Friday 27 Nov in the factory log ("weekly recap video selected" or "weekly explainer selected"), and none doubled. If none was picked although the window opened, find out why before the next Friday.
+
+**Judged this run:** nothing due (DEMAND_STALE_DAYS and SHORT_CLIP_EDGE_TEXT 27 Nov, SHORT_PARALLAX_SHARE 29 Nov, ENDING_FORMS_SHARE at 20 a side). Core numbers: 3 published in 24 hours, up from 1; no engine change to revert. Also seen: the pending deploy from 21:12 (vision shrink, long videos past the allowance) still waits because the Mac is rendering; voice spelled out "McCoy" and "GOG" (logged to pronunciation_unknown.json).
+
 ## 25 Nov 2026, 18:35 UK: documentaries keep their finished chapters when the factory restarts
 
 **Change:** a documentary writes an outline, then each chapter in turn (about 10 to 25 minutes a chapter on Codex). Until now every factory restart, and any timeout, started it again from the outline and threw the written chapters away. The outline and each finished chapter are now saved on disk as they are made (`data/doc_checkpoints/<episode>.json`), and a re-run of the same episode and topic carries on from the next chapter. A finished script removes the file. A failure about the script's content after all chapters are written also removes it, so a failed script is written afresh rather than repeated; a timeout keeps it, so the retry goes straight to the intro and outro. Retrospectives and "every game" videos are left out (their outline step stores extra state that a resume would lack). Branch `claude/engine-doccheckpoint`, commits 7a435d030 and bb9e11320, merged into `claude/stage` and `C:\PulseFactory`, and **deployed 19:01 UK on 25 Nov** (between the 18:30 and 20:00 slots, uploads_active 0; /health fine afterwards). The second commit only restores line endings the first one had flipped across pipeline.ts and .env.example (no code change; net diff 623 lines).

@@ -59,6 +59,7 @@ import {
   contractChapterRule,
   contractOpeningRule,
   isBuyerGuide,
+  takesVoiceLine,
   openingLengthProblems,
   questionProblems,
   quoteOpeningProblems,
@@ -314,6 +315,10 @@ export const DOC_STORIES = [
       "The faces, the five-year development and why the series went quiet for a decade",
   },
 ] as const;
+
+/** The voice's and the chapter prompt's single "I": under the contract's takes (takesVoiceLine) they give way. */
+export const VOICE_I_RARE = `The narrator steps forward as "I" rarely, about once a chapter and at most once per hundred words, for the one take the chapter turns on`;
+const CHAPTER_I_ONCE = `The narrator steps forward as "I" once in the chapter, for the one take the chapter turns on, and no more than once per hundred words`;
 
 const HOUSE = `You write documentaries for Pulse Gaming News, a YouTube channel about video games.
 
@@ -650,7 +655,9 @@ export function chapterPrompt(rules: LongRules = NO_LONG_RULES): string {
     .filter(Boolean)
     .map((x) => `\n${x}`)
     .join("");
-  return `${HOUSE}
+  // LONG_OPENING_CONTRACT=fix asks for takes, so the voice's and the chapter's "I once" give way to them.
+  const house = rules.takesMin ? HOUSE.replace(VOICE_I_RARE, takesVoiceLine(rules.takesMin)) : HOUSE;
+  return `${house}
 
 Write one chapter of a ${rules.guide ? "launch guide" : rules.retro ? "full retrospective of one game, spoilers and all" : "game-by-game franchise documentary"}, ${DOC_CHAPTER_WORDS_MIN}-${DOC_CHAPTER_WORDS_MAX} spoken words in ${DOC_PARAGRAPHS_MIN}-${DOC_PARAGRAPHS_MAX} paragraphs of ${DOC_PARAGRAPH_WORDS_MIN}-${DOC_PARAGRAPH_WORDS_MAX} words.
 ${rules.claims ? CLAIMS_CHAPTER_SHAPE : rules.guide ? guideChapterShape(rules.chapterAction) : rules.retro ? RETRO_CHAPTER_SHAPE : "The first paragraph opens on a scene or a moment that names the year, so the viewer knows where they are. Then the people and the decisions; then what happened and how it landed; end on what it changed."}
@@ -660,7 +667,7 @@ ${rules.chapterAction ? "" : `- The last sentence of the chapter either looks fo
 - Name the people who made the decisions. A person's role goes with their first mention in the whole documentary (the earlier chapters are listed below), then the surname alone. Judge decisions, never people; criticism is attributed to whoever made it in the source.
 - A game's full title once in the chapter; after that the short form people say ("Vice City", "GTA 5", "Red Dead 2").
 - At most one sentence in the chapter opens "That's a" or "That's an".
-- Tell it like someone who knows the story and cares about it, with the judgement in the wording: plain verdict words on the decisions ("a reckless bet", "the smartest cut they made"). The narrator steps forward as "I" once in the chapter, for the one take the chapter turns on, and no more than once per hundred words; never a string of "I think" and "honestly". One dry aside, two at most in a long chapter, aimed at companies or situations, never at players. Opinions are said as opinions; facts stay exact.
+- Tell it like someone who knows the story and cares about it, with the judgement in the wording: plain verdict words on the decisions ("a reckless bet", "the smartest cut they made"). ${rules.takesMin ? takesVoiceLine(rules.takesMin) : CHAPTER_I_ONCE}; never a string of "I think" and "honestly". One dry aside, two at most in a long chapter, aimed at companies or situations, never at players. Opinions are said as opinions; facts stay exact.
 - ${REHOOK_RULE} In a chapter that means two or three inside it, besides the last line.
 Every fact, number, date, name and quote must come from the SOURCE text provided. Its ⁽n⁾ marks and the list of who reported each line are for credits only: never copy a mark into narration or a callout, and credit a line, when it needs a credit, to the original its mark names. If the source doesn't say it, don't say it: tell the part of the story it does cover. The paragraphs are recorded and published as they stand, so they only ever tell the story. They never mention the source, the brief, a draft or these rules, never explain what can't be written and never ask for anything. If the SOURCE can't support the chapter's main events at all, leave paragraphs empty and name what's missing in missing_evidence; that line goes to the factory, which finds more sources and asks again. Don't repeat what earlier chapters covered: what they said is listed below, so refer back to it in a few words at most and never reuse their wording.
 Callouts put a real fact on screen: at most half the paragraphs carry one, and a quote must be copied word for word from the source. Most paragraphs use "none".
@@ -1639,10 +1646,17 @@ export async function writeBookends(
     rules?: LongRules;
     /** LONG_OPENING_CONTRACT=fix: the source's dated quotes, the only ones the opening may use (datedQuotesIn). */
     quotes?: readonly DatedQuote[];
+    /**
+     * LONG_OPENING_CONTRACT=fix: the title the opening serves as it will go out (the one validateBookends grades
+     * against), and whether the outline can carry a finish line to plant.
+     */
+    contract?: { title?: string; finishLine?: boolean };
   } = {},
 ): Promise<DocBookends> {
   const rules = opts.rules ?? NO_LONG_RULES;
   const raise = loopBrief(opts.loops ?? [], 0);
+  // The title the contract's opening serves: the one it is graded against, else the outline's own.
+  const openingTitle = rules.contract ? opts.contract?.title || outline.youtube?.title || outline.title : "";
   const fb = opts.feedback?.length
     ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${opts.feedback.map((f) => `- ${f}`).join("\n")}`
     : "";
@@ -1668,7 +1682,7 @@ export async function writeBookends(
 
 Write the intro and outro of a finished ${rules.guide ? "launch guide" : "documentary"}.
 ${rules.hookStack ? `${hookStackRule(rules.hookStack, rules.guide ? "guide" : "documentary")}${rules.verdicts ? `\nRight after the surprises, one line teaches the three verdicts this video gives every claim: confirmed, reported and busted, in those words.` : ""}${rules.youFloor ? `\n${youRule(rules.youFloor)}` : ""}\nThe intro runs 120-220 spoken words.` : `The intro is a cold open, in this order: the first sentence names a date, a place and a named person or an exact figure, inside one true moment from the chapters below; by about word 60 the stakes, as a consequence that tells the viewer how it ends (who lost what, or who won a generation): give away the outcome, hold back the how, which is what the strongest long videos in our study did; somewhere in the intro one short line that leans forward, saying in your own words that the first success was only the beginning; by about word 120 one line that names what this documentary is about, in your own words rather than a stock "This is the story of"; then a turn back to where it began, again in your own words. Never "In this video", never a greeting, and never a line you'd expect in any other documentary.`}
-${rules.contract ? `${contractOpeningRule({ title: outline.youtube?.title || outline.title, buyer: isBuyerGuide(outline.youtube?.title || outline.title, rules.guide ? "guide" : "documentary"), quotes: opts.quotes })}\n` : ""}${rules.claims ? `${CLAIMS_OPENING_RULE}\n` : ""}The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
+${rules.contract ? `${contractOpeningRule({ title: openingTitle, buyer: isBuyerGuide(openingTitle, rules.guide ? "guide" : "documentary"), quotes: opts.quotes, finishLine: opts.contract?.finishLine })}\n` : ""}${rules.claims ? `${CLAIMS_OPENING_RULE}\n` : ""}The outro closes in three moves: the verdict, answering the documentary's question in its first two sentences; where things stand today, with a date; and a last line that calls back to the opening moment or date. Use only facts from the chapter notes and the overview.${opts.echo ? `\n${BOOKEND_RULE}` : ""}`,
     content: `Documentary: ${outline.title}\nThe question it answers: ${outline.question ?? outline.title}\n\nChapters and their facts:\n${digest}\n\nOverview (research notes):\n${franchiseNotes.slice(0, 5000)}${prior}${raise ? `\n\n${raise}` : ""}${fb}`,
     schema: DocBookendsSchema,
     effort: "medium",

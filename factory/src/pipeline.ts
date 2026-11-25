@@ -84,6 +84,7 @@ import {
   selectLongformTopic,
   validateLongform,
   narrationOfLongform,
+  rankingRules,
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
@@ -191,7 +192,7 @@ import {
 } from "./editorial/longrules.ts";
 import { openingPace, structureLine, structureSummary } from "./render/structure.ts";
 import { contractRules, openingQuotes, recordLongChecks, type LongRecord } from "./longcontractstep.ts";
-import { stockOpenerProblems, takeProblems } from "./editorial/longcontract.ts";
+import { stockOpenerProblems, takeProblems, takesGuard } from "./editorial/longcontract.ts";
 import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
@@ -4055,6 +4056,7 @@ export async function maybeSelectDocumentary(
     now,
     await takenSlots(db),
     cfg.timezone,
+    cfg.longArgues,
   );
   // The weekly guide (src/longguide.ts, GUIDE_WEEKLY): this week's guide, planned by date as a run's documentary is,
   // so a guide built on our own tests goes through the same evidence check just below.
@@ -4504,6 +4506,9 @@ async function stepScriptDocumentary(
   const held = applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise);
   const outline = held.outline;
   if (held.changed.length) await logEvent(s.db, ep.id, "planned_chapters", { changed: held.changed });
+  // Only outlineDoc's outline can carry a finish line, and only with DOC_OPEN_LOOPS on: a retrospective or every-game
+  // outline has no such mark, so the contract neither asks for one nor counts its absence there.
+  const finishCarried = s.cfg.docOpenLoops && !retro && !(topic.format === "everygame" && topic.roster);
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
   const openLoops: { loops: OpenLoop[]; removed: string[] } = s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
@@ -4512,7 +4517,7 @@ async function stepScriptDocumentary(
       })
     : { loops: [], removed: [] };
   // LONG_OPENING_CONTRACT=fix: one loop keeps the finish-line mark, raised in the cold open and paid in the last chapter.
-  if (rules.contract && openLoops.loops.length) {
+  if (rules.contract && finishCarried && openLoops.loops.length) {
     const finish = groundFinishLine(openLoops.loops, outline.chapters.length);
     openLoops.loops = finish.loops;
     openLoops.removed.push(...finish.removed);
@@ -4847,6 +4852,15 @@ async function stepScriptDocumentary(
           },
         )
       : [];
+    // LONG_OPENING_CONTRACT=fix: a later pass that leaves the chapter with fewer takes than it had and needs (takesGuard).
+    const takesLost = (before: { paragraphs: Array<{ narration: string }> }, after: typeof before): string[] =>
+      rules.takesMin
+        ? takesGuard(
+            before.paragraphs.map((x) => x.narration).join(" "),
+            after.paragraphs.map((x) => x.narration).join(" "),
+            rules.takesMin,
+          )
+        : [];
     // The friend pass (FRIEND_PASS) on a chapter the fact check passed clean: the delivery only, kept when no figure,
     // name or quote moved, no chapter rule newly breaks and the fact check passes it again.
     if (clean && friendPassOn(s.cfg, "documentary")) {
@@ -4864,6 +4878,7 @@ async function stepScriptDocumentary(
           friendChapter(s.llm, before, {
             tier: s.cfg.friendPassTier,
             credits,
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         guard: (after) => [
           ...friendChapterProblems(before, after),
@@ -4875,6 +4890,8 @@ async function stepScriptDocumentary(
               )
             : []),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          // LONG_OPENING_CONTRACT=fix: the pass may reword a take, never cut the chapter below its takes.
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         check: (after) => checkChapter(s.llm, after, source),
@@ -4924,6 +4941,7 @@ async function stepScriptDocumentary(
                 )
               : []),
             ...newProblems(rulesFor(before), rulesFor(after)),
+            ...takesLost(before, after),
             ...chapterRefusal(after),
           ];
           return guard.length ? guard : checkChapter(s.llm, after, source);
@@ -4966,6 +4984,7 @@ async function stepScriptDocumentary(
             { removedFigures: removed },
           ),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         rewrite: (v, notes) =>
@@ -4973,6 +4992,7 @@ async function stepScriptDocumentary(
             tier: s.cfg.friendPassTier,
             humanNotes: notes,
             site: "humanise.rewrite",
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         check: (after) => checkChapter(s.llm, after, source),
       });
@@ -5077,6 +5097,7 @@ async function stepScriptDocumentary(
             title: finalTitle,
             quotes,
             sources: sourceTexts(),
+            finishLine: finishCarried,
           },
         }
       : {}),
@@ -5209,10 +5230,12 @@ async function stepScriptDocumentary(
   const finishQuestion = longOn ? openLoops.loops.find((l) => l.finish_line)?.question : undefined;
   const longChecks: LongRecord = longOn
     ? await recordLongChecks(s, ep.id, script, {
-        kind: rules.claims ? "claims" : rules.guide ? "guide" : "documentary",
+        // A "claims" entry is measured as one under check too; only fix writes it as one.
+        kind: topic.format === "claims" ? "claims" : rules.guide ? "guide" : "documentary",
         quotes,
         topic,
         fixed: contractSentBack,
+        finishLine: finishCarried,
         sources: sourceTexts(),
         sourceUrls: [
           franchise?.url ?? "",
@@ -5251,7 +5274,7 @@ async function readRunSources(
   topic: DocTopic,
 ): Promise<{ text: string; urls: string[]; read: number; missed: string[]; parts: Array<{ url: string; text: string }> }> {
   const list = topic.sources ?? [];
-  const claims = topic.format === "claims" && s.cfg.longArgues !== "off";
+  const claims = topic.format === "claims" && s.cfg.longArgues === "fix";
   if (!list.length || (!claims && topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
     return { text: "", urls: [], read: 0, missed: [], parts: [] };
   const got = await Promise.all(
@@ -7524,7 +7547,11 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
   const lessons = await longLessons(s.db, s.now()).catch(() => "");
   // The Inspiration rules (src/editorial/longrules.ts): measured while it's written, so they never force a whole new draft.
-  const rules = longRulesFor(s.cfg, "ranking");
+  // Under the contract's 90-word opening the stacked hook gives way (rankingRules); off, these are the rules as before.
+  const rules = rankingRules(longRulesFor(s.cfg, "ranking"), {
+    argues: s.cfg.longArgues,
+    contract: s.cfg.longOpeningContract,
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons, {
       punchyHook: s.cfg.longPunchyHook,

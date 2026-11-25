@@ -16,6 +16,7 @@ import {
   datedQuotesIn,
   longDocOfScript,
   withJudgement,
+  withoutSpoilerWarning,
   type ContractMode,
   type DatedQuote,
   type LongDocKind,
@@ -30,7 +31,7 @@ import {
 /**
  * The documentary rules a contract and the claims format add (pure). "fix": the outline marks a finish line, the intro
  * follows the contract in place of the stacked hook, and each chapter needs two honest takes. A run entry of format
- * "claims" is a claims-tested commentary whenever LONG_ARGUES isn't off (no entry can ask for it today).
+ * "claims" is written as a claims-tested commentary only when LONG_ARGUES is "fix"; "check" records and writes as before.
  */
 export function contractRules<R extends LongRules>(
   rules: R,
@@ -43,7 +44,7 @@ export function contractRules<R extends LongRules>(
       hookStack: 0,
       takesMin: TAKES_PER_CHAPTER,
     });
-  if (o.format === "claims" && o.argues !== "off")
+  if (o.format === "claims" && o.argues === "fix")
     Object.assign(out, { claims: true });
   return out;
 }
@@ -93,15 +94,19 @@ export async function recordLongChecks(
     sourceUrls?: readonly string[];
     /** A planned finish line that placement dropped. */
     finishMissing?: { question: string; why: "not planted" | "not paid" };
+    /** False when the outline can't carry a finish line (a retrospective or every-game outline, or DOC_OPEN_LOOPS off). */
+    finishLine?: boolean;
   },
 ): Promise<LongRecord> {
   const out: LongRecord = { warnings: [] };
   const contract = s.cfg.longOpeningContract;
   const argues = s.cfg.longArgues;
   if (contract === "off" && argues === "off") return out;
-  const doc = longDocOfScript(script, { kind: o.kind });
+  // The opening as its writer wrote it: the spoiler warning the factory adds afterwards is not the writer's miss.
+  const read = longDocOfScript(script, { kind: o.kind });
+  const doc = { ...read, hook: withoutSpoilerWarning(read.hook) };
   if (contract !== "off") {
-    let report = contractReport(doc, { quotes: o.quotes, sources: o.sources, sourceUrls: o.sourceUrls, finishMissing: o.finishMissing });
+    let report = contractReport(doc, { quotes: o.quotes, sources: o.sources, sourceUrls: o.sourceUrls, finishMissing: o.finishMissing, finishLine: o.finishLine });
     let judged = false;
     if (o.kind !== "ranking")
       try {

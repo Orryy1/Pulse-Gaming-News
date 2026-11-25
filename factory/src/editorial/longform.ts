@@ -308,6 +308,14 @@ export function openingCapOn(opts: Pick<LongformOptions, "argues" | "contract">)
   return opts.contract === "fix" || opts.argues === "fix";
 }
 
+/**
+ * A ranking's rules under the 90-word opening cap (pure): the contract supersedes the stacked hook (LONG_HOOK_STACK),
+ * so the hook stack is 0 there; otherwise the rules come back unchanged.
+ */
+export function rankingRules(rules: LongRules, opts: Pick<LongformOptions, "argues" | "contract">): LongRules {
+  return openingCapOn(opts) && rules.hookStack ? { ...rules, hookStack: 0 } : rules;
+}
+
 /** The intro's first-line rule: a Short's 5-10 word hook (LONG_PUNCHY_HOOK) or the older "under 15 words". */
 export function hookRule(punchy = false): string {
   return punchy
@@ -521,6 +529,8 @@ export async function writeLongform(
   lessons = "",
   opts: LongformOptions = {},
 ): Promise<LongformScript> {
+  // Under the 90-word cap a stacked hook can't fit: the contract's opening replaces it (rankingRules).
+  if (opts.rules && openingCapOn(opts)) opts = { ...opts, rules: rankingRules(opts.rules, opts) };
   // Steam facts given up front, or looked up once the plan names the games.
   let facts = Array.isArray(factsFor) ? factsFor : [];
   const factBlock = facts.length

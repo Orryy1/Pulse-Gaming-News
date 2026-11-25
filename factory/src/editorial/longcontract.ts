@@ -172,6 +172,20 @@ export function longDocOfScript(
   };
 }
 
+/**
+ * The opening as its writer wrote it (pure): the factory's own spoiler warning taken off, the retrospective's leading
+ * "Spoiler warning: ..." sentence (withRetroWarning) and a ranking's closing "Fair warning: story spoilers ahead." or
+ * "And expect story spoilers." (withSpoilerWarning). Both are added after the opening was written and checked, so the
+ * record grades what the writer was asked for and the warning is never counted as the writer's miss.
+ */
+export function withoutSpoilerWarning(hook: string): string {
+  return hook
+    .trim()
+    .replace(/^Spoiler warning:.*?this is your stop\.\s*/i, "")
+    .replace(/\s*(?:Fair warning: story spoilers ahead\.|And expect story spoilers\.)$/i, "")
+    .trim();
+}
+
 // ---------------------------------------------------------------- 1. the first sentence
 
 /** Purchase and buyer framing: right for a buyer's guide, wrong on a history. */
@@ -549,6 +563,24 @@ export function takeProblems(
       ];
 }
 
+/**
+ * A later pass (the friend pass, the clarity gate or the humaniser) may not cost a chapter its takes (pure): a problem
+ * when the reworded chapter has fewer first-person takes than it had and fewer than it needs. Counted, so a chapter
+ * already short of takes can't lose another either.
+ */
+/** The chapter's "I" under the contract (fix): the takes it asks for, in place of the voice's single "I". */
+export function takesVoiceLine(takes: number): string {
+  return `The narrator steps forward as "I" for this chapter's honest takes, at least ${takes}, and no more than once per hundred words`;
+}
+
+export function takesGuard(before: string, after: string, least = TAKES_PER_CHAPTER): string[] {
+  const had = takesIn(before).length;
+  const has = takesIn(after).length;
+  return has < had && has < least
+    ? [`The rewrite cut the chapter's first-person takes from ${had} to ${has}; it needs at least ${least}. Keep the takes.`]
+    : [];
+}
+
 // ---------------------------------------------------------------- the writers' rules (fix)
 
 /** The outline's finish line, as the open-loop machinery plans it (OpenLoopSchema.finish_line). */
@@ -562,6 +594,8 @@ export function contractOpeningRule(o: {
   title?: string;
   buyer: boolean;
   quotes?: readonly DatedQuote[];
+  /** False when the outline can't carry a finish line (a retrospective, or DOC_OPEN_LOOPS off): no plant is asked for. */
+  finishLine?: boolean;
 }): string {
   const quote = o.quotes?.length
     ? `\n- Inside the first ${QUOTE_WITHIN_SECONDS} seconds, use one of these dated quotes from the source, word for word in quotation marks, saying who said it and when, with no other quote made up or reworded:\n${o.quotes
@@ -572,8 +606,8 @@ export function contractOpeningRule(o: {
   return `The opening contract (it overrides any other length or order given for the intro):
 - The first sentence serves the title's promise${o.title ? ` ("${o.title}")` : ""}: a moment, a person, a figure or the question itself.${o.buyer ? "" : " No purchase, price or buyer framing: this isn't a buyer's guide."}
 - State the title's central question in plain words within the first ${QUESTION_BY_WORDS} words, as a question, and make it the same idea as the title.
-- Plant the finish line (the outline's finish-line question) before about 90 seconds; it is answered in the last chapter.
-- The whole intro is at most ${OPENING_WORDS_MAX} spoken words, or up to ${OPENING_QUOTE_WORDS_MAX} when it quotes a primary source. Then hand straight to the first chapter.${quote}`;
+${o.finishLine === false ? "" : `- Plant the finish line (the outline's finish-line question) before about 90 seconds; it is answered in the last chapter.
+`}- The whole intro is at most ${OPENING_WORDS_MAX} spoken words, or up to ${OPENING_QUOTE_WORDS_MAX} when it quotes a primary source. Then hand straight to the first chapter.${quote}`;
 }
 
 /** The chapter rules a contract adds (fix): honest takes, and a hand-over by contrast. */
@@ -621,6 +655,8 @@ export function contractReport(
     sourceUrls?: readonly string[];
     /** A finish line the outline planned that placement dropped (never raised, or never answered). */
     finishMissing?: { question: string; why: "not planted" | "not paid" };
+    /** False when the outline can't carry a finish line: one is measured if it is there, and its absence is no problem. */
+    finishLine?: boolean;
   } = {},
 ): ContractReport {
   const q = questionAt(d.hook);
@@ -629,7 +665,7 @@ export function contractReport(
   const problems = [
     ...buyerFramingProblems(d.hook, d.title, d.kind),
     ...(d.kind === "ranking" ? [] : questionProblems(d.hook, d.title)),
-    ...(d.kind === "ranking"
+    ...(d.kind === "ranking" || o.finishLine === false
       ? []
       : o.finishMissing && !d.loops?.some((l) => l.finish)
         ? [

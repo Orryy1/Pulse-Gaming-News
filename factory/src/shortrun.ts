@@ -186,6 +186,11 @@ export function docRunDue(
   now: Date,
   taken: Date[],
   timeZone: string,
+  /**
+   * LONG_ARGUES: off, a "claims" entry runs as the plain documentary it was before the format existed and its brief is
+   * not kept; check or fix keep both (only fix changes the writing).
+   */
+  argues: "off" | "check" | "fix" = "off",
 ): { at: Date; topic: DocTopic; entry: RunDoc } | undefined {
   for (const e of run) {
     // A story recap waits for the story to be streamed (src/storyrecap.ts recapDue), so it is never due here.
@@ -206,8 +211,8 @@ export function docRunDue(
         reason: "Planned in the launch run",
         franchise: e.franchise,
         wiki: e.wiki,
-        ...(e.format ? { format: e.format } : {}),
-        ...(e.brief ? { brief: e.brief } : {}),
+        ...(e.format && (e.format !== "claims" || argues !== "off") ? { format: e.format } : {}),
+        ...(e.brief && argues !== "off" ? { brief: e.brief } : {}),
         ...(e.premiere ? { premiere: true } : {}),
         ...(e.sources?.length ? { sources: e.sources } : {}),
         ...(e.search_query || e.thumb || e.chapters || e.facts_file

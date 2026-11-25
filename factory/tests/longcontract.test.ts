@@ -423,7 +423,7 @@ test("finish line grounding: one mark, raised in the cold open and paid in the l
   assert.equal(placed.placed[0]!.finish, true);
 });
 
-test("the rules a contract adds: fix only; claims only with LONG_ARGUES on", () => {
+test("the rules a contract adds: fix only; claims only with LONG_ARGUES on fix", () => {
   const base = { ...NO_LONG_RULES, hookStack: 5 };
   assert.deepEqual(
     contractRules(base, { contract: "off", argues: "off" }),
@@ -438,9 +438,15 @@ test("the rules a contract adds: fix only; claims only with LONG_ARGUES on", () 
   assert.equal(fix.hookStack, 0);
   assert.equal(fix.takesMin, 2);
   assert.equal(
-    contractRules(base, { contract: "off", argues: "check", format: "claims" })
+    contractRules(base, { contract: "off", argues: "fix", format: "claims" })
       .claims,
     true,
+  );
+  // "check" records and changes no writing (review, 25 Nov 2026).
+  assert.equal(
+    contractRules(base, { contract: "off", argues: "check", format: "claims" })
+      .claims,
+    undefined,
   );
   assert.equal(
     contractRules(base, { contract: "off", argues: "off", format: "claims" })

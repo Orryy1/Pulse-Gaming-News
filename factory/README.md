@@ -158,6 +158,8 @@ The only running cost is Claude (selection, script, fact-check and vision QA): a
 
 `npm run brand` renders the channel banner (2560x1440, content inside the 1546x423 safe area), the avatar (800x800) and a long-form thumbnail template (1280x720) into `brand/` from the same colour, type and motion tokens the Shorts use. `brand/BRAND.md` is the brand system; `brand/CHANNEL_KIT.md` is the copy to paste into YouTube Studio.
 
+`GTA_KIT` (off by default) adds three GTA-style overlays to GTA stories, in Pulse's own colours and fonts: a place card when a line names a place on the map, a cash readout when a line gives a dollar figure and says what it is, and a head-to-head when a line sets two names against each other (`src/render/gtakit.ts`, `src/render/components/GtaKit.tsx`; preview with the `PulseGtaKit` composition). Credit: they are ported from the gta-components kit by Chris (everestchris), MIT licence, https://github.com/echris6/gta-components (notice in `docs/licences/gta-components-MIT.txt`). The cash readout's layout borrows from a free GTA VI HUD After Effects project by @cole_editing on X. No Rockstar type, logos, HUD art or footage is used.
+
 ## Development
 
 ```

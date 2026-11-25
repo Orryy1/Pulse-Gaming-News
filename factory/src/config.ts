@@ -1434,6 +1434,10 @@ export interface Config {
   /** 3D game boxes (src/render/boxart.ts): a ranking entry's box turns in on its card; a documentary's "it came
    * out" sentence turns the game's box in beside the picture (BOX_3D, default off until proven). */
   box3d: boolean;
+  /** GTA_KIT (src/render/gtakit.ts, default off until proven): in a GTA story, a line naming a place on the map, a
+   * dollar figure with what it is, or two names set against each other gets the gta-components kit's place card, cash
+   * readout or head-to-head, in Pulse's style, in Shorts and long videos. Off: nothing changes. */
+  gtaKit: boolean;
   /**
    * The long videos' 3D and look craft in Shorts (src/render/shortupgrades.ts, src/shortupgradestep.ts), each on by
    * default but only where its long-video switch is on too, so the long switch stays the one kill switch:
@@ -2533,6 +2537,7 @@ export function loadConfig(): Config {
     compareWipe: bool("COMPARE_WIPE", false),
     subjectPop: bool("SUBJECT_POP", false),
     box3d: bool("BOX_3D", false),
+    gtaKit: bool("GTA_KIT", false),
     shortUpgrades: {
       mapPins: bool("SHORT_MAP_PINS", true),
       gameLook: bool("SHORT_GAME_LOOK", true),

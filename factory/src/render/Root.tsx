@@ -17,6 +17,7 @@ import {
 import { ChannelTrailer, TRAILER_FPS, TRAILER_H, TRAILER_SECONDS, TRAILER_W } from "./ChannelTrailer.tsx";
 import { Lab, SAMPLE_LAB, type LabProps } from "./Lab.tsx";
 import { DepthProof, SAMPLE_DEPTH_PROOF, type DepthProofProps } from "./DepthProof.tsx";
+import { GtaKitPreview, SAMPLE_KIT, type GtaKitPreviewProps } from "./components/GtaKitPreview.tsx";
 import { IdeasProof, SAMPLE_IDEAS_PROOF, ideasProofScenes, type IdeasProofProps } from "./IdeasProof.tsx";
 import { MascotSheet, SHEET_H, SHEET_W } from "./MascotSheet.tsx";
 import {
@@ -383,6 +384,21 @@ export const RemotionRoot: React.FC = () => (
       defaultProps={SAMPLE_IDEAS_PROOF}
       calculateMetadata={({ props }: { props: IdeasProofProps }) => ({
         durationInFrames: Math.max(1, ideasProofScenes(props)) * Math.round(props.seconds * LONG_FPS),
+      })}
+    />
+    {/* GTA_KIT proof reel: the place card, cash readout and head-to-head, tall or wide (src/render/gtakit.ts). */}
+    <Composition
+      id="PulseGtaKit"
+      component={GtaKitPreview}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={360}
+      defaultProps={{ tall: false, moments: SAMPLE_KIT } as GtaKitPreviewProps}
+      calculateMetadata={({ props }: { props: GtaKitPreviewProps }) => ({
+        width: props.tall ? WIDTH : LONG_WIDTH,
+        height: props.tall ? HEIGHT : LONG_HEIGHT,
+        durationInFrames: Math.max(30, ...props.moments.map((m) => m.from + m.len)),
       })}
     />
   </>

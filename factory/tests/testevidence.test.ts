@@ -320,6 +320,8 @@ async function writing(over: {
   records: TestRecord[];
   /** LONG_OPENING_CONTRACT and LONG_ARGUES for the regression tests (both off unless given). */
   long?: { contract: "off" | "check" | "fix"; argues: "off" | "check" | "fix" };
+  /** DOC_FACT_DISCIPLINE (on unless given): off for the tests of the path as it was before it (tests/docfacts.test.ts). */
+  facts?: boolean;
 }) {
   const db = await testDb();
   const data = await tmpDir();
@@ -330,6 +332,7 @@ async function writing(over: {
     docOpenLoops: false,
     longOpeningContract: over.long?.contract ?? "off",
     longArgues: over.long?.argues ?? "off",
+    docFactDiscipline: over.facts ?? true,
   });
   const plans = [1, 2, 3, 4, 5, 6].map((n) => ({
     chapter_title: `Chapter ${n}`,
@@ -438,8 +441,8 @@ test("with records, a check that never ran loses its chapter and every unsupport
 
 test("with no records, or with the setting off, the documentary is written and checked exactly as before", async () => {
   for (const over of [
-    { setting: true, records: [] as TestRecord[] },
-    { setting: false, records: [REC] },
+    { setting: true, records: [] as TestRecord[], facts: false },
+    { setting: false, records: [REC], facts: false },
   ]) {
     const { db, ep, sources } = await writing(over);
     assert.equal(ep.status, "scripted", ep.last_error ?? "");
@@ -456,14 +459,14 @@ test("with no records, or with the setting off, the documentary is written and c
 // Regression (18 Nov 2026): the long-video contract read outline.youtube.title, which an older or mocked outline lacks,
 // and threw after the last chapter even with both settings off. Off must be the old path exactly; on must never throw.
 test("long-video settings: off writes the documentary exactly as before; check never throws on an outline with no youtube block", async () => {
-  const off = await writing({ setting: false, records: [] });
+  const off = await writing({ setting: false, records: [], facts: false });
   assert.equal(off.ep.status, "scripted", off.ep.last_error ?? "");
   const fc = JSON.stringify(off.ep.factcheck_json);
   assert.doesNotMatch(fc, /long_contract|long_argues/, "off: nothing new on the record");
   const events = await off.db.query<{ kind: string }>(`SELECT kind FROM events WHERE episode_id = 'ep_doc'`);
   assert.ok(!events.some((e) => /^long_/.test(e.kind)), "off: no long_ events");
   await off.db.close();
-  const on = await writing({ setting: false, records: [], long: { contract: "check", argues: "check" } });
+  const on = await writing({ setting: false, records: [], long: { contract: "check", argues: "check" }, facts: false });
   assert.equal(on.ep.status, "scripted", on.ep.last_error ?? "");
   const rec = on.ep.factcheck_json as unknown as { long_contract?: { judged: boolean }; long_argues?: unknown };
   assert.ok(rec.long_contract, "check: the contract is on the record");

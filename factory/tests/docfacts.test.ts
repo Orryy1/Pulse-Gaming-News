@@ -378,7 +378,7 @@ test("the gate keeps a chapter only when the re-check after the cuts is clean", 
   assert.doesNotMatch(spoken(out.chapter), /Matrix Online/);
   assert.match(
     docFactLine("Cyberpunk 2077: chapter 1", out.repairs),
-    /^Cyberpunk 2077: chapter 1: fact check: 2 disputed lines 2 cut/,
+    /^Cyberpunk 2077: chapter 1: fact check: 2 disputed lines settled \(2 cut\)/,
   );
 });
 
@@ -768,6 +768,7 @@ test("/admin/retry?rewrite=1 takes a rejected episode, voiced or not, but never 
   assert.deepEqual(
     rewriteRetry({
       status: "rejected",
+      lane: "longform",
       assets_json: { audio: "a.mp3" },
       youtube_video_id: null,
     }),
@@ -779,6 +780,7 @@ test("/admin/retry?rewrite=1 takes a rejected episode, voiced or not, but never 
   assert.deepEqual(
     rewriteRetry({
       status: "failed",
+      lane: "longform",
       assets_json: null,
       youtube_video_id: null,
     }),
@@ -790,6 +792,7 @@ test("/admin/retry?rewrite=1 takes a rejected episode, voiced or not, but never 
   assert.equal(
     rewriteRetry({
       status: "rejected",
+      lane: "longform",
       assets_json: null,
       youtube_video_id: "abc",
     }).ok,
@@ -799,6 +802,7 @@ test("/admin/retry?rewrite=1 takes a rejected episode, voiced or not, but never 
   assert.equal(
     rewriteRetry({
       status: "failed",
+      lane: "longform",
       assets_json: { audio: "a.mp3" },
       youtube_video_id: null,
     }).ok,
@@ -807,9 +811,73 @@ test("/admin/retry?rewrite=1 takes a rejected episode, voiced or not, but never 
   assert.equal(
     rewriteRetry({
       status: "published",
+      lane: "longform",
       assets_json: null,
       youtube_video_id: null,
     }).ok,
     false,
   );
+});
+
+test("a rejected Short is never rewritten: it was rejected on purpose", () => {
+  assert.equal(
+    rewriteRetry({ status: "rejected", lane: "shorts", assets_json: null, youtube_video_id: null }).ok,
+    false,
+  );
+});
+
+// ------------------------------------------------------------------ review follow-ups (code-reviewer, 25 Nov)
+
+test("two disputed claims in one sentence: the cut that takes the first settles the second", () => {
+  const line = CYBERPUNK[12]!.sentence;
+  const r = repairDocChapter(docChapter(line), [
+    CYBERPUNK[12]!.item,
+    { quote: "was already testing older consoles", problem: "Not dated to August 2019 by the source." },
+  ]);
+  assert.deepEqual(r.unrepaired, []);
+  assert.doesNotMatch(spoken(r.chapter), /testing older consoles/);
+});
+
+test("a cut that would leave 'It' or 'The game' pointing at the wrong thing is refused", () => {
+  for (const next of ["It closed four years later.", "The game never came back.", "Two years later the servers went dark."]) {
+    const r = repairDocChapter(docChapter(`${CYBERPUNK[0]!.sentence} ${next}`), [CYBERPUNK[0]!.item]);
+    assert.match(r.unrepaired[0]?.why ?? "", /leans on it/, next);
+  }
+});
+
+test("a sentence the splitter cut short after an abbreviation is never cut as if whole", () => {
+  const r = repairDocChapter(docChapter("Sales were strongest in the U.S. Retailers ran out by noon."), [
+    { quote: "Sales were strongest in the U.S.", problem: "No regional sales split in the source." },
+  ]);
+  assert.match(r.unrepaired[0]?.why ?? "", /told apart cleanly/);
+});
+
+test("a fact check that can't run is a retry, never a drop or a verdict", async () => {
+  const out = await disciplineChapter({
+    chapter: docChapter(CYBERPUNK[7]!.sentence),
+    disputed: undefined,
+    check: async () => {
+      throw new Error("model down");
+    },
+  });
+  assert.equal(out.ok, false);
+  assert.equal(!out.ok && out.errored, true);
+  const stubborn = await disciplineChapter({
+    chapter: docChapter(CYBERPUNK[7]!.sentence),
+    disputed: [CYBERPUNK[7]!.item],
+    check: async () => [CYBERPUNK[16]!.item],
+  });
+  assert.equal(!stubborn.ok && !!stubborn.errored, false, "a real verdict is not an outage");
+});
+
+test("a cut piece the splitter took from after an abbreviation is refused too", () => {
+  const r = repairDocChapter(docChapter("Sales in the U.S. Topped two million by spring."), [
+    { quote: "Topped two million by spring.", problem: "No sales figure in the source." },
+  ]);
+  assert.match(r.unrepaired[0]?.why ?? "", /told apart cleanly/);
+  // An ordinary "no." at the end of a line is not an abbreviation.
+  const ok = repairDocChapter(docChapter("Sony's answer was a flat no. The second trailer did most of the work."), [
+    CYBERPUNK[7]!.item,
+  ]);
+  assert.deepEqual(ok.unrepaired, []);
 });

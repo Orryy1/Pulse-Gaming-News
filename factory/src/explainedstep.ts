@@ -411,7 +411,7 @@ export async function stepScriptExplained(
     // DOC_FACT_DISCIPLINE (src/docfacts.ts): what the fact check still disputes is mended or its sentence cut within
     // the part's cap, then checked once more; a part that still isn't clean is dropped as a refused part would be
     // (at most one, never the first, DOC_DROP_REFUSED_CHAPTER), or the explainer stops. A refusal is handled below.
-    if (s.cfg.docFactDiscipline && !chapterRefusal(chapter!).length) {
+    if (s.cfg.docFactDiscipline && !(s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)) {
       const label = EXPLAINED_PARTS[index]!.label;
       const settled = await disciplineChapter({
         chapter: chapter!,
@@ -431,6 +431,9 @@ export async function stepScriptExplained(
           chapter = settled.chapter;
           warnings.push(docFactLine(label, settled.repairs));
         }
+      } else if (settled.errored) {
+        // The check itself could not run: no verdict, so the step is tried again later.
+        throw new Error(`explainer part "${label}": ${settled.why}; trying again later`);
       } else if (s.cfg.docDropRefusedChapter && index > 0 && dropped.size === 0) {
         dropped.add(index);
         warnings.push(`${label}: dropped, its fact check still disputes it after the rewrites and the cuts (${settled.why.slice(0, 200)})`);

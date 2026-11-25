@@ -5042,6 +5042,9 @@ async function stepScriptDocumentaryBody(
           warnings.push(docFactLine(`${plan.game_title}: chapter ${index + 1}`, settled.repairs));
         }
       } else {
+        // The check itself could not run: no verdict, so the step is tried again later (finished chapters resume).
+        if (settled.errored)
+          throw new Error(`documentary chapter ${index + 1}: ${settled.why}; trying again later`);
         const title = outline.title;
         const fate = refusedChapterFate({
           on: s.cfg.docDropRefusedChapter,
@@ -5430,9 +5433,12 @@ async function stepScriptDocumentaryBody(
     throw new FatalError(
       `documentary still holds ${stillUnbacked.length} disputed line${stillUnbacked.length === 1 ? "" : "s"} after the fact discipline: ${stillUnbacked[0]!.slice(0, 200)}`,
     );
+  // With records (strict) those lines were cut above, sentence by sentence; without, only DOC_FACT_DISCIPLINE off keeps them.
   if (stillUnbacked.length)
     await s.notify({
-      content: `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in (DOC_FACT_DISCIPLINE is off). First: ${stillUnbacked[0]!.slice(0, 280)}`,
+      content: strict
+        ? `✂️ "${outline.title}": ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} the fact check still disputed after the rewrites ${stillUnbacked.length === 1 ? "was" : "were"} cut. First: ${stillUnbacked[0]!.slice(0, 280)}`
+        : `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in (DOC_FACT_DISCIPLINE is off). First: ${stillUnbacked[0]!.slice(0, 280)}`,
     });
   if (longRulesOn(rules)) {
     const said = narrationOfDoc(draft);
@@ -7564,6 +7570,8 @@ async function stepScriptRecap(
         repairs: settled.repairs,
         ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
       }).catch(() => undefined);
+      if (!settled.ok && settled.errored)
+        throw new Error(`recap story "${story.game}": ${settled.why}; trying again later`);
       if (!settled.ok)
         throw new FatalError(
           `recap story "${story.game}" fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,

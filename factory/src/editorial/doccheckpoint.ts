@@ -17,7 +17,8 @@ import path from "node:path";
 import type { DocDraft, DocOutline } from "./documentary.ts";
 import type { OpenLoop } from "./openloops.ts";
 
-export const DOC_CHECKPOINT_VERSION = 1;
+// 2 (25 Nov 2026): DOC_FACT_DISCIPLINE. A chapter saved before it may hold disputed lines, so it is written again.
+export const DOC_CHECKPOINT_VERSION = 2;
 
 export interface DocCheckpoint {
   version: number;

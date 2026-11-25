@@ -27,6 +27,20 @@ import {
 } from "./factrepair.ts";
 import { LEANS_BACK } from "./longrepair.ts";
 
+/**
+ * In a chapter "It", "Its", "The game" or "That year" after a cut line would point at whatever is left before it
+ * ("The Matrix Online launched in 2005. It closed four years later." loses its first line and the closure lands on
+ * the chapter's game). A ranking's LEANS_BACK leaves "it" out because there it is the entry's game.
+ */
+const DOC_LEANS_BACK =
+  /^\s*["'“‘]?(?:it|its|it's|the game|the same|that year|the year|the next|the following|two years later|a year later|years later|months later|soon after|afterwards?)\b/i;
+const leansBack = (t: string) => LEANS_BACK.test(t) || DOC_LEANS_BACK.test(t);
+
+/** A sentence the splitter may have cut short ("the U.S." "Dr."): never cut a piece that ends on one. */
+const CLIPPED_END = /\b(?:U\.S|U\.K|Dr|Mr|Mrs|Ms|St|No|vs|Jr|Sr|Inc|Ltd|Co)\.\s*$/;
+/** How a whole sentence starts: a capital, a figure, a currency sign or an opening quote or bracket. */
+const SENTENCE_START = /^\s*["'“‘(]?[A-Z0-9$£€]/;
+
 /** One line the fact-check disputes, as checkChapterItems returns it. */
 export interface DocFactItem {
   quote: string;
@@ -113,6 +127,13 @@ export function repairDocChapter(
   const repairs: DocFactRepair[] = [];
   const unrepaired: DocFactRepairResult["unrepaired"] = [];
   const fail = (i: DocFactItem, why: string) => unrepaired.push({ ...i, why });
+  // The sentences already mended or cut in this pass, as they were: a second quote inside one is settled with it
+  // (the checker often flags two claims in one sentence). The caller's re-check still reads the result.
+  const settled: string[] = [];
+  const settledBy = (quote: string) => {
+    const q = fold(core(quote));
+    return !!q && settled.some((x) => fold(x).includes(q));
+  };
   // Last line first: a cut never shifts a line still to be settled, and a disputed line that leans on an earlier
   // disputed one ("That's why..." after "If you remember The Matrix Online...") is gone before the earlier is judged.
   const pos = (i: DocFactItem) => {
@@ -125,6 +146,7 @@ export function repairDocChapter(
     .map((x) => x.item);
   for (const item of order) {
     const at = sentencesQuoted(fields, item.quote);
+    if (!at && settledBy(item.quote)) continue;
     if (!at) {
       fail(
         item,
@@ -167,6 +189,7 @@ export function repairDocChapter(
         if (holders.length === 1) {
           const fi = holders[0]!;
           const was = fields[fi]!;
+          settled.push(fix.from);
           fields[fi] = was.replace(fix.from, fix.to);
           cut += Math.max(0, words(was) - words(fields[fi]!));
           repairs.push({
@@ -201,15 +224,28 @@ export function repairDocChapter(
     const flat = fields.flatMap((f, fi) =>
       splitSentences(f).map((s, si) => ({ fi, si, s })),
     );
-    const lastCut = flat.reduce(
-      (m, x, k) => (doomed.has(`${x.fi}:${x.si}`) ? k : m),
-      -1,
+    const isDoomed = (x: { fi: number; si: number }) => doomed.has(`${x.fi}:${x.si}`);
+    // After each cut piece (a quote may cover sentences apart from each other), the next line kept.
+    const afterCuts = flat
+      .map((x, k) => (isDoomed(x) && !isDoomed(flat[k + 1] ?? { fi: -1, si: -1 }) ? flat[k + 1] : undefined))
+      .filter((x): x is (typeof flat)[number] => !!x);
+    const leaning = afterCuts.find((x) => leansBack(x.s) || !SENTENCE_START.test(x.s));
+    if (leaning) {
+      fail(item, `the next sentence leans on it ("${leaning.s.slice(0, 60)}")`);
+      continue;
+    }
+    // A piece the splitter cut out of a longer sentence: it ends on an abbreviation, has no end, starts in lower case,
+    // or the line before it ends on an abbreviation ("Sales in the U.S." + "topped 2 million.").
+    const clipped = flat.find(
+      (x, k) =>
+        isDoomed(x) &&
+        (CLIPPED_END.test(x.s) ||
+          !/[.!?]["'”’)]?\s*$/.test(x.s) ||
+          !SENTENCE_START.test(x.s) ||
+          (k > 0 && flat[k - 1]!.fi === x.fi && CLIPPED_END.test(flat[k - 1]!.s))),
     );
-    const next = flat
-      .slice(lastCut + 1)
-      .find((x) => !doomed.has(`${x.fi}:${x.si}`));
-    if (next && LEANS_BACK.test(next.s)) {
-      fail(item, `the next sentence leans on it ("${next.s.slice(0, 60)}")`);
+    if (clipped) {
+      fail(item, `its sentence can't be told apart cleanly ("${clipped.s.slice(0, 60)}")`);
       continue;
     }
     // A paragraph left empty goes, but the chapter keeps at least two.
@@ -231,6 +267,7 @@ export function repairDocChapter(
       const kept = splitSentences(fields[fi]!).filter((s, si) => {
         if (!doomed.has(`${fi}:${si}`)) return true;
         removed.push(s.trim());
+        settled.push(s);
         return false;
       });
       fields[fi] = kept.join(" ");
@@ -266,6 +303,8 @@ export type DocFactOutcome =
   | {
       ok: false;
       why: string;
+      /** The fact check itself could not run: not a verdict, so the caller retries the step rather than drop or fail. */
+      errored?: boolean;
       repairs: DocFactRepair[];
       /** What is still disputed (or could not be mended), for the record. */
       left: DocFactItem[];
@@ -290,6 +329,7 @@ export async function disciplineChapter(o: {
       return {
         ok: false,
         why: "the fact check could not run on it",
+        errored: true,
         repairs: [],
         left: [],
       };
@@ -317,6 +357,7 @@ export async function disciplineChapter(o: {
     return {
       ok: false,
       why: "the re-check after the cuts could not run",
+      errored: true,
       repairs: r.repairs,
       left: [],
     };
@@ -351,5 +392,5 @@ export function docFactLine(
     ...(mended ? [`${mended} mended`] : []),
   ];
   const first = repairs[0];
-  return `${label}: fact check: ${repairs.length} disputed line${repairs.length === 1 ? "" : "s"} ${parts.join(", ")}${first ? ` (first: "${first.from.slice(0, 140)}"${first.to ? ` -> "${first.to.slice(0, 140)}"` : ""})` : ""}.`;
+  return `${label}: fact check: ${repairs.length} disputed line${repairs.length === 1 ? "" : "s"} settled (${parts.join(", ")})${first ? ` (first: "${first.from.slice(0, 140)}"${first.to ? ` -> "${first.to.slice(0, 140)}"` : ""})` : ""}.`;
 }

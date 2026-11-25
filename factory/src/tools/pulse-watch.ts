@@ -147,7 +147,7 @@ function slotPlan(env: string): SlotPlan | undefined {
     {
       cwd: factory,
       encoding: "utf8",
-      timeout: 60_000,
+      timeout: 180_000,
       windowsHide: true,
       env: {
         PATH: process.env.PATH ?? "",
@@ -261,12 +261,17 @@ async function main(): Promise<void> {
       prev.running = undefined;
     }
     const mac = gatherMac();
-    const plan = mac.reachable ? slotPlan(mac.slotEnv) : undefined;
+    // The last good plan stands in for a run where it could not be worked out (a slow PC), so slot faults do not flap.
+    const fresh = mac.reachable ? slotPlan(mac.slotEnv) : undefined;
+    const cached = prev.extra.plan as { at: string; plan: SlotPlan } | undefined;
+    const plan =
+      fresh ??
+      (cached && now.getTime() - Date.parse(cached.at) < 6 * 3600_000 ? cached.plan : undefined);
     const pc = gatherPc();
     const memory = (prev.extra.status ?? {}) as StatusMemory;
     const found = allFaults(mac, pc, plan, memory, now);
     const faults: Fault[] = [...found.faults];
-    if (mac.reachable && !plan)
+    if (mac.reachable && !fresh)
       faults.push({
         key: "slot-plan",
         severity: "warn",
@@ -277,7 +282,11 @@ async function main(): Promise<void> {
       budgetPct: pc.budgetPct,
       shadow,
     });
-    d.state.extra = { ...d.state.extra, status: found.memory };
+    d.state.extra = {
+      ...d.state.extra,
+      status: found.memory,
+      ...(fresh ? { plan: { at: now.toISOString(), plan: fresh } } : {}),
+    };
 
     // Disk: thin Time Machine's local snapshots under 40 GB (owner's standing OK, 18 Nov). Nothing is deleted.
     if (found.thin) {

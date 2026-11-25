@@ -405,7 +405,7 @@ export async function tagVodStretches(
           {
             game: v.game || v.title,
             places: o.places,
-            seen: shots.map((s) => s.desc),
+            seen: shots.map((s) => s.desc).filter((d) => d && d !== "-"),
             text: [...new Set(shots.map((s) => s.text).filter(Boolean))].join(
               " | ",
             ),

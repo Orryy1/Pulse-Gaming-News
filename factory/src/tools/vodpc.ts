@@ -151,8 +151,13 @@ if (!floor.ok) {
       // The channel goes on the index first: the credit, the order and the facecam rule all read it. Streams are
       // tagged by the half-minute stretch, not described shot by shot (VOD_DESCRIBE=shots for the old way).
       const v0 = await openVodIndex(r.file, r.game!, { dataDir });
-      const describe =
-        process.env.VOD_DESCRIBE === "shots" ? undefined : ("stretch" as const);
+      // An index already tagged keeps its mode: switching would re-cut its stretches and tag them again.
+      const tagged = Object.keys((await loadVodTags(dataDir, v0.vodId)).stretches).length > 0;
+      const describe = tagged
+        ? v0.describe
+        : process.env.VOD_DESCRIBE === "shots"
+          ? undefined
+          : ("stretch" as const);
       if (v0.channel !== r.source.channel || v0.describe !== describe) {
         const { describe: _old, ...rest } = v0;
         await saveVodIndex(dataDir, {
@@ -230,15 +235,20 @@ if (!floor.ok) {
       );
       continue;
     }
+    // One recording's trouble never stops the rest.
+    const t0 = Date.now();
     const out = await archiveRecording(
       { file: r.file, bytes: r.bytes },
       deps,
       process.env.VOD_ARCHIVE_ROOT || "/Volumes/Storage",
-    );
+    ).catch((err: unknown) => ({ action: "kept" as const, why: `archive failed: ${err instanceof Error ? err.message : String(err)}` }));
+    const seconds = Math.round((Date.now() - t0) / 1000);
     const line = {
       at: new Date().toISOString(),
       file: r.file,
       bytes: r.bytes,
+      seconds,
+      ...(out.action === "archived" && seconds > 0 ? { mbPerSecond: Math.round(r.bytes / 1e6 / seconds) } : {}),
       ...out,
     };
     await fs.appendFile(logFile, `${JSON.stringify(line)}\n`);

@@ -720,3 +720,28 @@ test("serve: no new clip is cut when the drive is at its floor; the Mac is told 
     await srv.close();
   }
 });
+
+test("review fixes: a PC copy in use stays for the next run; stretch-mode indexes are ready only with words", async () => {
+  const { archiveRecording } = await import("../src/vodindex/archive.ts");
+  const { vodIndexReady } = await import("../src/vodindex/build.ts");
+  const busy = await archiveRecording(
+    { file: "D:/v/TinoTV VODs/x [v1].mp4", bytes: 5 },
+    {
+      driveUp: async () => true,
+      remoteSize: async () => 5,
+      copy: async () => assert.fail("already there"),
+      remove: async () => {
+        throw new Error("EBUSY: resource busy or locked");
+      },
+    },
+  );
+  assert.deepEqual(busy, { action: "kept", why: "copied, but the PC copy is in use: EBUSY: resource busy or locked" });
+  const v = vod("x.mp4", { describe: "stretch" });
+  v.shots[1]!.desc = "";
+  const t = tagsOf([tag(0, 20), tag(30, 50)]);
+  assert.equal(vodReady(v, t), false, "not before every picture shot has words");
+  assert.equal(vodIndexReady(v), false);
+  wordsFromTags(v, t);
+  assert.equal(vodReady(v, t), true);
+  assert.equal(vodIndexReady(v), true);
+});

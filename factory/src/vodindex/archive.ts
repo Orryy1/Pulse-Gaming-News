@@ -95,10 +95,7 @@ export async function archiveRecording(
       action: "kept",
       why: "the archive drive did not answer about the file",
     };
-  if (before === r.bytes) {
-    await deps.remove(r.file);
-    return { action: "already", remote };
-  }
+  if (before === r.bytes) return removeHere(r.file, deps, { action: "already", remote });
   try {
     await deps.copy(r.file, remote);
   } catch (err) {
@@ -113,8 +110,17 @@ export async function archiveRecording(
       action: "kept",
       why: `the copy is ${after === undefined || after === "missing" ? "missing" : `${after} bytes, not ${r.bytes}`}`,
     };
-  await deps.remove(r.file);
-  return { action: "archived", remote };
+  return removeHere(r.file, deps, { action: "archived", remote });
+}
+
+/** The PC copy removed once the Mac's copy checks out; in use (ffmpeg reading it), kept for the next run. */
+async function removeHere(file: string, deps: ArchiveDeps, done: ArchiveOutcome): Promise<ArchiveOutcome> {
+  try {
+    await deps.remove(file);
+    return done;
+  } catch (err) {
+    return { action: "kept", why: `copied, but the PC copy is in use: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 /** A path inside single quotes for the Mac's shell (pure). */
@@ -137,6 +143,7 @@ function ssh(
     let out = "";
     let err = "";
     const timer = setTimeout(() => {
+      o.stdin?.destroy();
       child.kill("SIGKILL");
       reject(
         new Error(`ssh timed out after ${Math.round(o.timeoutMs / 1000)} s`),
@@ -144,7 +151,16 @@ function ssh(
     }, o.timeoutMs);
     child.stdout!.on("data", (d) => (out += String(d)));
     child.stderr!.on("data", (d) => (err += String(d)));
-    if (o.stdin) o.stdin.pipe(child.stdin!);
+    if (o.stdin) {
+      // A read error here, or the far end closing early, ends the call; the exit code then says how it went.
+      o.stdin.on("error", (e) => {
+        clearTimeout(timer);
+        child.kill("SIGKILL");
+        reject(e);
+      });
+      child.stdin!.on("error", () => undefined);
+      o.stdin.pipe(child.stdin!);
+    }
     child.on("error", (e) => {
       clearTimeout(timer);
       reject(e);
@@ -168,8 +184,9 @@ export function sshArchiveDeps(
       (
         await ssh(
           host,
-          // The drive itself (/Volumes/<name>) must be mounted and writable; the folders under it are made as needed.
-          `test -d ${shQuote(mount)} && test -w ${shQuote(mount)} && echo up`,
+          // The drive itself (/Volumes/<name>) must be its own mounted volume (not a stray folder on the Mac's own
+          // disk) and writable; the folders under it are made as needed.
+          `test -d ${shQuote(mount)} && test -w ${shQuote(mount)} && [ "$(stat -f %d ${shQuote(mount)})" != "$(stat -f %d /)" ] && echo up`,
           { timeoutMs: 30_000 },
         ).catch(() => "")
       ).trim() === "up",
@@ -186,8 +203,8 @@ export function sshArchiveDeps(
     copy: async (local, remote) => {
       const part = `${remote}.part`;
       const bytes = (await fsp.stat(local)).size;
-      // About 40 MB/s at worst over the cable: the time limit grows with the file.
-      const timeoutMs = Math.max(600_000, (bytes / 40e6) * 1000 * 2);
+      // The USB flash drive can fall to a few MB/s on long writes: the time limit allows 4 MB/s.
+      const timeoutMs = Math.max(600_000, (bytes / 4e6) * 1000);
       await ssh(
         host,
         `mkdir -p ${shQuote(path.posix.dirname(remote))} && cat > ${shQuote(part)} && mv -f ${shQuote(part)} ${shQuote(remote)}`,

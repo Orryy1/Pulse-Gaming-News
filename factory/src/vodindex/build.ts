@@ -437,5 +437,7 @@ export async function vodIndexStep(
 
 /** True when the whole recording is indexed and every picture shot has been looked at. */
 export function vodIndexReady(v: VodIndex): boolean {
-  return !nextGap(asSceneIndex(v), 60) && undescribedVod(v).length === 0;
+  // Stretch mode: ready once every picture shot has its words from the tags, as the miner expects.
+  const words = v.describe !== "stretch" || !v.shots.some((s) => !s.blank && !s.menu && !s.desc);
+  return !nextGap(asSceneIndex(v), 60) && undescribedVod(v).length === 0 && words;
 }

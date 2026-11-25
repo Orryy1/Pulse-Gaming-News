@@ -99,7 +99,9 @@ export function vodReady(
   return (
     v.shots.some((s) => s.desc && s.desc !== "-") &&
     Object.keys(tags.stretches).length > 0 &&
-    untagged(v, tags).length === 0
+    untagged(v, tags).length === 0 &&
+    // Stretch mode: not before every picture shot has its words from the tags (the Mac copies it once).
+    (v.describe !== "stretch" || !v.shots.some((s) => !s.blank && !s.menu && !s.desc))
   );
 }
 

@@ -20,7 +20,9 @@ $Attempts = Join-Path $Root "short-attempts.txt"
 $IndexDir = if ($env:VOD_DATA_DIR) { Join-Path $env:VOD_DATA_DIR "vodindex" } else { "C:\pulse-vods\data\vodindex" }
 $Lock     = Join-Path $Root ".vod-daily.lock"
 # D: keeps this much free after every download (the Sleepy Lore Lodge stops below 300 GB).
-$MinFreeGB = if ($env:VOD_MIN_FREE_GB) { [int]$env:VOD_MIN_FREE_GB } else { 320 }
+# Decimal GB, as the factory and Explorer count them; a value that is not a number falls back to 320.
+$MinFreeGB = 320
+if ($env:VOD_MIN_FREE_GB -as [int]) { $MinFreeGB = [int]$env:VOD_MIN_FREE_GB }
 $Orch     = "C:\Claude\orchestrator\orch.cmd"
 $Channels = @(
   @{ Name = "tinotv";    Dir = Join-Path $Root "TinoTV VODs";    Archive = Join-Path $Root "downloaded.txt" },
@@ -52,7 +54,7 @@ try {
   }
 
   foreach ($ch in $Channels) {
-    $freeGB = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1GB)
+    $freeGB = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1e9)
     if ($freeGB -lt $MinFreeGB) { Log "Refused: downloads skipped, D: has $freeGB GB free and keeps $MinFreeGB GB"; break }
     New-Item -ItemType Directory -Force $ch.Dir | Out-Null
     if (-not (Test-Path $ch.Archive)) { New-Item -ItemType File $ch.Archive | Out-Null }
@@ -82,7 +84,7 @@ try {
       # The download's size from its length (1080p Twitch is about 4.5 GB an hour; 20 GB when the length is unknown):
       # refused when D: would drop under its floor.
       $needGB = if ($want -gt 0) { [math]::Ceiling($want / 3600 * 4.5) } else { 20 }
-      $freeNow = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1GB)
+      $freeNow = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1e9)
       if ($freeNow - $needGB -lt $MinFreeGB) {
         Log "  Refused: $($vod.Id) needs about $needGB GB and D: has $freeNow GB free, keeping $MinFreeGB GB"
         continue

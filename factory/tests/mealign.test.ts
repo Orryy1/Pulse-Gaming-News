@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { steamEditionOf, storeBase } from "../src/assets/steamedition.ts";
 import { capPool, pictureKey } from "../src/render/stillcap.ts";
-import { buildLongPlan, chapterPictureAudit } from "../src/render/longplan.ts";
+import { buildLongPlan, chapterPictureAudit, previewShot } from "../src/render/longplan.ts";
 import { capSamePicture } from "../src/render/picturecap.ts";
 import type { Segment } from "../src/render/timeline.ts";
 import { entryFillSeconds, steamAppForEntry } from "../src/pipeline.ts";
@@ -708,4 +708,12 @@ test("LONG_THIN_CARD_SHARE: a chapter its pictures cannot fill under the cap tak
     thin: { share: 0.6, maxShows: 2 },
   });
   assert.ok(thin.picks.length > share.picks.length, `${thin.picks.length} > ${share.picks.length}`);
+});
+
+test("the cold open never previews a picture the cap has spent", () => {
+  const shows = [["Jacob Taylor fighting pirates aboard the cruise ship"]];
+  const images = [{ beatIndex: 0, moment: 0, kind: "screenshot", file: "a.jpg" }];
+  const line = "Jacob Taylor fought pirates on a cruise ship first.";
+  assert.deepEqual(previewShot(line, shows, new Set(), images, [], []), { type: "image", index: 0 });
+  assert.equal(previewShot(line, shows, new Set(), images, [], [], () => false), undefined);
 });

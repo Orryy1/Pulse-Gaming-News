@@ -447,6 +447,8 @@ export function previewShot(
   }>,
   clips: Array<{ beatIndex?: number; moment?: number; cutsceneMatch?: { targetKey?: string } }>,
   clipUsed: boolean[],
+  /** LONG_STILL_MAX_SHOWS: a picture the cap has spent is not previewed (unset: any picture). */
+  imageOk: (k: number) => boolean = () => true,
 ): LongMedia | undefined {
   const mine = previewWords(sentence);
   if (!mine.size) return undefined;
@@ -471,9 +473,10 @@ export function previewShot(
     );
     // A neighbour's photo is of its own person or place; only game footage and art carry over.
     const image = images.findIndex(
-      (m) =>
+      (m, n) =>
         m.beatIndex === best!.e &&
         m.moment === k &&
+        imageOk(n) &&
         (d === 0 || !realWorldImage({ kind: m.kind ?? "", file: m.file })),
     );
     if (clip < 0 && image < 0) continue;
@@ -1254,6 +1257,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             images,
             clips,
             clipUsed,
+            (k) => !atCap(k),
           ),
         };
       });

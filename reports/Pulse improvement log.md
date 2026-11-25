@@ -15,7 +15,9 @@ One entry per improvement-engine run (scheduled task pulse-improvement-engine, e
 - 13 new tests. Typecheck clean. The full suite passed 3,261 of 3,261 before the review fixes; the fixes touch only the new module and its tests, which pass.
 - Not yet proven live: no Short has been written on the forms side (no model calls spent on a sample, since Claude's API is at its monthly limit and Codex is timing out on some steps today).
 
-**Setting:** `ENDING_FORMS_SHARE` (default 0, no change). Set to 0.5 on the Mac at deploy. Each Short in the test carries `script.ending` (`arm`, `form_asked`, `lead_in`) and an `ending_forms` event (count distinct episodes, not events).
+**Deployed:** the code went live with another session's deploy of 9dfd41cb8 (which contains this commit); `ENDING_FORMS_SHARE=0.5` added to the Mac `.env` (backup `.env.bak-20261125p`) and the factory restarted at 15:31 UK, between the 15:00 and 16:30 slots with no uploads running. /health fine afterwards.
+
+**Setting:** `ENDING_FORMS_SHARE` (default 0, no change); 0.5 on the Mac. Each Short in the test carries `script.ending` (`arm`, `form_asked`, `lead_in`) and an `ending_forms` event (count distinct episodes, not events).
 
 **Judged:** at 20 Shorts a side, or at the next frontier sitting (2 Dec), whichever is later. Pass mark: the blind "sounds human" mark at least 1.0 higher on the forms side, and average viewed no more than 2 points lower. If it fails, set the share to 0; if it passes, set it to 1. Also check `lead_in` is false on at least 9 in 10 forms-side Shorts.
 

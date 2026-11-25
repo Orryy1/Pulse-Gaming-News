@@ -1130,6 +1130,8 @@ export interface Services {
     spoilerWarned?: boolean;
     /** LONG_INDEX_FIRST: the scene index's clips alone ("index"), or the cutscene search alone ("search"). */
     mode?: "index" | "search";
+    /** The stream recordings' own allowance (src/sceneindex/footage.ts indexFirstCutscenes). */
+    ownMaxSeconds?: number;
   }): Promise<CutsceneClip[]>;
   /**
    * SCENE_MATCH for a stills-only publisher (Nintendo): one checked still of each named moment from the game's scene
@@ -10714,9 +10716,13 @@ export async function gatherMedia(
           ? retroCaps.reduce((n, x) => n + x, 0)
           : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
         jobs, existing: clips, shouldStop: () => gatherBudget.over(),
+        // Stream recordings (the owner's own, then permitted channels') fill up to 85% of the narration on their own
+        // allowance, outside every publisher's cap (owner, 25 Nov 2026).
+        ...(s.cfg.semantic?.vodTags ? { streamSeconds: Math.max(10, narrationSeconds * 0.85) } : {}),
         fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
           targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
           maxSeconds: job.maxSeconds, publisher: job.publisher, ...(job.mode ? { mode: job.mode } : {}),
+          ...(job.ownMaxSeconds !== undefined ? { ownMaxSeconds: job.ownMaxSeconds } : {}),
           // A weekly guide never shows late story, warning or not (src/longguide.ts).
           long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
       });

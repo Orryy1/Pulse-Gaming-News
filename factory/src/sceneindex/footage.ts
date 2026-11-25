@@ -46,7 +46,8 @@ import {
   type SpoilerWindow,
 } from "./spoilers.ts";
 import type { Config } from "../config.ts";
-import { indexScorer, ownStreamClips } from "../semantic/hook.ts";
+import { indexScorer, ownStreamClips, type OwnStreamDeps } from "../semantic/hook.ts";
+import { remoteVodDeps } from "../vodindex/remote.ts";
 
 export interface PlannedClip {
   key: string;
@@ -778,6 +779,11 @@ export async function indexFirstCutscenes<
     spoilerWarned?: boolean;
     /** LONG_INDEX_FIRST: the index's clips alone ("index"), or the search alone ("search"). */
     mode?: "index" | "search";
+    /**
+     * The seconds the stream recordings may fill on their own allowance (owner's and permitted channels' capture
+     * never counts against a publisher's cap); unset: they share maxSeconds with the index and the search, as before.
+     */
+    ownMaxSeconds?: number;
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
@@ -812,13 +818,38 @@ export async function indexFirstCutscenes<
         })
     : search;
   // VOD_TAGS: the owner's own tagged recordings of the game first; the scene index and the search cover the rest.
-  if (cfg.semantic?.vodTags && options.mode !== "search")
-    return cutscenesIndexFirst(
-      options,
-      (o) => ownStreamClips(cfg, o, indexedCutsceneClips, now, windows),
-      (o) => indexChain(cfg, o, searched, deps, allow),
+  // VOD_REMOTE: the recordings and their indexes are on the PC (src/vodindex/remote.ts), never on this machine.
+  if (cfg.semantic?.vodTags && options.mode !== "search") {
+    const own = (o: O) => ownStreamClips(cfg, o, indexedCutsceneClips, now, windows, ownStreamSources(cfg));
+    if (options.ownMaxSeconds === undefined)
+      return cutscenesIndexFirst(options, own, (o) => indexChain(cfg, o, searched, deps, allow));
+    // The recordings on their own allowance: what they fill never shrinks the publisher footage for the rest.
+    const first = await own({ ...options, maxSeconds: options.ownMaxSeconds }).catch(() => [] as CutsceneClip[]);
+    const has = new Set(first.map(clipTargetKey));
+    const rest = options.targets.filter((t) => !has.has(t.key));
+    if (!rest.length || options.maxSeconds < MIN_CLIP_SECONDS || options.maxClips - first.length <= 0) return first;
+    const more = await indexChain(cfg, { ...options, targets: rest, maxClips: options.maxClips - first.length }, searched, deps, allow).catch(
+      (err) => {
+        log("warn", "cutscene media failed after the stream recordings", { game: options.gameTitle, error: errorMessage(err) });
+        return [] as CutsceneClip[];
+      },
     );
+    return [...first, ...more];
+  }
+  // A stream allowance with the recordings off: nothing of the publisher's is left to fetch when its seconds are spent.
+  if (options.ownMaxSeconds !== undefined && options.maxSeconds < MIN_CLIP_SECONDS) return [];
   return indexChain(cfg, options, searched, deps, allow);
+}
+
+/** The key of the line a clip serves, with its moment ("hook", "beat:3", "beat:3#m1") (pure). */
+function clipTargetKey(c: CutsceneClip): string {
+  return c.role === "hook" ? "hook" : c.beatIndex === undefined ? "" : `beat:${c.beatIndex}${c.moment === undefined ? "" : `#m${c.moment}`}`;
+}
+
+/** Where the stream recordings come from: the PC with VOD_REMOTE and GAMELIB_REMOTE, else this machine (pure). */
+export function ownStreamSources(cfg: Pick<Config, "dataDir"> & Partial<Pick<Config, "semantic">>): OwnStreamDeps {
+  const s = cfg.semantic;
+  return s?.vodRemote && s.vodRemoteUrl ? remoteVodDeps(s.vodRemoteUrl, path.join(cfg.dataDir, "vodremote")) : {};
 }
 
 /** The scene index first, the cutscene search for the rest (indexFirstCutscenes after the spoiler wrapping). */

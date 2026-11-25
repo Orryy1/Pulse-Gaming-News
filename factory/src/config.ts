@@ -631,6 +631,7 @@ export interface Config {
   freeDays: string[];
   recapDays: string[];
   recapLong: boolean; // Friday's recap is a 6-10 minute long video instead of a Short
+  longWeeklyAfterTarget: boolean; // the weekly long video is still picked once the day's Shorts allowance is used
   weeklyExplainedTest: boolean; // the weekly long video alternates the round-up with one story explained (src/weeklytest.ts)
   weeklyExplainedLeadMinutes: number; // while the test runs, the weekly long video's production starts this long before its slot
   achievementDays: string[];
@@ -2219,6 +2220,9 @@ export function loadConfig(): Config {
       .map((d) => d.trim().slice(0, 3))
       .filter(Boolean),
     recapLong: bool("RECAP_LONG", false), // on once a sandbox run has been checked
+    // 25 Nov 2026 (queue item 54): Friday's long video is not a Short, so the day's Shorts allowance must not hold it
+    // back. false restores the old behaviour (only spare Shorts once the allowance is used).
+    longWeeklyAfterTarget: bool("LONG_WEEKLY_AFTER_TARGET", true),
     // The owner-approved test (1 Nov 2026): the weekly long video takes turns between the round-up and the week's
     // biggest story explained (src/weeklytest.ts). Needs RECAP_LONG and LONGFORM_ENABLED; false = round-up only.
     weeklyExplainedTest: bool("WEEKLY_EXPLAINED_TEST", true),

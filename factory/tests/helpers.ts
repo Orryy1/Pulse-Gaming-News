@@ -295,6 +295,7 @@ export function testConfig(
     sprintExtra: 3,
     sprintScoreMin: 60,
     recapLong: false,
+    longWeeklyAfterTarget: true,
     weeklyExplainedTest: false,
     weeklyExplainedLeadMinutes: 480,
     ownerGames: [],

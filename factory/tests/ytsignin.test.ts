@@ -38,10 +38,16 @@ const STALE =
 const URL = "https://www.youtube.com/watch?v=byDw86z-oZo";
 const SIGNED = ["--cookies", "/data/yt_cookies.txt"];
 
-test("signed-in settings: YT_SIGNED_HOURLY defaults to 20 and can be changed", () => {
-  assert.equal(s.signedHourlyBudget, 20);
-  assert.equal(guardSettings({ YT_SIGNED_HOURLY: "8" }).signedHourlyBudget, 8);
-  assert.equal(guardSettings({ YT_SIGNED_HOURLY: "x" }).signedHourlyBudget, 20);
+test("signed-in settings: YT_SIGNED_PER_HOUR defaults to 4 (YT_SIGNED_HOURLY still read) and can be changed", () => {
+  assert.equal(s.signedHourlyBudget, 4);
+  assert.equal(guardSettings({ YT_SIGNED_PER_HOUR: "6" }).signedHourlyBudget, 6);
+  assert.equal(guardSettings({ YT_SIGNED_HOURLY: "8" }).signedHourlyBudget, 8, "the old name still works");
+  assert.equal(
+    guardSettings({ YT_SIGNED_HOURLY: "8", YT_SIGNED_PER_HOUR: "3" }).signedHourlyBudget,
+    3,
+    "the new name wins",
+  );
+  assert.equal(guardSettings({ YT_SIGNED_PER_HOUR: "x" }).signedHourlyBudget, 4);
 });
 
 test("answers: an age gate is not a bot check; refused cookies are recognised", () => {
@@ -79,8 +85,8 @@ test("the anonymous pause never stops the signed-in lane, and the signed-in call
   const small = {
     ...s,
     signedHourlyBudget: 2,
-    urgentGapMs: 0,
-    urgentJitterMs: 0,
+    signedDailyBudget: 0,
+    signedMinGapMs: 0,
   };
   const t = emptyState();
   assert.ok(decide(t, 0, "urgent", small, 0, "signed").go);
@@ -369,7 +375,8 @@ test("no other call site signs in: signedInArgs and --cookies appear only where 
     .filter((f) => /["'`]--cookies["'`=]/.test(fs.readFileSync(f, "utf8")))
     .map(rel)
     .sort();
-  assert.deepEqual(cookieFlag, ["lib/ytguard.ts", "lib/ytsignin.ts"]);
+  // ytapisearch.ts only names the flag to skip it: a search the Data API answers needs no sign-in (25 Nov 2026).
+  assert.deepEqual(cookieFlag, ["lib/ytapisearch.ts", "lib/ytguard.ts", "lib/ytsignin.ts"]);
   const fromBrowser = files
     .filter((f) => /cookies-from-browser/.test(fs.readFileSync(f, "utf8")))
     .map(rel);

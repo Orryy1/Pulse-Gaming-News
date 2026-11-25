@@ -6,6 +6,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runCapped } from "../lib/child.ts";
+import { isYtPaused } from "../lib/ytguard.ts";
 import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
@@ -1198,10 +1199,13 @@ export async function cutsceneMedia(
     // watermark on every frame, the wrong moment) gives way to the next one.
     const triedScenes = new Map<string, Set<string>>();
     const noMoreScenes = new Set<string>();
+    // The YouTube guard holding calls back (a pause, the lane retired, the budget used): the rest of this video's scene
+    // searches would be refused the same way, so they stop with one line instead of one failure per query.
+    let ytHeld = false;
     const scenePlan = async (target: FootageTarget): Promise<SectionPlan | undefined> => {
       const tried = triedScenes.get(target.key) ?? new Set<string>();
       triedScenes.set(target.key, tried);
-      if (noMoreScenes.has(target.key) || tried.size >= SCENE_UPLOADS_PER_TARGET) return undefined;
+      if (ytHeld || noMoreScenes.has(target.key) || tried.size >= SCENE_UPLOADS_PER_TARGET) return undefined;
       let scene: CutsceneUpload | undefined;
       for (const query of sceneQueries(o.gameTitle, target)) {
         const keyword = query.slice(o.gameTitle.trim().length + 1).replace(/^all /i, "").replace(/ scenes?$/i, "");
@@ -1215,6 +1219,11 @@ export async function cutsceneMedia(
             break;
           }
         } catch (err) {
+          if (isYtPaused(err)) {
+            ytHeld = true;
+            log("info", "cutscene scene searches stopped for this video: YouTube is held back", { error: errorMessage(err) });
+            return undefined;
+          }
           log("warn", "cutscene scene search failed", { query, error: errorMessage(err) });
         }
       }

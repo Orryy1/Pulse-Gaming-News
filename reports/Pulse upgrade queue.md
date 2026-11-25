@@ -410,3 +410,19 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 **Build:** `OPEN_MOTION` and `CAPTION_PHRASES` (off by default; 50/50 by episode, both in arm B): first cut by 2.5 s with the title over moving footage, captions split only at phrase breaks, no shot shown twice. claude/gap-untemplate (SHORT_SOUND_PLAN, SHORT_LAYOUTS) is the natural home.
 
 **Measure:** average viewed 3 points higher in arm B; 20 Shorts a side.
+
+## 49. Calmer long-video pace: longer moving shots in the body (top creator gap chat, 25 Nov)
+
+**Why:** Pulse's long-video bodies cut 15 to 19 times a minute, against 8 to 14 for top documentaries (18 Nov study, reports/research-2026-11-18/long-creators.md on claude/angry-babbage-192c9e). The opening can stay quick; the body should breathe.
+
+**Build:** `LONG_BODY_PACE` (off by default; 50/50 by long video). After the first two minutes, target 9 to 13 cuts a minute, holding a moving shot through a whole spoken line where the footage matches it. It must not bring back stills: a held shot must be moving footage, or the beat keeps its current cuts.
+
+**Measure:** average view duration 5% higher in arm B with the 30-second drop no worse; 8 long videos a side.
+
+## 50. A recurring "Long Road" series: one story, many voices, one finish line (top creator gap chat, 25 Nov)
+
+**Why:** Dark Space style series hold viewers across episodes by telling one story over many voices towards a single finish line. That is a format decision, not a setting.
+
+**Build:** a series plan first (topic, finish line, episode count, end screen and playlist links), then a run-file entry kind. Rank it in the weekly growth cycle against the existing Wednesday documentary slot before building.
+
+**Measure:** episode 2 picks up 30%+ of episode 1's viewers within 7 days; returning viewers up.

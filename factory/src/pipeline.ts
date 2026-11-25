@@ -2031,6 +2031,14 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
  * publishes at the slot. Episodes waiting on approval or YouTube never block
  * the next one; only MAX_PRODUCING episodes are mid-production at once.
  */
+/**
+ * The long lanes once the day's Shorts allowance is used: a documentary or a long ranking still takes its slot, each by
+ * its own rules (lead time, banking window, slot free); no Short is made here.
+ */
+export async function maybeSelectLongAfterTarget(s: Services): Promise<string | undefined> {
+  return (await maybeSelectDocumentary(s)) ?? (await maybeSelectLongform(s)) ?? undefined;
+}
+
 export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
@@ -2097,8 +2105,11 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     (cfg.dailyTargetShortsOnly
       ? await countToday(db, cfg.timezone, "longform")
       : 0);
+  // A long video is not one of the day's Shorts, so the Shorts allowance never holds it back (24-25 Nov 2026: the
+  // documentary failed in the afternoon and, with the day's Shorts made, nothing could pick its replacement until
+  // the next day; the 19:00 slot passed empty). Documentary first, then the long ranking, then spare Shorts.
   if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0))
-    return (await maybeSelectSpare(s)) ?? undefined;
+    return (await maybeSelectLongAfterTarget(s)) ?? (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
@@ -4273,8 +4284,16 @@ export async function maybeSelectDocumentary(
     log("info", "no documentary topic this month");
     return undefined;
   }
+  // A documentary that failed today is replaced under a fresh key (25 Nov 2026 review: the day's key collided with the
+  // failed row, so a same-day replacement was refused and the slot stayed empty). A live one still blocks a twin.
+  const docBase = `documentary:${dayKey(now, cfg.timezone)}:${topic.franchise.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const [docFailed] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE (story_hash = $1 OR story_hash LIKE $2) AND status IN ('failed','rejected')`,
+    [docBase, `${docBase}:r%`],
+  );
+  const docTries = Number(docFailed?.n ?? 0);
   const cluster: StoryCluster = {
-    hash: `documentary:${dayKey(now, cfg.timezone)}:${topic.franchise.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    hash: docTries ? `${docBase}:r${docTries}` : docBase,
     headline: topic.title_idea,
     items: [],
     sources: ["Wikipedia"],

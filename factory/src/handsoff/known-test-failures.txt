@@ -1,0 +1,2 @@
+# Tests known to fail on claude/stage, one name per line (the TAP "not ok" name). The merge gate lets these
+# through and refuses any other failure. Keep it short: fix a failure the same day and take its line out.

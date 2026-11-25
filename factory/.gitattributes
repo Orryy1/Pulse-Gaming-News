@@ -1,3 +1,4 @@
 mac/* text eol=lf
 *.sh text eol=lf
 *.mts text eol=lf
+windows/handsoff/*.cmd text eol=crlf

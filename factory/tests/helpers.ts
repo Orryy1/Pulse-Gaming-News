@@ -716,6 +716,8 @@ export function testConfig(
     longYouPer1000: 0,
     guideYouPer1000: 35,
     docMetaGuard: false,
+    docChapterCheckpoint: false,
+    docCheckpointHours: 36,
     longSentenceGate: 0,
     longHookStack: 0,
     longHookYouMin: 0,

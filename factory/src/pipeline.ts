@@ -199,6 +199,16 @@ import { openingPace, structureLine, structureSummary } from "./render/structure
 import { contractRules, openingQuotes, recordLongChecks, type LongRecord } from "./longcontractstep.ts";
 import { stockOpenerProblems, takeProblems, takesGuard } from "./editorial/longcontract.ts";
 import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
+import {
+  DOC_CHECKPOINT_VERSION,
+  clearDocCheckpoint,
+  docTopicKey,
+  loadDocCheckpoint,
+  pruneDocCheckpoints,
+  relinkPlans,
+  saveDocCheckpoint,
+  type DocCheckpoint,
+} from "./editorial/doccheckpoint.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
   longCraft,
@@ -667,7 +677,7 @@ import {
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
 import { guardScript, stopForWriterNotes } from "./writerguard.ts";
-import { pausesEveryLane, platformAlert } from "./faultclass.ts";
+import { isContentFault, pausesEveryLane, platformAlert } from "./faultclass.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
@@ -4475,6 +4485,63 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // DOC_CHAPTER_CHECKPOINT (src/editorial/doccheckpoint.ts): the outline and finished chapters are kept on disk, so a
+  // restart resumes them. Only a cut-off run resumes: once every chapter is written, a failure starts afresh.
+  const ck = docCheckpointer(s, ep, topic);
+  try {
+    await stepScriptDocumentaryBody(s, ep, topic, ck);
+    ck.clear();
+  } catch (err) {
+    // A timeout after the chapters keeps them for the retry; a script that failed on its content starts afresh.
+    if (ck.loopDone && (err instanceof FatalError || isContentFault(errorMessage(err)))) ck.clear();
+    throw err;
+  }
+}
+
+interface DocCheckpointer {
+  resume?: DocCheckpoint;
+  loopDone: boolean;
+  save: (state: Omit<DocCheckpoint, "version" | "episode" | "topicKey" | "savedAt">) => void;
+  clear: () => void;
+}
+
+function docCheckpointer(s: Services, ep: Episode, topic: DocTopic): DocCheckpointer {
+  // A retrospective or every-game outline writes state onto the topic while drafting (sections, acts, roster), which a
+  // resumed run would not have: those formats always write afresh.
+  const on = s.cfg.docChapterCheckpoint && topic.format !== "retro" && topic.format !== "everygame";
+  const dir = s.cfg.dataDir;
+  const key = docTopicKey(topic);
+  const hours = s.cfg.docCheckpointHours;
+  if (on) pruneDocCheckpoints(dir, s.now(), Math.max(hours, 72));
+  return {
+    resume: on ? loadDocCheckpoint(dir, ep.id, key, s.now(), hours) : undefined,
+    loopDone: false,
+    save: (state) => {
+      if (!on) return;
+      try {
+        saveDocCheckpoint(dir, {
+          version: DOC_CHECKPOINT_VERSION,
+          episode: ep.id,
+          topicKey: key,
+          savedAt: s.now().toISOString(),
+          ...state,
+        });
+      } catch (err) {
+        log("warn", "documentary checkpoint not saved", { episode: ep.id, error: errorMessage(err) });
+      }
+    },
+    clear: () => {
+      if (on) clearDocCheckpoint(dir, ep.id);
+    },
+  };
+}
+
+async function stepScriptDocumentaryBody(
+  s: Services,
+  ep: Episode,
+  topic: DocTopic,
+  ck: DocCheckpointer,
+): Promise<void> {
   // A full game retrospective (src/retrospective.ts): every model call under its own "retro." site, its own outline
   // from the scene index's acts, and each chapter's own sources (its section's reading, its press, its act's lines).
   const retro = topic.format === "retro" ? topic.retro : undefined;
@@ -4523,8 +4590,11 @@ async function stepScriptDocumentary(
   const franchise = franchiseArticle
     ? withRunSources(withTestRecords(franchiseArticle, records))
     : franchiseArticle;
-  const drafted =
-    topic.format === "everygame" && topic.roster
+  // A resumed run keeps the outline it was writing to: a new outline would not match the chapters already written.
+  const resume = ck.resume;
+  const drafted = resume
+    ? undefined
+    : topic.format === "everygame" && topic.roster
       ? await everyGameOutlineFor(s, ep, topic, franchise?.text ?? "")
       : retro
       ? await retroOutlineFor(s, ep, topic, franchise?.text ?? "")
@@ -4535,37 +4605,42 @@ async function stepScriptDocumentary(
     { openLoops: s.cfg.docOpenLoops, rules },
   );
   // A search-led planned entry keeps its planned chapters: they are the YouTube chapters people search.
-  const held = applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise);
+  const held = drafted
+    ? applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise)
+    : { outline: resume!.outline, changed: [] as string[] };
   const outline = held.outline;
   if (held.changed.length) await logEvent(s.db, ep.id, "planned_chapters", { changed: held.changed });
   // Only outlineDoc's outline can carry a finish line, and only with DOC_OPEN_LOOPS on: a retrospective or every-game
   // outline has no such mark, so the contract neither asks for one nor counts its absence there.
   const finishCarried = s.cfg.docOpenLoops && !retro && !(topic.format === "everygame" && topic.roster);
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
-  const openLoops: { loops: OpenLoop[]; removed: string[] } = s.cfg.docOpenLoops
+  const openLoops: { loops: OpenLoop[]; removed: string[] } = resume
+    ? structuredClone(resume.openLoops)
+    : s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
         max: rules.loopsMax,
         coldOpen: rules.loopsMax ? Math.max(2, rules.hookStack) : 0,
       })
     : { loops: [], removed: [] };
   // LONG_OPENING_CONTRACT=fix: one loop keeps the finish-line mark, raised in the cold open and paid in the last chapter.
-  if (rules.contract && finishCarried && openLoops.loops.length) {
+  if (!resume && rules.contract && finishCarried && openLoops.loops.length) {
     const finish = groundFinishLine(openLoops.loops, outline.chapters.length);
     openLoops.loops = finish.loops;
     openLoops.removed.push(...finish.removed);
   }
   // A rule-led revision is one call; a video gets a few at most, then a miss is a style warning (longRuleWarnings).
-  let ruleRevisions = LONG_RULE_REVISIONS;
+  let ruleRevisions = resume?.ruleRevisions ?? LONG_RULE_REVISIONS;
   // An earlier documentary on the same franchise: its wording and opening are not reused.
   const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(
     () => undefined,
   );
-  const chapters: DocDraft["chapters"] = [];
-  const warnings: string[] = [];
+  // Each kept chapter's plan is the outline's own object again (open loops are placed by identity, placeDocLoops).
+  const chapters: DocDraft["chapters"] = resume ? relinkPlans(resume, outline) : [];
+  const warnings: string[] = resume ? [...resume.warnings] : [];
   // A retrospective sandbox may pick its chapters (RETRO_SANDBOX_CHAPTERS, "1,story:1"); the outline index of each
   // chapter as written is kept, in order, for its footage and quotes.
   const pick = retro ? retroSandboxChapters(s.cfg.retroSandboxChapters, retro.chapters ?? []) : undefined;
-  const written: number[] = [];
+  const written: number[] = resume ? [...resume.written] : [];
   // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
   const order =
     pick ??
@@ -4574,8 +4649,36 @@ async function stepScriptDocumentary(
       : outline.chapters
     ).map((_, i) => i);
   // Chapters dropped because the writer still refused them after widening (DOC_DROP_REFUSED_CHAPTER).
-  const droppedRefused: number[] = [];
+  const droppedRefused: number[] = resume ? [...resume.droppedRefused] : [];
+  // Outline indices already settled (written, dropped or without a source), kept after each one.
+  const done = new Set<number>(resume?.done ?? []);
+  const checkpoint = () =>
+    ck.save({
+      outline,
+      openLoops,
+      done: [...done],
+      chapters,
+      written,
+      droppedRefused,
+      warnings,
+      ruleRevisions,
+    });
+  if (resume) {
+    log("info", "documentary resumed from checkpoint", {
+      episode: ep.id,
+      chapters: chapters.length,
+      settled: done.size,
+      of: outline.chapters.length,
+    });
+    await logEvent(s.db, ep.id, "doc_checkpoint_resumed", {
+      chapters: chapters.length,
+      settled: [...done].map((i) => i + 1),
+      of: outline.chapters.length,
+      saved_at: resume.savedAt,
+    });
+  } else checkpoint();
   for (const [position, index] of order.entries()) {
+    if (done.has(index)) continue;
     const plan = outline.chapters[index]!;
     const article = await s.research(
       plan.wiki_title,
@@ -4587,6 +4690,8 @@ async function stepScriptDocumentary(
       warnings.push(
         `No Wikipedia article for ${plan.game_title}; chapter dropped.`,
       );
+      done.add(index);
+      checkpoint();
       continue;
     }
     const sourceOf = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
@@ -4822,6 +4927,8 @@ async function stepScriptDocumentary(
             loopsRemoved: kept.removed,
             loopsHanging: kept.hanging,
           });
+          done.add(index);
+          checkpoint();
           await s.notify({
             content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), it still can't be written after widening its sources; the documentary goes on without it (${fate.why}). ${refused[0]!.slice(0, 240)}`,
           });
@@ -4846,6 +4953,8 @@ async function stepScriptDocumentary(
       warnings.push(
         `${plan.game_title}: chapter dropped, the writer returned a note instead of narration.`,
       );
+      done.add(index);
+      checkpoint();
       continue;
     }
     if (strict) {
@@ -4855,6 +4964,8 @@ async function stepScriptDocumentary(
         warnings.push(
           `${plan.game_title}: chapter dropped, ${checkRan ? "an unsupported line could not be cut" : "the fact check could not run"}.`,
         );
+        done.add(index);
+        checkpoint();
         continue;
       }
       if (stillUnsupported.length)
@@ -5093,12 +5204,16 @@ async function stepScriptDocumentary(
     }
     chapters.push({ plan, chapter: grounded.chapter, source, moments });
     written.push(index);
+    done.add(index);
+    checkpoint();
     log("info", "documentary chapter written", {
       episode: ep.id,
       chapter: index + 1,
       game: plan.game_title,
     });
   }
+  // Every chapter is settled: a failure from here on writes the documentary afresh, it doesn't resume.
+  ck.loopDone = true;
   if (!s.cfg.docSandboxChapters && !pick && chapters.length < s.cfg.docMinChapters)
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources${droppedRefused.length ? ` (chapter${droppedRefused.length === 1 ? "" : "s"} ${droppedRefused.join(", ")} dropped after refusals)` : ""}`,
@@ -5286,6 +5401,7 @@ async function stepScriptDocumentary(
     : { warnings: [] };
   if (longChecks.warnings.length) warnings.push(...longChecks.warnings);
   await guardScript(s, ep, script, "after writing");
+  ck.clear();
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {

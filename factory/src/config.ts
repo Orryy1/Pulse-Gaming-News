@@ -1583,6 +1583,12 @@ export interface Config {
    * is sent back, and dropped if it still does. The FFXIV documentary of 4 Nov carried one, voiced.
    */
   docMetaGuard: boolean;
+  /**
+   * DOC_CHAPTER_CHECKPOINT: a documentary keeps its outline and finished chapters on disk, so a restart resumes them
+   * instead of writing every chapter again (src/editorial/doccheckpoint.ts). DOC_CHECKPOINT_HOURS: how old one may be.
+   */
+  docChapterCheckpoint: boolean;
+  docCheckpointHours: number;
   /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
   longSentenceGate: number;
   /** LONG_HOOK_YOU_MIN: the least "you" words in a long video's opening, which the whole-video floor cannot see (0: off). */
@@ -2708,6 +2714,8 @@ export function loadConfig(): Config {
     longYouPer1000: int("LONG_YOU_PER_1000", 0),
     guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
     docMetaGuard: bool("DOC_META_GUARD", false),
+    docChapterCheckpoint: bool("DOC_CHAPTER_CHECKPOINT", true),
+    docCheckpointHours: int("DOC_CHECKPOINT_HOURS", 36),
     longSentenceGate: int("LONG_SENTENCE_GATE", 0),
     longHookStack: int("LONG_HOOK_STACK", 0),
     longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),

@@ -446,3 +446,9 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 **Build:** `PLAYER_PREMISE` (off by default; share 0.5 by episode, only in the writers' room arm). The room's four angles must include one about the viewer's own play (a hidden mechanic, a common mistake, "what happens if"), sourced from the fact pack or the owner's stream moments, and the weekly small-outlier premise shapes are passed to the angle step as examples, never as titles to copy. Record which angle won.
 
 **Measure:** views per Short against the lane median and engaged rate no lower, 20 Shorts a side. Rank it in the Thursday cycle after the Fri 27 Nov transcript study confirms the pattern.
+
+## 53. Documentary chapters kept across restarts (improvement engine, 25 Nov 18:35)
+
+**Status: built and merged** as `DOC_CHAPTER_CHECKPOINT` (on by default) on `claude/engine-doccheckpoint` (7a435d030, bb9e11320). Fixes the 25 Nov fault ledger row "documentary restarts lose chapters". Judged after the next two documentaries or by 9 Dec (see the improvement log).
+
+**Left:** retrospectives and "every game" videos are not checkpointed yet: their outline step writes sections, acts and the roster onto the topic in memory, so the checkpoint would need to carry those too. The other half of the fault, 16 restarts a day near slots, is not addressed here.

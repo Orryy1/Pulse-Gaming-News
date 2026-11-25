@@ -2,6 +2,24 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 25 Nov 2026, 18:35 UK: documentaries keep their finished chapters when the factory restarts
+
+**Change:** a documentary writes an outline, then each chapter in turn (about 10 to 25 minutes a chapter on Codex). Until now every factory restart, and any timeout, started it again from the outline and threw the written chapters away. The outline and each finished chapter are now saved on disk as they are made (`data/doc_checkpoints/<episode>.json`), and a re-run of the same episode and topic carries on from the next chapter. A finished script removes the file. A failure about the script's content after all chapters are written also removes it, so a failed script is written afresh rather than repeated; a timeout keeps it, so the retry goes straight to the intro and outro. Retrospectives and "every game" videos are left out (their outline step stores extra state that a resume would lack). Branch `claude/engine-doccheckpoint`, commits 7a435d030 and bb9e11320, merged into `claude/stage` and `C:\PulseFactory`.
+
+**Evidence:**
+
+- Today's factory log on the Mac for the Wednesday documentary (Cyberpunk 2077, ep_20261125_87abc5a2): chapter 1 was written five times (12:45, 13:47, 16:23, 17:40, 18:33), chapter 2 three times and chapter 3 once. Six of its nine chapter writes, roughly two hours of writing, were thrown away by restarts (16 today) and one Codex failure at 14:39, and it missed its 19:00 slot (fault ledger, 25 Nov).
+- With this change the same day would have kept chapters 1 to 3 by 16:56 and carried on from chapter 4 after the 17:40 restart.
+- 9 new tests: a run cut off at chapter 4 resumes there with no new outline and chapters 1 to 3 not written again; setting off changes nothing; a content failure after the chapters starts afresh; a timeout in the intro and outro keeps every chapter; a chapter dropped as a note is not written again and the order holds; too-old, other-topic, other-episode and broken files are ignored; re-planned topics get a new key.
+- A fresh-eyes review found four real gaps in the first version, all fixed with tests: resumed chapters lost their open-loop links (plans now point back at the outline's own entries), retrospectives would have lost their sections (now excluded), two drop paths weren't saved, and a timeout after the chapters still threw them away (now only content or fatal failures clear the file).
+- Typecheck clean; 3,389 of 3,389 tests pass.
+
+**Setting:** `DOC_CHAPTER_CHECKPOINT` (on by default; `false` restores the old behaviour), `DOC_CHECKPOINT_HOURS` (36). Each resume logs "documentary resumed from checkpoint" and a `doc_checkpoint_resumed` event.
+
+**Judged:** after the next two documentaries or by 9 Dec. Pass mark: no chapter written twice for the same documentary in the factory log after a restart (count "documentary chapter written" per episode and chapter), at least one `doc_checkpoint_resumed` event, and no documentary missing its slot for chapter rewrites. If a resumed documentary's script fails a check that an uninterrupted one would pass, switch it off.
+
+**Judged this run:** nothing due. ENDING_FORMS_SHARE was deployed at 15:31 today; no forms-side Short has published yet. FACT_REPAIR verdict stays as logged at 15:00. Core numbers: 1 published in 24 hours (the YouTube fetch pause and the Claude API limit, both logged by other sessions); no engine change to revert.
+
 ## 25 Nov 2026, 15:00 UK: half the Pulse Check Shorts stop saying "My verdict:" and end like a person would
 
 **Change:** a 50/50 test, by episode. On the "forms" side a Short that would end on the Pulse Check skips the spoken segment, and its take ends on one of four closing forms instead: a callback to the hook, a consequence for the viewer, a dry punchline or a plain closing fact. No form is handed out more than twice a day, and a retry keeps its form. A draft that still says "My verdict", "My call", "Bottom line:", "Verdict:", "My take:" or "Pulse check" aloud goes back to the writer. The other side is unchanged. Writers' room Shorts already skip the Pulse Check, so they are not in the test. Branch `claude/engine-endings` (81179e241), merged into `claude/stage` (e43329c8f) and `C:\PulseFactory`.

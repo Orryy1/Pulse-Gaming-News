@@ -717,3 +717,29 @@ test("the cold open never previews a picture the cap has spent", () => {
   assert.deepEqual(previewShot(line, shows, new Set(), images, [], []), { type: "image", index: 0 });
   assert.equal(previewShot(line, shows, new Set(), images, [], [], () => false), undefined);
 });
+
+test("a gap no clip fits takes a still, never the plate, when footage comes first", () => {
+  const { words, segments, duration } = chapter(8);
+  const images = [0, 1, 2].map((k) => ({ kind: "screenshot", aspect: 16 / 9, beatIndex: 0, moment: k, file: `s${k}.jpg` }));
+  // Short clips: each fills only part of a gap, so the fill keeps asking its still fallback.
+  const clips = Array.from({ length: 10 }, (_, k) => ({
+    durationSeconds: 2.2,
+    beatIndex: 0,
+    span: { source: "t", from: k * 10, to: k * 10 + 2.2 },
+  }));
+  const plan = buildLongPlan({
+    segments,
+    words,
+    durationSeconds: duration,
+    images,
+    clips,
+    variant: 0,
+    momentCounts: [8],
+    noRepeats: true,
+    movingFirst: true,
+    clipRemainders: true,
+    stillMaxShows: 2,
+    minMovingShare: 0.5,
+  });
+  assert.equal(plan.shots.filter((s) => s.segment === 1 && s.media.type === "plate").length, 0);
+});

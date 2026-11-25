@@ -941,7 +941,8 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
       // shot audit: 11% of the Vice City documentary showed a sentence's picture two or more lines away from
       // it, such as David Jones's photo while the narrator talked about Keith Hamilton).
       let current = 0;
-      const leastUsed = (): LongMedia => {
+      /** stillsOnly: the fill's still fallback, asked when no clip fits the gap: no footage, or the gap goes to the plate. */
+      const leastUsed = (stillsOnly = false): LongMedia => {
         // An entry with no picture of its own never borrows the topic's art: for "Grand Theft Auto" that was
         // GTA V's key art under GTA Advance. It replays its own footage, or shows the branded plate.
         // An unplayed clip first: replaying one the chapter already showed repeats a moment (31 Oct 2026).
@@ -984,7 +985,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         };
         if (!entryImages.length) return own();
         // LONG_MOVING_FIRST: unplayed footage that is free to fill before any still.
-        const moving = movingFirst ? spareFootage() : undefined;
+        const moving = movingFirst && !stillsOnly ? spareFootage() : undefined;
         if (moving !== undefined) return { type: "clip", index: moving };
         // A character's picture (LONG_NAMED_ART) is of who its own line names: never a stand-in on another line.
         const mine = (k: number) => !images[k]!.named || images[k]!.moment === current;
@@ -1002,7 +1003,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         // footage first (or its unseen remainders), then one more showing on the depth camera, then a counted repeat.
         let pool = underCap(wide);
         if (!pool.length) {
-          const spare = spareFootage();
+          const spare = stillsOnly ? undefined : spareFootage();
           if (spare !== undefined) return { type: "clip", index: spare };
           capNotes.overCap++;
           pool = [...wide].sort((a, b) => shownTimes(a) - shownTimes(b));
@@ -1144,10 +1145,10 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               to,
               queue.filter((q) => q.type !== "clip"),
               footageFirst,
-              leastUsed,
+              () => leastUsed(true),
               footageLeft,
             );
-        } else fill(i, from, to, queue, footageFirst, leastUsed, footageLeft);
+        } else fill(i, from, to, queue, footageFirst, () => leastUsed(true), footageLeft);
       }
       continue;
     }

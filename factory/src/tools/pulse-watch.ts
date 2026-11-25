@@ -164,28 +164,17 @@ function slotPlan(env: string): SlotPlan | undefined {
 }
 
 function gatherPc(): PcFacts {
-  const orch = spawnSync(
-    "cmd",
-    ["/c", path.join(ORCH, "orch.cmd"), "status", "--json"],
-    { encoding: "utf8", timeout: 60_000, windowsHide: true },
-  );
-  const o = (() => {
-    try {
-      return JSON.parse(orch.stdout) as {
-        leases?: PcFacts["leases"];
-        waiting?: PcFacts["waiting"];
-      };
-    } catch {
-      return {};
-    }
-  })();
-  const text =
-    spawnSync("cmd", ["/c", path.join(ORCH, "orch.cmd"), "status"], {
-      encoding: "utf8",
-      timeout: 60_000,
-      windowsHide: true,
-    }).stdout ?? "";
-  const codexLine = /^Codex:.*$/m.exec(text)?.[0] ?? "";
+  // The orchestrator's own files, read directly (as the orchestrator chat asked): `orch status` takes its state lock
+  // and can wait minutes behind another caller. leases.json is written whole; a read mid-write is skipped this run.
+  const o =
+    readJson<{ leases?: PcFacts["leases"]; waiting?: PcFacts["waiting"] }>(
+      path.join(ORCH, "state", "leases.json"),
+    ) ?? {};
+  const codex = readJson<{
+    allowed?: boolean;
+    limit_hit?: string | null;
+    used?: number;
+  }>(path.join(ORCH, "state", "codex_usage.json"));
   const faults = readJson<{ at?: string; faults?: PcFacts["watchdogFaults"] }>(
     path.join(PCA, "faults.json"),
   );
@@ -204,9 +193,10 @@ function gatherPc(): PcFacts {
     watchdogFaults: faults?.faults ?? [],
     watchdogAt: faults?.at,
     budgetPct: typeof budget?.weekly === "number" ? budget.weekly : undefined,
-    codexHold: /\bhold\b/i.test(codexLine)
-      ? codexLine.replace(/^Codex:\s*/, "")
-      : undefined,
+    codexHold:
+      codex && (codex.allowed === false || codex.limit_hit)
+        ? `Codex not allowed now (${codex.limit_hit ?? "over its pace"}, ${codex.used ?? "?"}% of the week)`
+        : undefined,
     taskRuns: (loops?.tasks ?? [])
       .filter((t) => t.taskId.startsWith("pulse-") && t.runs?.length)
       .map((t) => ({ taskId: t.taskId, ...t.runs![0]! })),
@@ -376,14 +366,22 @@ async function main(): Promise<void> {
           const last = d.state.launches[d.state.launches.length - 1];
           if (last) last.pid = pid;
           d.state.extra.launchFails = 0;
-          if (!started.start) notes.push("fix session started but its start time was not read: it will not be tracked as running");
+          if (!started.start)
+            notes.push(
+              "fix session started but its start time was not read: it will not be tracked as running",
+            );
         } catch (err) {
           // It never started: the caps are not used up, and the next run tries again.
           d.state = undoLaunch(d.state, d.launchKeys, now.toISOString());
           const fails = Number(d.state.extra.launchFails ?? 0) + 1;
           d.state.extra.launchFails = fails;
           if (fails === 3) {
-            const r = writeInboxItem(INBOX, "Pulse", "the watch cannot start Claude on the PC", `The Pulse watch tried three times in a row to start a Claude fix session and could not: ${(err as Error).message}. Check that ${CLAUDE_EXE} exists and Claude Code is signed in (open a terminal on the PC and run claude --version).`);
+            const r = writeInboxItem(
+              INBOX,
+              "Pulse",
+              "the watch cannot start Claude on the PC",
+              `The Pulse watch tried three times in a row to start a Claude fix session and could not: ${(err as Error).message}. Check that ${CLAUDE_EXE} exists and Claude Code is signed in (open a terminal on the PC and run claude --version).`,
+            );
             notes.push(`launch failed 3 times: inbox ${r.status}`);
           }
           notes.push(

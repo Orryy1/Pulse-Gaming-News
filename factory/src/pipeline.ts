@@ -30,7 +30,8 @@ import {
   whySlug,
 } from "./editorial/why.ts";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { COVER_FILE, SOCIAL_FILE } from "./social/cover.ts";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -1300,6 +1301,9 @@ export function approvalLinks(cfg: Config, id: string) {
     approve: `${cfg.publicUrl}/episodes/${id}/approve?t=${t("approve")}`,
     reject: `${cfg.publicUrl}/episodes/${id}/reject?t=${t("reject")}`,
     preview: `${cfg.publicUrl}/episodes/${id}/video.mp4?t=${t("preview")}`,
+    // SHORT_FULL_COVER (src/social/cover.ts): the cover still and the social copy, on the preview's own token.
+    cover: `${cfg.publicUrl}/episodes/${id}/cover.jpg?t=${t("preview")}`,
+    social: `${cfg.publicUrl}/episodes/${id}/social.mp4?t=${t("preview")}`,
   };
 }
 
@@ -15537,6 +15541,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
+  // SHORT_FULL_COVER: a Short without the new-look thumbnail gets its cover still as the custom thumbnail too, so the
+  // Shorts shelf shows the whole title rather than a frame YouTube picks; the designed search tile still wins its arm.
+  else if (s.cfg.shortFullCover) assets.shortThumb = COVER_FILE;
+  // Switched off since an earlier render: the cover is no longer made, so it is no longer the thumbnail.
+  else if (assets.shortThumb === COVER_FILE) assets.shortThumb = undefined;
+  // A new render: the social copy made from the last one is stale (crosspost makes it again from this one).
+  for (const f of [SOCIAL_FILE, "social.part.mp4"]) await fs.rm(path.join(dir, f), { force: true }).catch(() => undefined);
   // The word stamp, and an every-game Short's year stamps: one at the first game and at each change of era.
   const shownStamps = [
     ...stampsFor(script, words),
@@ -15675,6 +15686,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     thumbFile: assets.shortThumb
       ? path.join(dir, assets.shortThumb)
       : undefined,
+    // SHORT_FULL_COVER: the whole headline with no caption, the cover the platforms show (src/social/cover.ts).
+    coverFile: s.cfg.shortFullCover ? path.join(dir, COVER_FILE) : undefined,
     concurrency: s.cfg.remotionConcurrency,
     speed: s.cfg.renderSpeed,
     gl: s.cfg.remotionGl,
@@ -15897,7 +15910,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     if (assets.shortThumb === "thumb_search.jpg") {
       const tile = coverProblem(await lookOpeningFrame(path.join(dir, assets.shortThumb)));
       if (tile) {
-        assets.shortThumb = undefined;
+        assets.shortThumb = s.cfg.shortFullCover && existsSync(path.join(dir, COVER_FILE)) ? COVER_FILE : undefined;
         assets.shortThumbArm = "frame";
         await logEvent(s.db, ep.id, "ad_safe_tile_dropped", { problem: tile });
       }

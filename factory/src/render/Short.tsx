@@ -579,7 +579,7 @@ export const Short: React.FC<ShortProps> = (props) => {
   };
   // A word moment over the hook: the headline is hidden for the moment's stretch (cleanframe.ts arbitrate).
   const headlineAside =
-    !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
+    !props.coverStill && !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
   const cardAt = (i: number) =>
     // SHORT_MAP_PINS: the line's map stands in for its card where they would overlap.
     (up.maps ?? []).some((m) => m.segment === i && m.replacesCard) ||
@@ -1006,7 +1006,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           totalFrames={durationInFrames}
         />
       )}
-      {inQuote(quoteSpans, frame) ? null : <Captions
+      {/* The cover still (SHORT_FULL_COVER) carries the headline alone: a caption at frame 0 is a fragment of a line. */}
+      {props.coverStill || inQuote(quoteSpans, frame) ? null : <Captions
         pages={pages}
         accent={accent}
         emphasis={emphasis}

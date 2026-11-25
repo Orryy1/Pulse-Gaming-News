@@ -167,6 +167,7 @@ async function renderJob(
       outFile: raw,
       posterFile: path.join(out, job.posterName),
       thumbFile: job.thumbName ? path.join(out, job.thumbName) : undefined,
+      coverFile: job.coverName ? path.join(out, job.coverName) : undefined,
       browserExecutable: undefined,
       onProgress: (p: number) => say({ p: Math.round(p * 100) / 100 }),
     });

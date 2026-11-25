@@ -243,6 +243,8 @@ export interface EpisodeInfo {
     wrote?: boolean;
     editor?: number;
     viewer?: number;
+    /** The editor's desk's overall score on the same published script. */
+    desk?: number;
     killed?: boolean;
     drop?: { editor: boolean; viewer: boolean };
     won?: RoomVersion;
@@ -1682,6 +1684,8 @@ export async function runAnalyticsLoop(
               wrote: sc.room.wrote,
               editor: sc.room.editor_overall,
               viewer: sc.room.viewer_overall,
+              // The desk's mark: the room's record when it carries one, else the desk's own on the script.
+              desk: sc.room.desk_overall ?? sc.desk?.scores?.overall,
               killed: !!sc.room.kill,
               ...(sc.room.drop ? { drop: { editor: sc.room.drop.editor, viewer: sc.room.drop.viewer } } : {}),
               ...(sc.room.won ? { won: sc.room.won } : {}),
@@ -2262,6 +2266,7 @@ export async function runAnalyticsLoop(
             wrote: e.room!.wrote,
             editor: e.room!.editor,
             viewer: e.room!.viewer,
+            desk: e.room!.desk,
             killed: e.room!.killed,
             drop: e.room!.drop,
             won: e.room!.won,

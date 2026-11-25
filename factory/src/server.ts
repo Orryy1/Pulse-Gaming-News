@@ -6,6 +6,7 @@ import { communityTick } from "./youtube/viewers.ts";
 import { metaRepliesTick, type MetaPlatform } from "./social/metacomments.ts";
 import * as metaApi from "./social/platforms.ts";
 import { socialProblems } from "./social/scoreboard.ts";
+import { COVER_FILE, SOCIAL_FILE } from "./social/cover.ts";
 import { pollPlan, recordPollResult } from "./social/poll.ts";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
@@ -596,11 +597,11 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       return;
     }
     const ep = url.pathname.match(
-      /^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4)$/,
+      /^\/episodes\/([\w-]+)\/(approve|reject|video\.mp4|social\.mp4|cover\.jpg)$/,
     );
     if (ep) {
       const [, id, action] = ep as unknown as [string, string, string];
-      const kind = action === "video.mp4" ? "preview" : action;
+      const kind = action === "approve" || action === "reject" ? action : "preview";
       const token = url.searchParams.get("t") ?? "";
       if (!verifyToken(`${kind}:${id}`, token, cfg.appSecret))
         return send(
@@ -612,10 +613,12 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
         return send(404, page("Not found", "<h1>Episode not found.</h1>"));
 
       if (kind === "preview") {
-        const file = path.join(episodeDir(cfg, id), "short.mp4");
+        // The Short, or (SHORT_FULL_COVER, src/social/cover.ts) its social copy or cover still, which the platforms fetch.
+        const name = action === "video.mp4" ? "short.mp4" : action === "social.mp4" ? SOCIAL_FILE : COVER_FILE;
+        const file = path.join(episodeDir(cfg, id), name);
         if (!fs.existsSync(file))
           return send(404, page("Not found", "<h1>No video yet.</h1>"));
-        return streamFile(req, res, file, "video/mp4");
+        return streamFile(req, res, file, action === "cover.jpg" ? "image/jpeg" : "video/mp4");
       }
       // GET shows a confirmation page (link unfurlers must never trigger an action); POST acts.
       // GAMEPLAY_ONE_TAP: a gameplay card's link carries now=1 and the page posts itself as it opens, which a person's
@@ -2341,6 +2344,8 @@ async function main(): Promise<void> {
           : undefined,
         episodeDir: (id) => episodeDir(cfg, id),
         videoUrl: (id) => approvalLinks(cfg, id).preview,
+        coverUrl: (id) => approvalLinks(cfg, id).cover,
+        socialUrl: (id) => approvalLinks(cfg, id).social,
         // The posting-time test: Facebook, Instagram and TikTok drafts aim for the US evening (src/experiments.ts).
         primeTime: () => primeTimeNow(db, new Date(), cfg.timezone),
       }),

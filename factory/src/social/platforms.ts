@@ -128,6 +128,22 @@ export interface InstagramReel {
   trial?: TrialGraduation;
   /** Told when Instagram refuses the trial and the Reel goes out as an ordinary one instead. */
   onTrialRefused?: (message: string) => void;
+  /** SHORT_FULL_COVER: a signed public link to the cover still, which Instagram fetches as the Reel's cover (cover_url). */
+  coverUrl?: string;
+}
+
+/** The container's cover field (pure): Instagram's cover_url when there is a cover picture, else nothing. */
+export function coverParams(coverUrl: string | undefined): { cover_url?: string } {
+  return coverUrl ? { cover_url: coverUrl } : {};
+}
+
+/**
+ * Whether a failed Reel with a cover goes again without it (pure). Instagram's word for a cover it could not fetch is not
+ * always "cover" (a processing failure just says ERROR), so any failure before publishing retries with Instagram's own
+ * frame. A failed publish never does: that is the one step where a second go could post the Reel twice.
+ */
+export function coverRefused(message: string): boolean {
+  return !/instagram publish/.test(message);
 }
 
 /**
@@ -139,6 +155,21 @@ export async function postInstagramReel(
   r: InstagramReel,
   fetchFn: FetchLike = fetch,
   pollMs = 10_000,
+): Promise<string> {
+  if (!r.coverUrl) return postInstagramReelTrial(r, fetchFn, pollMs);
+  try {
+    return await postInstagramReelTrial(r, fetchFn, pollMs);
+  } catch (err) {
+    // A cover Instagram could not take never costs the Reel: it goes again with the frame Instagram picks.
+    if (!coverRefused(err instanceof Error ? err.message : String(err))) throw err;
+    return postInstagramReelTrial({ ...r, coverUrl: undefined }, fetchFn, pollMs);
+  }
+}
+
+async function postInstagramReelTrial(
+  r: InstagramReel,
+  fetchFn: FetchLike,
+  pollMs: number,
 ): Promise<string> {
   if (r.trial) {
     try {
@@ -169,6 +200,7 @@ async function postInstagramReelOnce(
             video_url: r.videoUrl,
             caption: r.caption.slice(0, 2200),
             share_to_feed: true,
+            ...coverParams(r.coverUrl),
             ...trialParams(r.trial),
             access_token: r.token,
           }),
@@ -241,6 +273,7 @@ async function instagramFromBytes(
         upload_type: "resumable",
         caption: r.caption.slice(0, 2200),
         share_to_feed: true,
+        ...coverParams(r.coverUrl),
         ...trialParams(r.trial),
         access_token: r.token,
       }),
@@ -324,6 +357,8 @@ export interface TikTokPost {
   file: string;
   title: string; // the caption, hashtags included, up to 2200 characters
   inbox?: boolean; // send to the creator's TikTok inbox as a draft instead of posting
+  /** SHORT_FULL_COVER: the cover moment in ms (src/social/cover.ts); 1500 ms as before when absent. */
+  coverMs?: number;
 }
 
 /** Direct post from a file: init, upload the bytes in one or more chunks, then wait for PUBLISH_COMPLETE. */
@@ -367,7 +402,7 @@ export async function postTikTok(
                 disable_comment: false,
                 disable_duet: false,
                 disable_stitch: false,
-                video_cover_timestamp_ms: 1500,
+                video_cover_timestamp_ms: p.coverMs ?? 1500,
                 is_aigc: true,
               },
               source_info,

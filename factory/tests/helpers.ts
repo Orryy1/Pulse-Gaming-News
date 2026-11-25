@@ -44,6 +44,7 @@ export function testConfig(
 ): Config {
   return {
     shortOpenWords: 0,
+    shortFullCover: false,
     shortAdSafeGate: false,
     qaAdSwap: true,
     creditScrub: true,

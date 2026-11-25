@@ -24,17 +24,22 @@ export function shortJob(input: RenderInput, concurrency: number) {
   const thumbName = input.thumbFile
     ? path.basename(input.thumbFile)
     : undefined;
+  const coverName = input.coverFile
+    ? path.basename(input.coverFile)
+    : undefined;
   const {
     episodeDir: _e,
     outFile: _o,
     posterFile: _f,
     thumbFile: _t,
+    coverFile: _c,
     ...rest
   } = portable(input);
   return {
     outName,
     posterName,
     thumbName,
+    coverName,
     needGb: 3,
     want: {
       seconds: input.props.durationSeconds,
@@ -60,6 +65,7 @@ export async function macRenderShort(
       [job.outName]: input.outFile,
       [job.posterName]: input.posterFile,
       ...(job.thumbName ? { [job.thumbName]: input.thumbFile! } : {}),
+      ...(job.coverName ? { [job.coverName]: input.coverFile! } : {}),
     },
   });
 }

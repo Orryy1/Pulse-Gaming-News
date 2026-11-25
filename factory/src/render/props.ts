@@ -50,6 +50,8 @@ export type ShortProps = {
   motifSting?: { from: number; frames: number } | null;
   /** SHORT_OPEN_WORDS: the one or two caption words over an opening on footage, in place of the headline ("" = none). */
   openingWords?: string;
+  /** SHORT_FULL_COVER: the cover still (cover.jpg), frame 0 with the whole headline and no caption (src/social/cover.ts). */
+  coverStill?: boolean;
   storyType: string;
   gameTitle: string;
   gameSubtitle: string; // "RELEASED 2023 · BETHESDA" style line for the game card

@@ -53,6 +53,15 @@ import { masterEncoder, type RenderSpeed } from "./renderspeed.ts";
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
 
 /**
+ * The cover still's props (pure, SHORT_FULL_COVER): the Short's own props with the whole headline back in place of the
+ * opening words and the caption left out, so frame 0 reads as a complete title on a profile grid.
+ */
+export function coverStillProps<P extends { openingWords?: string; coverStill?: boolean }>(props: P): P {
+  const { openingWords: _w, ...rest } = props;
+  return { ...rest, coverStill: true } as P;
+}
+
+/**
  * Whether Chrome draws pages in software while still compositing on the GPU (pure). Off by default, so pages
  * rasterise on the GPU everywhere; REMOTION_GPU_RASTER=false is the way back to software. On the Mac mini
  * (1 Nov 2026 rehearsal) Chrome's Metal rasteriser, Skia Graphite, aborted the GPU process ~10 minutes into
@@ -695,6 +704,11 @@ export interface RenderInput {
   posterFile: string;
   /** The new-look Shorts' custom thumbnail: frame 0, the opening poster, as its own image. */
   thumbFile?: string;
+  /**
+   * SHORT_FULL_COVER: the cover still, frame 0 with the whole headline and no caption (src/social/cover.ts). When set, the
+   * thumbnail above is that same picture, since frame 0 itself may carry only the opening words and a caption fragment.
+   */
+  coverFile?: string;
   concurrency: number;
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
@@ -1379,7 +1393,25 @@ export async function renderShort(input: RenderInput): Promise<void> {
       composition.durationInFrames - 1,
       Math.round(0.9 * composition.fps),
     );
-    if (input.thumbFile)
+    // The cover: the opening as a still, with the headline in place of the opening words and no caption.
+    // The component draws composition.props (the props selectComposition resolved), not inputProps: both carry the cover's.
+    const coverProps = coverStillProps(props);
+    const coverComposition = { ...composition, props: coverProps };
+    if (input.coverFile)
+      await renderStill({
+        composition: coverComposition,
+        serveUrl,
+        output: input.coverFile,
+        inputProps: coverProps,
+        frame: 0,
+        imageFormat: "jpeg",
+        jpegQuality: 92,
+        browserExecutable,
+        chromiumOptions: { gl: input.gl ?? "swangle" },
+      });
+    if (input.thumbFile && input.coverFile && input.thumbFile !== input.coverFile)
+      await fsp.copyFile(input.coverFile, input.thumbFile);
+    else if (input.thumbFile && !input.coverFile)
       await renderStill({
         composition,
         serveUrl,

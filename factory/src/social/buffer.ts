@@ -6,12 +6,33 @@ import { fetchWithTimeout } from "../lib/util.ts";
 
 const API = "https://api.buffer.com";
 
-/** Posts a video to one Buffer channel now; returns Buffer's post id. */
+/**
+ * The createPost input for a video shared now (pure). A cover moment goes in the video's thumbnailOffset, in ms, which
+ * Buffer passes on for TikTok, Instagram and Pinterest (developers.buffer.com, VideoMetadataInput); Buffer refuses a
+ * thumbnail picture for video (thumbnailUrl: "social networks do not accept custom video thumbnail images").
+ */
+export function bufferVideoInput(channelId: string, videoUrl: string, text: string, coverMs?: number) {
+  const video =
+    coverMs !== undefined && Number.isFinite(coverMs) && coverMs >= 0
+      ? { url: videoUrl, metadata: { thumbnailOffset: Math.round(coverMs) } }
+      : { url: videoUrl };
+  return {
+    channelId,
+    text,
+    schedulingType: "automatic",
+    mode: "shareNow",
+    needsApproval: false,
+    assets: [{ video }],
+  };
+}
+
+/** Posts a video to one Buffer channel now; returns Buffer's post id. coverMs: the cover moment (SHORT_FULL_COVER). */
 export async function bufferPostVideo(
   apiKey: string,
   channelId: string,
   videoUrl: string,
   text: string,
+  coverMs?: number,
 ): Promise<string> {
   const query = `mutation Post($input: CreatePostInput!) {
     createPost(input: $input) {
@@ -19,14 +40,7 @@ export async function bufferPostVideo(
       ... on MutationError { message }
     }
   }`;
-  const input = {
-    channelId,
-    text,
-    schedulingType: "automatic",
-    mode: "shareNow",
-    needsApproval: false,
-    assets: [{ video: { url: videoUrl } }],
-  };
+  const input = bufferVideoInput(channelId, videoUrl, text, coverMs);
   const res = await fetchWithTimeout(
     API,
     {

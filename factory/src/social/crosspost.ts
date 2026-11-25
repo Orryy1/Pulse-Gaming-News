@@ -26,6 +26,7 @@ import {
   TikTokSignedOut,
 } from "./tiktokBrowser.ts";
 import { bufferPostVideo } from "./buffer.ts";
+import { coverOf, socialCut } from "./cover.ts";
 import { lengthFormatOf, overInstagramLength } from "../shortlengths.ts";
 import {
   heldKeys,
@@ -99,8 +100,11 @@ export interface SocialPosters {
     videoUrl?: string,
     /** IG_TRIAL_SHARE: this Reel's trial arm (src/levers/trial.ts); absent for an ordinary Reel. */
     trial?: { graduation: TrialGraduation; refused: (message: string) => void },
+    /** SHORT_FULL_COVER: a signed public link to the cover still (src/social/cover.ts). */
+    coverUrl?: string,
   ) => Promise<string>;
-  tiktok?: (file: string, caption: string, videoUrl?: string) => Promise<string>;
+  /** coverMs (SHORT_FULL_COVER): the cover moment in the file and link given, which are then the social copy. */
+  tiktok?: (file: string, caption: string, videoUrl?: string, coverMs?: number) => Promise<string>;
   x?: (text: string) => Promise<string>;
   /** The page's own first comment under a reel (needs pages_manage_engagement); when set, the link moves there. */
   facebookComment?: (videoId: string, text: string) => Promise<string>;
@@ -598,6 +602,11 @@ export interface CrosspostDeps {
   episodeDir: (id: string) => string;
   /** A signed public link to the episode's video, for platforms that fetch it themselves. */
   videoUrl?: (id: string) => string;
+  /** SHORT_FULL_COVER: signed public links to the cover still and to the social copy (src/social/cover.ts). */
+  coverUrl?: (id: string) => string;
+  socialUrl?: (id: string) => string;
+  /** Makes the social copy (tests stand in for ffmpeg); src/social/cover.ts socialCut when absent. */
+  socialCut?: typeof socialCut;
   /** Finds a post that may already exist remotely for this episode (after a lost response); its id, or undefined. */
   reconcile?: (
     platform: Platform,
@@ -791,6 +800,23 @@ export async function crosspostTick(
           continue;
         }
       }
+      // SHORT_FULL_COVER (src/social/cover.ts): Instagram takes the cover still itself; TikTok takes a moment, so it gets
+      // the social copy, whose opening holds the cover, and that moment. Any trouble making the copy posts the Short as
+      // before: a cover never stops a post. Made before the post is marked as started, so a restart mid-encode is a plain retry.
+      const coverUrl =
+        platform === "instagram" && d.coverUrl && coverOf(d.cfg.shortFullCover, d.episodeDir(ep.id))
+          ? d.coverUrl(ep.id)
+          : undefined;
+      const cut =
+        platform === "tiktok" && d.socialUrl && coverOf(d.cfg.shortFullCover, d.episodeDir(ep.id))
+          ? await (d.socialCut ?? socialCut)(d.cfg.shortFullCover, file).catch((err) => {
+              log("warn", "social cover copy failed; posting the Short as it is", {
+                episode: ep.id,
+                error: errorMessage(err),
+              });
+              return undefined;
+            })
+          : undefined;
       await logEvent(d.db, ep.id, "crosspost_started", { platform });
       // IG_TRIAL_SHARE (src/levers/trial.ts): some Reels go to non-followers first, fixed per episode.
       const trialArm =
@@ -809,9 +835,12 @@ export async function crosspostTick(
                 trialArm
                   ? { graduation: trialArm, refused: (m) => void (trialNote = m.slice(0, 200)) }
                   : undefined,
+                coverUrl,
               )
             : platform === "tiktok"
-              ? await d.posters.tiktok!(file, caption, d.videoUrl?.(ep.id))
+              ? cut
+                ? await d.posters.tiktok!(cut.file, caption, d.socialUrl!(ep.id), cut.offsetMs)
+                : await d.posters.tiktok!(file, caption, d.videoUrl?.(ep.id))
               : platform === "threads"
                 ? await d.posters.threads!(file, caption, d.videoUrl?.(ep.id))
                 : platform === "bluesky"
@@ -826,6 +855,7 @@ export async function crosspostTick(
         id,
         ...(timing ? { timing } : {}),
         ...(trialArm ? { trial: trialNote ? "refused" : trialArm, ...(trialNote ? { trial_error: trialNote } : {}) } : {}),
+        ...(coverUrl ? { cover: "picture" } : cut ? { cover: "social", cover_ms: cut.offsetMs } : {}),
         // The weekly analytics loop's test: tagged when posted, so the definition cannot drift while it runs.
         ...(d.cfg.analyticsLoop ? { fit: isFit(traitsOf(ep)) } : {}),
       });
@@ -1039,9 +1069,11 @@ export async function tiktokFile(file: string): Promise<string> {
   const { size } = await fs.promises.stat(file);
   if (size <= TIKTOK_SINGLE_CHUNK) return file;
   const out = path.join(path.dirname(file), "tiktok.mp4");
+  // Made from this very file: the social copy (SHORT_FULL_COVER) is newer than a copy made from the Short.
   if (
     fs.existsSync(out) &&
-    (await fs.promises.stat(out)).size <= TIKTOK_SINGLE_CHUNK
+    (await fs.promises.stat(out)).size <= TIKTOK_SINGLE_CHUNK &&
+    (await fs.promises.stat(out)).mtimeMs >= (await fs.promises.stat(file)).mtimeMs
   )
     return out;
   const { FFMPEG } = await import("../lib/bin.ts");
@@ -1111,7 +1143,7 @@ export async function buildPosters(
       p.facebookVideoDescription(videoId, cfg.facebookPageToken, description);
   }
   if (cfg.crosspost.instagram && cfg.instagramAccountId && cfg.instagramToken)
-    out.instagram = async (file, caption, videoUrl, trial) =>
+    out.instagram = async (file, caption, videoUrl, trial, coverUrl) =>
       p.postInstagramReel({
         accountId: cfg.instagramAccountId,
         token: cfg.instagramToken,
@@ -1119,6 +1151,7 @@ export async function buildPosters(
         caption,
         videoUrl,
         ...(trial ? { trial: trial.graduation, onTrialRefused: trial.refused } : {}),
+        ...(coverUrl ? { coverUrl } : {}),
       });
   if (
     cfg.crosspost.threads &&
@@ -1148,11 +1181,11 @@ export async function buildPosters(
       );
   if (cfg.crosspost.tiktok && cfg.bufferApiKey && cfg.bufferTiktokChannel)
     // Through Buffer, which TikTok approved for public posting: no draft, no tap (6 Nov 2026).
-    out.tiktok = async (_file, caption, videoUrl) => {
+    out.tiktok = async (_file, caption, videoUrl, coverMs) => {
       if (!videoUrl) throw new Error("no public link for the video");
       return bufferPostVideo(cfg.bufferApiKey, cfg.bufferTiktokChannel, videoUrl, `${caption}
 
-Narrated with an AI voice.`);
+Narrated with an AI voice.`, coverMs);
     };
   else if (
     cfg.crosspost.tiktok &&
@@ -1160,7 +1193,7 @@ Narrated with an AI voice.`);
     cfg.tiktokTokenPath &&
     fs.existsSync(cfg.tiktokTokenPath)
   )
-    out.tiktok = async (file, caption) => {
+    out.tiktok = async (file, caption, _videoUrl, coverMs) => {
       if (Date.now() < tiktokPausedUntil) throw new Deferred(tiktokPauseReason);
       // Public posting through the owner's own signed-in Chrome profile, when there is one.
       if (cfg.tiktokBrowser && signedIn(cfg.dataDir)) {
@@ -1198,7 +1231,7 @@ Narrated with an AI voice.`);
       file = await tiktokFile(file);
       if (!tiktokUnaudited) {
         try {
-          return await p.postTikTok({ accessToken, file, title: caption });
+          return await p.postTikTok({ accessToken, file, title: caption, coverMs });
         } catch (err) {
           if (!/unaudited_client/.test(errorMessage(err))) throw err;
           tiktokUnaudited = true; // until TikTok approves the app, every video goes to the inbox
@@ -1210,6 +1243,7 @@ Narrated with an AI voice.`);
           file,
           title: caption,
           inbox: true,
+          coverMs,
         });
       } catch (err) {
         // TikTok holds only a few unposted drafts: wait six hours for the owner to post them.

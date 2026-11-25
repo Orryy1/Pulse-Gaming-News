@@ -582,6 +582,13 @@ export interface Config {
   shortOpenFootage: boolean;
   /** SHORT_OPEN_WORDS: 1 or 2 caption words over an opening on footage, in place of the headline (0: the headline, as before). */
   shortOpenWords: number;
+  /**
+   * SHORT_FULL_COVER: every Short also renders cover.jpg, its opening with the whole headline and no caption, and that is
+   * the cover wherever a platform lets us choose one: the YouTube custom thumbnail on the frame arm, Instagram's cover_url,
+   * and on TikTok a social copy whose first 0.4 s show the cover, picked by the cover offset (src/social/cover.ts). Off:
+   * covers are the raw first frame, as before, which with SHORT_OPEN_WORDS is two words and a caption fragment.
+   */
+  shortFullCover: boolean;
   /** SHORT_AD_SAFE_GATE: a Short whose first 7 s or cover frame shows a graphic kill, gore or the like fails QA (src/openingstep.ts). */
   shortAdSafeGate: boolean;
   /**
@@ -2185,6 +2192,7 @@ export function loadConfig(): Config {
     openOnMotion: bool("OPEN_ON_MOTION", true),
     shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
     shortOpenWords: Math.min(2, Math.max(0, int("SHORT_OPEN_WORDS", 0))),
+    shortFullCover: bool("SHORT_FULL_COVER", false),
     shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
     qaAdSwap: bool("QA_AD_SWAP", true),
     creditScrub: bool("CREDIT_SCRUB", true),

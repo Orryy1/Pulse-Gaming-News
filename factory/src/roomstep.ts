@@ -19,6 +19,7 @@ import { WORDS_MAX, WORDS_MIN, writeScript } from "./editorial/editorial.ts";
 import {
   ROOM,
   buildPack,
+  claimCorpus,
   editRoom,
   factoryHosts,
   noCalls,
@@ -28,6 +29,7 @@ import {
   quoteCorpus,
   readEditor,
   readViewer,
+  repairFeedback,
   roomChecks,
   roomEditProblems,
   roomRecord,
@@ -130,11 +132,14 @@ export async function roomRun(
   try {
     let game = o.cluster.gameHint ?? "";
     let company = "";
+    // The texts a claim may come from once the pack is built: its fields (not unverified) and the sources.
+    let claims: string[] = [];
     const run = await runRoom({
       pack: async () => {
         const p = await buildPack(o.llm, input);
         game = p.pack.game.trim() || game;
         company = p.pack.company.trim();
+        claims = claimCorpus(p.pack, corpora.numbers);
         return p;
       },
       write: (pack) =>
@@ -162,8 +167,10 @@ export async function roomRun(
               voiceRoom(o.llm, { draft, pack, words, recent: o.recent }),
           }
         : {}),
-      accept: (before, after) => roomEditProblems(after, corpora, before),
+      accept: (before, after) =>
+        roomEditProblems(after, { ...corpora, claims, game, company }, before),
       game: () => game,
+      company: () => company,
       ...(o.recent ? { recent: o.recent } : {}),
       check: (narration, answerLine, shape) =>
         roomChecks({
@@ -175,6 +182,7 @@ export async function roomRun(
           company,
           outlets: o.cluster.items.map((i) => i.source),
           words,
+          ...(claims.length ? { sources: claims } : {}),
         }),
       rounds: o.cfg.scriptRoomRounds,
       min: o.cfg.scriptRoomMin,
@@ -319,7 +327,12 @@ export async function roomWriteStep(
         ...(o.vaultBrief ? { vault: o.vaultBrief } : {}),
         ...(o.length ? { length: o.length } : {}),
         draft: a.script,
-        feedback: [...a.blockers, ...a.safety],
+        // The fact check's exact blocked sentences, each to be cut or replaced with a pack fact, and the pack's facts.
+        feedback: repairFeedback(
+          [...a.blockers, ...a.safety],
+          narrationOf(a.script),
+          run.pack,
+        ),
         layout: {
           title: final.title,
           narration: final.narration,
@@ -401,6 +414,7 @@ export function roomEvent(r: RoomRecord): Record<string, unknown> {
     ...(r.pick ? { pick: r.pick } : {}),
     ...(r.editor_overall !== undefined ? { editor: r.editor_overall } : {}),
     ...(r.viewer_overall !== undefined ? { viewer: r.viewer_overall } : {}),
+    ...(r.desk_overall !== undefined ? { desk: r.desk_overall } : {}),
     ...(r.rounds ? { marks: r.rounds.map((x) => x.mean ?? null) } : {}),
     ...(r.pack ? { pack: r.pack } : {}),
     ...(r.used ? { used: r.used } : {}),
@@ -410,6 +424,8 @@ export function roomEvent(r: RoomRecord): Record<string, unknown> {
     ...(r.form ? { form: r.form } : {}),
     ...(r.ending ? { ending: r.ending } : {}),
     calls: r.calls,
+    ...(r.retried?.length ? { retried: r.retried.map((x) => x.site) } : {}),
+    ...(r.unsourced?.length ? { unsourced: r.unsourced.length } : {}),
     ...(r.model ? { model: r.model } : {}),
   };
 }

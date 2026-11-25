@@ -5,7 +5,9 @@
 #      (twice at most), and a short copy is never written to the archive, so the next run tries once more.
 #   2. the index, tags and meaning vectors of every recording not done yet (src/tools/vodpc.ts index), through the
 #      orchestrator at test priority, so a render or a live job always comes first.
-#   3. recordings older than VOD_KEEP_DAYS (10) deleted once fully indexed; old cut clips too.
+#   3. recordings older than VOD_KEEP_DAYS (10) and fully indexed leave D: for the Mac mini's USB drive, copied and
+#      checked by size first, never deleted outright (kept here when the drive is not there); old cut clips go.
+#   D: keeps VOD_MIN_FREE_GB (320) free: a download that would take it lower is refused with a log line.
 # A cheap check comes first: listing a channel's broadcasts downloads nothing, so a run with nothing new is seconds.
 # Install: windows\install-vod-daily.cmd. Log: D:\pulse-data\logs\vod-daily.log.
 $ErrorActionPreference = "Continue"
@@ -15,9 +17,10 @@ $Log      = "D:\pulse-data\logs\vod-daily.log"
 # Work files on D: (big files live there), in a folder no sync tool watches.
 $Temp     = "D:\pulse-data\scratch\vod-temp"
 $Attempts = Join-Path $Root "short-attempts.txt"
-$IndexDir = Join-Path $Root "data\vodindex"
+$IndexDir = if ($env:VOD_DATA_DIR) { Join-Path $env:VOD_DATA_DIR "vodindex" } else { "C:\pulse-vods\data\vodindex" }
 $Lock     = Join-Path $Root ".vod-daily.lock"
-$MinFreeGB = 60
+# D: keeps this much free after every download (the Sleepy Lore Lodge stops below 300 GB).
+$MinFreeGB = if ($env:VOD_MIN_FREE_GB) { [int]$env:VOD_MIN_FREE_GB } else { 320 }
 $Orch     = "C:\Claude\orchestrator\orch.cmd"
 $Channels = @(
   @{ Name = "tinotv";    Dir = Join-Path $Root "TinoTV VODs";    Archive = Join-Path $Root "downloaded.txt" },
@@ -50,7 +53,7 @@ try {
 
   foreach ($ch in $Channels) {
     $freeGB = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1GB)
-    if ($freeGB -lt $MinFreeGB) { Log "Downloads skipped: only $freeGB GB free"; break }
+    if ($freeGB -lt $MinFreeGB) { Log "Refused: downloads skipped, D: has $freeGB GB free and keeps $MinFreeGB GB"; break }
     New-Item -ItemType Directory -Force $ch.Dir | Out-Null
     if (-not (Test-Path $ch.Archive)) { New-Item -ItemType File $ch.Archive | Out-Null }
     $done = @{}
@@ -75,6 +78,14 @@ try {
         $p = "$one" -split '\|'
         if ($p.Count -ge 2 -and $p[1] -eq "is_live") { Log "  $($vod.Id): still live, next run"; continue }
         [void][double]::TryParse($p[0], [ref]$want)
+      }
+      # The download's size from its length (1080p Twitch is about 4.5 GB an hour; 20 GB when the length is unknown):
+      # refused when D: would drop under its floor.
+      $needGB = if ($want -gt 0) { [math]::Ceiling($want / 3600 * 4.5) } else { 20 }
+      $freeNow = [math]::Round((Get-PSDrive ($Root.Substring(0, 1))).Free / 1GB)
+      if ($freeNow - $needGB -lt $MinFreeGB) {
+        Log "  Refused: $($vod.Id) needs about $needGB GB and D: has $freeNow GB free, keeping $MinFreeGB GB"
+        continue
       }
       $ok = $false
       for ($try = 1; $try -le 2 -and -not $ok; $try++) {

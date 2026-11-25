@@ -276,7 +276,8 @@ test("serve: clip spans stay inside the recording and short; ready means every d
   assert.equal(vodReady(v, tagsOf([tag(0, 20)])), false);
   assert.equal(vodReady(v, tagsOf([])), false);
   const ctx = vodServeContext({ VOD_ROOT: "E:/v" }, { model: "m" });
-  assert.equal(ctx.dataDir, path.join("E:/v", "data"));
+  assert.equal(ctx.dataDir, path.join("C:/pulse-vods", "data"), "the indexes live on C:, never D:");
+  assert.equal(vodServeContext({ VOD_INDEX_ROOT: "E:/i" }, { model: "m" }).clipDir, path.join("E:/i", "clips"));
   assert.equal(ctx.windows()[0]?.game, "Grand Theft Auto VI");
   assert.equal(ctx.windows()[0]?.until, "2026-12-18T00:00:00.000Z");
 });
@@ -653,4 +654,69 @@ test("stretch mode: streams are tagged by the stretch, not described shot by sho
   assert.equal(bare.shots[2]!.menu, true);
   assert.equal(wordsFromTags(bare, t), 0, "once");
   assert.equal(parseVodIndex(bare)?.describe, "stretch");
+});
+
+test("archive: a recording leaves D: only once the Mac's drive holds it at the same size; otherwise it stays", async () => {
+  const { archiveRecording, archivePath, floorFor, roomFor, shQuote } = await import("../src/vodindex/archive.ts");
+  const file = path.win32.join("D:", "pulse-data", "vods", "Spencey96 VODs", "2026-11-23 GTA VI Chapter 3 [v9].mp4");
+  assert.equal(archivePath(file), "/Volumes/Storage/Spencey96 VODs/2026-11-23 GTA VI Chapter 3 [v9].mp4");
+  assert.equal(shQuote("it's"), "'it'\"'\"'s'");
+  const calls: string[] = [];
+  const deps = (o: { up?: boolean; sizes?: Array<number | "missing">; copyFails?: boolean }) => {
+    const sizes = [...(o.sizes ?? [])];
+    return {
+      driveUp: async () => o.up !== false,
+      remoteSize: async () => sizes.shift() ?? "missing",
+      copy: async () => {
+        calls.push("copy");
+        if (o.copyFails) throw new Error("cable out");
+      },
+      remove: async () => {
+        calls.push("remove");
+      },
+    };
+  };
+  const r = { file, bytes: 100 };
+  assert.deepEqual(await archiveRecording(r, deps({ up: false })), { action: "kept", why: "the Mac's archive drive is not there or not answering" });
+  assert.deepEqual(calls, []);
+  assert.equal((await archiveRecording(r, deps({ sizes: [100] }))).action, "already");
+  assert.deepEqual(calls.splice(0), ["remove"]);
+  assert.equal((await archiveRecording(r, deps({ sizes: ["missing", 100] }))).action, "archived");
+  assert.deepEqual(calls.splice(0), ["copy", "remove"]);
+  // A copy that comes out the wrong size, or fails, never removes the original.
+  const short = await archiveRecording(r, deps({ sizes: ["missing", 60] }));
+  assert.equal(short.action, "kept");
+  assert.match((short as { why: string }).why, /60 bytes, not 100/);
+  assert.equal((await archiveRecording(r, deps({ sizes: [50], copyFails: true }))).action, "kept");
+  assert.deepEqual(calls.splice(0), ["copy", "copy"]);
+  // The floor: 320 GB on the recordings' drive, 30 elsewhere; a write that would cross it is refused with a reason.
+  assert.equal(floorFor("D:/pulse-data/vods/clips", {}), 320);
+  assert.equal(floorFor("D:/x", { VOD_MIN_FREE_GB: "350" }), 350);
+  assert.equal(floorFor("C:/pulse-vods/data", {}), 30);
+  assert.deepEqual(await roomFor("D:/x", 5e9, 320, async () => 330), { ok: true, freeGb: 330 });
+  const no = await roomFor("D:/x", 15e9, 320, async () => 330);
+  assert.equal(no.ok, false);
+  assert.match(no.why ?? "", /^refused: .* has 330 GB free and needs 320 GB left after 15.0 GB more$/);
+});
+
+test("serve: no new clip is cut when the drive is at its floor; the Mac is told the PC is busy", async () => {
+  const dir = await tmpDir();
+  const rec = path.join(dir, "rec [v1].mp4");
+  await fs.writeFile(rec, "x");
+  await saveVodIndex(dir, vod(rec));
+  const ctx: VodServeContext = {
+    ...vodServeContext({}, { model: "m" }),
+    dataDir: dir,
+    clipDir: path.join(dir, "clips"),
+    sources: vodSources({}),
+    room: async () => ({ ok: false, why: "refused: D: has 310 GB free" }),
+  };
+  const srv = await serveVods(ctx);
+  try {
+    const res = await fetch(`${srv.base}/vod/clip?vod=v1&from=1&to=4`);
+    assert.equal(res.status, 503);
+    assert.match(((await res.json()) as { error: string }).error, /310 GB free/);
+  } finally {
+    await srv.close();
+  }
 });

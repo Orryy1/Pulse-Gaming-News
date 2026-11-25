@@ -2,12 +2,12 @@
 // tagged and given its meaning vectors, so the game library server can serve them to the Mac (src/vodindex/serve.ts).
 //   node --import tsx src/tools/vodpc.ts index [--hours 3] [--only v1,v2]   index what is not done yet, owner's channel first
 //   node --import tsx src/tools/vodpc.ts status                  each recording's progress
-//   node --import tsx src/tools/vodpc.ts prune [--days 10] [--dry]  recordings older than that, fully indexed, deleted
+//   node --import tsx src/tools/vodpc.ts prune [--days 10] [--dry]  recordings older than that, fully indexed, archived to the Mac
 //   node --import tsx src/tools/vodpc.ts search "<game>" "<line>"   the moments a line finds (held ones marked)
 // The heavy part (Whisper, the vision model, SigLIP) runs through the orchestrator, from windows/vod-daily.ps1:
 //   C:\Claude\orchestrator\orch.cmd run --class gpu --project pulse --priority 20 --est 120 -- node --import tsx src/tools/vodpc.ts index
-// VOD_DATA_DIR (default D:\pulse-data\vods\data) holds the indexes; the recordings are never copied or changed here,
-// only deleted by prune once old and indexed.
+// VOD_DATA_DIR (default C:/pulse-vods/data) holds the indexes; the recordings are never changed here, only moved by
+// prune to the Mac mini's USB drive once old and indexed (src/vodindex/archive.ts).
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -40,6 +40,13 @@ import {
   vodReady,
 } from "../vodindex/serve.ts";
 import { vodSources, type VodSource } from "../vodindex/sources.ts";
+import {
+  archivePath,
+  archiveRecording,
+  floorFor,
+  roomFor,
+  sshArchiveDeps,
+} from "../vodindex/archive.ts";
 import { findVodMoments, loadVodTags, untagged } from "../vodindex/tags.ts";
 import {
   detectGame,
@@ -101,7 +108,12 @@ async function left(v: VodIndex): Promise<{ tags: number; vectors: number }> {
   };
 }
 
-if (cmd === "index") {
+// The disk floor first: nothing new is written to D: below VOD_MIN_FREE_GB (320) free (the Lore Lodge stops at 300).
+const floor = cmd === "index" ? await roomFor(dataDir, 200e6, floorFor(dataDir, process.env)) : { ok: true as const };
+if (!floor.ok) {
+  console.log(`index ${"why" in floor ? floor.why : "refused"}`);
+  process.exitCode = 3;
+} else if (cmd === "index") {
   const until = Date.now() + Number(flag("hours") ?? 3) * 3_600_000;
   const sem = cfg.semantic;
   const embedder = new Embedder({
@@ -127,17 +139,27 @@ if (cmd === "index") {
       if (had) {
         const now = await probeDuration(r.file).catch(() => 0);
         if (now > 0 && Math.abs(now - had.duration) > 30) {
-          console.log(`${r.vodId}: the recording is now ${Math.round(now)} s, its index was made for ${Math.round(had.duration)} s: built again`);
-          await fs.rm(vodIndexDir(dataDir, r.vodId), { recursive: true, force: true });
+          console.log(
+            `${r.vodId}: the recording is now ${Math.round(now)} s, its index was made for ${Math.round(had.duration)} s: built again`,
+          );
+          await fs.rm(vodIndexDir(dataDir, r.vodId), {
+            recursive: true,
+            force: true,
+          });
         }
       }
       // The channel goes on the index first: the credit, the order and the facecam rule all read it. Streams are
       // tagged by the half-minute stretch, not described shot by shot (VOD_DESCRIBE=shots for the old way).
       const v0 = await openVodIndex(r.file, r.game!, { dataDir });
-      const describe = process.env.VOD_DESCRIBE === "shots" ? undefined : ("stretch" as const);
+      const describe =
+        process.env.VOD_DESCRIBE === "shots" ? undefined : ("stretch" as const);
       if (v0.channel !== r.source.channel || v0.describe !== describe) {
         const { describe: _old, ...rest } = v0;
-        await saveVodIndex(dataDir, { ...rest, channel: r.source.channel, ...(describe ? { describe } : {}) });
+        await saveVodIndex(dataDir, {
+          ...rest,
+          channel: r.source.channel,
+          ...(describe ? { describe } : {}),
+        });
       }
       const places =
         (await loadSceneIndex(dataDir, r.game!).catch(() => undefined))
@@ -182,13 +204,19 @@ if (cmd === "index") {
     );
   }
 } else if (cmd === "prune") {
-  // Recordings older than N days go once fully indexed and tagged; a recording not done yet stays whatever its age.
+  // Recordings older than N days leave D: once fully indexed and tagged: archived to the Mac's USB drive, never
+  // deleted outright (src/vodindex/archive.ts); a recording not done yet, or with no archive to go to, stays.
   const days = Number(flag("days") ?? process.env.VOD_KEEP_DAYS ?? 10);
   const dry = args.includes("--dry");
   const since = new Date(Date.now() - days * 86_400_000)
     .toISOString()
     .slice(0, 10);
-  let freed = 0;
+  const deps = sshArchiveDeps(
+    process.env.VOD_ARCHIVE_HOST || "pulse-mac",
+    process.env.VOD_ARCHIVE_ROOT || "/Volumes/Storage",
+  );
+  const logFile = path.join(process.env.VOD_ROOT || "D:/pulse-data/vods", "archive.log");
+  let moved = 0;
   for (const r of await recordings()) {
     if (!r.recordedOn || r.recordedOn >= since) continue;
     const v = await loadVodIndex(dataDir, r.vodId);
@@ -196,15 +224,34 @@ if (cmd === "index") {
       console.log(`kept (not fully indexed): ${path.basename(r.file)}`);
       continue;
     }
-    console.log(
-      `${dry ? "would delete" : "deleting"} ${path.basename(r.file)} (${(r.bytes / 1e9).toFixed(1)} GB, ${r.recordedOn})`,
+    if (dry) {
+      console.log(
+        `would archive ${path.basename(r.file)} (${(r.bytes / 1e9).toFixed(1)} GB, ${r.recordedOn}) to ${archivePath(r.file)}`,
+      );
+      continue;
+    }
+    const out = await archiveRecording(
+      { file: r.file, bytes: r.bytes },
+      deps,
+      process.env.VOD_ARCHIVE_ROOT || "/Volumes/Storage",
     );
-    if (!dry) await fs.rm(r.file, { force: true });
-    freed += r.bytes;
+    const line = {
+      at: new Date().toISOString(),
+      file: r.file,
+      bytes: r.bytes,
+      ...out,
+    };
+    await fs.appendFile(logFile, `${JSON.stringify(line)}\n`);
+    console.log(
+      out.action === "kept"
+        ? `kept ${path.basename(r.file)}: ${out.why}`
+        : `${out.action}: ${path.basename(r.file)} -> ${out.remote}`,
+    );
+    if (out.action !== "kept") moved += r.bytes;
   }
   const clips = dry ? 0 : await pruneClips(ctx);
   console.log(
-    `${dry ? "would free" : "freed"} ${(freed / 1e9).toFixed(1)} GB; ${clips} old clips removed`,
+    `${dry ? "dry run" : `moved ${(moved / 1e9).toFixed(1)} GB off D:`}; ${clips} old clips removed`,
   );
 } else if (cmd === "search" && a1 && a2) {
   const sem = cfg.semantic;

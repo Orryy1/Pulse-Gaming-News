@@ -26,6 +26,7 @@ import {
   vectorFile,
 } from "../semantic/shots.ts";
 import { sourceByChannel, vodSources, type VodSource } from "./sources.ts";
+import { floorFor, roomFor } from "./archive.ts";
 import {
   listVodIndexes,
   loadVodIndex,
@@ -51,6 +52,8 @@ export interface VodServeContext {
   windows: () => readonly SpoilerWindow[];
   sources: VodSource[];
   now?: () => Date;
+  /** The disk-floor check before a clip is written (src/vodindex/archive.ts roomFor); tests replace it. */
+  room?: (dir: string) => Promise<{ ok: boolean; why?: string }>;
 }
 
 /** The serve settings from the environment (pure but for the path defaults). */
@@ -77,8 +80,10 @@ export function vodServeContext(
     return w ? [w] : [];
   });
   return {
-    dataDir: env.VOD_DATA_DIR || path.join(root, "data"),
-    clipDir: env.VOD_CLIP_DIR || path.join(root, "clips"),
+    // The indexes and the clip cache are small and pruned: they live on C: (VOD_INDEX_ROOT), so D: only ever grows by
+    // whole recordings, under its own floor.
+    dataDir: env.VOD_DATA_DIR || path.join(env.VOD_INDEX_ROOT || "C:/pulse-vods", "data"),
+    clipDir: env.VOD_CLIP_DIR || path.join(env.VOD_INDEX_ROOT || "C:/pulse-vods", "clips"),
     model: o.model,
     ...(o.embedder ? { embedder: o.embedder } : {}),
     windows: () => windows,
@@ -190,6 +195,9 @@ export async function cutClip(
     `${v.vodId.replace(/[^\w-]/g, "_")}_${from.toFixed(2)}_${to.toFixed(2)}.mp4`,
   );
   if (await fileThere(file)) return file;
+  // A new clip only while D: keeps its floor (VOD_MIN_FREE_GB, 320 GB): refused as busy, the Mac uses other sources.
+  const room = await (ctx.room ?? ((d: string) => roomFor(d, 60e6, floorFor(d, process.env))))(ctx.clipDir);
+  if (!room.ok) throw new BusyError(room.why ?? "no room for clips");
   return oneOfTwo(async () => {
     if (await fileThere(file)) return file;
     const tmp = `${file}.${process.pid}.${Date.now()}.tmp.mp4`;

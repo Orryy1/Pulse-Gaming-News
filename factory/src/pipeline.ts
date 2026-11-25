@@ -13100,7 +13100,6 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       oneGame: isRetrospective(ep.factcheck_json),
       // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast as the body (src/render/structure.ts).
       twoSpeed: s.cfg.longOpeningContract === "fix",
-=======
       // No picture on screen past LONG_STILL_MAX_SHOWS times, every copy counted as one (src/render/stillcap.ts).
       stillMaxShows: s.cfg.longStillMaxShows ?? 0,
       // A ranking chapter's footage before its stills (LONG_MIN_MOVING_SHARE): only a ranking's gather asks its

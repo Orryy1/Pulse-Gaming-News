@@ -452,7 +452,7 @@ import {
   writerSplit,
   type WriterProvider,
 } from "./editorial/authorship.ts";
-import { siteListed, withRoute } from "./editorial/codex.ts";
+import { siteListed, withCodexCap, withRoute } from "./editorial/codex.ts";
 import type { UsageLine } from "./editorial/llm.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { directorStep, retrainTick } from "./retentionstep.ts";
@@ -17597,8 +17597,26 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     },
     // The learning core (src/learn/scope.ts): the holdout's baseline settings, and the step's prompts, models, settings
     // and commit stamped on the episode. Off (no LEARN_STAMPS, no LEARN_HOLDOUT_SHARE), the step runs straight through.
-    () => withLearn(s, ep, (run) => advanceStep(run, ep)),
+    // A slot-bound Short's step caps each Codex run at CODEX_SHORT_TIMEOUT_MINUTES (src/editorial/codex.ts withCodexCap);
+    // long videos and evergreen Shorts keep the full CODEX_TIMEOUT_MINUTES.
+    () =>
+      withCodexCap(shortCodexCapMs(s.cfg, ep), () =>
+        withLearn(s, ep, (run) => advanceStep(run, ep)),
+      ),
   );
+}
+
+/**
+ * The Codex cap for one episode's step (pure): CODEX_SHORT_TIMEOUT_MINUTES for a slot-bound Short, none for a long video
+ * or an evergreen Short (made days ahead, and its writer's good runs take up to 18 minutes).
+ */
+export function shortCodexCapMs(
+  cfg: Pick<Config, "codexShortTimeoutMinutes">,
+  ep: Pick<Episode, "lane">,
+): number | undefined {
+  if (isLongEpisode(ep) || ep.lane === "evergreen") return undefined;
+  const min = cfg.codexShortTimeoutMinutes;
+  return Number.isFinite(min) && min > 0 ? min * 60_000 : undefined;
 }
 
 /** True when a failure is about one video's own content (fact check, QA, clarity, spoilers), never the platform. */

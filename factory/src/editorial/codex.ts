@@ -27,6 +27,33 @@ import {
 export type CodexKind = "quick" | "bulk" | "code" | "review" | "frontier";
 
 const routeHint = new AsyncLocalStorage<"claude" | "codex">();
+const runCap = new AsyncLocalStorage<number>();
+
+/**
+ * CODEX_SHORT_TIMEOUT_MINUTES: each Codex run made inside fn is killed after at most capMs, whatever its site's own
+ * timeout (src/pipeline.ts advance wraps each slot-bound Short's step in it). The cap is per run, not per step: a step
+ * with several calls, or a schema retry, can still add up to more. On 25 Nov 2026 a hung search.write ran the full
+ * 20 minutes twice and the 15:00 Short missed. Undefined or 0: no cap.
+ */
+export function withCodexCap<T>(
+  capMs: number | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return capMs && capMs > 0 ? runCap.run(capMs, fn) : fn();
+}
+
+/**
+ * How long one Codex run may take (pure): a listed site gets the full CODEX_TIMEOUT_MINUTES, a call moved to Codex
+ * only by Claude's limit or a route hint gets at most LIMIT_TIMEOUT_MS, and a Short's cap (withCodexCap) bounds both.
+ */
+export function codexRunTimeout(
+  timeoutMs: number,
+  listed: boolean,
+  capMs?: number,
+): number {
+  const base = listed ? timeoutMs : Math.min(timeoutMs, LIMIT_TIMEOUT_MS);
+  return capMs && capMs > 0 ? Math.min(base, capMs) : base;
+}
 
 /**
  * WRITER_SPLIT: every call fn makes goes to this provider whatever CODEX_CALLS says (Claude's limit still sends a call
@@ -376,7 +403,20 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
       }
       if (!isUsageLimit(err)) throw err;
       limitUntil = Date.now() + LIMIT_HOLD_MS;
-      if (hasImages && !opts.vision) throw err;
+      // Codex already failed this call: asking it again would only repeat the wait, so the step fails and retries.
+      // A picture call with CODEX_VISION off has nowhere to go either.
+      const stuck = afterCodex
+        ? "Codex already failed this call, so the step fails"
+        : hasImages && !opts.vision
+          ? "a picture call with CODEX_VISION off, so the step fails"
+          : undefined;
+      log("warn", stuck ? "Claude refused on its usage limit, no Codex retry" : "Claude refused on its usage limit; Codex answers until the hold ends", {
+        site,
+        until: new Date(limitUntil).toISOString(),
+        error: (err as Error)?.message?.slice(0, 300) ?? String(err),
+        ...(stuck ? { why: stuck } : {}),
+      });
+      if (stuck) throw err;
       if (!siteListed(site, opts.sites)) opts.onLimitRouted?.(site);
       return viaCodex(o, site, imagesOf(o.content));
     }
@@ -388,9 +428,11 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
     images: ReturnType<typeof imagesOf>,
     fromClaude = false,
   ): Promise<z.infer<S>> => {
-      const callTimeout = siteListed(site, opts.sites)
-        ? timeoutMs
-        : Math.min(timeoutMs, LIMIT_TIMEOUT_MS);
+      const callTimeout = codexRunTimeout(
+        timeoutMs,
+        siteListed(site, opts.sites),
+        runCap.getStore(),
+      );
       const kind = kindFor(o.tier);
       const started = Date.now();
       const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -463,17 +505,34 @@ export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
         }
         throw new Error(`answer did not match the schema: ${lastError}`);
       } catch (err) {
-        log("warn", "codex failed, Claude answers", {
+        // Claude is out of allowance too: fail the step so it retries, rather than asking it again. Claude already
+        // turned this call down as too big: nothing more to ask it. Either way the log says why Claude was skipped.
+        const skip = claudeOut()
+          ? `Claude is out of allowance until ${new Date(limitUntil).toISOString()}`
+          : fromClaude
+            ? "Claude already refused this call's answer format as too big"
+            : undefined;
+        log("warn", skip ? "codex failed, no Claude fallback" : "codex failed, Claude answers", {
           site,
           kind,
           ms: Date.now() - started,
+          timeoutMs: callTimeout,
           error: (err as Error).message.slice(0, 300),
+          ...(skip ? { skipped: skip } : {}),
         });
-        // Claude is out of allowance too: fail the step so it retries, rather than asking it again.
-        if (claudeOut()) throw err;
-        // Claude already turned this call down as too big: nothing more to ask it.
-        if (fromClaude) throw err;
-        const result = await claude(o, site, images.length > 0, true);
+        if (skip) throw err;
+        let result: z.infer<S>;
+        try {
+          result = await claude(o, site, images.length > 0, true);
+        } catch (claudeErr) {
+          // Claude refused on its limit just now: the step's failure keeps Codex's reason, which is the one to fix.
+          if (isUsageLimit(claudeErr))
+            throw new Error(
+              `${(err as Error).message} (Claude fallback refused: usage limit)`,
+              { cause: claudeErr },
+            );
+          throw claudeErr;
+        }
         log("info", "claude answered after codex", {
           site,
           ms: Date.now() - started,

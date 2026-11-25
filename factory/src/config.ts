@@ -229,6 +229,13 @@ export interface Config {
   visionPaidFallback: boolean;
   /** A Codex run is killed after this many minutes and Claude answers instead. */
   codexTimeoutMinutes: number;
+  /**
+   * CODEX_SHORT_TIMEOUT_MINUTES (default 12; 0 = no cap): inside a slot-bound Short's step (every lane but longform and
+   * evergreen) each Codex run is killed after at most this, whatever CODEX_TIMEOUT_MINUTES says, so a hung run cannot eat
+   * a slot (25 Nov 2026: search.write ran 20 min twice). 13-25 Nov the slowest good Short-path runs were 10 min
+   * (search.write 607 s, editorial 596 s); evergreen.write runs up to 18 min, so evergreen keeps the full time.
+   */
+  codexShortTimeoutMinutes: number;
   /** The Python that can import the orchestrator's codex_runner, and where that file lives. */
   codexPython: string;
   codexRunnerDir: string;
@@ -1756,6 +1763,7 @@ export function loadConfig(): Config {
     longFactDiscipline: bool("LONG_FACT_DISCIPLINE", false),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
+    codexShortTimeoutMinutes: int("CODEX_SHORT_TIMEOUT_MINUTES", 12),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
     codexRunnerDir: str(
       "CODEX_RUNNER_DIR",

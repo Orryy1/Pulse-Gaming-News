@@ -32,13 +32,7 @@ import {
 import { DISPLAY, BODY } from "./fonts.ts";
 import { Timeline } from "./cards/Timeline.tsx";
 import { PriceTag } from "./cards/PriceTag.tsx";
-import {
-  Platforms,
-  Versus,
-  Specs,
-  Milestones,
-  BuyPass,
-} from "./cards/InfoCards.tsx";
+import { Platforms, Versus, Specs, Milestones, BuyPass } from "./cards/InfoCards.tsx";
 import { buyPassColumns } from "../rankcard.ts";
 import { Ring } from "./cards/Ring.tsx";
 import { Calendar } from "./cards/Calendar.tsx";
@@ -80,15 +74,7 @@ export const TopBar: React.FC<{
   reserveRight?: number;
   /** The clean Short (src/render/cleanframe.ts): the flair, rule and source line at this opacity, the mark always. */
   labelOpacity?: number;
-}> = ({
-  chip,
-  accent,
-  isRumour,
-  attribution,
-  logoSrc,
-  reserveRight = 0,
-  labelOpacity = 1,
-}) => {
+}> = ({ chip, accent, isRumour, attribution, logoSrc, reserveRight = 0, labelOpacity = 1 }) => {
   // The brand bar is complete at frame 0: frame 0 is the thumbnail.
   const rowIn = 1;
   const srcRule = 1;
@@ -142,62 +128,62 @@ export const TopBar: React.FC<{
           PULSE<span style={{ color: COLOUR.amber }}>.</span>
         </div>
         {chip || isRumour ? (
-          <div
-            style={{
-              opacity: labelOpacity,
-              marginLeft: 4,
-              padding: "8px 18px",
-              background: isRumour ? COLOUR.alert : accent,
-              color: COLOUR.ink,
-              fontFamily: BODY,
-              fontWeight: 900,
-              fontSize: TYPE.chip,
-              letterSpacing: 2,
-              borderRadius: 8,
-              lineHeight: 1.1,
-            }}
-          >
-            {isRumour ? "RUMOR · UNCONFIRMED" : chip}
-          </div>
+        <div
+          style={{
+            opacity: labelOpacity,
+            marginLeft: 4,
+            padding: "8px 18px",
+            background: isRumour ? COLOUR.alert : accent,
+            color: COLOUR.ink,
+            fontFamily: BODY,
+            fontWeight: 900,
+            fontSize: TYPE.chip,
+            letterSpacing: 2,
+            borderRadius: 8,
+            lineHeight: 1.1,
+          }}
+        >
+          {isRumour ? "RUMOR · UNCONFIRMED" : chip}
+        </div>
         ) : null}
       </div>
       {/* No source line on our own work: the label alone reads as a broken graphic. */}
       {source ? (
         <>
-          <div
-            style={{
-              position: "absolute",
-              top: SAFE.top + 86,
-              left: SAFE.left,
-              width: 4,
-              height: 34,
-              opacity: labelOpacity,
-              background: accent,
-              transform: `scaleY(${safeScale(srcRule)})`,
-              transformOrigin: "top",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: SAFE.top + 88,
-              left: SAFE.left + 18,
-              fontFamily: BODY,
-              fontWeight: 700,
-              fontSize: source.length > 30 ? 24 : 28,
-              color: "rgba(245,245,242,0.88)",
-              letterSpacing: 1.5,
-              maxWidth: CONTENT_WIDTH - 18 - reserveRight,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              opacity: srcIn * labelOpacity,
-              textShadow: "0 2px 12px rgba(0,0,0,0.8)",
-              clipPath: `inset(0 ${100 - srcIn * 100}% 0 0)`,
-            }}
-          >
-            SOURCE: {source}
-          </div>
+      <div
+        style={{
+          position: "absolute",
+          top: SAFE.top + 86,
+          left: SAFE.left,
+          width: 4,
+          height: 34,
+          opacity: labelOpacity,
+          background: accent,
+          transform: `scaleY(${safeScale(srcRule)})`,
+          transformOrigin: "top",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: SAFE.top + 88,
+          left: SAFE.left + 18,
+          fontFamily: BODY,
+          fontWeight: 700,
+          fontSize: source.length > 30 ? 24 : 28,
+          color: "rgba(245,245,242,0.88)",
+          letterSpacing: 1.5,
+          maxWidth: CONTENT_WIDTH - 18 - reserveRight,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          opacity: srcIn * labelOpacity,
+          textShadow: "0 2px 12px rgba(0,0,0,0.8)",
+          clipPath: `inset(0 ${100 - srcIn * 100}% 0 0)`,
+        }}
+      >
+        SOURCE: {source}
+      </div>
         </>
       ) : null}
     </AbsoluteFill>
@@ -481,9 +467,7 @@ export const FactCard: React.FC<{
     const p = interpolate(
       frame,
       // A slow count showed "17%" while the voice said "40%" (JMuGFjZ130E 0:08): quick, it lands as the word does.
-      quickFigures
-        ? [0, QUICK_COUNT_FRAMES]
-        : [FRAMES.ruleLead, FRAMES.ruleLead + 24],
+      quickFigures ? [0, QUICK_COUNT_FRAMES] : [FRAMES.ruleLead, FRAMES.ruleLead + 24],
       [0, 1],
       { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: ease.out },
     );

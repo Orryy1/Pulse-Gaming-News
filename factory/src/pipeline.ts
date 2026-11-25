@@ -745,7 +745,7 @@ import {
 } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
-import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import { FatalError, codeFaultStack, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
 import {
@@ -17824,6 +17824,8 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
       attempts,
       fatal,
       error: msg,
+      // A code fault carries where it broke (22-23 Nov: "reading 'primary'" lost two news Shorts with no trace).
+      ...codeFaultStack(err),
     });
     // Only a platform-wide fault (credentials, quota, policy) justifies pausing new stories;
     // a fatal error inside one episode's own content must not take the whole day with it.

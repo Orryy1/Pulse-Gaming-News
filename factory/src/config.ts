@@ -1734,6 +1734,18 @@ export interface Config {
    */
   steamEditions: boolean;
   /**
+   * STORE_TRAILERS: official trailers straight from the platform stores' own public product data and CDNs (Microsoft
+   * Store, PlayStation, Epic Games Store, Nintendo eShop), for games not on Steam or short of Steam footage, after the
+   * game library and before any YouTube search (src/assets/storetrailers.ts). Polite by construction: robots.txt, an
+   * honest User-Agent, 1.5 s or more between requests per host, everything cached, a day's stop on a 403 or 429.
+   * Counted under PUBLISHER_FOOTAGE_SECONDS. Default off.
+   */
+  storeTrailers: boolean;
+  /** STORE_TRAILERS_STORES: which stores, in order (comma list of playstation, xbox, epic, nintendo). Default all four. */
+  storeTrailersStores: string[];
+  /** STORE_TRAILERS_MIN_FREE_GB: no store trailer is downloaded while the data disk has less free than this. Default 20. */
+  storeTrailersMinFreeGb: number;
+  /**
    * LONG_NAMED_ART: a ranking sentence that names a character (the writer's `person`, or a name in its keywords)
    * gets that character's official IGDB picture, only when IGDB lists them in a game of the series, pinned to that
    * sentence and opening it (src/assets/namedart.ts). Default on.
@@ -2739,6 +2751,12 @@ export function loadConfig(): Config {
     longMinMovingShare: Math.min(0.9, Math.max(0, Number(str("LONG_MIN_MOVING_SHARE", "0.5")) || 0)),
     longEntryClipTargets: Math.min(40, Math.max(1, int("LONG_ENTRY_CLIP_TARGETS", 24))),
     steamEditions: bool("STEAM_EDITIONS", true),
+    storeTrailers: bool("STORE_TRAILERS", false),
+    storeTrailersStores: str("STORE_TRAILERS_STORES", "playstation,xbox,epic,nintendo")
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter((x) => ["playstation", "xbox", "epic", "nintendo"].includes(x)),
+    storeTrailersMinFreeGb: Math.max(0, int("STORE_TRAILERS_MIN_FREE_GB", 20)),
     longNamedArt: bool("LONG_NAMED_ART", true),
     longNamedArtMax: Math.min(20, Math.max(0, int("LONG_NAMED_ART_MAX", 8))),
     longThinCardShare: Math.min(1, Math.max(0, Number(str("LONG_THIN_CARD_SHARE", "0.6")) || 0)),

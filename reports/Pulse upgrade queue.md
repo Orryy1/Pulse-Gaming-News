@@ -382,3 +382,31 @@ In progress, owned by the improvement engine. `ELEVENLABS_BALANCE_STALE_HOURS` (
 - Tests from the four real blocker sets above.
 
 **Measure:** long rankings that pass the fact-check on the first or second try (0 of 4 on 20 Nov), and `fact_repair` "repaired" outcomes on long videos. No comments saying a long video got a fact wrong.
+
+## Frontier check 25 Nov 2026
+
+From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11-25.md`). Blind marks, drift-corrected: Pulse 3.2 against the frontier's 4.3 (last week 2.0 against 4.2); no Pulse Short at 7.5. All three are settings that start off, split 50/50 by episode, judged at 20 Shorts a side.
+
+## 46. Drop the spoken "My verdict:" line and vary the endings (frontier check 25 Nov)
+
+**Why:** sounds human is Pulse's widest gap (2.9 against 6.6 for human breakouts) and links to average viewed (0.25 on 72 Shorts). "My verdict:" closes 14 of 31 Shorts this week because the friend pass and the clarity rewrite require it (src/editorial/friendpass.ts:523, clarity.ts:308, 414); the blind judges named it in about half their notes. The desk already flags it as a tell (desk.ts:276).
+
+**Build:** `ENDING_FORMS` (off by default; `ENDING_FORMS_SHARE=0.5`, by episode). Arm B never says "My verdict:" aloud (the Pulse Check card can stay) and ends on one of a callback to the hook, a consequence, a punchline or a plain closing fact, with no closing shape used more than twice a day. Record the arm on the script.
+
+**Measure:** blind sounds-human mark at least 1.0 higher in arm B at the next frontier sitting, and average viewed no more than 2 points lower; 20 Shorts a side.
+
+## 47. Story premise gate: no "nothing known" or shopping-list Shorts without a conflict (frontier check 25 Nov)
+
+**Why:** seven of the ten lowest-marked Shorts this week were GTA 6 utility or "nothing known" stories (presets unconfirmed, New Zealand switch unconfirmed, bonus cutoff, preorder price, track list, patch notes, outage reports). An "unconfirmed" story with a real conflict (Rockstar layoffs) scored best, so the test is conflict or surprise, not the word. Payoff links to views (0.24) and one point to average viewed (0.33).
+
+**Build:** `STORY_PREMISE_GATE` (off by default; 50/50 by episode). Before writing, one cheap check drops a candidate whose whole point is that nothing is known, a price or edition list, or patch notes, unless it carries a named conflict or a surprise, and takes the next candidate. Log what it dropped.
+
+**Measure:** engaged rate (stayed) 5 points higher in arm B with median views no lower; 20 Shorts a side.
+
+## 48. Moving opening, phrase captions, no reused shots (frontier check 25 Nov)
+
+**Why:** a blind look at six Shorts' frame sheets: 4 of 6 hold one shot for 5 to 8 seconds behind the title card, captions break mid-phrase on 6 of 6 ("OF DUTY OVER"), 1 to 3 shots reused per Short, and all six share one layout. The 16 Nov retention lesson found a still picture costs about 24 points of a Short's audience. Frontier Shorts run 75 to 96% moving footage with a first cut by about 2 s.
+
+**Build:** `OPEN_MOTION` and `CAPTION_PHRASES` (off by default; 50/50 by episode, both in arm B): first cut by 2.5 s with the title over moving footage, captions split only at phrase breaks, no shot shown twice. claude/gap-untemplate (SHORT_SOUND_PLAN, SHORT_LAYOUTS) is the natural home.
+
+**Measure:** average viewed 3 points higher in arm B; 20 Shorts a side.

@@ -16,7 +16,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { errorMessage, log } from "../lib/util.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { fromBase64, toBase64, type EmbedInfo } from "./match.ts";
 
 export interface EmbedderOptions {
@@ -228,9 +228,7 @@ export class Embedder {
     try {
       release = this.o.lease
         ? await this.o.lease()
-        : await (
-            await loadOrch()
-          ).lease("gpu", {
+        : await leaseStrict(await loadOrch(), "gpu", {
             project: "pulse",
             job: "semantic embeddings",
             priority: this.o.priority ?? 60,

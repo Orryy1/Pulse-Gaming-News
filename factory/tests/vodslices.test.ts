@@ -20,6 +20,7 @@ import {
   planSlice,
   saveRates,
   sliceCap,
+  vodPriority,
   type PlanInput,
   type SlicePlan,
   type VodRates,
@@ -141,6 +142,33 @@ test("slices: VOD_SLICE_MINUTES is 18 by default and held between 5 and 20", () 
   assert.equal(sliceCap({ VOD_SLICE_MINUTES: "lots" }), 18);
 });
 
+test("slices: VOD_PRIORITY is 40 by default and held between 20 and 40 (never above the manual-tool tier)", () => {
+  assert.equal(vodPriority({}), 40);
+  assert.equal(vodPriority({ VOD_PRIORITY: "" }), 40);
+  assert.equal(vodPriority({ VOD_PRIORITY: "30" }), 30);
+  assert.equal(vodPriority({ VOD_PRIORITY: "95" }), 40);
+  assert.equal(vodPriority({ VOD_PRIORITY: "60" }), 40);
+  assert.equal(vodPriority({ VOD_PRIORITY: "-5" }), 20);
+  assert.equal(vodPriority({ VOD_PRIORITY: "junk" }), 40);
+});
+
+test("inTurn: a slice whose kind does not start pulse:vod takes no turn", async () => {
+  let leased = 0;
+  const deps = {
+    env: {},
+    now: () => 0,
+    lease: async () => {
+      leased++;
+      return () => undefined;
+    },
+  };
+  await assert.rejects(
+    inTurn({ work: "tag", cls: "gpu", kind: "pulse:tag", units: 1, est: 1 }, "v1", deps, async () => "x"),
+    /pulse:vod/,
+  );
+  assert.equal(leased, 0);
+});
+
 test("slices: a slice's real time moves the learned rate a third of the way, within bounds; nothing learned from nothing", () => {
   const r = learnRate(DEFAULT_RATES, "tag", 60 * 20, 30); // 40 s a stretch
   assert.equal(r.tag, Math.round(((34 * 2) / 3 + 40 / 3) * 10000) / 10000);
@@ -179,10 +207,11 @@ test("slices: a stream-hour at the measured rates, per step", () => {
   assert.equal(m.embed, Math.round(((680 * 0.1) / 60) * 10) / 10);
 });
 
-test("inTurn: one lease per slice at p20 with its --est and kind, released even when the work throws", async () => {
+test("inTurn: one lease per slice at VOD_PRIORITY with its --est and kind, released even when the work throws", async () => {
   const leases: Array<{ cls: string; o: Record<string, unknown> }> = [];
   let held = 0;
   const deps = {
+    env: {} as Record<string, string | undefined>,
     now: () => 1_000_000,
     lease: async (cls: "gpu" | "cpu", o: any) => {
       leases.push({ cls, o });
@@ -218,10 +247,14 @@ test("inTurn: one lease per slice at p20 with its --est and kind, released even 
       job: "vodpc: tag v1 (27 stretches, 18 min)",
       kind: "pulse:vodtag",
       est: 18,
-      priority: 20,
+      priority: 40,
       maxWait: 90,
     },
   });
+  deps.env = { VOD_PRIORITY: "25" };
+  await inTurn(plan, "v1", deps, async () => "tagged");
+  assert.equal(leases[1]!.o.priority, 25, "VOD_PRIORITY read from the env passed in");
+  deps.env = {};
   await assert.rejects(
     inTurn(plan, "v1", deps, async () => {
       throw new Error("ffmpeg died");
@@ -261,6 +294,7 @@ function fakeIndex(
   const logs: string[] = [];
   let saved: VodRates | undefined;
   const deps = {
+    env: {},
     now: () => now,
     lease: async (cls: "gpu" | "cpu", l: any) => {
       if (o.leaseFails) throw new Error("no turn within 90 min");
@@ -343,7 +377,13 @@ test("indexInSlices: every piece of work but the words runs inside its own turn,
         `${c.work} ran inside its own turn`,
       );
   }
-  assert.ok(f.leases.every((l) => l.est <= 18 && l.priority === 20));
+  assert.ok(f.leases.length > 0);
+  assert.ok(f.leases.every((l) => l.est <= 18 && l.priority === vodPriority({}) && l.priority === 40));
+  assert.ok(f.leases.every((l) => l.kind.startsWith("pulse:vod")), "every slice lease is a pulse:vod kind");
+  assert.deepEqual(
+    [...new Set(f.leases.map((l) => l.kind))].sort(),
+    ["pulse:vodembed", "pulse:vodstretch", "pulse:vodtag"],
+  );
   assert.ok(
     f.leases
       .filter((l) => l.kind === "pulse:vodtag")

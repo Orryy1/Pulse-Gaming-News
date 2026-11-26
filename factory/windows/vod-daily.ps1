@@ -4,7 +4,7 @@
 #      to the local temp folder first, never a synced folder. A copy shorter than Twitch's own length is fetched again
 #      (twice at most), and a short copy is never written to the archive, so the next run tries once more.
 #   2. the index, tags and meaning vectors of every recording not done yet (src/tools/vodpc.ts index), in slices of
-#      at most 18 minutes, each in its own orchestrator turn at test priority with an --est from measured minutes
+#      at most 18 minutes, each in its own orchestrator turn at VOD_PRIORITY (default 40, the manual-tool tier, never above) with an --est from measured minutes
 #      (src/vodindex/slices.ts), so a render, the explainer or Pulse's voice gets the GPU between slices.
 #   3. recordings older than VOD_KEEP_DAYS (10) and fully indexed leave D: for the Mac mini's USB drive, copied and
 #      checked by size first, never deleted outright (kept here when the drive is not there); old cut clips go.
@@ -143,7 +143,7 @@ try {
     }
   }
 
-  # The index: a recording not fully indexed is worked on for up to two hours a run, at test priority.
+  # The index: a recording not fully indexed is worked on for up to two hours a run, at VOD_PRIORITY (default 40; pulse:vod kinds sit outside Pulse's slot windows).
   # 26 Nov 2026: no longer one orchestrator turn round the whole run (it held the GPU 90 to 110 minutes at p20, during
   # which the PC's driver reset twice inside Ollama's vision model). vodpc.ts takes a turn per slice itself: gpu only
   # for the vision model's tags (about 18 min each, pulse:vodtag), cpu for the cut scan, the text reader and Whisper

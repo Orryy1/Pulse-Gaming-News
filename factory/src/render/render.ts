@@ -21,7 +21,7 @@ import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import type { LongProps } from "./Long.tsx";
 import { BEDS, MOOD_BEDS } from "./soundscape.ts";
 import { pocketOf } from "./soundfx.ts";
@@ -285,7 +285,7 @@ async function withPcTurn<T>(
   let granted = false;
   try {
     const orch = await loadOrch();
-    release = await orch.lease("heavy", {
+    release = await leaseStrict(orch, "heavy", {
       job,
       project: "pulse",
       priority: 60,

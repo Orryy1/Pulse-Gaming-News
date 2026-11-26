@@ -539,6 +539,41 @@ function fakes(
   return { deps, calls, dir };
 }
 
+test("no GPU turn for the looks: the vision model is never asked and the chapter takes no footage-first clips", async () => {
+  // 26 Nov 2026: a lease refused (or one whose wait ran out) must not run the local vision model on a held GPU.
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
+  const { deps, calls } = fakes(dir, () => look({ label: "red sports car on palm street" }));
+  deps.lease = async () => {
+    calls.leases++;
+    throw new Error("orchestrator: no GPU turn (wait ran out after 60 min)");
+  };
+  const ch = {
+    entry: 2,
+    game: VC,
+    franchise: GTA,
+    year: 2002,
+    moments: [{ show: "a car on Ocean Drive" }],
+    sentences: ["You steal a car."],
+  };
+  const out: FootageClip[] = [];
+  await gatherChapterFootage(
+    deps,
+    ch,
+    [],
+    path.join(dir, "entry_2"),
+    "entry_2",
+    200,
+    FOOTAGE_FIRST_DEFAULTS,
+    emptyReport(),
+    out,
+    Number.POSITIVE_INFINITY,
+  );
+  assert.equal(calls.leases, 1);
+  assert.equal(calls.looked, 0, "no model looks without a turn");
+  assert.equal(out.length, 0);
+  await fs.rm(dir, { recursive: true, force: true });
+});
+
 test("the pass gathers credited CC BY segments, pins the matching ones, refuses junk and counts everything", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "ff-"));
   const { deps, calls } = fakes(dir, (i) =>

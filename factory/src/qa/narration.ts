@@ -422,6 +422,30 @@ export function joinFigures(words: TimedWord[]): TimedWord[] {
       out[out.length - 1] = { ...prev, text: prev.text + w.text, end: w.end };
     else out.push({ ...w });
   }
+  return joinMoneyScale(out);
+}
+
+/**
+ * Money then its scale ("$1.85" then "billion"; only million and billion, the scales speakable.ts reads) is one figure, read the way the voice reads it: "one point eight
+ * five billion dollars" (speakable.ts). Word by word, "$1.85" alone is a price ("one dollar eighty-five"), so the
+ * Cyberpunk 2077 documentary (25 Nov 2026) failed its narration check on a correctly spoken figure.
+ */
+export function joinMoneyScale(words: TimedWord[]): TimedWord[] {
+  const out: TimedWord[] = [];
+  for (const w of words) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      /^[$£€]\d[\d,]*(?:\.\d+)?$/.test(prev.text) &&
+      /^(?:million|billion)\b/i.test(w.text)
+    )
+      out[out.length - 1] = {
+        ...prev,
+        text: `${prev.text} ${w.text}`,
+        end: w.end,
+      };
+    else out.push({ ...w });
+  }
   return out;
 }
 
@@ -432,13 +456,17 @@ export function joinFigures(words: TimedWord[]): TimedWord[] {
 export function joinLetters(words: TimedWord[]): TimedWord[] {
   const out: TimedWord[] = [];
   const letter = (t: string) => /^[A-HJ-Z][.,;:!?)"”’]*$/.test(t);
+  // Initials written with full stops ("A. V.", 25 Nov 2026: heard as "AV") are one token too; a stop after one
+  // letter only joins when the next word is also a dotted letter, so "Plan B. A new..." stays apart.
+  const dotted = (t: string) => /^[A-HJ-Z]\.[,;:!?)"”’]*$/.test(t);
   for (let i = 0; i < words.length; i++) {
     let j = i;
     while (
       j + 1 < words.length &&
       letter(words[j]!.text) &&
       letter(words[j + 1]!.text) &&
-      !/[.,;:!?]$/.test(words[j]!.text)
+      (!/[.,;:!?]$/.test(words[j]!.text) ||
+        (/^[A-Z]\.$/.test(words[j]!.text) && dotted(words[j + 1]!.text)))
     )
       j++;
     if (j > i) {

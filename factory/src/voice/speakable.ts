@@ -605,6 +605,8 @@ export function knownSpokenForm(token: string): string | undefined {
  */
 export const SAID_BACK: Array<[string[], string]> = [
   [["triple-a"], "AAA"],
+  [["pc", "games", "n"], "PCGamesN"],
+  [["pc", "games", "n's"], "PCGamesN's"],
   [["double-a"], "AA"],
   [["pub-g"], "PUBG"],
   [["d-dos"], "DDoS"],
@@ -646,6 +648,8 @@ const RESPELL: Array<[RegExp, string]> = [
   [/\bpolish\b/g, "pollish"],
   [/\bObbe\b/g, "Obbuh"],
   [/\bt0st\b/gi, "tohst"],
+  // The site is said "PC Games N"; run together, the voice said "PC Game Zen" (Cyberpunk 2077 documentary, 25 Nov 2026).
+  [/\bPCGamesN\b/g, "PC Games N"],
 ];
 export const SPOKEN_BACK: Record<string, string> = {
   pollish: "polish",

@@ -46,12 +46,19 @@ export async function graphicsGateShort(
 ): Promise<ShortGateOut | undefined> {
   const mode = s.cfg.graphicsAudit;
   if (mode === "off") return undefined;
-  // The frame check's faults from the last render: those cards are not drawn again.
-  const segments = input.segments.map((g, i) =>
-    muted.includes(`card${i}`) && g.kind !== "take" && g.visual?.kind !== "rank"
-      ? { ...g, visual: undefined }
-      : g,
-  );
+  // The frame check's faults from the last render: those cards are not drawn again. A line's explainer draws in
+  // its card's place (EXPLAINERS), so the faulted frame may be the explainer: it goes too, or the retry draws the same
+  // fault again (26 Nov 2026: the Halo 3 "why" Short lost three times, its muted card left an explainer and no card).
+  const segments = input.segments.map((g, i) => {
+    if (!muted.includes(`card${i}`)) return g;
+    const keepCard = g.kind === "take" || g.visual?.kind === "rank";
+    if (keepCard && !g.explainer) return g;
+    return {
+      ...g,
+      ...(keepCard ? {} : { visual: undefined }),
+      explainer: undefined,
+    };
+  });
   for (const k of muted)
     await logEvent(s.db, episodeId, "graphics_fix", {
       key: k,

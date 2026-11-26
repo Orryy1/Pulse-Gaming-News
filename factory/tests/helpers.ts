@@ -47,6 +47,7 @@ export function testConfig(
     shortFullCover: false,
     shortAdSafeGate: false,
     qaAdSwap: true,
+    qaFlattenDepth: true,
     creditScrub: true,
     strandFrames: false,
     shortTitleGameFirst: false,

@@ -619,6 +619,7 @@ export interface Config {
    * gather picks it (src/qa/retry.ts, src/assets/screencache.ts). Off: those faults drop nothing, as before 14 Nov 2026.
    */
   qaAdSwap: boolean;
+  qaFlattenDepth: boolean; // QA_FLATTEN_DEPTH: an edge fault on a layered still renders it flat on the retry (src/qa/retry.ts)
   /**
    * CREDIT_SCRUB (default on): before a Short's fact check, a credit to an outlet or document the writer was not given
    * ("GameSpot's 2021 coverage says", "Bethesda's update notes say") is taken off and the fact kept (src/editorial/credits.ts).
@@ -2256,6 +2257,7 @@ export function loadConfig(): Config {
     shortFullCover: bool("SHORT_FULL_COVER", false),
     shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
     qaAdSwap: bool("QA_AD_SWAP", true),
+    qaFlattenDepth: bool("QA_FLATTEN_DEPTH", true),
     creditScrub: bool("CREDIT_SCRUB", true),
     strandFrames: bool("STRAND_FRAMES", false),
     shortTitleGameFirst: bool("SHORT_TITLE_GAME_FIRST", false),

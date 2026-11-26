@@ -151,6 +151,8 @@ export interface EpisodeAssets {
     role?: "hook";
     /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
     libKey?: string;
+    /** QA_FLATTEN_DEPTH: the final check faulted this still's depth edges, so it renders flat from then on. */
+    depthFault?: boolean;
     layers?: {
       bg: string;
       mid: string;

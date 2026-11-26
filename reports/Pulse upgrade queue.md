@@ -593,3 +593,11 @@ Their art is AI-made illustration.
 **Build:** a check in src/tools/pulse-watch.ts / src/handsoff/pulsewatch.ts. It reads `yt-dlp --version` on the Mac (`/opt/homebrew/bin/yt-dlp`) and the PC (`C:\yt-dlp\yt-dlp`), and raises a fault when either is more than 21 days old, or when the factory log shows "No video formats found" or an "EJS" or "n challenge" warning. The fix session then upgrades it: `brew upgrade yt-dlp` on the Mac, and `yt-dlp -U` on the PC. Log the versions in decisions.jsonl.
 
 **Measure:** no "No video formats found" errors caused by an old version.
+
+## 60. Merge gate deploy window too wide on busy evenings (26 Nov)
+
+**Why:** the gate refuses a deploy within 50 minutes on either side of any slot. On 26 Nov the evening slots (20:00, 21:00, 22:00, 23:30) left no deploy gap from 20:00 to about 00:20, so the parallax and studio-name fixes missed every evening Short. The old hand rule was 30 minutes *before* a slot, plus "not while the Mac renders or uploads".
+
+**Build:** in src/handsoff/mergegate.ts, refuse from 30 minutes before a slot until that slot's upload has finished (read uploads_active and the episode status from /health), not a flat 50 minutes after. Test it on the 26 Nov evening slot plan.
+
+**Measure:** deploys merged in the evening go out in the first gap after an upload finishes.

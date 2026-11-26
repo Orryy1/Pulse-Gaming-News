@@ -1,6 +1,8 @@
 """Word timings for a narration, for the factory's narration check (src/qa/narration.ts).
 
 Uses faster-whisper on CUDA (the PC) or MLX Whisper (the Mac), whichever this Python has.
+WHISPER_DEVICE=cpu runs faster-whisper on the CPU (int8, WHISPER_THREADS threads, 8 by default): the stream index
+does (src/vodindex/build.ts, 26 Nov 2026), so no second CUDA model loads and frees beside Ollama's vision model.
 Usage: python whisperwords.py <audio> <out.json>   ->  {"duration": s, "words": [{"text", "start", "end"}]}
 """
 import json
@@ -17,8 +19,15 @@ def faster(src):
     from faster_whisper import WhisperModel
 
     global _MODEL
-    _MODEL = model = WhisperModel("medium.en", device="cuda", compute_type="float16")
-    segments, info = model.transcribe(src, word_timestamps=True, beam_size=5, condition_on_previous_text=False)
+    device = os.environ.get("WHISPER_DEVICE") or "cuda"
+    name = os.environ.get("WHISPER_MODEL") or "medium.en"
+    beam = int(os.environ.get("WHISPER_BEAM") or 5)
+    if device == "cpu":
+        threads = int(os.environ.get("WHISPER_THREADS") or 8)
+        _MODEL = model = WhisperModel(name, device="cpu", compute_type="int8", cpu_threads=threads)
+    else:
+        _MODEL = model = WhisperModel(name, device=device, compute_type="float16")
+    segments, info = model.transcribe(src, word_timestamps=True, beam_size=beam, condition_on_previous_text=False)
     words = [
         {"text": w.word.strip(), "start": round(w.start, 2), "end": round(w.end, 2)}
         for seg in segments

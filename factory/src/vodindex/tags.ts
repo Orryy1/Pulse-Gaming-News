@@ -338,7 +338,7 @@ export interface TagDeps {
  */
 export async function tagVodStretches(
   v: VodIndex,
-  o: { dataDir: string; places: string[]; limit: number },
+  o: { dataDir: string; places: string[]; limit: number; until?: number },
   deps: TagDeps = {},
 ): Promise<{ tagged: number; left: number }> {
   const tags = await loadVodTags(o.dataDir, v.vodId);
@@ -381,6 +381,8 @@ export async function tagVodStretches(
   try {
     for (const span of todo.slice(0, o.limit)) {
       if (streak >= 3) break;
+      // The slice's turn is nearly over: what is left waits for the next one (src/vodindex/slices.ts).
+      if (o.until !== undefined && Date.now() > o.until) break;
       const files: string[] = [];
       try {
         const len = span.to - span.from;

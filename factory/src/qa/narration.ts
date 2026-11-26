@@ -276,12 +276,24 @@ export function midSentencePauses(
 export async function transcribeWords(
   file: string,
   python: string,
+  o: { device?: string; model?: string; beam?: number; timeoutMs?: number } = {},
 ): Promise<TimedWord[]> {
   const out = `${file}.words.json`;
   try {
     await run(python, ["-I", SCRIPT, file, out], {
-      timeout: 20 * 60_000,
+      timeout: o.timeoutMs ?? 20 * 60_000,
       maxBuffer: 8 * 1024 * 1024,
+      // WHISPER_DEVICE=cpu: the stream index's CPU Whisper (src/qa/whisperwords.py); unset keeps CUDA.
+      ...(o.device || o.model || o.beam
+        ? {
+            env: {
+              ...process.env,
+              ...(o.device ? { WHISPER_DEVICE: o.device } : {}),
+              ...(o.model ? { WHISPER_MODEL: o.model } : {}),
+              ...(o.beam ? { WHISPER_BEAM: String(o.beam) } : {}),
+            },
+          }
+        : {}),
     });
     return (
       JSON.parse(await fs.readFile(out, "utf8")) as { words: TimedWord[] }

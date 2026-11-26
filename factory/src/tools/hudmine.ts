@@ -34,6 +34,7 @@ import type { SecondSample } from "../liveclips/detect.ts";
 import {
   backMeta,
   backMoments,
+  escapeSignals,
   pickMoments,
   type BackMoment,
 } from "../liveclips/vodmine.ts";
@@ -128,7 +129,7 @@ async function hudFor(
   }
   if (!raw) return [];
   const track = buildTrack(raw, await loadProfile(raw.game));
-  return hudSignals(track.events);
+  return [...hudSignals(track.events), ...escapeSignals(track.events)];
 }
 
 async function samplesFor(

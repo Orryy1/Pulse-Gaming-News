@@ -15,6 +15,7 @@
 import crypto from "node:crypto";
 import type { GameplayMeta } from "../gameplay.ts";
 import type { HudSignal } from "../hudreader/signal.ts";
+import type { HudEvent } from "../hudreader/telemetry.ts";
 import {
   CLIP_SECONDS,
   LiveDetector,
@@ -202,4 +203,35 @@ export function backMeta(
         }
       : {}),
   };
+}
+
+/**
+ * Escapes as back-catalogue signals (pure). The live scoring counts a wanted level only from 3 stars, but the owner's
+ * play is mostly 1 and 2 stars, and the lane keeps a clean escape at any level (his 23 Nov boat escape from 1 star was
+ * kept: "the wanted indicator disappears"). A spell of at least `minSeconds` that ends with the police lost is one
+ * clear signal (1.0) at the moment the stars went, so the cut holds the run-up and the escape.
+ */
+export function escapeSignals(events: HudEvent[], minSeconds = 30): HudSignal[] {
+  const out: HudSignal[] = [];
+  let since: number | undefined;
+  let top = 0;
+  for (const e of [...events].sort((a, b) => a.t - b.t)) {
+    if (e.kind === "wanted_start") {
+      since = e.t;
+      top = e.value ?? 0;
+    } else if (e.kind === "wanted_up") top = Math.max(top, e.value ?? 0);
+    else if (e.kind === "wanted_clear" && since !== undefined) {
+      const lasted = e.t - since;
+      // From 3 stars the live rule already scores the escape (src/hudreader/signal.ts).
+      if (lasted >= minSeconds && top > 0 && top < 3)
+        out.push({
+          t: e.t,
+          score: 1,
+          detail: `lost the police at ${top} star${top === 1 ? "" : "s"} after ${Math.round(lasted)} s`,
+        });
+      since = undefined;
+      top = 0;
+    }
+  }
+  return out;
 }

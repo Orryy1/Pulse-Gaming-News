@@ -665,7 +665,7 @@ import {
   underFigure,
 } from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
-import { offendingMedia, dropOffending, rememberUnsafe } from "./qa/retry.ts";
+import { offendingMedia, dropOffending, rememberUnsafe, flattenDepthFaults } from "./qa/retry.ts";
 import { CREDIT_RULE, givenSources, scrubScriptCredits } from "./editorial/credits.ts";
 import { shortSampleTimes, framesNamed } from "./qa/vision.ts";
 import {
@@ -15857,7 +15857,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (s.cfg.shortParallaxShare > 0) assets.shortDepthArm = depthArm;
   if (depthArm === "depth" && s.cfg.parallaxPython && assets.images?.length) {
     const want = shortDepthWanted(
-      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) })),
+      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) || i.depthFault === true })),
     );
     if (want.length) {
       const made = await makeParallax(
@@ -16411,6 +16411,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           off.unsafeClips?.add(shot.media.index);
         }
       }
+    // QA_FLATTEN_DEPTH: a layered still faulted for its edges (a torn cut-out, repeated strips) renders flat on the retry
+    // and keeps its place, instead of the same tear again or a good picture thrown away (src/qa/retry.ts).
+    if (s.cfg.qaFlattenDepth) {
+      const flat = flattenDepthFaults(visionProblems, times, plan, withoutPlan.images ?? [], off);
+      if (flat.length) {
+        log("warn", "depth layers dropped for the retry", { episode: ep.id, images: flat });
+        await logEvent(s.db, ep.id, "depth_flattened", { images: flat });
+      }
+    }
     const banned = rememberUnsafe(
       withoutPlan.clips ?? [],
       off,

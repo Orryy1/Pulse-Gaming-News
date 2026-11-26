@@ -530,3 +530,9 @@ The audit after demand moved to the Data API (claude/demandapi, live f9666b56c) 
 - `social/commentcheck.ts:44` is a direct watch-page fetch outside the guard. **Fix:** route it through the guard or the API.
 
 **Measure:** zero "retired lane" refusals a day in the factory log.
+
+## 57. Explainer card spans with nothing to draw (code-reviewer note, improvement engine 26 Nov 15:00)
+
+`src/render/cleanframe.ts:325` (and :365) emit a card span whenever a line has an explainer, even when `shortExplainer` (shortcraft.ts:186) returns no window at render time. With no card either, that span draws nothing for its hold but still pushes other overlays aside, caps neighbouring cards in `roomFor` and is sampled by `cardCheckTimes`, so the frame check looks at an empty frame. Also the graphics audit never reads an explainer's own words (counted as 0), so reading time and figures rest on ground.ts and the frame check alone. **Fix:** emit the span only when the explainer has a window or the line has a real card; count explainer labels in the audit. **Measure:** no frame-check fault on a frame with no card; "timeline unfinished" style faults on explainers fall.
+
+Done 26 Nov 15:00 (engine): a faulted card now drops its line's explainer, and explainer-only lines no longer crash the audit (`claude/engine-explainercard`).

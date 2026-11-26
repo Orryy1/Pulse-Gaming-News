@@ -80,6 +80,7 @@ import {
   gameSoundVolume,
   type LongPlan,
   type LongShot,
+  keyTime,
   usefulEmphasis,
   usefulGraphic,
 } from "./longplan.ts";
@@ -215,6 +216,8 @@ import { DepthOrbit } from "./components/DepthOrbit.tsx";
 import { DepthCam } from "./components/DepthCam.tsx";
 import { depthCamPlan, stressedFrame } from "./depthcam.ts";
 import { CompareWipe, DepthType, ScreenshotWall } from "./components/BoldIdeas.tsx";
+import { KitOverlay } from "./components/GtaKit.tsx";
+import { LONG_KIT_GAP, LONG_KIT_MAX, planGtaKit, voicedLines, type KitSpan } from "./gtakit.ts";
 import { compareWipePlan, depthTypePlan, wallPictures } from "./boldideas.ts";
 import { Box3D, BoxReveal } from "./components/Box3D.tsx";
 import { PopOut } from "./components/PopOut.tsx";
@@ -395,6 +398,9 @@ export type LongProps = {
   depthType?: boolean;
   /** COMPARE_WIPE: a line comparing two chapters' games shows both pictures behind a sliding wipe. Absent: off. */
   compareWipe?: boolean;
+  /** GTA_KIT (src/render/gtakit.ts): a GTA story's map places and region; with it, lines with no graphic of their own
+   * that name a place, say a dollar figure or set two names against each other get the kit's overlay. Absent: off. */
+  gtaKit?: import("./gtakit.ts").GtaKitInput;
   /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
   debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
@@ -4166,6 +4172,103 @@ export const Long: React.FC<LongProps> = (props) => {
     // A line already set behind its subject (DEPTH_TYPE) keeps that: a wipe over it would hide both.
     return compareWipePlan(windows, words, games, props.images, fps).filter((w) => !typedWindows.has(w.window));
   })();
+  // GTA_KIT (src/render/gtakit.ts): a GTA story's lines with no graphic of their own that name a place, say a dollar
+  // figure or set two names against each other get the kit's overlay, read from the words as voiced. It stands in for
+  // its own line's caption and pop-in picture, and keeps clear of every other line's overlay, the wipes, 3D clips,
+  // mention insets, quotes, breaks and chapter openings. Planned once, not per frame.
+  const kitMoments = useMemo(() => {
+    if (!props.gtaKit) return [];
+    const taken: KitSpan[] = [
+      ...wipes.map((w) => ({ kind: "wipe", from: w.from, to: w.from + w.len })),
+      ...blenderPlaced.map((c) => ({
+        kind: "blender",
+        from: c.from,
+        to: c.from + c.len,
+      })),
+      ...mentionsPlaced.map((m) => ({ kind: "mention", from: m.from, to: m.to })),
+      ...quoteSpans.map((q) => ({
+        kind: "quote",
+        from: q.from,
+        to: q.from + q.frames,
+      })),
+      ...breakFrames.map((b) => ({
+        kind: "break",
+        from: b.from - 20,
+        to: b.to + 30,
+      })),
+      ...entryFrames.map((f) => ({
+        kind: "entry",
+        from: f - 30,
+        to: f + 3 * fps,
+      })),
+      ...openings.map((o) => ({
+        kind: "opening",
+        from: o.from - 10,
+        to: o.from + montageFrames(o.items.length) + 30,
+      })),
+    ];
+    // Every line's own overlay span (graphic, name tag, caption, pop-in), keyed so the kit may stand in for its own.
+    windows.forEach((w, k) => {
+      if (!props.moments?.[w.entry]?.[w.moment]) return;
+      const sp = spanOf(k);
+      taken.push({
+        kind: "line",
+        key: `win${k}`,
+        from: sp.from,
+        to: sp.from + sp.len,
+      });
+    });
+    const wipeWindows = new Set(wipes.map((w) => w.window));
+    const range = (k: number): [number, number] => {
+      const w = windows[k]!;
+      const lo = Math.max(
+        0,
+        words.findIndex((x) => x.start >= w.start - 0.05),
+      );
+      let hi = words.findIndex((x) => x.start >= w.end);
+      if (hi < 0) hi = words.length;
+      return [lo, hi];
+    };
+    return planGtaKit({
+      lines: voicedLines(windows, words),
+      kit: props.gtaKit,
+      wordAt: (k, key) => keyTime(words, ...range(k), key),
+      fps,
+      startAfter: Math.round(12 * fps),
+      endBefore: durationInFrames - Math.round(20 * fps),
+      taken,
+      card: (k) => `win${k}`,
+      max: LONG_KIT_MAX,
+      gapSeconds: LONG_KIT_GAP,
+      skip: (k) => {
+        const w = windows[k]!;
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        return (
+          !raw ||
+          usefulGraphic(raw.graphic) ||
+          !!raw.person ||
+          fillerShots.has(`${w.entry}:${w.moment}`) ||
+          typedWindows.has(k) ||
+          wipeWindows.has(k)
+        );
+      },
+    });
+    // Everything it reads is fixed for the render (wipes, typedWindows and openings come from the same props).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props,
+    plan,
+    openings,
+    windows,
+    words,
+    props.moments,
+    fps,
+    durationInFrames,
+    mentionsPlaced,
+    blenderPlaced,
+  ]);
+  const kitLines = new Set(kitMoments.map((m) => m.line));
+  const kitSpans: HudSpan[] = kitMoments.map((m) => ({ from: m.from, to: m.from + m.len }));
 
   const richSoundAt = new Map<number, number>();
   const soundCands: LongSoundCandidate[] = windows
@@ -4251,7 +4354,9 @@ export const Long: React.FC<LongProps> = (props) => {
           graphic === "none" &&
           shot?.media.type === "clip" &&
           pic &&
-          w.moment > 0
+          w.moment > 0 &&
+          // GTA_KIT: a kit line has no pop-in picture, so no whoosh either.
+          !kitLines.has(k)
         )
           return [
             {
@@ -4474,6 +4579,11 @@ export const Long: React.FC<LongProps> = (props) => {
           />
         </Sequence>
       ))}
+      {kitMoments.map((m) => (
+        <Sequence key={m.key} from={m.from} durationInFrames={m.len} layout="none">
+          <KitOverlay m={m} tall={false} accent={COLOUR.amber} />
+        </Sequence>
+      ))}
       {accents.map((a, k) => (
         <Sequence
           key={`acc${k}`}
@@ -4556,7 +4666,7 @@ export const Long: React.FC<LongProps> = (props) => {
       {marks.length ? (
         <AbsoluteFill
           style={{
-            opacity: hudYield(frame, hudSpans.all),
+            opacity: hudYield(frame, kitSpans.length ? [...hudSpans.all, ...kitSpans] : hudSpans.all),
             pointerEvents: "none",
           }}
         >
@@ -5016,7 +5126,7 @@ export const Long: React.FC<LongProps> = (props) => {
             ? raw.graphic
             : { ...raw.graphic, kind: "none" as const },
           emphasis:
-            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k)
+            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k) && !kitLines.has(k)
               ? raw.emphasis
               : "",
         };
@@ -5061,6 +5171,8 @@ export const Long: React.FC<LongProps> = (props) => {
             : undefined;
         const showPop =
           !nameTag &&
+          // GTA_KIT: the kit's overlay stands in for the line's pop-in picture.
+          !kitLines.has(k) &&
           m.graphic.kind === "none" &&
           shot?.media.type === "clip" &&
           pic &&

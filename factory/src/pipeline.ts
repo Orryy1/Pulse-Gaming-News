@@ -646,7 +646,8 @@ import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } from "./gfxauditstep.ts";
 import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
-import { shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
+import { kitTexts } from "./render/gtakit.ts";
+import { longGtaKitProp, shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
 import { checksClearOfUpgrades } from "./render/shortupgrades.ts";
 import { probe as probeMedia } from "./qa/media.ts";
 import {
@@ -14589,6 +14590,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     chapterWall: s.cfg.chapterWall,
     depthType: s.cfg.depthType,
     compareWipe: s.cfg.compareWipe,
+    // GTA_KIT (src/render/gtakit.ts): a GTA story's place cards, cash readouts and head-to-heads. Off: absent.
+    ...longGtaKitProp(s.cfg.gtaKit, script.game_title),
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
@@ -16235,7 +16238,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           : []),
         // EXPLAINERS: the explainer's own words and its kicker are graphics, not burned-in text.
         ...(g.explainer ? explainerTexts(g.explainer) : []),
-      ]),
+      ]).concat((upgraded?.upgrades.kit ?? []).flatMap((k) => kitTexts(k.data))),
     });
   }
   // GRAPHICS_FRAME_CHECK: each card at its settled frame, for text cut off, overlapping or unreadable. A faulted card

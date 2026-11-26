@@ -70,6 +70,7 @@ import { GameMap3DShort } from "./components/GameMap3D.tsx";
 import { DepthType } from "./components/BoldIdeas.tsx";
 import { DepthOrbit } from "./components/DepthOrbit.tsx";
 import { CompareWipeTall, ShortBlenderClip } from "./components/ShortUpgrades.tsx";
+import { KitOverlay } from "./components/GtaKit.tsx";
 import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
 import { lookTitleAt } from "./shortupgrades.ts";
 import { musicDipAt } from "./gamebed.ts";
@@ -583,6 +584,8 @@ export const Short: React.FC<ShortProps> = (props) => {
   const cardAt = (i: number) =>
     // SHORT_MAP_PINS: the line's map stands in for its card where they would overlap.
     (up.maps ?? []).some((m) => m.segment === i && m.replacesCard) ||
+    // GTA_KIT: the kit's overlay stands in for its line's card where they would overlap.
+    (up.kit ?? []).some((k) => k.line === i && k.replacesCard) ||
     // The tracklist card stands in for its line's own card.
     props.tracklist?.segment === i ||
     // MENTION_*: an inset stands in for its beat's card (cleanframe.ts settleMentions left the card out of the spans).
@@ -911,6 +914,12 @@ export const Short: React.FC<ShortProps> = (props) => {
           </Sequence>
         ) : null,
       )}
+      {/* GTA_KIT: the kit's place card, cash readout or head-to-head over its line (src/render/gtakit.ts). */}
+      {(up.kit ?? []).map((k) => (
+        <Sequence key={k.key} from={k.from} durationInFrames={k.len} layout="none">
+          <KitOverlay m={k} tall accent={accent} />
+        </Sequence>
+      ))}
       {/* SHORT_BLENDER: the number one's 3D podium opens its entry; its card follows. */}
       {(up.blender ?? []).map((b) =>
         b.src ? (

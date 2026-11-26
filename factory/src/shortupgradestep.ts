@@ -23,6 +23,15 @@ import { fetchWithTimeout } from "./lib/util.ts";
 import type { MentionSlot } from "./render/mentions.ts";
 import type { Segment } from "./render/timeline.ts";
 import {
+  isGtaStory,
+  planGtaKit,
+  SHORT_KIT_GAP,
+  SHORT_KIT_MAX,
+  voicedLines,
+  type GtaKitInput,
+  type KitSpan,
+} from "./render/gtakit.ts";
+import {
   blenderLeadOk,
   blenderWaitVerdict,
   lookTitleAt,
@@ -51,6 +60,7 @@ type Cfg = Pick<
   | "parallaxDeep"
   | "dataDir"
   | "shortUpgrades"
+  | "gtaKit"
 >;
 
 /** Which devices are on for Shorts: each SHORT_* switch only with its long-video switch (pure). */
@@ -472,7 +482,92 @@ export async function shortUpgradesFor(o: {
     });
     if (orbit) up.orbits = [orbit];
   }
+  // GTA_KIT last: it never covers what the Short already keeps or the devices above; a line's own card is the one
+  // thing it may stand in for.
+  if (o.cfg.gtaKit && isGtaStory(o.game)) {
+    const kit = shortGtaKit({
+      game: o.game,
+      segments: o.segments,
+      words: o.words,
+      fps,
+      hookEnd,
+      loopFrom,
+      taken: [
+        ...o.kept,
+        ...sceneSpans,
+        ...[...(up.maps ?? []), ...(up.blender ?? []), ...(up.depthTypes ?? []), ...(up.wipes ?? [])].map((m) => ({
+          kind: "upgrade",
+          from: m.from,
+          to: m.from + m.len,
+        })),
+      ],
+      mapLines: new Set((up.maps ?? []).map((m) => m.segment)),
+    });
+    if (kit.length) {
+      up.kit = kit;
+      for (const k of kit) notes.push(`gta kit ${k.data.kind} on line ${k.line}`);
+    }
+  }
   return { upgrades: up, mentions, notes };
+}
+
+/** A long video's GTA_KIT prop: present only with the switch on and a GTA story, so off means the props never change. */
+export function longGtaKitProp(on: boolean, game: string): { gtaKit?: GtaKitInput } {
+  return on && isGtaStory(game) ? { gtaKit: gtaKitInput(game) } : {};
+}
+
+/** The kit's input for a game: its map table's places and name, when it has one (no table: no place cards). */
+export function gtaKitInput(game: string): GtaKitInput {
+  const table = gameMapFor(game);
+  return {
+    region: table?.name ?? "",
+    places: (table?.places ?? []).map((p) => ({
+      name: p.name,
+      kind: p.kind,
+      ...(p.aliases ? { aliases: p.aliases } : {}),
+      ...(p.ambiguous ? { ambiguous: true } : {}),
+    })),
+  };
+}
+
+/**
+ * GTA_KIT in a Short (pure but for the map table): beat lines only, never a line with its own explainer, rank card or
+ * map; at most SHORT_KIT_MAX, SHORT_KIT_GAP s apart, after the hook and before the loop's return.
+ */
+export function shortGtaKit(o: {
+  game: string;
+  segments: readonly Segment[];
+  words: ReadonlyArray<{ text: string; start: number }>;
+  fps: number;
+  hookEnd: number;
+  loopFrom: number;
+  taken: ReadonlyArray<KitSpan>;
+  mapLines?: ReadonlySet<number>;
+  kit?: GtaKitInput;
+}): import("./render/gtakit.ts").KitMoment[] {
+  const range = (i: number): [number, number] => {
+    const s = o.segments[i]!;
+    const lo = Math.max(0, o.words.findIndex((w) => w.start >= s.start - 0.05));
+    let hi = o.words.findIndex((w) => w.start >= s.end);
+    if (hi < 0) hi = o.words.length;
+    return [lo, hi];
+  };
+  return planGtaKit({
+    lines: voicedLines(o.segments, o.words),
+    kit: o.kit ?? gtaKitInput(o.game),
+    wordAt: (i, key) => keyTime([...o.words], ...range(i), key),
+    fps: o.fps,
+    startAfter: o.hookEnd,
+    endBefore: o.loopFrom,
+    taken: o.taken,
+    card: (i) => `card${i}`,
+    max: SHORT_KIT_MAX,
+    gapSeconds: SHORT_KIT_GAP,
+    skip: (i) => {
+      const s = o.segments[i]!;
+      return s.kind !== "beat" || !!s.explainer || s.visual?.kind === "rank" || !!o.mapLines?.has(i);
+    },
+  });
 }
 
 const mentionKindOf = (mentions: readonly MentionSlot[], key: string): string =>

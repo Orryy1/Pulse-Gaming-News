@@ -673,6 +673,7 @@ export function testConfig(
     compareWipe: false,
     subjectPop: false,
     box3d: false,
+    gtaKit: false,
     shortUpgrades: {
       mapPins: true,
       gameLook: true,

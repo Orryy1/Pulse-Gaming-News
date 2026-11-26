@@ -113,6 +113,18 @@ test("one problem naming both an edge and a logo on the same frame still drops t
   assert.deepEqual([...off.images], [1]);
 });
 
+test("a separate source-artefact fault on the same frame still drops the flattened still (code-reviewer)", () => {
+  const images = layered();
+  const problems = [
+    "Frame 6: jagged cutout edges around the shoulder.",
+    "Frame 6: heavy compression artefacts in the source picture.",
+  ];
+  const off = offendingMedia(problems, times, plan);
+  const flat = flattenDepthFaults(problems, times, plan, images, off);
+  assert.deepEqual(flat, [1]);
+  assert.deepEqual([...off.images], [1]);
+});
+
 test("edge faults on a clip or naming no frame flatten nothing", () => {
   const images = layered();
   const problems = [

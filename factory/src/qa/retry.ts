@@ -164,9 +164,11 @@ export function flattenDepthFaults<T extends { layers?: unknown; depthFault?: bo
     const at = problemFrames(p, sampleTimes.length)
       .map(imageAt)
       .filter((i): i is number => i !== undefined);
-    if (DEPTH_EDGE_FAULT.test(p))
-      for (const i of at) if (images[i]?.layers) flat.add(i);
-    if (otherMediaFault(p)) for (const i of at) stillDrop.add(i);
+    const edge = DEPTH_EDGE_FAULT.test(p);
+    if (edge) for (const i of at) if (images[i]?.layers) flat.add(i);
+    // Only a depth-edge problem has its edge words discounted; any other media fault on the frame still drops it.
+    if (edge ? otherMediaFault(p) : MEDIA_FAULT.test(p) || AD_FAULT.test(p))
+      for (const i of at) stillDrop.add(i);
   }
   for (const i of flat) {
     const img = images[i]!;

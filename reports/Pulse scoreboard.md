@@ -14,6 +14,21 @@ The owner's goal, 4 Nov 2026: never miss a story, world-class videos in every fo
 
 Numbers: `/admin/channel-report?days=7` on the Mac, 11 Nov 21:00 (YouTube Analytics lags about 2 days, so 138 of 305 listed videos have rows) and `data/logs/alert_digest.md`.
 
+## Week to 26 Nov (weekly cycle)
+
+YouTube, 19 to 26 Nov against 12 to 19 Nov (channel report on the Mac; Analytics lags about 2 days):
+
+| Format | Views | Average viewed | Engaged | Subscribers (per 1,000) | Watch hours | Comments |
+| --- | --- | --- | --- | --- | --- | --- |
+| Shorts | 5,596 (9,399) | 57.0% (67.1%) | 42.2% (41.7%) | 2 (0.36) | 14.1 (27.4) | 14 (12) |
+| Long videos | 303 (1,023) | 27.7% (17.2%) | 22.4% (29.6%) | 1 (3.3) | 4.8 (26.8) | 4 (0) |
+
+Published: 28 Shorts and 6 long (37 Shorts the week before). Median views per Short 168 (149). Channel: 54 subscribers (49 on 11 Nov). TikTok 4 a day passed (median 730) before the owner moved to every Short on 20 Nov.
+
+**Three weakest spots:** (1) output: 28 Shorts against 37, 1 long of the planned 5, slots lost on 24 and 25 Nov; (2) watch hours: about 19 a week, far off 8,000 a year; (3) subscribers: 0.36 per 1,000 Shorts views, the 1,000 plan needs about 14 a day.
+
+**Three biggest wins:** (1) views per Short held through the outage (median 168 against 149); (2) long videos are watched longer (average viewed 27.7% against 17.2%) and earned a subscriber; (3) TikTok's 4 a day test passed with no dead runs.
+
 ## Three weakest spots this week
 
 1. **Long videos are watched for 21% of their length** (540 views on 7 videos, 482 of them on San Andreas). The ranking long video "Every Mainline GTA Game, Ranked" got 2 views.

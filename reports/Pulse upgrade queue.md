@@ -2,6 +2,17 @@
 
 Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item first. Each entry says why, what to build and how we'll know it worked.
 
+## Weekly ranking, 26 Nov (weekly cycle)
+
+Ranked by expected effect on subscribers and watch hours, evidence and size. Nothing started this week (drop guardrail; see Pulse experiments.md).
+
+1. **Opening over moving footage and captions at phrase breaks** (OPEN_MOTION, CAPTION_PHRASES; item 48). Evidence: still pictures cost 18 to 24 points of a Short's audience (retention curves, 142 Shorts); 4 of 6 sheets hold one shot 5 to 8 s. Medium build. Next in line once a slot frees.
+2. **Writers' room as a scaled split** (item from the 19 Nov test). Blind marks 4.65 against 2.87, sounds human 4.2 against 2.5, 7 Shorts a side; needs 20 a side.
+3. **Pip the mascot, 25% split** (was e4). Built and proven on frames; needs MASCOT_SHARE=0.25. Starts when Instagram's test ends on 2 Dec.
+4. **Output reliability before any new format.** Lost slots cost more views this week than any test could add (28 Shorts against 37). Owned by the improvement engine (WHY_SLOT_SEAT, LONG_WEEKLY_AFTER_TARGET).
+5. **Truthful next-part line for series** (alternating days). The analytics loop reads 0 and 82 views for its arms: not running yet.
+6. **Channel page shows the three series**, then the Mac scouting items (sentence-to-shot search, wrong-game guard, motion score).
+
 ## Urgent (15 Nov 14:50, hourly watch): a retry button for failed Shorts
 
 **Why:** four Shorts failed on 15 Nov (ep_20261115_a11bf864, 80f93adf, 75345555, 000b0a99) because a half-swept render bundle lost music beds. The fix (345062b1e) went live at 14:18, but there is no way to re-run a failed Short: `/admin/retry` does not exist in any branch (returns Not found), and `/admin/remake` only takes long videos. The hourly watch task assumes the route is live.

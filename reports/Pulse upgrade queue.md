@@ -519,3 +519,14 @@ GTA File: parts 3 to 7 moved by hand to 26-30 Nov this run. Not built: parts are
 - Footage per region from the owner's streams first, then official trailers under the usual rules. The GTA story spoiler hold until 18 Dec still applies.
 
 **Measure:** views and average viewed against the GTA Shorts median (GTA saturation note: max 2 GTA Shorts a day); subscribers per 1,000 views.
+
+## 56. Finish the move off the anonymous YouTube lane (audit 26 Nov)
+
+The audit after demand moved to the Data API (claude/demandapi, live f9666b56c) found these paths still anonymous-only:
+
+- `sceneindex/build.ts` :475, :617, :696, :943 and `sceneindex/light.ts` :488, :540, :569. `levers/job.ts:588` and `:552` pass `YTDLP_COOKIES_FILE: ""`, so scene-index builds and light turns never sign in (SIGNED_LIGHT_INDEX can't work). **Fix:** pass the cookies file within the signed ration (4 an hour, 30 a day, background share).
+- `assets/cutscenes.ts:612` (ytsearch15) fails once the guard's 10 Data API searches a day are spent. **Fix:** find whether the key's Cloud project (pulse-gaming-news) shares quota with the upload OAuth client, then set YT_API_SEARCHES_PER_DAY to fit (each search costs 100 units).
+- `assets/gameplay.ts:102` page search: 81 refusals today, but it falls back to the OAuth search. **Fix:** go straight to the API to stop the noise.
+- `social/commentcheck.ts:44` is a direct watch-page fetch outside the guard. **Fix:** route it through the guard or the API.
+
+**Measure:** zero "retired lane" refusals a day in the factory log.

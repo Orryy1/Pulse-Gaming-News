@@ -539,7 +539,7 @@ test("isGtaGuide reads the episode's factcheck", () => {
 
 // ---- The writer (a fake model) ----------------------------------------------------------------------------------------
 
-test("the writer plans once, sends a plan back once, and writes the items in batches of five", async () => {
+test("the writer plans once, sends a plan back once, and writes the items in batches of three", async () => {
   const sites: string[] = [];
   let plans = 0;
   const llm: Llm = {
@@ -608,6 +608,7 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
     "gtaguide.items",
     "gtaguide.items",
     "gtaguide.items",
+    "gtaguide.items",
   ]);
   assert.equal(d.items.length, 12);
   assert.match(d.intro.narration, /^Never leave/);
@@ -615,7 +616,7 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
   assert.equal(d.items[0]!.moments.length, 2);
   assert.deepEqual(
     batchesOf([1, 2, 3, 4, 5, 6, 7]).map((b) => b.length),
-    [5, 2],
+    [3, 3, 1],
   );
 });
 

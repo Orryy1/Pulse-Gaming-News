@@ -556,3 +556,32 @@ Then re-render the same proof, check the frames, and switch EVIDENCE_STYLE=true 
 
 **Still open:** the cause. Depth cut-outs of people with thin parts (hands, guns, hair) tear at the low depth-map resolution. Options to test: skip layering when the subject mask is small or ragged (edge length against area), keep PARALLAX_DEEP off for stills with people, or feather the cut-out edge. Judge with the SHORT_PARALLAX verdict on 29 Nov: the depth arm must win on average viewed AND show no rise in edge faults per Short.
 **Code-reviewer notes left open (26 Nov 19:00):** (a) `shortDepthWanted` (src/render/parallax.ts:61) caps new layers per render, not in total, so a retry can layer up to SHORT_DEPTH_MAX more stills and bring a fresh tear elsewhere: cap on the total or skip new layering on a QA retry. (b) The opening's `assets.heroCut` cut-out (suite Shorts, Short.tsx:788/817) is not cleared by QA_FLATTEN_DEPTH, so a torn opening poster repeats. (c) A flattened still loses its `layers.fg` thumbnail preference (src/qa/thumbrule.ts:349, :764): cosmetic.
+
+## 58. GameSight-style GTA 6 guides and thumbnails (the owner likes them, 26 Nov)
+
+**GameSight** (UCnHUWXEQmgNbuHYj2JpXtxQ, 17.4k subs) went from a few hundred views to 100k-190k by switching to GTA 6 guide lists:
+
+| Video | Views |
+| --- | --- |
+| "77 Things Confirmed" (25 min) | 189k |
+| "30 Things You NEED To Do When GTA 6 Releases" (16 min) | 182k |
+| "Don't Buy the Wrong GTA 6 Edition ($80 vs $100 vs $400)" | 129k |
+| "Beginner's Guide: 25 Things I Wish I Knew (No Spoilers)" | 97k |
+| "Will Be HARDER Than You Think" | 41k |
+
+Thumbnails are in D:\pulse-data\scratch\gamesight\ (sheet.jpg):
+- one big character or scene;
+- 2-3 word warning or number text ("DON'T RUN.", "DON'T SWIM", "DAY 1", "25 THINGS / NO SPOILERS", "77+ ACTIVITIES CONFIRMED");
+- the GTA VI logo in a corner;
+- very saturated, with a danger hook (police dog, alligator).
+
+Their art is AI-made illustration.
+
+**Pulse version:**
+- A post-launch GTA 6 guide lane: long lists of 12-25 min. Examples: "things I wish I knew (no spoilers)", "things you can't do any more", "don't do X", "which edition".
+- Each claim is labelled confirmed, reported or rumour.
+- Built from the owner's own stream footage (now tagged by the HUD reader and the stream index) plus official trailers.
+- Thumbnails in that style, made from the owner's stream frames rather than AI people: a big character frame lifted with APPLE_SUBJECT_LIFT, a 2-3 word warning, and the GTA VI logo corner (official logo, as the in-world kit does).
+- A/B test against the current thumbnails with Test & compare.
+
+**Measure:** views in the first 7 days and the CTR from Test & compare. GTA saturation rule: max 2 GTA Shorts a day; long videos aren't capped.

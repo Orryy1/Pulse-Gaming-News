@@ -93,7 +93,7 @@ test("demand is the views of the top five videos naming the topic, with a level 
   );
 });
 
-test("lookups are capped per pick, cached for a day, and a failed search is unknown, never no demand", async () => {
+test("lookups are capped per pick, cached for a week, and a failed search is unknown, never no demand", async () => {
   const db = await testDb();
   let clock = now;
   const cache = dbDemandCache(db, () => clock);
@@ -126,8 +126,8 @@ test("lookups are capped per pick, cached for a day, and a failed search is unkn
     ["Broken", "Forza"],
   );
   assert.equal(second.get("Halo")?.views, 500_000);
-  // A day later the cache has run out.
-  clock = new Date(now.getTime() + 25 * 3600_000);
+  // A week later the cache has run out (DEMAND_CACHE_DAYS, 26 Nov 2026).
+  clock = new Date(now.getTime() + 7 * 24 * 3600_000 + 3600_000);
   assert.equal(await cache.get("Halo"), undefined);
 
   const { kept, skipped } = rankByDemand(cands, second, 20_000);

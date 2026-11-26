@@ -23,7 +23,8 @@ const PAUSED = "YouTube fetch skipped: YouTube asked for a bot check, so fetchin
 async function seeded() {
   const db = await testDb();
   let clock = t0;
-  const cache = dbDemandCache(db, () => clock);
+  // A day's cache, as before DEMAND_CACHE_DAYS (26 Nov 2026), so the stale fallback is what these tests reach.
+  const cache = dbDemandCache(db, () => clock, 24);
   // 14 Nov: the search works and measures two topics.
   const good = async (url: string) =>
     url.includes("Grand%20Theft%20Auto%20III")
@@ -163,7 +164,7 @@ test("age check and the setting's default", () => {
   const saved = process.env.DEMAND_STALE_DAYS;
   try {
     delete process.env.DEMAND_STALE_DAYS;
-    assert.equal(loadConfig().demandStaleDays, 10);
+    assert.equal(loadConfig().demandStaleDays, 21);
     process.env.DEMAND_STALE_DAYS = "0";
     assert.equal(loadConfig().demandStaleDays, 0);
   } finally {

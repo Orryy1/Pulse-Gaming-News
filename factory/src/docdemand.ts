@@ -1,3 +1,7 @@
+// 26 Nov 2026: with the database in the services bundle, lookups go through searchdemand.ts's demandFor (the Data
+// API, a week's cache, the day's allowance, older readings marked stale); the picker prefetches its top candidates in
+// one batch (DemandLookup.prefetch), so a doc pick is one search run and one log line. The history below is kept.
+//
 // The demand interface the breakout documentary picker (src/docpick.ts) reads. The YouTube demand check itself
 // (the free search page, this week's uploads sorted by views) is built on the claude/story-mix branch as
 // src/discovery/searchdemand.ts and was not on claude/stage when this was written (1 Nov 2026). This is a stub
@@ -5,6 +9,10 @@
 // today with demand "unknown" and picks up the real check the moment it lands: when the services bundle carries
 // `searchDemand`, the lookup below searches the page the same way. When story-mix merges, replace the body of
 // docDemandLookup with searchdemand.ts's demandFor (and its cache) and delete the copies here.
+
+import type { Db } from "./db.ts";
+import type { EvergreenCandidate } from "./editorial/evergreen.ts";
+import { dbDemandBudget, dbDemandCache, demandFor, demandSearchers } from "./discovery/searchdemand.ts";
 
 /** One row of the search page (same shape as searchdemand.ts SearchRow). */
 export interface SearchRow {
@@ -24,10 +32,15 @@ export interface Demand {
   top?: { title: string; views: number };
   level: "none" | "low" | "medium" | "high";
   at: string;
+  /** An older reading standing in for a fresh one (DEMAND_STALE_DAYS): the picker counts it as unknown. */
+  stale?: boolean;
 }
 
 /** Looks a topic up; undefined means unknown (never "no demand"). */
-export type DemandLookup = (topic: string) => Promise<Demand | undefined>;
+export type DemandLookup = ((topic: string) => Promise<Demand | undefined>) & {
+  /** Looks several topics up in one run first (one batch, one log line); later lookups read the results. */
+  prefetch?: (topics: string[]) => Promise<void>;
+};
 
 /** YouTube's search-page filter: uploaded this week, sorted by view count (searchdemand.ts WEEK_BY_VIEWS). */
 const WEEK_BY_VIEWS = "CAMSAggD";
@@ -92,6 +105,46 @@ export function docDemandLookup(
     services as { searchDemand?: (url: string) => Promise<SearchRow[]> }
   ).searchDemand;
   if (typeof search !== "function") return undefined;
+  // With the database, the shared week-long cache and the day's Data API allowance (DEMAND_API_PER_DAY) apply too.
+  const s = services as {
+    db?: Db;
+    cfg?: { demandApiPerDay?: number; demandCacheDays?: number; demandStaleDays?: number };
+    searchDemandMany?: (queries: string[]) => Promise<Map<string, SearchRow[] | Error>>;
+  };
+  if (s.db) {
+    const db = s.db;
+    const run = (topics: string[]) =>
+      demandFor(
+        topics.map((name) => ({ name, source: "doc" }) as EvergreenCandidate),
+        {
+          ...demandSearchers({
+            searchDemand: (url) => search.call(services, url),
+            ...(typeof s.searchDemandMany === "function"
+              ? { searchDemandMany: (q: string[]) => s.searchDemandMany!.call(services, q) }
+              : {}),
+          }),
+          cache: dbDemandCache(db, now, (s.cfg?.demandCacheDays ?? 7) * 24),
+          budget: dbDemandBudget(db, s.cfg?.demandApiPerDay, now),
+          lookups: topics.length,
+          minViews: DOC_DEMAND_MIN_VIEWS,
+          now: now(),
+          staleDays: s.cfg?.demandStaleDays ?? 21,
+          label: "doc pick",
+        },
+      ).catch(() => new Map<string, Demand>());
+    const done = new Map<string, Demand | undefined>();
+    const lookup: DemandLookup = async (topic) => {
+      if (done.has(topic)) return done.get(topic);
+      return (await run([topic])).get(topic);
+    };
+    lookup.prefetch = async (topics) => {
+      const want = [...new Set(topics)].filter((t) => !done.has(t));
+      if (!want.length) return;
+      const got = await run(want);
+      for (const t of want) done.set(t, got.get(t));
+    };
+    return lookup;
+  }
   return async (topic) => {
     try {
       const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(topic)}&sp=${WEEK_BY_VIEWS}`;

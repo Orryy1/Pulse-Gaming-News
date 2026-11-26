@@ -1,11 +1,18 @@
 // Demand before making (owner, 1 Nov 2026): an evergreen ranking, a long ranking or a Why Short is only worth
 // making when people are watching that game on YouTube now. Before the editor picks, each candidate topic is
-// searched on YouTube's own search page (no API quota: yt-dlp reads the page, as the footage search does),
-// filtered to the last week and sorted by view count (sp=CAMSAggD). The demand is the views of the five
+// searched on YouTube for the last week's uploads sorted by view count (first YouTube's search page through yt-dlp;
+// since 26 Nov 2026 the Data API, see below). The demand is the views of the five
 // biggest recent videos that actually name the topic. Candidates are ranked by it, a topic under
 // DEMAND_MIN_VIEWS is skipped, the editor sees the figures, and each pick gets one Discord line. Requests stay
-// light: at most DEMAND_LOOKUPS search pages a pick, each result cached for 24 hours in the settings table,
+// light: at most DEMAND_LOOKUPS searches a pick, each result cached in the settings table (24 hours then, a week now),
 // and a failed search counts as unknown (never as "no demand"), so a YouTube hiccup never empties the list.
+//
+// 26 Nov 2026: the page read went through yt-dlp's anonymous lane, which is retired (YT_ANON_LANE=off), so every
+// lookup failed. Lookups now go to the Data API (src/discovery/demandapi.ts, never yt-dlp): a topic's figure is
+// cached for DEMAND_CACHE_DAYS (7; a game's demand barely moves day to day), the topics of a run are de-duplicated
+// and their view counts read in shared batches, and new topics are rationed to DEMAND_API_PER_DAY (8) a Pacific day,
+// at most half of it a run (so the first picker of the day cannot take it all); a lookup never sent is given back.
+// Over that, an older reading stands in (DEMAND_STALE_DAYS), and only then is a topic unknown. One log line a run.
 
 import type { Db } from "../db.ts";
 import type { EvergreenCandidate } from "../editorial/evergreen.ts";
@@ -13,7 +20,9 @@ import { errorMessage, log } from "../lib/util.ts";
 
 /** YouTube's search-page filter: uploaded this week, sorted by view count. */
 export const WEEK_BY_VIEWS = "CAMSAggD";
-export const CACHE_HOURS = 24;
+export const CACHE_HOURS = 7 * 24;
+/** New topics looked up on the Data API a Pacific day when the setting is missing (DEMAND_API_PER_DAY). */
+export const DEMAND_API_PER_DAY = 8;
 /** The weight an older (stale) reading's views carry when ranked against fresh ones. */
 export const STALE_WEIGHT = 0.5;
 /** The recent hits a topic's demand is measured on. */
@@ -148,8 +157,9 @@ export function demandYoungerThan(d: Demand, hours: number, now: Date): boolean 
   return Number.isFinite(age) && age < hours * 3600_000;
 }
 
-/** The cache in the settings table: one row per topic, good for CACHE_HOURS. */
-export function dbDemandCache(db: Db, now: () => Date): DemandCache {
+/** The cache in the settings table: one row per topic, good for `cacheHours` (CACHE_HOURS, a week). */
+export function dbDemandCache(db: Db, now: () => Date, cacheHours = CACHE_HOURS): DemandCache {
+  const fresh = Number.isFinite(cacheHours) && cacheHours > 0 ? cacheHours : CACHE_HOURS;
   const key = (q: string) => `demand:${q.toLowerCase().trim()}`;
   const read = async (q: string, hours: number): Promise<Demand | undefined> => {
     const [row] = await db.query<{ value: string }>(
@@ -165,7 +175,7 @@ export function dbDemandCache(db: Db, now: () => Date): DemandCache {
     }
   };
   return {
-    get: (q) => read(q, CACHE_HOURS),
+    get: (q) => read(q, fresh),
     getAged: (q, maxHours) => read(q, maxHours),
     async set(q, d) {
       await db.query(
@@ -174,6 +184,74 @@ export function dbDemandCache(db: Db, now: () => Date): DemandCache {
       );
     },
   };
+}
+
+/** The day's allowance of new Data API demand lookups: `take(n)` grants up to n and returns how many it granted. */
+export interface DemandBudget {
+  take(n: number): Promise<number>;
+  /** Gives back lookups granted but never sent (refused by the search bucket, quota already spent). */
+  refund?(n: number): Promise<void>;
+}
+
+/** The Pacific day ("2026-11-26"), when YouTube's quota turns (pure). */
+function pacificDayOf(now: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/**
+ * DEMAND_API_PER_DAY in the settings table, one counter a Pacific day, taken atomically; one run takes at most
+ * `perRun` (half the day's, rounded up), so the first picker of the day leaves some for the others.
+ */
+export function dbDemandBudget(
+  db: Db,
+  perDay: number | undefined,
+  now: () => Date,
+  perRun?: number,
+): DemandBudget {
+  const cap = Number.isFinite(perDay) && (perDay as number) >= 0 ? Math.floor(perDay as number) : DEMAND_API_PER_DAY;
+  const share = perRun !== undefined && Number.isFinite(perRun) && perRun >= 0 ? Math.floor(perRun) : Math.ceil(cap / 2);
+  const keyOf = () => `demand_api:${pacificDayOf(now())}`;
+  return {
+    async refund(n) {
+      const back = Math.max(0, Math.floor(n));
+      if (!back) return;
+      await db.query(
+        `UPDATE settings SET value = GREATEST(0, value::int - $2::int)::text, updated_at = now() WHERE key = $1`,
+        [keyOf(), back],
+      );
+    },
+    async take(n) {
+      const want = Math.min(share, Math.max(0, Math.floor(n)));
+      if (!want || !cap) return 0;
+      const key = keyOf();
+      await db.query(`INSERT INTO settings (key, value) VALUES ($1, '0') ON CONFLICT (key) DO NOTHING`, [key]);
+      const [row] = await db.query<{ before: number | string; after: number | string }>(
+        `WITH old AS (SELECT value::int AS v FROM settings WHERE key = $1 FOR UPDATE)
+         UPDATE settings SET value = LEAST(old.v + $2::int, GREATEST(old.v, $3::int))::text, updated_at = now()
+           FROM old WHERE settings.key = $1
+         RETURNING old.v AS before, settings.value AS after`,
+        [key, want, cap],
+      );
+      return row ? Math.max(0, Number(row.after) - Number(row.before)) : 0;
+    },
+  };
+}
+
+/** The tally of one demand run, logged as one line. */
+export interface DemandTally {
+  topics: number;
+  cache: number;
+  api: number;
+  failed: number;
+  /** Topics not asked: over the pick's lookups or the day's allowance. */
+  skipped: number;
+  stale: number;
+  unknown: number;
 }
 
 /**
@@ -186,7 +264,14 @@ export function dbDemandCache(db: Db, now: () => Date): DemandCache {
 export async function demandFor(
   candidates: EvergreenCandidate[],
   o: {
-    search: (url: string) => Promise<SearchRow[]>;
+    /** One topic's search page (tests and older callers). */
+    search?: (url: string) => Promise<SearchRow[]>;
+    /** Several topics at once (the Data API, src/discovery/demandapi.ts): rows, or the Error of a failed search. */
+    searchMany?: (queries: string[]) => Promise<Map<string, SearchRow[] | Error>>;
+    /** The day's allowance of new lookups (DEMAND_API_PER_DAY); unset: only `lookups` limits. */
+    budget?: DemandBudget;
+    /** Which picker asked, for the log line. */
+    label?: string;
     cache: DemandCache;
     lookups: number;
     minViews: number;
@@ -195,45 +280,94 @@ export async function demandFor(
     staleDays?: number;
   },
 ): Promise<Map<string, Demand>> {
-  const out = new Map<string, Demand>();
-  let left = o.lookups;
-  for (const c of candidates) {
-    const cached = await o.cache.get(c.name).catch(() => undefined);
+  const norm = (q: string) => q.toLowerCase().trim();
+  // One lookup a topic, however many candidates (or spellings in case) name it.
+  const unique = new Map<string, string>();
+  for (const c of candidates) if (!unique.has(norm(c.name))) unique.set(norm(c.name), c.name);
+  const tally: DemandTally = { topics: unique.size, cache: 0, api: 0, failed: 0, skipped: 0, stale: 0, unknown: 0 };
+  const found = new Map<string, Demand>();
+  const missing: string[] = [];
+  for (const [k, name] of unique) {
+    const cached = await o.cache.get(name).catch(() => undefined);
     if (cached) {
-      out.set(c.name, cached);
-      continue;
-    }
-    if (left <= 0) continue;
-    left--;
-    try {
-      const d = scoreDemand(
-        c.name,
-        await o.search(demandUrl(c.name)),
-        o.minViews,
-        o.now,
-      );
-      out.set(c.name, d);
-      await o.cache.set(c.name, d).catch(() => undefined);
-    } catch (err) {
-      log("warn", "demand search failed", {
-        topic: c.name,
-        error: errorMessage(err),
+      found.set(k, cached);
+      tally.cache++;
+    } else missing.push(name);
+  }
+  const wanted = o.search || o.searchMany ? missing.slice(0, Math.max(0, o.lookups)) : [];
+  const granted = wanted.length && o.budget ? await o.budget.take(wanted.length).catch(() => 0) : wanted.length;
+  const ask = wanted.slice(0, Math.max(0, Math.min(granted, wanted.length)));
+  tally.skipped = missing.length - ask.length;
+  let firstError: string | undefined;
+  if (ask.length) {
+    const toError = (err: unknown) => (err instanceof Error ? err : new Error(errorMessage(err)));
+    let results = new Map<string, SearchRow[] | Error>();
+    if (o.searchMany) {
+      // A batch that threw sent nothing countable (no login, no network): its lookups are given back.
+      results = await o.searchMany(ask).catch((err) => {
+        const e = Object.assign(toError(err), { notSent: true });
+        return new Map(ask.map((q) => [q, e] as const));
       });
+    } else if (o.search) {
+      for (const q of ask) results.set(q, await o.search(demandUrl(q)).catch(toError));
+    }
+    // A lookup refused before its search was sent (or a batch that threw before asking) goes back to the day.
+    const notSent = ask.filter((q) => {
+      const r = results.get(q);
+      return r instanceof Error && (r as { notSent?: boolean }).notSent === true;
+    }).length;
+    if (notSent && o.budget?.refund) await o.budget.refund(notSent).catch(() => undefined);
+    for (const q of ask) {
+      const r = results.get(q);
+      if (Array.isArray(r)) {
+        const d = scoreDemand(q, r, o.minViews, o.now);
+        found.set(norm(q), d);
+        tally.api++;
+        await o.cache.set(q, d).catch(() => undefined);
+      } else {
+        tally.failed++;
+        firstError ??= r ? errorMessage(r) : "no answer";
+      }
     }
   }
+  // Over the allowance, failed or not asked: an older reading stands in, and only then is the topic unknown.
   const staleHours = Math.max(0, o.staleDays ?? 0) * 24;
-  if (staleHours > 0 && o.cache.getAged) {
-    let used = 0;
-    for (const c of candidates) {
-      if (out.has(c.name)) continue;
-      const old = await o.cache.getAged(c.name, staleHours).catch(() => undefined);
-      if (!old) continue;
-      out.set(c.name, { ...old, stale: true });
-      used++;
-    }
-    if (used) log("info", "demand: older readings used where no fresh one could be had", { used });
+  for (const [k, name] of unique) {
+    if (found.has(k)) continue;
+    const old =
+      staleHours > 0 && o.cache.getAged ? await o.cache.getAged(name, staleHours).catch(() => undefined) : undefined;
+    if (old) {
+      found.set(k, { ...old, stale: true });
+      tally.stale++;
+    } else tally.unknown++;
   }
+  const out = new Map<string, Demand>();
+  for (const c of candidates) {
+    const d = found.get(norm(c.name));
+    if (d) out.set(c.name, d);
+  }
+  if (tally.topics)
+    log(tally.failed ? "warn" : "info", "demand lookups", {
+      ...(o.label ? { lane: o.label } : {}),
+      ...tally,
+      ...(firstError ? { error: firstError.slice(0, 200) } : {}),
+    });
   return out;
+}
+
+/** The demand searches a services bundle offers: the batched Data API one when present, else one page at a time. */
+export function demandSearchers(s: {
+  searchDemand?: (url: string) => Promise<SearchRow[]>;
+  searchDemandMany?: (queries: string[]) => Promise<Map<string, SearchRow[] | Error>>;
+}): {
+  search?: (url: string) => Promise<SearchRow[]>;
+  searchMany?: (queries: string[]) => Promise<Map<string, SearchRow[] | Error>>;
+} {
+  return s.searchDemandMany
+    ? { searchMany: (queries) => s.searchDemandMany!(queries) }
+    : s.searchDemand
+      ? { search: (url) => s.searchDemand!(url) }
+      : {};
 }
 
 /** Views as a short figure: 1.2M, 340K, 900. */

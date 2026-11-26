@@ -470,3 +470,13 @@ Since claude/doc-after-target (969f362f9) the documentary and the long ranking a
 - merge-gate.ts: when exactly one test file fails with no assertion (a crash or "test failed" with no subtest failure), rerun that file alone once and continue if it passes, logging the retry.
 
 **Measure:** no gate refusals for a busy stage folder; no gate stops on crashes that pass on a rerun.
+
+## 55. Letter watch: names are not spelled letters (improvement engine, 26 Nov 03:00)
+
+**Status: built** as `LETTER_WATCH_NAMES` (on by default) on `claude/engine-namewatch`. The narration check's letter watch flagged "McCoy" (Titanfall 2 Short, 25 Nov) as spelled letter by letter: two capitals made it "MCCOY". Names built from capitalised parts (McCoy, YouTube, GameSpot) are now left alone, the daily digest drops such names logged before the rule, and "GOG" is on the said-as-letters list. Judged by 3 Dec: no name-shaped token in data/admin/pronunciation_unknown.json or the alerts, and real spelled tokens still caught.
+
+## 56. GTA 6 gameplay Shorts expire with nobody tapping Approve (improvement engine, 26 Nov)
+
+**Why:** gameplay Shorts from the owner's own streams always wait for a manual Discord tap (radio and Content ID risk). Two expired unanswered on 17 and 19 Nov; "GTA 6 Day 6: Can you lose a wanted level in a boat?" has waited since 24 Nov 06:11 and "Day 8" since 25 Nov 22:43. With the hands-off goal (25 Nov) nobody may tap, so these clips are lost.
+
+**Idea, not built (owner policy):** auto-release a gameplay Short after the reminder when the QA passed, no licensed music is detected in its audio (a music detector on the clip) and it is not a story spoiler; otherwise keep the tap. Needs the owner's yes on the weekly owner list, because manual approval for his own footage was his rule.

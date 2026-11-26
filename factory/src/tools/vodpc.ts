@@ -5,7 +5,7 @@
 //   node --import tsx src/tools/vodpc.ts prune [--days 10] [--dry]  recordings older than that, fully indexed, archived to the Mac
 //   node --import tsx src/tools/vodpc.ts search "<game>" "<line>"   the moments a line finds (held ones marked)
 //   node --import tsx src/tools/vodpc.ts rates                   the learned minutes per step and per stream-hour
-// The heavy part goes in slices of at most VOD_SLICE_MINUTES (18), each in its own orchestrator turn at test priority
+// The heavy part goes in slices of at most VOD_SLICE_MINUTES (18), each in its own orchestrator turn at VOD_PRIORITY (40, the manual-tool tier; 20 to 40)
 // with an --est from the measured rates (src/vodindex/slices.ts): the vision model's tags and descriptions in a gpu
 // turn, Whisper and SigLIP on the CPU (VOD_WHISPER_DEVICE, VOD_SEMANTIC_DEVICE) in a cpu turn. windows/vod-daily.ps1
 // runs `index` directly; it takes its own turns and refuses to work where there is no orchestrator.
@@ -32,7 +32,7 @@ import {
   type VodBuildSettings,
 } from "../vodindex/build.ts";
 import { visionUp } from "../sceneindex/describe.ts";
-import { loadOrch, NoOrchestrator, type OrchClient } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator, type OrchClient } from "../lib/orch.ts";
 import {
   indexInSlices,
   stopsRun,
@@ -144,9 +144,10 @@ if (!floor.ok) {
   }
   const deps: SliceDeps = {
     now: () => Date.now(),
+    env: process.env,
     lease: async (cls, o) => {
       if (!orch) throw new NoOrchestrator();
-      return orch.lease(cls, { project: "pulse", ...o });
+      return leaseStrict(orch, cls, { project: "pulse", ...o });
     },
   };
   // The slice holds the turn, so the embedder takes none of its own (its own turn is class gpu, est 2).

@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FFMPEG, FFPROBE } from "../lib/bin.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { log } from "../lib/util.ts";
 import type { HudSettings } from "./settings.ts";
 
@@ -118,7 +118,7 @@ export async function runHud(
   if (runner === "orch") {
     try {
       const orch = await loadOrch();
-      release = await orch.lease("gpu", {
+      release = await leaseStrict(orch, "gpu", {
         job: `pulse hud: ${o.job}`,
         project: "pulse",
         priority: 20,

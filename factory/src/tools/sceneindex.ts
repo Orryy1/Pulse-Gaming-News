@@ -31,7 +31,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FFMPEG } from "../lib/bin.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { parseOcrOutput, type OcrPage } from "../assets/ocr.ts";
 import {
   buildStep,
@@ -194,7 +194,7 @@ async function turn(job: string, minutes: number): Promise<() => void> {
   if (["gpu", "cpu", "ram"].every((t) => held.has(t))) return () => undefined;
   try {
     const orch = await loadOrch();
-    return await orch.lease("heavy", {
+    return await leaseStrict(orch, "heavy", {
       project: "pulse",
       job,
       priority: 20,

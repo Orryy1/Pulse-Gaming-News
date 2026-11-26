@@ -21,7 +21,7 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
-import { loadOrch } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 
 const run = promisify(execFile);
 const SCRIPT = path.join(
@@ -183,12 +183,30 @@ export async function upscaleFiles(
     }),
   );
   let gpuSeconds = 0;
-  const release = o.lease
-    ? await o.lease(
+  let release: () => void = () => undefined;
+  if (o.lease) {
+    try {
+      release = await o.lease(
         `upscale ${todo.length} old pictures and clips`,
         Math.max(2, Math.ceil(todo.length / 6)),
-      )
-    : () => undefined;
+      );
+    } catch (err) {
+      // No GPU turn, no upscaling: the plain resize stays rather than run Real-ESRGAN on a GPU someone else holds.
+      log("warn", "no GPU turn for the upscaling; the plain resize stays", {
+        error: errorMessage(err),
+      });
+      await fs.rm(jobsFile, { force: true }).catch(() => undefined);
+      for (const t of todo)
+        results.push({
+          src: t.src,
+          dest: t.dest,
+          ok: false,
+          seconds: 0,
+          why: `no GPU turn: ${errorMessage(err)}`,
+        });
+      return { results, gpuSeconds: 0 };
+    }
+  }
   try {
     await run(o.python, ["-I", SCRIPT, jobsFile, outFile], {
       timeout: 40 * 60_000,
@@ -235,7 +253,7 @@ export function orchUpscaleLease(): (
   return async (job, est) => {
     try {
       const orch = await loadOrch();
-      return (await orch.lease("gpu", {
+      return (await leaseStrict(orch, "gpu", {
         job,
         project: "pulse",
         priority: 60,
@@ -246,7 +264,9 @@ export function orchUpscaleLease(): (
         maxWait: 60,
       })) as () => void;
     } catch (err) {
-      log("info", "no orchestrator turn for the upscaling; going ahead", {
+      // Only the Mac (no orchestrator at all) goes ahead; a refusal or a wait that ran out skips the upscaling.
+      if (!(err instanceof NoOrchestrator)) throw err;
+      log("info", "no orchestrator here for the upscaling; going ahead", {
         error: errorMessage(err),
       });
       return () => undefined;

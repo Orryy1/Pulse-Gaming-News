@@ -52,6 +52,23 @@ export function sliceCap(
   return Number.isFinite(n) && n > 0 ? Math.min(20, Math.max(5, n)) : 18;
 }
 
+/**
+ * The orchestrator priority of every stream-index slice (VOD_PRIORITY, 20 to 40, default 40). 26 Nov 2026: orch.py's
+ * _not_slot_work() keeps kinds starting "pulse:vod" out of Pulse's deadline and agreement windows, so the slices can sit
+ * at the manual-tool tier (40) instead of the test tier (20). Never above 40: higher would compete with Pulse's own
+ * p60 voice and renders.
+ */
+export function vodPriority(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.VOD_PRIORITY;
+  const n = raw === undefined || raw.trim() === "" ? Number.NaN : Number(raw);
+  return Number.isFinite(n) ? Math.min(40, Math.max(20, Math.round(n))) : 40;
+}
+
+/** Every slice's orchestrator kind starts with this, so orch.py treats it as stream-index work, not Pulse's slot work. */
+export const VOD_KIND_PREFIX = "pulse:vod";
+
 /** Room for a slow unit: a slice plans at the rate times this, and its --est carries the same margin. */
 export const SLICE_MARGIN = 1.15;
 
@@ -191,6 +208,8 @@ export interface SliceDeps {
   /** An orchestrator turn; resolves with its release. */
   lease: (cls: "gpu" | "cpu", o: LeaseOptions) => Promise<() => void>;
   now: () => number;
+  /** Where VOD_PRIORITY is read (default process.env); tests pass their own. */
+  env?: Record<string, string | undefined>;
 }
 
 const unitName = (w: SliceWork) =>
@@ -211,13 +230,15 @@ export async function inTurn<T>(
   work: (until: number) => Promise<T>,
   maxWaitMinutes?: number,
 ): Promise<{ result: T; seconds: number }> {
+  if (!plan.kind.startsWith(VOD_KIND_PREFIX))
+    throw new Error(`a stream-index slice needs a "${VOD_KIND_PREFIX}" kind, not "${plan.kind}"`);
   let release: () => void;
   try {
     release = await deps.lease(plan.cls, {
       job: `vodpc: ${plan.work} ${label} (${plan.units} ${unitName(plan.work)}, ${plan.est} min)`,
       kind: plan.kind,
       est: plan.est,
-      priority: 20,
+      priority: vodPriority(deps.env ?? process.env),
       ...(maxWaitMinutes !== undefined ? { maxWait: Math.max(1, Math.round(maxWaitMinutes)) } : {}),
     });
   } catch (err) {

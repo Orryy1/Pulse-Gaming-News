@@ -21,7 +21,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadOrch } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import {
   comfyUp,
@@ -53,11 +53,15 @@ async function turn(
   needsComfy = true,
 ): Promise<void> {
   if (!release) {
-    const orch = await loadOrch().catch(() => undefined);
+    // Only a machine with no orchestrator at all (the Mac) goes without a turn; a broken client on the PC refuses.
+    const orch = await loadOrch().catch((err: unknown) => {
+      if (err instanceof NoOrchestrator) return undefined;
+      throw err;
+    });
     waitingForTurn = true;
     try {
       release = orch
-        ? await orch.lease("gpu", {
+        ? await leaseStrict(orch, "gpu", {
             job,
             project: "pulse",
             priority: 60,

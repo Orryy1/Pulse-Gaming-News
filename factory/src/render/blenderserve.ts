@@ -11,7 +11,7 @@ import fs from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import path from "node:path";
 import { log, errorMessage } from "../lib/util.ts";
-import { loadOrch } from "../lib/orch.ts";
+import { leaseStrict, loadOrch } from "../lib/orch.ts";
 import { renderScene } from "./blenderrun.ts";
 import { EST_MINUTES, type BlenderScene } from "./blender.ts";
 
@@ -95,7 +95,7 @@ async function orchTurn(
       throw new Error("no orchestrator turn available");
     return () => {};
   }
-  return orch.lease("gpu", {
+  return leaseStrict(orch, "gpu", {
     job,
     project: "pulse",
     priority: 60,

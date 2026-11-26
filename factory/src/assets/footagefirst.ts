@@ -1201,13 +1201,22 @@ export async function finishChapter(
     // missing, until the clean ones could fill the need with room to spare or the frame cap is reached. Only a
     // third or so pass (31 Oct 2026 proof: subtitles, prompts and district names on screen), so one round sized
     // for the need left the Vice City chapter short.
+    // No GPU turn (refused, or the wait ran out): no model looks for this chapter rather than run the vision model on
+    // a GPU someone else holds (26 Nov 2026); its segments stay unlooked and the chapter keeps its other pictures.
+    let noTurn = false;
     const release = deps.lease
       ? await deps
           .lease(
             "Pulse footage-first: labelling gameplay segments",
             Math.ceil(Math.min(o.visionMax, all.length) / 10) + 1,
           )
-          .catch(() => undefined)
+          .catch((err: unknown) => {
+            noTurn = true;
+            log("warn", "footage-first: no GPU turn for the looks; this chapter's segments are not looked at", {
+              error: err instanceof Error ? err.message : String(err),
+            });
+            return undefined;
+          })
       : undefined;
     const verdicts: Array<{
       g: (typeof all)[number];
@@ -1221,7 +1230,7 @@ export async function finishChapter(
       const seenHash = new Map<number, string[]>();
       let modelLooks = 0;
       let clean = 0;
-      while (modelLooks < o.visionMax && clean < need * 1.25 && now() <= deadline) {
+      while (!noTurn && modelLooks < o.visionMax && clean < need * 1.25 && now() <= deadline) {
         // A video whose segments keep failing (subtitles on every line, a streamer's overlay) is not worth more
         // looks: the rounds go to the videos that pass (31 Oct 2026: text refused 288 of 347 segments).
         const poor = poorSources(verdicts.map((v) => ({ source: v.g.src, ok: !v.reason })));

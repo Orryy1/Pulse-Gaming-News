@@ -64,7 +64,7 @@ const dry = argv.includes("--dry");
 // cannot drift; --held-until overrides it.
 const gtaWindow = vodServeContext(process.env, { model: "" })
   .windows()
-  .find((w) => /grand theft auto vi/i.test(w.game));
+  .find((w) => /grand theft auto vi\b/i.test(w.game));
 const heldUntil = arg("held-until") ?? gtaWindow?.until;
 // Without the inbox's taken windows the nightly finder's clips would be filed again under new ids.
 // Story moments are filed held until the window closes: with no window known, nothing is filed.

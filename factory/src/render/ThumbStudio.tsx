@@ -181,6 +181,98 @@ const Graded: React.FC<{
   </>
 );
 
+/**
+ * GTA_GUIDES (src/gtaguide.ts): the GameSight guide style. One frame of the owner's own footage, full bleed and
+ * saturated, its subject lifted in front of the words when Apple's cut-out found one; 2-3 huge words (a warning or the
+ * count, `headline`) with an optional small second line (`kicker`, "NO SPOILERS") on a red bar; the official GTA VI logo
+ * in the top corner (`image2Src`); the Pulse signature small in the bottom corner.
+ */
+export const GuideThumb: React.FC<StudioThumbProps & { subline?: string }> = ({ headline, subline, imageSrc, image2Src, fgSrc, subjectX = 0.62, accent }) => {
+  const right = subjectX >= 0.5;
+  const words = headline.toUpperCase().split(/\s+/).filter(Boolean);
+  // Two lines when there are three words or one long pair, so each line stays huge.
+  const lines = words.length >= 3 || headline.length > 10 ? [words.slice(0, Math.ceil(words.length / 2)), words.slice(Math.ceil(words.length / 2))] : [words];
+  const longest = Math.max(...lines.map((l) => l.join(" ").length));
+  const size = Math.max(96, Math.min(210, Math.floor(1150 / Math.max(4, longest) / (fgSrc ? 1.25 : 1))));
+  const side: "left" | "right" = right ? "left" : "right";
+  const grade = "saturate(1.55) contrast(1.14) brightness(1.04)";
+  return (
+    <AbsoluteFill style={{ background: "#08080b", overflow: "hidden" }}>
+      {imageSrc ? (
+        <Img src={imageSrc} style={{ position: "absolute", inset: 0, width: W, height: H, objectFit: "cover", filter: grade }} />
+      ) : null}
+      <AbsoluteFill
+        style={{
+          background: `linear-gradient(${side === "left" ? "to right" : "to left"}, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.28) 42%, rgba(0,0,0,0) 64%)`,
+        }}
+      />
+      <div style={{ position: "absolute", top: 54, [side]: 44, textAlign: side, lineHeight: 0.9 }}>
+        {lines.map((l, i) => (
+          <div
+            key={i}
+            style={{
+              fontFamily: DISPLAY,
+              fontSize: size,
+              color: i === 0 ? "#FFD400" : COLOUR.paper,
+              WebkitTextStroke: `${Math.round(size / 15)}px #050507`,
+              paintOrder: "stroke fill",
+              textShadow: `${Math.round(size / 22)}px ${Math.round(size / 22)}px 0 #050507, 0 0 ${Math.round(size / 4)}px rgba(0,0,0,0.6)`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {l.join(" ")}
+          </div>
+        ))}
+        {subline ? (
+          <div
+            style={{
+              display: "inline-block",
+              marginTop: 18,
+              padding: "6px 18px",
+              background: "#E3122C",
+              color: "#fff",
+              fontFamily: DISPLAY,
+              // Readable in a feed: at least 80 px, so its capitals stand over 8 px tall at 168x94 (src/qa/thumbrule.ts).
+              fontSize: Math.max(80, Math.round(size * 0.5)),
+              letterSpacing: 2,
+              borderRadius: 8,
+              boxShadow: "0 6px 0 #050507",
+            }}
+          >
+            {subline.toUpperCase()}
+          </div>
+        ) : null}
+      </div>
+      {fgSrc ? (
+        <Img
+          src={fgSrc}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: W,
+            height: H,
+            objectFit: "cover",
+            filter: `drop-shadow(5px 0 0 #fff) drop-shadow(-5px 0 0 #fff) drop-shadow(0 5px 0 #fff) drop-shadow(0 -5px 0 #fff) drop-shadow(0 0 22px rgba(0,0,0,0.7)) ${grade}`,
+          }}
+        />
+      ) : null}
+      {image2Src ? (
+        <Img
+          src={image2Src}
+          style={{
+            position: "absolute",
+            top: 26,
+            [right ? "right" : "left"]: 28,
+            width: 190,
+            filter: "drop-shadow(0 6px 10px rgba(0,0,0,0.7))",
+          }}
+        />
+      ) : null}
+      <Signature kicker="GUIDE" accent={accent} corner={side} />
+    </AbsoluteFill>
+  );
+};
+
 /** One huge subject cut out with a glowing rim, the words on the other side. */
 export const HeroThumb: React.FC<StudioThumbProps> = ({
   headline,

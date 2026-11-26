@@ -356,7 +356,7 @@ export function hasSpoilerWarning(lines: Array<string | undefined>): boolean {
         /\b(warning|ahead|from here|heads[-\s]up|alert|skip|story)\b/i.test(
           l ?? "",
         ) &&
-        !/\bspoiler[-\s]free\b|\bno\s+spoilers\b/i.test(l ?? ""),
+        !/\bspoiler[-\s]free\b|\bno\s+(story\s+|plot\s+)?spoilers\b|\bwithout\s+(any\s+)?(story\s+)?spoilers\b/i.test(l ?? ""),
     );
 }
 

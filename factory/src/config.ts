@@ -1681,6 +1681,14 @@ export interface Config {
    */
   guideWeekly: boolean;
   guideWeeklyFile: string;
+  /**
+   * GTA_GUIDES (upgrade queue item 58, src/gtaguide.ts; off by default): post-launch GTA 6 guide lists take a share of
+   * the long slots, GTA_GUIDE_SHARE (default 0.5, decided per slot). GTA_GUIDE_FACTS: the fact files, comma separated
+   * (the three guide_facts_gta6*.md beside package.json when empty). Off, the long lane is exactly as before.
+   */
+  gtaGuides: boolean;
+  gtaGuideShare: number;
+  gtaGuideFacts: string[];
   /** GUIDE_OWN_FIRST: a weekly guide's chapters ask the owner's recordings for every footage target, not half. */
   guideOwnFirst: boolean;
   /**
@@ -2792,6 +2800,12 @@ export function loadConfig(): Config {
     guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
     guideWeekly: bool("GUIDE_WEEKLY", false),
     guideWeeklyFile: str("GUIDE_WEEKLY_FILE", ""),
+    gtaGuides: bool("GTA_GUIDES", false),
+    gtaGuideShare: Math.min(1, Math.max(0, Number(str("GTA_GUIDE_SHARE", "0.5")) || 0)),
+    gtaGuideFacts: str("GTA_GUIDE_FACTS", "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     guideOwnFirst: bool("GUIDE_OWN_FIRST", true),
     retroEnabled: bool("RETRO_ENABLED", false),
     retroFile: str("RETRO_FILE", ""),

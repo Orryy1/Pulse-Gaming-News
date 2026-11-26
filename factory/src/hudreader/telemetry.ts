@@ -284,7 +284,8 @@ export function textEvents(
       if (!text) continue;
       const m = text.match(r.re!);
       if (!m) continue;
-      const key = `${r.kind}|${r.kind === "collectible" ? m[0].replace(/\s/g, "") : ""}`;
+      // A collectible is known by its count, not the words around it (OCR reads those differently frame to frame).
+      const key = `${r.kind}|${r.kind === "collectible" ? `${m[1]}/${m[2]}` : ""}`;
       const prev = last.get(key);
       if (prev !== undefined && s.t - prev < BANNER_GAP) {
         last.set(key, s.t);

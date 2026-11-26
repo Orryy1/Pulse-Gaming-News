@@ -2,6 +2,27 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 10:30 UK: half the news slots skip "nothing known" and shopping stories
+
+**Change:** before the editor picks a news slot's story, a model-free check reads each candidate's headline. On the "gate" side of a 50/50 split by slot time, a story whose whole point is that nothing is known or confirmed, a price, preload, bonus or edition list, patch notes or an outage is dropped, unless the headline also carries a conflict or a surprise (layoffs, a delay, a lawsuit, a price rise or cut, a shutdown, a record). A slot where every candidate would go keeps them all, so no slot is left empty. Breaking news, big stories and the other lanes are untouched. Each gated slot logs a `premise_gate` event (arm, slot, what was dropped). Branch `claude/engine-premisegate` (737278084), through the merge gate (see the status line at the end).
+
+**Evidence:**
+
+- Frontier check 25 Nov (queue item 47): 7 of the 10 lowest-marked Shorts were this kind of story (presets unconfirmed, a New Zealand switch unconfirmed, a bonus cutoff, a preorder price, a track list, patch notes, outage reports). An "unconfirmed" story with a real conflict marked best, so the test is conflict or surprise, not the word.
+- Replay over 82 news Shorts published 26 Oct to 23 Nov (`src/tools/premise-replay.ts`, headlines only, as the live gate reads them): the 9 it would drop had median 87 views against 159 for the 73 it keeps. Their average viewed share was higher (70% against 62%), so the pass mark watches both views and how long people stay.
+- code-reviewer: wiring correct and share 0 changes nothing. It found real false positives in the first patterns (price hikes, "Switch 2 Edition" reveals, "sales are down", "Update 2.0 overhauls", "no sign of slowing"); all fixed and now tests. Typecheck clean; 8 rule tests and 3 slot tests new; full suite 3,524 of 3,524 before the review fixes.
+- No on-screen change, so no frame review was needed.
+
+**Setting:** `STORY_PREMISE_GATE_SHARE=0.5` in the Mac `.env` (backup `.env.bak-20261126a`); default 0 (off); 1 gates every news slot.
+
+**Judged:** on 10 Dec, or at 20 news Shorts a side. The slot is the unit (dropped stories stay eligible and can be made in a later "open" slot; the event's dropped headlines show when that happens). Pass mark: news Shorts from "gate" slots get median views no lower than "open" slots, and an engaged rate (stayed to watch) 5 points higher. If gated slots are worse, set the share to 0; if better, set it to 1.
+
+**Also looked at, not changed:**
+
+- TikTok "failed 22 times in 24 hours": one Short ("ep_20261125_d007d47a") that Buffer could not fetch from its link, retried every 15 minutes for 10 hours, then posted at 09:41. Already cleared; no build.
+- Evergreen 0 of 4 and 23 ranking fact-check failures: owned by `LONG_FACT_DISCIPLINE` (live since 25 Nov 19:01, first ranking repaired). The "reading 'primary'" crash on 2 news Shorts: stacks are now logged, waiting for the next one.
+- Core numbers: 7-day views about 5,900, half the usual week, caused by the 24-25 Nov writing outage (few videos out), not by an engine change. No revert.
+
 ## 26 Nov 2026, 07:00 UK: a due "why" slot gets one production seat, and the GTA File back in order
 
 **Change:** selection stops while 2 Shorts are mid-production (MAX_PRODUCING). A "why" slot whose window is open may now start one Short past that limit, inside the day's Shorts allowance; only the "why" lane takes the seat, and each use is a `why_seat` event. Data fix alongside it: GTA File parts 3 to 7 move from 24-28 Nov to 26-30 Nov. Branch `claude/engine-whyseat` (014f985f9, c741f778d), stage 735120b3a, **deployed 07:05 UK**, factory healthy.

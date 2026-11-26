@@ -335,6 +335,8 @@ export function testConfig(
     slotGraceMinutes: 30,
     maxProducing: 2,
     whySlotSeat: false,
+    longReslot: false,
+    longReslotGraceHours: 3,
     minUploadGapMinutes: 0,
     discoverMinutes: 3,
     breakingEnabled: true,

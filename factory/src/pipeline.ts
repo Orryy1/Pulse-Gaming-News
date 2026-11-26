@@ -726,6 +726,7 @@ import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
 import { paletteOf } from "./assets/palette.ts";
+import { longReslot, whenLabel } from "./longreslot.ts";
 import {
   addDays,
   localTime,
@@ -16941,12 +16942,40 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   if (ep.story_json.gtaDaily) ep = await refreshGtaDailyLinks(s, ep);
   // A challenge episode: the one before and the playlist (src/challenge.ts).
   if (ep.story_json.challenge) ep = await refreshChallengeLinks(s, ep);
+  // LONG_RESLOT (src/longreslot.ts): a long video finished well after its slot goes out when its planned hour next
+  // comes round, not the moment it is ready (Cyberpunk documentary, 26 Nov). Only the publish time moves.
+  const lateTo =
+    ep.lane === "longform" && ep.slot_at && s.cfg.longReslot
+      ? longReslot(new Date(ep.slot_at), s.now(), s.cfg.timezone, s.cfg.longReslotGraceHours)
+      : undefined;
+  // A late video also keeps clear of the slots planned videos still in production hold, so it never takes their hour.
+  const planned = lateTo
+    ? (
+        await s.db.query<{ slot_at: string }>(
+          `SELECT slot_at FROM episodes WHERE slot_at > $1 AND id <> $2
+            AND status NOT IN ('failed','rejected','uploading','uploaded','published')`,
+          [s.now(), ep.id],
+        )
+      ).map((r) => new Date(r.slot_at))
+    : [];
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
-    ep,
-    await publishTimes(s.db, s.now(), ep.lane === "twin"),
+    lateTo ? { ...ep, slot_at: lateTo.toISOString() } : ep,
+    [...(await publishTimes(s.db, s.now(), ep.lane === "twin")), ...planned],
   );
+  if (lateTo && publishAt) {
+    await logEvent(s.db, ep.id, "late_long_rescheduled", {
+      slot_at: ep.slot_at,
+      publish_at: publishAt.toISOString(),
+    });
+    await s
+      .notify({
+        level: "info",
+        content: `"${ep.script_json?.youtube.title ?? ep.story_json.headline}" was finished after its ${whenLabel(new Date(ep.slot_at!), s.cfg.timezone)} slot, so it is scheduled for ${whenLabel(publishAt, s.cfg.timezone)}.`,
+      })
+      .catch(() => undefined);
+  }
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
   // A Premiere documentary (PREMIERE_DOCS) uploads private as soon as it is made, for the Studio premiere step.

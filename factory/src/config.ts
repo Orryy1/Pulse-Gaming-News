@@ -308,6 +308,9 @@ export interface Config {
   maxProducing: number; // episodes allowed mid-production at once (waiting ones never block)
   /** WHY_SLOT_SEAT: a Why slot that is due may start one Short past maxProducing (src/whyseat.ts). */
   whySlotSeat: boolean;
+  /** LONG_RESLOT: a long video finished over LONG_RESLOT_GRACE_HOURS after its slot publishes when its planned hour next comes round; slot_at is unchanged (src/longreslot.ts). */
+  longReslot: boolean;
+  longReslotGraceHours: number;
   minUploadGapMinutes: number;
   discoverMinutes: number;
   breakingEnabled: boolean;
@@ -1950,6 +1953,8 @@ export function loadConfig(): Config {
     slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
     maxProducing: int("MAX_PRODUCING", 2),
     whySlotSeat: bool("WHY_SLOT_SEAT", true),
+    longReslot: bool("LONG_RESLOT", true),
+    longReslotGraceHours: int("LONG_RESLOT_GRACE_HOURS", 3),
     minUploadGapMinutes: int("MIN_UPLOAD_GAP_MINUTES", 60),
     discoverMinutes: int("DISCOVER_MINUTES", 3),
     breakingEnabled: bool("BREAKING_ENABLED", true),

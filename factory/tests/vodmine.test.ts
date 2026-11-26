@@ -361,3 +361,11 @@ test("a window that is mostly cutscene is dropped, and one full of dialogue is h
   // No reading over a window (a failed read): kept as found.
   assert.equal(judgeWindows([moment({ at: 500, start: 486, end: 526 })], samples).length, 1);
 });
+
+test("GTA VI's weapon locker count (STORAGE 4/10) is not a collectible; a real count still is", async () => {
+  const vi = await loadProfile("gta6");
+  const e = vi.events.find((x) => x.kind === "collectible")!;
+  const re = new RegExp(e.pattern, "i");
+  assert.equal(re.test("AFFIX STOW LONGARMS STORAGE(4/10)"), false);
+  assert.deepEqual("12 / 50 Signal Jammers".match(re)?.slice(1, 3), ["12", "50"]);
+});

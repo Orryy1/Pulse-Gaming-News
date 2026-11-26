@@ -142,7 +142,7 @@
     {
       "kind": "collectible",
       "region": "banner",
-      "pattern": "(\\d{1,3})\\s*/\\s*(\\d{1,3})",
+      "pattern": "^(?!.*(?:storage|stow|ammo|rounds|slots?)\\b).*?(\\d{1,3})\\s*/\\s*(\\d{1,3})",
       "label": "Collected"
     },
     {

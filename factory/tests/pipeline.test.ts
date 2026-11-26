@@ -3916,3 +3916,67 @@ test("Buy, Wait or Skip takes the deals slot on its days only with SERIES_VERDIC
     await db.close();
   }
 });
+
+// STORY_PREMISE_GATE_SHARE (frontier check 25 Nov 2026): on the gate side of the slot split, a story whose whole
+// point is that nothing is known goes before the editor sees the slot, and the next story is made instead.
+import { maybeSelect as maybeSelectNews, discoverTick } from "../src/pipeline.ts";
+
+async function premiseSetup(share: number, onlyWeak = false) {
+  const { db, s } = await setup({ storyPremiseGateShare: share }, { pick: 0 });
+  const at = new Date("2026-10-16T12:00:00Z");
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("GTA 6 PS5 graphics presets remain unconfirmed", "Rockstar Newswire", "official", 900, at),
+        item("GTA 6 PS5 graphics presets still unconfirmed by Rockstar", "IGN", "outlet", 900, at),
+        ...(onlyWeak
+          ? []
+          : [
+              item("Starfield second expansion delayed to early 2027", "Xbox Wire", "official", 20, at),
+              item("Bethesda delays Starfield second expansion to early 2027", "IGN", "outlet", 40, at),
+            ]),
+      ],
+      at,
+    );
+  await discoverTick(s);
+  return { db, s };
+}
+
+const premiseEvents = (db: Db) =>
+  db.query<{ detail: { arm: string; dropped: Array<{ kind: string }>; allFlagged: boolean } }>(
+    `SELECT detail FROM events WHERE kind = 'premise_gate'`,
+  );
+
+test("the premise gate drops a 'nothing known' story and the slot makes the next one", async () => {
+  const { db, s } = await premiseSetup(1);
+  const id = await maybeSelectNews(s);
+  assert.ok(id, "a news Short was selected");
+  const ep = (await getEpisode(db, id!))!;
+  assert.match(ep.story_json.headline, /Starfield/);
+  const ev = await premiseEvents(db);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.detail.arm, "gate");
+  assert.deepEqual(ev[0]!.detail.dropped.map((d) => d.kind), ["nothing_known"]);
+  await db.close();
+});
+
+test("with STORY_PREMISE_GATE_SHARE=0 a weak story is made as before and nothing is logged", async () => {
+  const { db, s } = await premiseSetup(0, true);
+  const id = await maybeSelectNews(s);
+  assert.ok(id);
+  assert.match((await getEpisode(db, id!))!.story_json.headline, /presets/);
+  assert.equal((await premiseEvents(db)).length, 0);
+  await db.close();
+});
+
+test("the premise gate never empties a slot: with only weak stories the slot keeps them", async () => {
+  const { db, s } = await premiseSetup(1, true);
+  const id = await maybeSelectNews(s);
+  assert.ok(id, "the slot is still filled");
+  assert.match((await getEpisode(db, id!))!.story_json.headline, /presets/);
+  const ev = await premiseEvents(db);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.detail.allFlagged, true);
+  assert.equal(ev[0]!.detail.dropped.length, 0);
+  await db.close();
+});

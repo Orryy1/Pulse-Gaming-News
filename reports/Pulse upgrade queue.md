@@ -536,3 +536,15 @@ The audit after demand moved to the Data API (claude/demandapi, live f9666b56c) 
 `src/render/cleanframe.ts:325` (and :365) emit a card span whenever a line has an explainer, even when `shortExplainer` (shortcraft.ts:186) returns no window at render time. With no card either, that span draws nothing for its hold but still pushes other overlays aside, caps neighbouring cards in `roomFor` and is sampled by `cardCheckTimes`, so the frame check looks at an empty frame. Also the graphics audit never reads an explainer's own words (counted as 0), so reading time and figures rest on ground.ts and the frame check alone. **Fix:** emit the span only when the explainer has a window or the line has a real card; count explainer labels in the audit. **Measure:** no frame-check fault on a frame with no card; "timeline unfinished" style faults on explainers fall.
 
 Done 26 Nov 15:00 (engine): a faulted card now drops its line's explainer, and explainer-only lines no longer crash the audit (`claude/engine-explainercard`).
+
+## 57. Evidence board: fix before switching EVIDENCE_STYLE on (frame check 26 Nov)
+
+The proof is in D:\pulse-data\scratch\evidence-proof\out (Short sheet and long stills). No black frames. The Short looks right: pins, string, a LEAKED stamp, a 19 NOVEMBER 2026 date card, a CASE card. Fix:
+
+1. **Letterbox on the long board.** long_on_*.jpg shows black bands top and bottom: the board must fill 16:9.
+2. **A real-world street photo pinned** (long_on_1294.jpg, Miami Ocean Drive with people). Only game art, game footage stills and the owner's stream frames may be pinned. Tighten the source filter (Commons and real photos refused even without a face).
+3. **A frozen stretch.** The long scan shows 24.10 s frozen for 4.03 s (also 1.5-2.1 s ones). The board camera must keep moving between pins.
+4. **Date-card order.** "2014 NOVEMBER" and "2014 FEBRUARY" should read "NOVEMBER 2014".
+5. **Repeated pins in one Short.** The same two stills (01 and 02) come back across the board. Pin each picture at most once per board.
+
+Then re-render the same proof, check the frames, and switch EVIDENCE_STYLE=true with EVIDENCE_STYLE_SHARE=0.5 (pass mark in src/evidencestyle.ts).

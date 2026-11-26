@@ -548,3 +548,10 @@ The proof is in D:\pulse-data\scratch\evidence-proof\out (Short sheet and long s
 5. **Repeated pins in one Short.** The same two stills (01 and 02) come back across the board. Pin each picture at most once per board.
 
 Then re-render the same proof, check the frames, and switch EVIDENCE_STYLE=true with EVIDENCE_STYLE_SHARE=0.5 (pass mark in src/evidencestyle.ts).
+## 58. Depth layers tear people and props on Shorts' stills (improvement engine 26 Nov 19:00)
+
+**Seen:** the published Garry's Mod Short (GMLijn1nq88, 26 Nov 16:30) ends on a layered still where the man's outline is pixelated and torn, his face is smeared and the gravity gun has gone; the same still drawn flat is clean (D:\pulse-data\scratch\flatdepth-proof\before_after.jpg). The final check caught it on the first render, the retry rendered the same tear, and the second check passed it. 16 of 51 Short QA failures from 20 to 26 Nov named these depth edges, after the depth camera (PARALLAX_DEEP) went on 20 Nov with SHORT_PARALLAX_SHARE at 1 (owner, 20 Nov).
+
+**Done 26 Nov 19:00 (engine):** QA_FLATTEN_DEPTH: a faulted layered still renders flat on the retry and keeps its place (`claude/engine-flatdepth`).
+
+**Still open:** the cause. Depth cut-outs of people with thin parts (hands, guns, hair) tear at the low depth-map resolution. Options to test: skip layering when the subject mask is small or ragged (edge length against area), keep PARALLAX_DEEP off for stills with people, or feather the cut-out edge. Judge with the SHORT_PARALLAX verdict on 29 Nov: the depth arm must win on average viewed AND show no rise in edge faults per Short.

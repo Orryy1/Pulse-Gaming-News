@@ -12,7 +12,7 @@ import {
 } from "../src/liveclips/vodmine.ts";
 import type { SecondSample } from "../src/liveclips/detect.ts";
 import { gameplayScript, type GameplayReview } from "../src/gameplay.ts";
-import { loadProfile, wantedEvents, type RawSample } from "../src/hudreader/telemetry.ts";
+import { loadProfile, textEvents, wantedEvents, type RawSample } from "../src/hudreader/telemetry.ts";
 
 const T0 = Date.parse("2026-11-23T00:00:00Z");
 
@@ -360,4 +360,27 @@ test("a window that is mostly cutscene is dropped, and one full of dialogue is h
   assert.deepEqual(out.map((m) => [m.at, m.story]), [[14, false], [34, true]]);
   // No reading over a window (a failed read): kept as found.
   assert.equal(judgeWindows([moment({ at: 500, start: 486, end: 526 })], samples).length, 1);
+});
+
+test("GTA VI's weapon locker count (STORAGE 4/10) is not a collectible; a real count still is", async () => {
+  const vi = await loadProfile("gta6");
+  const e = vi.events.find((x) => x.kind === "collectible")!;
+  const re = new RegExp(e.pattern, "i");
+  assert.equal(re.test("AFFIX STOW LONGARMS STORAGE(4/10)"), false);
+  assert.deepEqual("12 / 50 Signal Jammers".match(re)?.slice(1, 3), ["12", "50"]);
+});
+
+test("a collectible banner read with different words round the same count is one pickup; 'Playgrounds 3/10' still counts", async () => {
+  const vi = await loadProfile("gta6");
+  const re = new RegExp(vi.events.find((x) => x.kind === "collectible")!.pattern, "i");
+  assert.deepEqual("Playgrounds 3/10".match(re)?.slice(1, 3), ["3", "10"]);
+  assert.equal(re.test("AFFIX STOW LONGARMS STORAGE(4/10)"), false);
+  const ev = textEvents(
+    [
+      { t: 0, state: "hud", texts: { banner: ["SIGNAL JAMMERS 12 / 50"] } },
+      { t: 2, state: "hud", texts: { banner: ["SIGNAL JAMMFRS 12 / 50"] } },
+    ],
+    vi,
+  ).filter((e) => e.kind === "collectible");
+  assert.equal(ev.length, 1);
 });

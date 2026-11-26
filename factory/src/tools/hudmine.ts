@@ -5,7 +5,7 @@
 // the owner's tap. Run it inside one orchestrator turn of class cpu at priority 20 (it starts the reader directly):
 //
 //   node --import tsx src/tools/hudmine.ts --vods "<dir>[;<dir>]" --data <dir> --out <staging> [--taken taken.json]
-//       [--only v1,v2] [--top 3] [--dry] [--held-until 2026-12-18T00:00:00Z]
+//       [--only v1,v2] [--top 3] [--dry] [--held-until 2026-12-03T00:00:00Z]
 //
 // --vods: recording folders; the cousin's folder is told by its name (src/vodindex/sources.ts KNOWN_CHANNELS) and his
 // clips carry his credit. --data: where the HUD reads and measures are kept (<data>/hud/vods/<vod>/, <data>/mine/).

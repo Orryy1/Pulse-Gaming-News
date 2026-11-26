@@ -491,7 +491,7 @@ test("the plan file parses, starts with San Andreas, and every title says it spo
   );
   assert.equal(
     p.games.find((g) => g.key === "gta-vi")?.allowed_from,
-    "2026-12-18",
+    "2026-12-03",
   );
   assert.ok(
     p.games.every((g) => !g.on),

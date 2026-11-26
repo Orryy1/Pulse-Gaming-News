@@ -170,7 +170,7 @@ export function recapProblems(
 
 /**
  * The game's spoiler windows (pure): the live ones the server registered, and the one GAME_FETCH_TITLES gives it
- * ("Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17"), so the rule holds even with SPOILER_GUARD off.
+ * ("Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-03T00:00Z"), so the rule holds even with SPOILER_GUARD off.
  */
 export function recapWindows(
   live: readonly SpoilerWindow[],

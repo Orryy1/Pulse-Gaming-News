@@ -1,6 +1,6 @@
 // The story-spoiler guard (SPOILER_GUARD, owner, 12 Nov 2026: "don't spoil huge moments for people early either as
 // they will hate me if you did"). Every big release gets a spoiler window, from its release until SPOILER_WINDOW_DAYS
-// after (4 weeks by default; GTA VI from 18 Nov to 17 Dec 2026). During a game's window:
+// after (4 weeks by default; GTA VI from 18 Nov 2026 until 3 Dec 2026, set by GAME_FETCH_TITLES). During a game's window:
 //   - footage from beyond the opening of its story (the first SPOILER_OPENING_SHARE of the scene index's movie or
 //     playthrough) is never used in a Short, a title, a thumbnail, a cover or a first frame; a long video may use it
 //     only after a spoiler warning at its start, never in its first minute or its thumbnail;
@@ -10,11 +10,18 @@
 //   - the owner's own stream clips that look like story cutscenes (the reviewer said so, letterboxed, or dialogue
 //     over a letterboxed picture, or the words match a line of the scene index) are held from Shorts unless the
 //     index places them in the opening. Gameplay moments (chases, stunts, crashes, physics, exploring) go on.
+// "Early story free" (owner, 26 Nov 2026, for the games in SPOILER_EARLY_FREE, GTA VI by default): the hold above was
+// too safe. In such a game's window chapter 1 of the story (its own index, "Chapter 1" of a cutscene series) is free
+// footage everywhere and its late names are no longer held; later chapters, playthroughs and anything past the opening
+// may go in Shorts and long videos wherever the reveal classifier (src/sceneindex/reveals.ts) found the moment safe.
+// A big reveal (a death, a twist, a betrayal, the ending, an identity reveal), or a moment not checked yet, stays
+// blocked until the window closes, and never goes in a title, a thumbnail, a cover or a video's opening.
 // The rules are pure. The live windows are registered here by the server each pass (from the launch calendar,
 // GAME_FETCH_TITLES and the filed games), so a validator deep inside a writer can ask without new plumbing.
 
 import { findQuote } from "./lookup.ts";
-import { baseGameOf, sceneSlug, type SceneIndex } from "./schema.ts";
+import { baseGameOf, partNumber, sceneSlug, type SceneIndex } from "./schema.ts";
+import { liveRevealBook, revealAt, revealSceneAt, type RevealBook } from "./revealbook.ts";
 
 export interface SpoilerWindow {
   game: string;
@@ -27,6 +34,11 @@ export interface SpoilerWindow {
   openingShare: number;
   /** Names (characters, places) the scene index first meets after the opening: never said during the window. */
   lateTerms: string[];
+  /**
+   * "Early story free" (SPOILER_EARLY_FREE): chapter 1 is free and later moments the reveal classifier found safe may
+   * be used; big reveals stay blocked. Unset: the whole hold as before.
+   */
+  earlyFree?: boolean;
 }
 
 const DAY = 86_400_000;
@@ -87,6 +99,7 @@ export function spoilerWindow(
     openingShare: number;
     until?: string;
     lateTerms?: string[];
+    earlyFree?: boolean;
   },
 ): SpoilerWindow | undefined {
   const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(release);
@@ -107,7 +120,14 @@ export function spoilerWindow(
     until: new Date(until).toISOString(),
     openingShare: Math.min(0.9, Math.max(0.01, o.openingShare)),
     lateTerms: o.lateTerms ?? [],
+    ...(o.earlyFree ? { earlyFree: true } : {}),
   };
+}
+
+/** True when a game is one of SPOILER_EARLY_FREE's (pure), however it is spelt ("GTA 6" matches Grand Theft Auto VI). */
+export function isEarlyFree(game: string, list: readonly string[]): boolean {
+  const slugs = new Set(gameAliases(baseGameOf(game.trim())).map(sceneSlug));
+  return list.some((g) => g.trim() && gameAliases(g.trim()).some((a) => slugs.has(sceneSlug(a))));
 }
 
 export function windowOpen(w: SpoilerWindow, now: Date): boolean {
@@ -154,6 +174,24 @@ export function inOpening(
 }
 
 /**
+ * The story chapter an index's upload is (pure): its own tag, its part number ("<game> (movie 2)"), or "Chapter N" /
+ * "Part N" in a movie's title. Undefined for a playthrough or a movie that is not split.
+ */
+export function storyChapter(index: Pick<SceneIndex, "game" | "source">): number | undefined {
+  if (index.source.kind !== "movie") return undefined;
+  if (index.source.chapter && index.source.chapter > 0) return index.source.chapter;
+  const part = partNumber(index.game);
+  if (part > 1) return part;
+  const m = /\b(?:chapter|part|pt\.?)\s*#?\s*(\d{1,2})\b/i.exec(index.source.title);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** True when the whole index is free story footage (pure): chapter 1 of a split story, in an early-free window. */
+export function freeChapter(w: SpoilerWindow | undefined, index: Pick<SceneIndex, "game" | "source">): boolean {
+  return Boolean(w?.earlyFree) && !index.source.spoiler && storyChapter(index) === 1;
+}
+
+/**
  * The names the index first meets after the opening (pure): cast and places (and the names its shots carry) whose
  * earliest appearance, in a shot's people, place, description or writing or in a line's words or speaker, is past
  * the opening. A name seen in the opening is not late; a name never seen is unknown and left out; the game's own
@@ -162,7 +200,9 @@ export function inOpening(
 /** One-word names never treated as late-story spoilers: words of other games' titles and everyday words. */
 const COMMON_WORDS = new Set("breath wild kingdom tears world light dark shadow time ocean sword shield link master temple forest fire water spirit sky king queen princess lord dawn night".split(" "));
 
-export function lateTerms(index: SceneIndex, share: number): string[] {
+export function lateTerms(index: SceneIndex, share: number, o: { earlyFree?: boolean } = {}): string[] {
+  // Early story free: chapter 1 is all free, so nothing in it is a late name.
+  if (o.earlyFree && freeChapter({ earlyFree: true } as SpoilerWindow, index)) return [];
   const cut = index.source.duration * share;
   const names = new Set<string>([...index.cast, ...index.places]);
   for (const s of index.shots) {
@@ -237,6 +277,20 @@ export const SPOILER_PHRASES: Array<[RegExp, string]> = [
   ],
 ];
 
+/**
+ * Early story free only: identity reveals and "who dies" questions, looked for besides SPOILER_PHRASES in an early-free
+ * window (its late names are no longer held there), so other games' checks stay exactly as they were.
+ */
+export const EARLY_FREE_PHRASES: Array<[RegExp, string]> = [
+  [
+    /\bundercover\s+(?:cop|agent|fed)\b|\b(?:was|is)\s+(?:secretly\s+)?(?:an?\s+)?(?:informant|snitch|mole)\b|\bwho\s+(?:dies|betrays)\b/i,
+    "a plot twist",
+  ],
+];
+
+/** The phrases a window's checks look for (pure). */
+const phrasesFor = (w: SpoilerWindow) => (w.earlyFree ? [...SPOILER_PHRASES, ...EARLY_FREE_PHRASES] : SPOILER_PHRASES);
+
 export interface SpoilerHit {
   game: string;
   /** The words that give it away. */
@@ -262,7 +316,7 @@ export function spoilerHits(
     const relevant =
       about.some((g) => g && windowFor([w], g, now)) || mentionsGame(w, text);
     if (!relevant) continue;
-    for (const [re, what] of SPOILER_PHRASES) {
+    for (const [re, what] of phrasesFor(w)) {
       const m = text.match(re);
       if (m) out.push({ game: w.game, phrase: m[0], what });
     }
@@ -302,6 +356,7 @@ export type FootageUse =
 /** Seconds into a long video before late-story footage may appear, after its spoiler warning. */
 export const LONG_SPOILER_FREE_SECONDS = 60;
 
+
 /**
  * Whether a moment of the index's source may be used (pure). Outside the window anything goes. Inside it the
  * opening may be used anywhere except a shot whose own words (its description, writing or dialogue) spoil;
@@ -314,7 +369,7 @@ export function footageAllowed(
   at: number,
   use: FootageUse,
   now: Date,
-  o: { warned?: boolean; placedAt?: number } = {},
+  o: { warned?: boolean; placedAt?: number; book?: RevealBook | null } = {},
 ): { ok: boolean; reason: string } {
   if (!w || !windowOpen(w, now))
     return { ok: true, reason: "no spoiler window" };
@@ -326,7 +381,8 @@ export function footageAllowed(
       .filter((l) => shot && l.start < shot.end && l.end > shot.start)
       .map((l) => l.text),
   ].join(". ");
-  const spoils = SPOILER_PHRASES.some(([re]) => re.test(words));
+  const spoils = phrasesFor(w).some(([re]) => re.test(words));
+  if (w.earlyFree) return earlyFreeAllowed(w, index, at, use, spoils, o);
   if (inOpening(index, at, w.openingShare) && !spoils)
     return { ok: true, reason: "the opening of the story" };
   if (
@@ -343,6 +399,50 @@ export function footageAllowed(
     reason: spoils
       ? "the shot's own words spoil the story"
       : `beyond the opening ${Math.round(w.openingShare * 100)}% of the story`,
+  };
+}
+
+/**
+ * footageAllowed in an early-free window (pure). Only a long video's body (after its first minute) is out of a viewer's
+ * first sight; a Short's every second can open it or become its thumbnail (its stills and cards are cleared as
+ * "short"), so a Short, a first frame, a title, a thumbnail, a cover and a long video's first minute all count as an
+ * opening. Chapter 1: a moment the reveal check found safe goes anywhere; a reveal (tagged, or the shot's own words)
+ * or a moment not checked yet only in a long video's body, or in the opening share as before. Anything else: the
+ * opening share as before, then any moment the reveal check found safe; a reveal or an unchecked moment waits.
+ */
+function earlyFreeAllowed(
+  w: SpoilerWindow,
+  index: SceneIndex,
+  at: number,
+  use: FootageUse,
+  spoils: boolean,
+  o: { placedAt?: number; book?: RevealBook | null },
+): { ok: boolean; reason: string } {
+  const book = o.book === undefined ? liveRevealBook(index.game) : (o.book ?? undefined);
+  const tagged = revealAt(book, index, at);
+  const until = w.until.slice(0, 10);
+  const body = use === "long" && (o.placedAt ?? 0) >= LONG_SPOILER_FREE_SECONDS;
+  const reveal = spoils || tagged === true;
+  const kind = revealSceneAt(book, index, at)?.kind;
+  if (!reveal && tagged === false) return { ok: true, reason: "a story moment the reveal check found safe" };
+  if (!reveal && !index.source.spoiler && inOpening(index, at, w.openingShare))
+    return { ok: true, reason: "the opening of the story" };
+  if (freeChapter(w, index)) {
+    if (body) return { ok: true, reason: reveal ? "a chapter 1 reveal, in a long video's body" : "chapter 1 of the story" };
+    return {
+      ok: false,
+      reason: reveal
+        ? "a big reveal: never in a Short, a title, a thumbnail or a video's opening"
+        : "chapter 1, not checked for reveals here yet: only a long video's body may use it",
+    };
+  }
+  return {
+    ok: false,
+    reason: spoils
+      ? "the shot's own words spoil the story"
+      : tagged === true
+        ? `a big reveal${kind ? ` (${kind})` : ""} or a moment not checked yet: held until ${until}`
+        : `not checked for reveals yet: held until ${until}`,
   };
 }
 
@@ -390,6 +490,10 @@ export interface StreamClipSignals {
   letterboxShare?: number;
   /** Where the clip's words fall in the scene index's source, when they match a line. */
   storyAt?: number;
+  /** Early story free: whether that moment is a big reveal (the index's reveal book when unset; unchecked: held). */
+  reveal?: boolean;
+  /** Early story free: the local vision model's look at the clip's frames found no reveal (false) or one (true). */
+  framesReveal?: boolean;
 }
 
 /**
@@ -414,6 +518,16 @@ export function streamClipHold(
     (talk >= 0.5 && bars >= 0.2) ||
     matched;
   if (!cutscene) return { hold: false, reason: "a gameplay moment" };
+  if (w.earlyFree) {
+    const reveal = matched && index ? (c.reveal ?? revealAt(liveRevealBook(index.game), index, c.storyAt!)) : undefined;
+    // A clip is a whole Short (its opening too): only a moment checked safe, or the opening share, goes on.
+    if (matched && reveal === false) return { hold: false, reason: "a story moment the reveal check found safe" };
+    if (matched && index && freeChapter(w, index) && reveal === undefined && inOpening(index, c.storyAt!, w.openingShare))
+      return { hold: false, reason: "a cutscene from the opening of chapter 1" };
+    if (reveal === true) return { hold: true, reason: "a big reveal: held until the spoiler window closes" };
+    if (!matched && c.framesReveal === false && !c.reviewSpoiler)
+      return { hold: false, reason: "a story scene whose frames show no reveal" };
+  }
   if (matched && index && inOpening(index, c.storyAt!, w.openingShare))
     return { hold: false, reason: "a cutscene from the opening of the story" };
   return {

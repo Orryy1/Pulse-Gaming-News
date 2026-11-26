@@ -1290,6 +1290,12 @@ export interface Config {
   levers: LeverSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
+  /**
+   * SPOILER_EARLY_FREE (owner, 26 Nov 2026, "Early story free"): games whose chapter 1 is free during their window and
+   * whose later moments the reveal classifier found safe may be used (src/sceneindex/reveals.ts). ";"-separated;
+   * default "Grand Theft Auto VI"; empty keeps the whole hold for every game.
+   */
+  spoilerEarlyFree: string[];
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
   characterQuotes: boolean;
   characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video
@@ -2615,6 +2621,10 @@ export function loadConfig(): Config {
     levers: leverSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
+    spoilerEarlyFree: (process.env.SPOILER_EARLY_FREE ?? "Grand Theft Auto VI")
+      .split(/[;\n]+/)
+      .map((g) => g.trim())
+      .filter(Boolean),
     characterQuotes: bool("CHARACTER_QUOTES", false),
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),

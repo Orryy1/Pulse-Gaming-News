@@ -2156,6 +2156,8 @@ async function main(): Promise<void> {
           ).flatMap((r) =>
             r.game ? [{ game: r.game, at: new Date(r.at).toISOString() }] : [],
           ),
+        // SPOILER_EARLY_FREE: the reveal classifier tags the early-free games' scenes (src/sceneindex/reveals.ts).
+        reveals: { llm: services.llm },
       });
     footagePass();
     setInterval(footagePass, 30 * 60_000);

@@ -279,7 +279,7 @@ test("serve: clip spans stay inside the recording and short; ready means every d
   assert.equal(ctx.dataDir, path.join("C:/pulse-vods", "data"), "the indexes live on C:, never D:");
   assert.equal(vodServeContext({ VOD_INDEX_ROOT: "E:/i" }, { model: "m" }).clipDir, path.join("E:/i", "clips"));
   assert.equal(ctx.windows()[0]?.game, "Grand Theft Auto VI");
-  assert.equal(ctx.windows()[0]?.until, "2026-12-18T00:00:00.000Z");
+  assert.equal(ctx.windows()[0]?.until, "2026-12-03T00:00:00.000Z");
 });
 
 /** A real server over a temporary data folder, with handleVod alone. */

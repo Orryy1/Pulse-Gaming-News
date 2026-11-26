@@ -4,7 +4,7 @@
 //   npx tsx src/tools/semantic-proof.ts doc <episode> --chapter <n> --db ... --data ... --episodes ... --out <dir>
 // A Short's row: the picture the published video showed under the sentence (a frame of short.mp4), the scene index's
 // word-only pick (what the lookup chose before), the pick with meaning blended in, and the still the meaning pass pins
-// to the line. Every pick keeps the spoiler window (a Short may use only the opening of GTA VI's story until 17 Dec).
+// to the line. Every pick keeps the spoiler window (GTA VI until 3 Dec: chapter 1 and moments the reveal check found safe).
 // A documentary chapter's row: the picture or clip pinned to the sentence before, and what the meaning pass pins.
 // Writes <out>/<episode>/index.html with its pictures beside it. Nothing is changed in the episode or the database.
 
@@ -32,6 +32,7 @@ import {
 } from "../sceneindex/schema.ts";
 import {
   footageAllowed,
+  isEarlyFree,
   spoilerWindow,
   type SpoilerWindow,
 } from "../sceneindex/spoilers.ts";
@@ -149,7 +150,7 @@ const script = row.script_json;
 const assets = row.assets_json;
 const game: string = script.game_title || "";
 
-// The game's scene index, its vectors and its spoiler window (GTA VI: from 18 Nov to 17 Dec 2026, opening 10%).
+// The game's scene index, its vectors and its spoiler window (GTA VI: from 18 Nov until 3 Dec 2026, early story free).
 const index: SceneIndex | undefined = game
   ? await loadSceneIndex(dataDir, game)
   : undefined;
@@ -163,7 +164,8 @@ const w: SpoilerWindow | undefined =
     ? spoilerWindow(index.game, "2026-11-19", {
         days: cfg.spoilerWindowDays,
         openingShare: cfg.spoilerOpeningShare,
-        until: "2026-12-17",
+        until: "2026-12-03T00:00Z",
+        earlyFree: isEarlyFree(index.game, cfg.spoilerEarlyFree),
       })
     : undefined;
 const allowed = (h: ShotHit, use: "short" | "long") =>
@@ -420,7 +422,7 @@ const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewp
 th{background:#222;position:sticky;top:0}img{width:100%;max-width:360px;display:block}.cap{font-size:12px;color:#bbb;margin-top:4px}.note{font-size:12px;color:#8ab;margin-top:4px}
 .none{height:120px;display:flex;align-items:center;justify-content:center;background:#1c1c1c;color:#777;max-width:360px}td.line{width:22%}</style></head><body>
 <h2>${esc(title)}</h2>${offCells ? `<p>Stills that fit none of the lines (on average clearly under the game's typical picture), dropped while four others are left:</p><table><tr>${offCells}</tr></table>` : ""}<p>${stats.lines} sentences; the scene index pick changed for ${stats.changedIndex}; the meaning pass pinned a picture of the video's own to ${stats.pinned}.
-Model ${esc(s.model)} on this machine; every pick keeps the spoiler window${w ? " (GTA VI: opening 10% of the story only, until 17 Dec)" : ""}.</p>
+Model ${esc(s.model)} on this machine; every pick keeps the spoiler window${w ? " (GTA VI until 3 Dec: chapter 1 and moments the reveal check found safe)" : ""}.</p>
 <table><tr><th>Sentence</th><th>${mode === "short" ? "Published" : "Before"}</th><th>Scene index, words only</th><th>Scene index, words + meaning</th><th>Meaning pin among the video's own pictures</th><th>Owner's stream, tagged (${esc(vodNote)})</th></tr>
 ${rows.join("\n")}</table></body></html>`;
 await fs.writeFile(path.join(out, "index.html"), html);

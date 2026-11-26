@@ -3,7 +3,7 @@
 // moment up by: every stretch of about half a minute gets the place or district, what he is doing (driving, a shop, a
 // mission and its kind, a vehicle, a brand on screen such as "Scooter Bros"), the time of day, and whether it looks
 // like the story (a cutscene, a mission's plot), which the spoiler guard holds during the game's window (GTA VI: until
-// 17 Dec 2026). Each shot also gets a meaning vector (src/semantic/shots.ts), so a line finds the exact moment of his
+// 3 Dec 2026). Each shot also gets a meaning vector (src/semantic/shots.ts), so a line finds the exact moment of his
 // own footage first, before any upload of someone else's.
 // The tags come from the free local vision model (PC Ollama, qwen3-vl), two frames a stretch; they are kept beside the
 // index in tags.json, keyed by the stretch's times, so re-indexing a stretch never mixes up old tags. Frames are cut by

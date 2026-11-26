@@ -66,6 +66,8 @@ export interface GameplayMeta {
   };
   /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
   sound?: { speech_share?: number };
+  /** "Early story free" (26 Nov 2026): a spoiler-held clip looked at again (src/sceneindex/reveals.ts recheckHeld). */
+  spoiler_recheck?: { at: string; reveal: boolean; why: string };
   /** LIVE_CLIPS: found while the owner was live (src/liveclips): what gave it away, and the stream ask it seems to answer. */
   live?: {
     stream_id: string;

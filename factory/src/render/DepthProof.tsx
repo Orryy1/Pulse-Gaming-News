@@ -19,6 +19,25 @@ export interface DepthProofItem {
   mesh?: { depth: string; far: string; farDepth: string; pivot: number };
   /** The stressed word's frame from the shot's start, when the proof wants one. */
   emphasis?: number;
+  /** The shot's place in its video (the depth camera's path, direction and lens follow it); default its place here. */
+  index?: number;
+  /** The shot's own length in frames, to match a real video's shot; default `seconds`. */
+  frames?: number;
+}
+
+/** Each item's first frame and length (pure): its own `frames` when given, otherwise `seconds` at the fps. */
+export function depthProofTimeline(
+  items: readonly DepthProofItem[],
+  seconds: number,
+  fps: number,
+): Array<{ from: number; len: number }> {
+  let from = 0;
+  return items.map((it) => {
+    const len = Math.max(1, Math.round(it.frames ?? seconds * fps));
+    const r = { from, len };
+    from += len;
+    return r;
+  });
 }
 
 export type DepthProofProps = {
@@ -42,19 +61,22 @@ const MOVES: MovePreset[] = ["pushIn", "pullBack", "pushPan", "driftDown"];
 
 export const DepthProof: React.FC<DepthProofProps> = (props) => {
   const { fps, width, height } = useVideoConfig();
-  const len = Math.round(props.seconds * fps);
+  const timeline = depthProofTimeline(props.items, props.seconds, fps);
   const tall = height > width;
   return (
     <AbsoluteFill style={{ background: "#0b0b0e" }}>
-      {props.items.map((it, i) => (
-        <Sequence key={i} from={i * len} durationInFrames={len}>
+      {props.items.map((it, i) => {
+        const { from, len } = timeline[i]!;
+        const index = it.index ?? i;
+        return (
+        <Sequence key={i} from={from} durationInFrames={len}>
           {props.mode === "deep" && it.mesh ? (
             <DepthCam
               src={it.src}
               mesh={it.mesh}
               aspect={it.aspect}
               len={len}
-              plan={depthCamPlan(i, len, it.emphasis)}
+              plan={depthCamPlan(index, len, it.emphasis)}
               focusX={it.focusX}
             />
           ) : tall ? (
@@ -98,7 +120,8 @@ export const DepthProof: React.FC<DepthProofProps> = (props) => {
             </div>
           ) : null}
         </Sequence>
-      ))}
+        );
+      })}
     </AbsoluteFill>
   );
 };

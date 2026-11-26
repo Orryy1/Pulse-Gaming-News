@@ -1,9 +1,16 @@
 // The depth camera on screen (PARALLAX_DEEP; maths and plan in src/render/depthcam.ts). The still's 3D photo
 // drawn as two WebGL surfaces, as DepthOrbit does (behind, the place with the subject painted out; in front, the
-// picture itself, torn where its depth jumps), filmed on a gentle path with a cinema lens: depth of field from the
-// picture's own mip levels, racked to the subject on the stressed word, and haze towards the picture's own average
-// colour on the far depths. A warm light leak is laid over in CSS on the shots the plan picks. Drawn synchronously
-// each frame, so renders repeat exactly; with no WebGL or a missing map it falls back to the flat still and a push.
+// picture itself, torn where its depth jumps), filmed on a gentle path, with haze towards the picture's own average
+// colour on the far depths. Drawn synchronously each frame, so renders repeat exactly; with no WebGL or a missing map
+// it falls back to the flat still and a push.
+//
+// Sharp by default (owner, 26 Nov 2026: "stills look pixely / jaggy with a blurry pass going across them"). The rack
+// focus blurred by sampling the picture's mip levels up to 3.2 (a ninth of its size, magnified again by the vertical
+// crop: blocks of about 17 px) and swept that blur across the frame; the focus landed on the depth model's nearest
+// fifth, which in a wide screenshot is the ground in front, so the real subject went soft. The lens and the warm leak
+// now only run when asked for (`lens`). The tear is feathered (alpha to coverage over the multisampled canvas) and
+// the depth map is sampled bilinearly on a finer grid, so the subject's cut edge is smooth instead of a staircase of
+// depth texels.
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
@@ -17,18 +24,19 @@ import {
 import { reliefZ } from "../orbit.ts";
 import {
   DEPTH_CAM_TEAR,
-  camLens,
   camMatrix,
   camOverscan,
   camPlane,
   camPose,
   camProgress,
   leakAt,
+  shotLens,
   type DepthCamPlan,
 } from "../depthcam.ts";
 
-/** Grid cells across the plane's width: about 8 px a cell at 1920. */
-const CELLS_X = 240;
+/** Grid cells across the plane's width: about 7 px a cell where a Short's crop magnifies a 16:9 still to 3,400 px
+ * wide (240 cells left 14 px cells, and the cut followed their rows as straight seams). */
+export const CELLS_X = 480;
 /** Haze at full strength: the share of the far wall's colour given over to the air in front of it. */
 const HAZE = 0.2;
 /** The blur at full strength, in mip levels (3 is an eighth of the size: a soft but readable background). */
@@ -59,6 +67,7 @@ in float vDepth;
 uniform sampler2D uColour;
 uniform sampler2D uDepth;
 uniform float uTear;
+uniform float uHard;
 uniform float uFocus;
 uniform float uStrength;
 uniform float uHaze;
@@ -66,7 +75,21 @@ uniform vec2 uTexel;
 out vec4 outColour;
 void main() {
   float d = texture(uDepth, vUv).r;
-  if (uTear > 0.0 && abs(d - vDepth) > uTear) discard;
+  // The tear, feathered: the stretched skin between the subject and the place behind it fades out over a band of
+  // depth difference instead of stopping at one texel's edge, and alpha to coverage turns that into antialiased
+  // coverage on the multisampled canvas (depth still written per sample, so the surfaces stay in order).
+  float cover = 1.0;
+  // The feather lies wholly inside the old cut (nothing that was removed comes back); with no multisampling
+  // (uHard) alpha to coverage does nothing, so the cut stays the hard one at uTear.
+  if (uTear > 0.0) {
+    float gap = abs(d - vDepth);
+    if (uHard > 0.5) {
+      if (gap > uTear) discard;
+    } else {
+      cover = 1.0 - smoothstep(uTear * 0.5, uTear, gap);
+      if (cover < 0.02) discard;
+    }
+  }
   // Depth of field: further from the focus, a coarser mip level, sampled four ways round the point so the blur
   // is round rather than blocky. A band either side of the focus stays sharp.
   float lod = clamp((abs(vDepth - uFocus) - 0.06) * 9.0, 0.0, 1.0) * ${MAX_LOD.toFixed(1)} * uStrength;
@@ -88,7 +111,7 @@ void main() {
   c = (c - 0.5) * 1.03 + 0.5;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(l), c, 1.05);
-  outColour = vec4(clamp(c, 0.0, 1.0), 1.0);
+  outColour = vec4(clamp(c, 0.0, 1.0), cover);
 }`;
 
 interface Surface {
@@ -158,7 +181,8 @@ function grid(aspect: number): {
   count: number;
 } {
   const nx = CELLS_X;
-  const ny = Math.max(8, Math.round(CELLS_X / Math.max(0.3, aspect)));
+  // Capped at CELLS_X rows: a portrait still would otherwise build up to 768k cells a mount.
+  const ny = Math.min(CELLS_X, Math.max(8, Math.round(CELLS_X / Math.max(0.3, aspect))));
   const uv = new Float32Array((nx + 1) * (ny + 1) * 2);
   let k = 0;
   for (let y = 0; y <= ny; y++)
@@ -174,8 +198,12 @@ function grid(aspect: number): {
       const b = a + 1;
       const c = a + nx + 1;
       const d = c + 1;
-      index.set([a, c, b, b, c, d], k);
-      k += 6;
+      index[k++] = a;
+      index[k++] = c;
+      index[k++] = b;
+      index[k++] = b;
+      index[k++] = c;
+      index[k++] = d;
     }
   return { uv, index, count: index.length };
 }
@@ -208,7 +236,9 @@ export const DepthCam: React.FC<{
   plan: DepthCamPlan;
   /** Where the subject stands across the picture (0-1): a tall frame crops round it. */
   focusX?: number;
-}> = ({ src, mesh, aspect, len, plan, focusX = 0.5 }) => {
+  /** The cinema lens: the rack focus and the warm light leak (off by default: see the note at the top). */
+  lens?: boolean;
+}> = ({ src, mesh, aspect, len, plan, focusX = 0.5, lens: withLens = false }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -269,7 +299,8 @@ export const DepthCam: React.FC<{
           count: g.count,
           front: {
             colour: texture(gl, im!, "mip"),
-            depth: texture(gl, dm!, "nearest"),
+            // Bilinear: nearest sampling cut the subject's edge in steps of one depth texel (about 3.6 px on screen).
+            depth: texture(gl, dm!, "linear"),
             w: im!.naturalWidth,
             h: im!.naturalHeight,
           },
@@ -317,7 +348,7 @@ export const DepthCam: React.FC<{
       frameAspect,
       reliefZ(mesh.pivot),
     );
-    const lens = camLens(plan, t, mesh.pivot);
+    const lens = shotLens(plan, t, mesh.pivot, withLens);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0.043, 0.043, 0.055, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -332,6 +363,7 @@ export const DepthCam: React.FC<{
     gl.uniform1f(u("uFocus"), lens.focus);
     gl.uniform1f(u("uStrength"), lens.strength);
     gl.uniform1f(u("uHaze"), HAZE * plan.haze);
+    gl.uniform1f(u("uHard"), gl.getParameter(gl.SAMPLES) > 0 ? 0 : 1);
     gl.enable(gl.DEPTH_TEST);
     const draw = (surface: Surface, tear: number) => {
       gl.activeTexture(gl.TEXTURE0);
@@ -348,10 +380,16 @@ export const DepthCam: React.FC<{
     };
     draw(s.back, 0);
     gl.clear(gl.DEPTH_BUFFER_BIT);
+    // The front's alpha only decides its coverage: the canvas keeps the back pass's opaque alpha, or the page's
+    // background would show through the feathered edge.
+    gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+    gl.colorMask(true, true, true, false);
     draw(s.front, DEPTH_CAM_TEAR);
+    gl.colorMask(true, true, true, true);
+    gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
     gl.finish();
     release();
-  }, [t, ready, frameAspect, aspect, overscan, focusX, plan, mesh.pivot]);
+  }, [t, ready, frameAspect, aspect, overscan, focusX, plan, mesh.pivot, withLens]);
 
   if (failed)
     return (
@@ -376,7 +414,7 @@ export const DepthCam: React.FC<{
         height={height}
         style={{ width: "100%", height: "100%" }}
       />
-      {plan.leak ? <LightLeak t={t} plan={plan} /> : null}
+      {withLens && plan.leak ? <LightLeak t={t} plan={plan} /> : null}
     </AbsoluteFill>
   );
 };

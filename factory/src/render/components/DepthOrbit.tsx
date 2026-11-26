@@ -22,8 +22,8 @@ import {
   reliefZ,
 } from "../orbit.ts";
 
-/** Grid cells across the plane's width: about 8 px a cell at 1920. */
-const CELLS_X = 240;
+/** Grid cells across the plane's width: about 4 px a cell at 1920, 7 px in a Short's crop (as DepthCam). */
+const CELLS_X = 480;
 
 const VERT = `#version 300 es
 precision highp float;
@@ -49,17 +49,29 @@ in float vDepth;
 uniform sampler2D uColour;
 uniform sampler2D uDepth;
 uniform float uTear;
+uniform float uHard;
 out vec4 outColour;
 void main() {
   // Inside a triangle stretched across a depth edge, the map's own depth here differs from the depth the
-  // triangle was spread between: that is the gap, so nothing is drawn and the surface behind shows.
-  if (uTear > 0.0 && abs(texture(uDepth, vUv).r - vDepth) > uTear) discard;
+  // triangle was spread between: that is the gap, so the surface behind shows. Feathered over a band of depth
+  // difference and turned into antialiased coverage (alpha to coverage), not a hard one-texel staircase.
+  float cover = 1.0;
+  // Wholly inside the old cut; with no multisampling (uHard) the cut stays the hard one at uTear.
+  if (uTear > 0.0) {
+    float gap = abs(texture(uDepth, vUv).r - vDepth);
+    if (uHard > 0.5) {
+      if (gap > uTear) discard;
+    } else {
+      cover = 1.0 - smoothstep(uTear * 0.5, uTear, gap);
+      if (cover < 0.02) discard;
+    }
+  }
   vec3 c = texture(uColour, vUv).rgb;
   // The stills' usual grade (contrast 1.03, saturation 1.05), so a 3D photo matches the shots round it.
   c = (c - 0.5) * 1.03 + 0.5;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   c = mix(vec3(l), c, 1.05);
-  outColour = vec4(clamp(c, 0.0, 1.0), 1.0);
+  outColour = vec4(clamp(c, 0.0, 1.0), cover);
 }`;
 
 interface Surface {
@@ -118,7 +130,8 @@ function grid(aspect: number): {
   count: number;
 } {
   const nx = CELLS_X;
-  const ny = Math.max(8, Math.round(CELLS_X / Math.max(0.3, aspect)));
+  // Capped at CELLS_X rows: a portrait still would otherwise build up to 768k cells a mount.
+  const ny = Math.min(CELLS_X, Math.max(8, Math.round(CELLS_X / Math.max(0.3, aspect))));
   const uv = new Float32Array((nx + 1) * (ny + 1) * 2);
   let k = 0;
   for (let y = 0; y <= ny; y++)
@@ -134,8 +147,12 @@ function grid(aspect: number): {
       const b = a + 1;
       const c = a + nx + 1;
       const d = c + 1;
-      index.set([a, c, b, b, c, d], k);
-      k += 6;
+      index[k++] = a;
+      index[k++] = c;
+      index[k++] = b;
+      index[k++] = b;
+      index[k++] = c;
+      index[k++] = d;
     }
   return { uv, index, count: index.length };
 }
@@ -203,10 +220,10 @@ export const DepthOrbit: React.FC<{
           gl,
           prog,
           count: g.count,
-          // The depth maps are sampled exactly (NEAREST) so the cut lands on the map's own edge.
+          // The depth maps are sampled bilinearly: NEAREST cut the subject's edge in steps of one depth texel.
           front: {
             colour: texture(gl, im!, true),
-            depth: texture(gl, dm!, false),
+            depth: texture(gl, dm!, true),
           },
           back: {
             colour: texture(gl, fm!, true),
@@ -259,6 +276,7 @@ export const DepthOrbit: React.FC<{
     gl.uniform1f(gl.getUniformLocation(prog, "uRelief"), reliefZ(1));
     gl.uniform1i(gl.getUniformLocation(prog, "uColour"), 0);
     gl.uniform1i(gl.getUniformLocation(prog, "uDepth"), 1);
+    gl.uniform1f(gl.getUniformLocation(prog, "uHard"), gl.getParameter(gl.SAMPLES) > 0 ? 0 : 1);
     gl.enable(gl.DEPTH_TEST);
     const draw = (surface: Surface, tear: number) => {
       gl.activeTexture(gl.TEXTURE0);
@@ -271,7 +289,11 @@ export const DepthOrbit: React.FC<{
     // The place behind first; then, on a fresh depth buffer, the picture itself over it wherever it holds.
     draw(s.back, 0);
     gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
+    gl.colorMask(true, true, true, false); // the canvas keeps the back pass's opaque alpha
     draw(s.front, ORBIT_TEAR);
+    gl.colorMask(true, true, true, true);
+    gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
     gl.finish();
     release();
   }, [frame, ready, width, height, aspect, len, dir, mesh.pivot]);

@@ -499,3 +499,11 @@ Since claude/doc-after-target (969f362f9) the documentary and the long ranking a
 In progress, owned by the improvement engine. `WHY_SLOT_SEAT` (default on): when MAX_PRODUCING (2) Shorts are mid-production, a Why slot whose window is open may still start one Short, inside the day's allowance; only the Why lane takes the seat, and each use is a `why_seat` event. Found: on 25 Nov every tick from 17:16 to 19:01 waited on "2 Shorts are already in production", so the 18:30 slot (GTA File part 4, else a Why) never started; 24 Nov lost 18:30 and 22:00 the same way (that day also parked Shorts, fixed 25 Nov 11:51). Output audit: Why 9-10 of 21 planned went public in 7 days. Judge by 3 Dec: `why_seat` events, Why picks per planned slot (target at least 19 of 21 slots picked), no rise in Shorts failing for media or render time-outs. Don't change MAX_PRODUCING while this is judged.
 
 GTA File: parts 3 to 7 moved by hand to 26-30 Nov this run. Not built: parts are dated, so a missed part is still never made later; idea: a missed part moves to the next free 18:30 slot and later parts follow.
+
+## 54. Rate-limit the Mac's picture checks on the PC GPU (orchestrator ask, 26 Nov)
+
+**Why:** the Mac's vision calls reach the PC's Ollama through lan_relay at about 5 a minute, 24/7, which keeps the RTX 4090 at about 95% busy by itself. Ollama crashed the driver three times (23 and 26 Nov) under concurrent CUDA load. The orchestrator now refuses Mac vision calls while another GPU lease runs short of VRAM (vision_guard_gpu). A single orch lease for this traffic would block every GPU job all day, so rate-limiting is the lever.
+
+**Build:** `VISION_RATE` on the Mac. It sets a per-minute cap on PC vision calls. Non-urgent checks (library tagging, scene index, background screening) queue for a nightly bulk window. Slot-bound Shorts and long videos keep priority. Measure calls a minute and GPU busy % before and after.
+
+**Measure:** PC GPU busy outside renders under 50%; no slot missed for want of a picture check.

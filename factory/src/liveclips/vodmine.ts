@@ -222,8 +222,9 @@ export function escapeSignals(events: HudEvent[], minSeconds = 30): HudSignal[] 
     } else if (e.kind === "wanted_up") top = Math.max(top, e.value ?? 0);
     else if (e.kind === "wanted_clear" && since !== undefined) {
       const lasted = e.t - since;
-      // From 3 stars the live rule already scores the escape (src/hudreader/signal.ts).
-      if (lasted >= minSeconds && top > 0 && top < 3)
+      // A clear from 3 stars or more the live rule already scores (src/hudreader/signal.ts); a chase that came down
+      // from 3 to 2 before it was lost is counted here.
+      if (lasted >= minSeconds && top > 0 && (e.from ?? 0) < 3)
         out.push({
           t: e.t,
           score: 1,

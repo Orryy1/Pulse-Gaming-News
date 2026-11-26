@@ -1624,7 +1624,7 @@ export function usefulGraphic<
   )
     return false;
   if (
-    /^(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|#?\d{1,2})$/i.test(
+    /^(?:no\.?\s*|number\s+|item\s+)?(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|#?\d{1,2})$/i.test(
       g.primary.trim(),
     )
   )

@@ -45,20 +45,9 @@ for (const d of ["vodindex", "sceneindex", "gamelib", "presskits", "storetrailer
   if (await fs.lstat(link).catch(() => undefined)) continue;
   if (await fs.stat(path.join(liveData, d)).catch(() => undefined)) await fs.symlink(path.join(liveData, d), link);
 }
-Object.assign(process.env, {
-  DATA_DIR: data,
-  DATABASE_URL: "",
-  DRY_RUN: "true",
-  PORT: "0",
-  LONGFORM_ENABLED: "true",
-  LONGFORM_DAYS: "mon,tue,wed,thu,fri,sat,sun",
-  LONGFORM_SKIP: "",
-  LONG_LEAD_MINUTES: String(48 * 60),
-  GTA_GUIDES: "true",
-  GTA_GUIDE_SHARE: "1",
-  AUTO_PUBLISH: "false",
-  BACKUP_DIR: path.join(out, "backup"),
-});
+// The sandbox's settings (src/tools/gtaguide-proofenv.ts): no database, no uploads, and no wait for the owner's footage.
+const { gtaGuideProofEnv } = await import("./gtaguide-proofenv.ts");
+Object.assign(process.env, gtaGuideProofEnv({ data, backup: path.join(out, "backup") }));
 
 const { loadConfig } = await import("../config.ts");
 const { openDb, migrate } = await import("../db.ts");
@@ -157,6 +146,10 @@ const report: Record<string, unknown> = {
   topic: ep!.factcheck_json?.gta_guide,
   title: ep!.script_json?.youtube?.title,
   items: ep!.script_json?.gta_guide?.items,
+  // Each item as the viewer gets it: the card's line, what to do, what you get, and the number on screen.
+  list: ep!.script_json?.gta_guide?.list,
+  cards: (ep!.script_json?.beats ?? []).map((b: any) => `#${b.visual?.value_a} ${b.visual?.primary}`),
+  hook: ep!.script_json?.hook,
   thumb: ep!.script_json?.gta_guide?.thumb,
   evidence_lines: (ep!.factcheck_json?.evidence ?? []).length,
 };

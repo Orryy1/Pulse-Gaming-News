@@ -80,7 +80,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     title: (n) => `GTA 6: ${n} Things I Wish I Knew (No Spoilers, Full List)`,
     thumb: () => ({ big: "START HERE", small: "NO SPOILERS" }),
     angle:
-      "The things a new player should know in their first hours of GTA 6 that the game does not spell out: systems, settings, habits and money. Each item is one practical thing to know or do, and why.",
+      "The things a new player should know in their first hours of GTA 6 that the game does not spell out: systems, controls, in-game settings, habits and money. Each item is one practical thing to do, with exactly how or where, and what it gets you (money, time, a way out of trouble, a vehicle or item kept).",
     queries: [
       "gta 6 things i wish i knew",
       "gta 6 tips no spoilers",
@@ -88,7 +88,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(how (do|does|can)|can you|is there|does it|do you|tips?|beginner|start|first hours?|settings?)\b/i,
-    items: [12, 20],
+    items: [8, 20],
     question:
       "What's the one thing you wish you'd known before your first night in Leonida? No story spoilers, please. The best tips go into the next guide.",
   },
@@ -106,7 +106,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(gta ?(5|v)|any ?more|removed|no longer|still|can you still|first[- ]person)\b/i,
-    items: [12, 20],
+    items: [8, 20],
     question:
       "Which GTA 5 habit did you try first in GTA 6, and did it still work? No story spoilers, please.",
   },
@@ -124,7 +124,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(lose|lost|wasted|busted|fine|mistakes?|don't|avoid|wanted|police|cops|crash|fuel|run out)\b/i,
-    items: [12, 20],
+    items: [8, 20],
     question:
       "What's the mistake that cost you most in your first hours? No story spoilers, please. The best ones go into the next guide.",
   },
@@ -142,7 +142,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(money|cash|pays?|paid|earn|rob|robbery|heist|sell|buy|price|\$\d)/i,
-    items: [10, 18],
+    items: [7, 18],
     question:
       "What's the best early money you've found so far? No story spoilers, please. The best ones go into the next guide.",
   },
@@ -153,7 +153,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
       `GTA 6: ${n} Hidden Features Nobody Told You About (Full List)`,
     thumb: (n) => ({ big: `${n} SECRETS`, small: "NO SPOILERS" }),
     angle:
-      "Features of GTA 6 that are easy to miss in the first hours: apps, radio, wildlife, weather, the phone, details of the world. Each item says where to find it and why it is worth a look.",
+      "Things GTA 6 can do that the game never explains and most players miss: a phone app's less obvious function, a control or input, a system rule, a shop or service, a place that is useful for something. Each item says exactly what to do or where to go, and what you get for it. Never scenery to look at, never a headline everyone saw in the trailers, never a console or controller feature.",
     queries: [
       "gta 6 hidden features",
       "gta 6 details you missed",
@@ -161,7 +161,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(hidden|secret|app|radio|animals?|wildlife|storms?|weather|phone|details?|inside|buildings?|log)\b/i,
-    items: [12, 20],
+    items: [7, 15],
     question:
       "What's the best hidden detail you've found in Leonida so far? No story spoilers, please.",
   },
@@ -180,7 +180,7 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
     ],
     askWords:
       /\b(edition|ultimate|standard|price|\$\d|pre-?order|gta\+|disc|boxed|digital|ps5 pro|xbox)\b/i,
-    items: [8, 12],
+    items: [6, 12],
     question:
       "Which edition did you pick, and would you pick it again?",
   },
@@ -372,6 +372,8 @@ export interface GtaGuideMeta {
   items: number;
   thumb: { big: string; small: string };
   labels: Array<{ number: number; label: ClaimLabel; play: boolean }>;
+  /** Each item's line, what to do and what you get, in spoken order (for the proof report and the record). */
+  list?: Array<{ number: number; title: string; how: string; payoff: string }>;
   /** The pinned comment's question (the kind's own), carried so the SEO module needs no import of this one. */
   question?: string;
 }
@@ -534,6 +536,10 @@ export interface GuideItem {
   label: ClaimLabel;
   basis: ClaimSource;
   chip: string;
+  /** What to do: the button, menu, app, place or step (the plan's). */
+  how?: string;
+  /** What you get for it: money, time, a way out, an item kept (the plan's). */
+  payoff?: string;
   narration: string;
   footage: { want: string; keywords: string[] };
   claims: Array<{ claim: string; label: ClaimLabel; source: ClaimSource }>;
@@ -550,7 +556,8 @@ export interface GuideDraft {
   tags: string[];
 }
 
-export const GUIDE_ITEM_WORDS: [number, number] = [80, 190];
+// Up to 240 words an item: a guide may have as few as 7 items rather than padding, and each then carries its how-to.
+export const GUIDE_ITEM_WORDS: [number, number] = [80, 240];
 export const GUIDE_INTRO_WORDS: [number, number] = [30, 110];
 export const GUIDE_OUTRO_WORDS: [number, number] = [40, 140];
 export const GUIDE_WORDS: [number, number] = [1500, 3500];
@@ -613,6 +620,222 @@ export function guideThumbWords(
     return fallback;
   const small = (w[1] ?? "").split(" ").filter(Boolean).slice(0, 3).join(" ");
   return { big, small: small.length <= 16 ? small : "" };
+}
+
+// ---- Item quality (owner, 26 Nov 2026, first proof: "radio on foot", "look for alligators", "DualSense haptics") --------
+// The bar is GameSight's guides: every item a concrete, non-obvious mechanic, setting, trick or system, with how or
+// where, and the payoff said. Sightseeing, trailer headlines and console features are not guide items.
+
+const NUM_WORDS =
+  "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split(
+    " ",
+  );
+/** A spoken or written count as a number (pure): "12" or "twelve"; NaN otherwise. */
+export function countValue(s: string): number {
+  const w = s.trim().toLowerCase();
+  if (/^\d+$/.test(w)) return Number(w);
+  const i = NUM_WORDS.indexOf(w);
+  return i >= 0 ? i : Number.NaN;
+}
+const NUM = `\\d{1,2}|${NUM_WORDS.join("|")}`;
+const LIST_NOUN = "things|features|tips|mistakes|ways|differences|secrets|items|habits|details|tricks|changes";
+
+/** A console, controller or display feature: never a guide item, except in the edition guide. */
+export const HARDWARE =
+  /\b(haptics?|dualsense|adaptive triggers?|tempest|3d audio|spatial audio|ray[- ]?trac\w*|frame ?rates?|\d+ ?fps|resolution|4k (mode|output|resolution|tv|display)|hdr|performance mode|quality mode|ps5 pro|pro enhanced|load(ing)? times?|ssd|controller speaker|controller light ?bar|quick resume|activity cards?)\b/i;
+/** A title that only points at something to look at or listen to. */
+export const SIGHTSEEING =
+  /^(go and )?(look (for|at|out for|around|under|up)|notice|admire|enjoy|take in|listen (to|for|in)|watch (for|the)|see|spot|explore|check out|appreciate|soak up|stop and|feel|hear|visit)\b/i;
+/** What every trailer and preview already showed: a guide item about it needs a real mechanic and gain. */
+export const TRAILER_FAMOUS =
+  /\b(alligators?|gators?|flamingos?|hurricanes?|tropical storms?|storms?|weather|art deco|neon|beach(es)?|swamps?|wetlands|everglades|jet ?skis?|underwater|ruins|radio|music|songs?|podcasts?|social media|jason and lucia|two (playable )?(protagonists|leads|characters)|dual protagonists|vice city('s)? streets|skyline|sunsets?|scenery|wildlife|forest)\b/i;
+/** A gain the viewer can use. */
+export const TANGIBLE =
+  /(\$\d|\b(money|cash|dollars?|free|unlocks?|faster|quicker|saves?|saving|avoid|escape|lose (the )?(cops|police|heat)|wanted|heals?|health|armou?r|ammo|weapons?|guns?|discounts?|cheaper|xp|skills?|stamina|fast travel|reward|collectibles?|achievement|trophy|stash|loot|safe ?house|shortcut|spawns?|refund|cops|police|rob(s|bed|bing|bery|beries)?|tills?|payouts?|pays?|profit|earn\w*|sell\w*|fuel|gas|repairs?|stranded|minutes|insurance|keep (your|the) (car|cash|money|weapons?|vehicle|loot|gear))\b)/i;
+/** A payoff that is a mood, not a gain. */
+export const VAGUE_PAYOFF =
+  /^(it'?s |a |more )?(fun|cool(?! down)|nice|neat|beautiful|pretty|immersi\w*|atmospher\w*|a change of scenery|change of scenery|something different|variety|looks? (great|good|amazing|stunning)|worth (a|the) (look|visit)|a nice touch|smart little feature|realism|realistic|relaxing|chill)\b/i;
+
+const wordCount = (t: string | undefined) =>
+  (t ?? "").trim().split(/\s+/).filter(Boolean).length;
+
+/**
+ * What makes one item too thin for the bar (pure): no how, no payoff, a mood for a payoff, a console feature (outside
+ * the edition guide), or sightseeing and trailer headlines with nothing to gain.
+ */
+export function itemQualityProblems(
+  x: { title: string; how?: string; payoff?: string; notes?: string; chip?: string },
+  kind: Pick<GuideKind, "key">,
+  tag = `"${x.title}"`,
+): string[] {
+  const p: string[] = [];
+  const all = `${x.title} ${x.how ?? ""} ${x.payoff ?? ""} ${x.notes ?? ""} ${x.chip ?? ""}`;
+  if (wordCount(x.how) < 3)
+    p.push(`${tag} does not say what to do: give the button, menu, app, place or step (how).`);
+  if (wordCount(x.payoff) < 3)
+    p.push(`${tag} does not say what you get for it (payoff): money, time, a way out, an item kept.`);
+  else if (VAGUE_PAYOFF.test((x.payoff ?? "").trim()) && !TANGIBLE.test(x.payoff ?? ""))
+    p.push(`${tag}: "${x.payoff}" is a mood, not a payoff; name what the player gains or drop the item.`);
+  if (kind.key !== "which-edition" && HARDWARE.test(all))
+    p.push(`${tag} is a console, controller or display feature, not something in the game: drop it.`);
+  if (
+    (SIGHTSEEING.test(x.title.trim()) || TRAILER_FAMOUS.test(x.title)) &&
+    !TANGIBLE.test(`${x.how ?? ""} ${x.payoff ?? ""}`)
+  )
+    p.push(
+      `${tag} is sightseeing or a trailer headline everyone has seen; replace it with a concrete, non-obvious mechanic, trick or system with a real gain.`,
+    );
+  return p;
+}
+
+// Only a count that claims the whole list: a determiner first ("these 12 features", "the first of twelve things", "all 8
+// tips"), at most two words before the noun ("these 12 GTA 6 features"). "The two items that matter most", "the first
+// three tips" and "Grand Theft Auto 6 features" are not the list's count.
+const countRe = () =>
+  new RegExp(
+    `\\b(these|all|of|our)(\\s+)(${NUM})(\\s+(?:[\\w'-]+\\s+){0,2}?(?:${LIST_NOUN})\\b)`,
+    "gi",
+  );
+
+/** The smallest list any guide kind has: "these two things" in an outro is never the list's count. */
+const LEAST_COUNT = 6;
+
+/** Counts said in a text that claim the whole list (pure). */
+export function countsSaid(text: string): number[] {
+  return [...text.matchAll(countRe())]
+    .map((m) => countValue(m[3]!))
+    .filter((v) => Number.isFinite(v) && v >= LEAST_COUNT);
+}
+
+/** The count in a text changed from one number to another, digits as digits and words as words (pure). */
+export function withCount(text: string, from: number, to: number): string {
+  return text.replace(
+    countRe(),
+    (m: string, det: string, gap: string, n: string, rest: string) => {
+      if (countValue(n) !== from) return m;
+      const word = /^\d+$/.test(n) ? String(to) : (NUM_WORDS[to] ?? String(to));
+      return `${det}${gap}${/^[A-Z]/.test(n) ? word[0]!.toUpperCase() + word.slice(1) : word}${rest}`;
+    },
+  );
+}
+
+/** The number an item's opening line says it is ("Number 3", "No. 3"), when it says one (pure). */
+export function spokenItemNumber(sentence: string): number | undefined {
+  const m = sentence.match(
+    new RegExp(`^\\W*(?:\\[[a-z ]+\\]\\s*)?(?:(?:and|so|okay|right),?\\s+)?(?:number|item|tip)\\s+(${NUM})\\b`, "i"),
+  );
+  const v = m ? countValue(m[1]!) : Number.NaN;
+  return Number.isFinite(v) ? v : undefined;
+}
+
+/** Ranking talk the long ranking's voice brings, which a guide never uses (pure regex). */
+export const RANKING_TALK =
+  /\b(i'?m ranking|ranked|my ranking|this ranking|ranking (them|these|it|everyday|by)|hardest call|least (sure|certain) (about|of)|i'?d put [^.]{0,60}?\b(ahead of|above|below|at the top)|top of (this|my) list|number one spot)\b/i;
+
+/** Em dashes and spaced en dashes, said as the pause they are: a comma, so a sentence count never changes (pure). */
+export function scrubDashes(t: string): string {
+  if (!/—|\s–\s/.test(t)) return t;
+  return t
+    .replace(/[ \t]*—[ \t]*|[ \t]+–[ \t]+/g, ", ")
+    .replace(/,\s*([,.!?;:])/g, "$1")
+    .replace(/(^|\n), /g, "$1")
+    .replace(/,[ \t]*$/gm, "")
+    .replace(/[ \t]+$/gm, "");
+}
+
+/** Every string in a value with its dashes scrubbed (pure). */
+export function scrubAll<T>(v: T): T {
+  if (typeof v === "string") return scrubDashes(v) as T;
+  if (Array.isArray(v)) return v.map((x) => scrubAll(x)) as T;
+  if (v && typeof v === "object")
+    return Object.fromEntries(
+      Object.entries(v).map(([k, x]) => [k, scrubAll(x)]),
+    ) as T;
+  return v;
+}
+
+const OWN_NUMBER = new RegExp(`^(?:no\\.?|number|item|tip|#)\\s*(?:${NUM})$`, "i");
+const SOURCE_CARD =
+  /\b(stream footage|on (my |the )?stream|from (my|the) (stream|vod|playthrough)|my playthrough|my stream|recorded (on|live)|vod)\b/i;
+const DATE_MATTERS =
+  /\b(release\w*|launch\w*|update\w*|patch\w*|until|ends?|ending|starts?|expires?|deadline|event|available|arriv\w*|season|limited|unlock\w*|returns?)\b/i;
+
+/**
+ * A guide moment's graphic, kept only when it tells the viewer something (pure): never the item's own number (the
+ * card says it), never where the footage came from ("Stream footage"), and a date only when the date is the point.
+ */
+export function guideGraphicKept(
+  g: { kind: string; primary?: string; secondary?: string; items?: string[] } | undefined,
+  sentence: string,
+): boolean {
+  if (!g || g.kind === "none") return false;
+  const text = `${g.primary ?? ""} ${g.secondary ?? ""} ${(g.items ?? []).join(" ")}`;
+  if (OWN_NUMBER.test((g.primary ?? "").trim())) return false;
+  if (SOURCE_CARD.test(text)) return false;
+  if (g.kind === "date" && !DATE_MATTERS.test(sentence)) return false;
+  return true;
+}
+
+/** The moments with every graphic that carries nothing taken off (pure). */
+export function cleanGuideMoments(narration: string, moments: AnyMoment[]): AnyMoment[] {
+  const s = sentencesOf(narration);
+  return moments.map((m, i) => {
+    const g = (m as { graphic?: { kind: string } }).graphic;
+    if (!g || g.kind === "none" || guideGraphicKept(g, s[i] ?? "")) return m;
+    return {
+      ...m,
+      graphic: { kind: "none", primary: "", secondary: "", items: [] },
+    } as AnyMoment;
+  });
+}
+
+/**
+ * The plan with its thin items dropped down to the kind's minimum, never below it (the first thin items in spoken order
+ * fill any gap); item 1 always stays (the intro delivers it). Every count in the intro, outro, description and
+ * thumbnail words follows the new number, so the title, the thumbnail and the voice agree (pure).
+ */
+export function dropThinItems<
+  P extends {
+    intro: { narration: string; on_screen: string };
+    outro?: { narration: string; on_screen: string };
+    description?: string;
+    thumb_words?: string;
+    items: Array<{ title: string; how?: string; payoff?: string; notes?: string; chip?: string }>;
+  },
+>(plan: P, kind: GuideKind): { plan: P; dropped: string[] } {
+  const thin = plan.items.map((x, i) => i > 0 && itemQualityProblems(x, kind).length > 0);
+  const good = thin.filter((t) => !t).length;
+  // Down to the minimum, never below: the first thin items in spoken order fill any gap.
+  let spare = Math.max(0, kind.items[0] - good);
+  const keep = plan.items.filter((_, i) => !thin[i] || spare-- > 0);
+  if (keep.length === plan.items.length) return { plan, dropped: [] };
+  const dropped = plan.items.filter((x) => !keep.includes(x)).map((x) => x.title);
+  const from = plan.items.length;
+  const to = keep.length;
+  const count = (t: string) => withCount(t, from, to);
+  return {
+    plan: {
+      ...plan,
+      intro: {
+        narration: count(plan.intro.narration),
+        on_screen: count(plan.intro.on_screen),
+      },
+      ...(plan.outro
+        ? { outro: { narration: count(plan.outro.narration), on_screen: count(plan.outro.on_screen) } }
+        : {}),
+      ...(plan.description !== undefined ? { description: count(plan.description) } : {}),
+      ...(plan.thumb_words !== undefined
+        ? { thumb_words: plan.thumb_words.replace(new RegExp(`\\b${from}\\b`, "g"), String(to)) }
+        : {}),
+      items: keep,
+    },
+    dropped,
+  };
+}
+
+/** Item quality across a finished draft (pure): recorded as style warnings, never a reason for a whole rewrite. */
+export function guideQualityWarnings(d: Pick<GuideDraft, "items">, kind: GuideKind): string[] {
+  return d.items.flatMap((x) => itemQualityProblems(x, kind, `Item ${x.number} ("${x.title}")`));
 }
 
 /**
@@ -696,7 +919,32 @@ export function guideProblems(
       p.push(`${tag} has ${s} sentences but ${x.moments.length} moments.`);
     if (!x.chip.trim() || words(x.chip) > 4)
       p.push(`${tag}: the chip must be 1-4 words.`);
+    const said = spokenItemNumber(sentencesOf(x.narration)[0] ?? "");
+    if (said !== undefined && said !== x.number)
+      p.push(
+        `${tag} says it is number ${said}; on screen it is number ${x.number}. Items count up from 1 in the order spoken.`,
+      );
   }
+  for (const c of countsSaid(
+    `${d.intro.narration} ${d.outro.narration} ${d.description}`,
+  ))
+    if (c !== n)
+      p.push(
+        `The intro, outro or description says ${c} items; the list has ${n}. Say ${n}.`,
+      );
+  const ranked = [
+    d.intro.narration,
+    ...d.items.map((x) => x.narration),
+    d.outro.narration,
+  ]
+    .join(" ")
+    .match(RANKING_TALK);
+  if (ranked)
+    p.push(
+      `"${ranked[0]}" is ranking talk; a guide is a list in the order spoken, never a ranking.`,
+    );
+  if (/\u2014/.test(JSON.stringify(d)))
+    p.push("An em dash is in the text; the channel never uses them.");
   if (FIRST_HAND.test(d.intro.narration) && !ctx.evidence.length)
     p.push(
       `The intro speaks first-hand ("${d.intro.narration.match(FIRST_HAND)?.[0]}") with no play evidence.`,
@@ -763,7 +1011,17 @@ export function labelLine(x: Pick<GuideItem, "label" | "basis">): string {
  * order (1 first), the card's number is the item's, every entry is GTA VI. The entries' internal ranks run N..1 because
  * the render pairs beats with entries sorted from the highest rank down; the cards and the chapter index show 1..N.
  */
-export function guideToScript(d: GuideDraft, kind: GuideKind): Script {
+export function guideToScript(draft: GuideDraft, kind: GuideKind): Script {
+  // No em dash reaches the screen or the voice, whatever the writer or a repair left (the humaniser that strips them
+  // runs on Shorts and documentary chapters only), and no graphic that carries nothing.
+  const scrubbed = scrubAll(draft);
+  const d: GuideDraft = {
+    ...scrubbed,
+    items: scrubbed.items.map((x) => ({
+      ...x,
+      moments: cleanGuideMoments(x.narration, x.moments),
+    })),
+  };
   const n = d.items.length;
   const title = guideTitleFor(kind, n);
   const thumb = guideThumbWords(kind, n, d.thumb_words);
@@ -783,6 +1041,12 @@ export function guideToScript(d: GuideDraft, kind: GuideKind): Script {
     question: kind.question,
     items: n,
     thumb,
+    list: d.items.map((x) => ({
+      number: x.number,
+      title: x.title,
+      how: x.how ?? "",
+      payoff: x.payoff ?? "",
+    })),
     labels: d.items.map((x) => ({
       number: x.number,
       label: itemLabel(x),
@@ -904,7 +1168,17 @@ export function gtaGuideVerdict(
  * and "my playthrough" items when there is no play evidence.
  */
 export function guidePlanProblems(
-  plan: { intro: { narration: string }; items: Array<{ title: string; basis: string }> },
+  plan: {
+    intro: { narration: string };
+    items: Array<{
+      title: string;
+      basis: string;
+      how?: string;
+      payoff?: string;
+      notes?: string;
+      chip?: string;
+    }>;
+  },
   kind: GuideKind,
   evidence: readonly string[],
 ): string[] {
@@ -921,5 +1195,16 @@ export function guidePlanProblems(
   }
   if (!evidence.length && plan.items.some((x) => x.basis === "my playthrough"))
     p.push('There is no play evidence this time: no item may rest on "my playthrough"; use the fact pack.');
+  plan.items.forEach((x, i) =>
+    p.push(...itemQualityProblems(x, kind, `Item ${i + 1} ("${x.title}")`)),
+  );
+  for (const c of countsSaid(plan.intro.narration))
+    if (c !== plan.items.length)
+      p.push(`The intro says ${c} items; the plan has ${plan.items.length}.`);
+  const ranked = plan.intro.narration.match(RANKING_TALK);
+  if (ranked)
+    p.push(
+      `"${ranked[0]}" is ranking talk; a guide is a list in the order spoken, never a ranking.`,
+    );
   return p;
 }

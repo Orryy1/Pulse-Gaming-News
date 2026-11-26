@@ -18,6 +18,8 @@ import {
   GUIDE_ITEM_WORDS,
   GUIDE_OUTRO_WORDS,
   GUIDE_WORDS,
+  dropThinItems,
+  scrubAll,
   type GuideDraft,
   type GuideItem,
   type GuideKind,
@@ -51,6 +53,16 @@ export const GuidePlanSchema = z.object({
           "Where the item comes from: the fact pack, or what my own recordings show (only when the play evidence holds it)",
         ),
         chip: z.string().describe("1-4 words of punch for the card"),
+        how: z
+          .string()
+          .describe(
+            "Exactly what to do: the button or input, the menu or app screen, the place, or the steps ('Hold left on the d-pad, then Radio in the phone')",
+          ),
+        payoff: z
+          .string()
+          .describe(
+            "What the player gets for it, concretely: money, time saved, a way out of trouble, an item or vehicle kept, an unlock ('You keep your music and the cops never hear you coming')",
+          ),
         notes: z
           .string()
           .describe(
@@ -58,7 +70,7 @@ export const GuidePlanSchema = z.object({
           ),
       }),
     )
-    .describe("Numbered 1..N in the order spoken"),
+    .describe("Numbered 1..N in the order spoken; fewer real items beat a padded list"),
   outro: z.object({
     narration: z
       .string()
@@ -117,11 +129,25 @@ No story spoilers, at all: GTA VI's story is held until December 18. Nothing pas
 
 const DISCIPLINE_RULE = `Fact discipline: no absolute or superlative the facts don't state (never, always, only, every other, no other): say "rarely", "one of the few", "most". No "first" in the series unless the facts say so. A card shows only figures the item's narration says.`;
 
+// The guide's own voice: the long ranking's ("the ranking rule", "the hardest call") made the 26 Nov proof say
+// "I'm ranking everyday usefulness first" in a list that ranks nothing.
 function housePrompt(): string {
   return `You write for Pulse Gaming News, a YouTube channel about video games.
 
-${voiceFor("longform")}`;
+${voiceFor("guide")}`;
 }
+
+/** The bar every item meets (owner, 26 Nov 2026: GameSight-style guides, not a list of scenery and trailer shots). */
+export const ITEM_BAR = `The bar for every item, the one the best GTA guide channels set: a concrete, non-obvious mechanic, setting, trick or system that most players have not worked out, with exactly how or where to do it (how) and what the player gets for it (payoff). A viewer should be able to pause the video and do it.
+Never an item that is:
+- scenery or sightseeing: "Look for alligators", "Notice the art deco streets", "Look for a forest path", "Watch for tropical storms", "Take a jet ski ride";
+- a console, controller or display feature: DualSense haptics, 3D audio, frame rate, PS5 performance (allowed only in the edition guide);
+- a headline everyone saw in the trailers or previews (the radio hosts, the wildlife, the weather, Jason and Lucia, the beaches), unless the item is a specific mechanic about it with a real gain;
+- a feeling for a payoff ("it's fun", "a change of scenery", "a nice touch").
+If the sources hold fewer items that meet the bar, plan fewer (as few as the minimum): never pad the list. The title's count is set from the items you plan.`;
+
+/** What a graphic must carry. */
+const GRAPHIC_RULE = `A graphic only where it carries something the viewer can use: a figure the sentence says, a button or input, a place, a price, a requirement, a short list of things the sentence names, a two-row compare. Never the item's own number (the card already shows it), never where the footage came from ("Stream footage", "On my stream"), and a date only when the date itself matters (an update, a deadline, when something unlocks or ends). Most sentences have no graphic.`;
 
 export function planPrompt(
   kind: GuideKind,
@@ -136,9 +162,10 @@ You are planning a long GTA 6 guide list video, ${GUIDE_WORDS[0]}-${GUIDE_WORDS[
 This guide: ${kind.name}. ${kind.angle}
 Structure:
 1. intro.narration: ${GUIDE_INTRO_WORDS[0]}-${introMax} words. The FIRST sentence is item 1 itself, the most useful item, said as advice ("Never leave your car on the hard shoulder with the engine running.") so the viewer gets value in the first five seconds. Then one line that promises the complete list, with the count, and no story spoilers. No greeting, no channel name, no "welcome", no "in this video".
-2. items: ${kind.items[0]}-${kind.items[1]}, numbered 1..N in the order spoken, the most useful first, then alternating big and small so the middle never sags. Each is one practical thing, not a category. Its title is the on-screen line (2-8 words).
-3. outro.narration: ${GUIDE_OUTRO_WORDS[0]}-${GUIDE_OUTRO_WORDS[1]} words: the two items that matter most in one line, and a last practical line. It asks nothing of the viewer.
-The title is set from the item count; you write the thumbnail words, the description and the tags.
+2. items: ${kind.items[0]}-${kind.items[1]}, numbered 1..N in the order spoken (the on-screen numbers count up the same way), the most useful first, then alternating big and small so the middle never sags. Each is one practical thing, not a category. Its title is the on-screen line (2-8 words), an instruction or a fact, never "Look for X". Each names how (what to do, where) and payoff (what you get).
+${ITEM_BAR}
+3. outro.narration: ${GUIDE_OUTRO_WORDS[0]}-${GUIDE_OUTRO_WORDS[1]} words: items 1 and 2 again as things to do, in one line, and a last practical line. It asks nothing of the viewer.
+This is a guide, not a ranking: never say "ranking", "I'd put X ahead of Y", "the hardest call" or "the surprise is". The title is set from the item count; you write the thumbnail words, the description and the tags. No em dashes anywhere.
 ${FACT_RULE}${opts.discipline ? `\n${DISCIPLINE_RULE}` : ""}
 
 This step plans only: the order, the item lines, labels, bases and notes, the intro, the outro and the packaging. The item narration is written next from your plan.`;
@@ -147,10 +174,10 @@ This step plans only: the order, the item lines, labels, bases and notes, the in
 export function batchPrompt(opts: GuideWriterOptions = {}): string {
   return `${housePrompt()}
 
-You are writing items of a long GTA 6 guide list video, from the plan you are given. Each item's narration is ${GUIDE_ITEM_WORDS[0]}-${GUIDE_ITEM_WORDS[1]} spoken words, five to ten short sentences: it starts by saying the item's number and the thing in a fresh way (never open two items the same way; the earlier openings are listed), says what to do and why, gives one concrete detail from the sources, and hands over to the next item in its last line. Speak to the viewer ("you"); "I" only for my own play, and only what the play evidence shows.
+You are writing items of a long GTA 6 guide list video, from the plan you are given. Each item's narration is ${GUIDE_ITEM_WORDS[0]}-${GUIDE_ITEM_WORDS[1]} spoken words, five to twelve short sentences: it starts by saying the item's number (the plan's number, counting up from 1) and the thing in a fresh way (never open two items the same way; the earlier openings are listed), says exactly what to do and where (the plan's how), what the player gets for it (the plan's payoff), gives one concrete detail from the sources, and hands over to the next item in its last line. A guide, not a ranking: never compare an item's place in the list with another's. No em dashes. Speak to the viewer ("you"); "I" only for my own play, and only what the play evidence shows.
 ${REHOOK_RULE} In a guide that means about one in every second item, often the hand-over line.
 footage names what the picture should show (the place, vehicle, menu-free moment of play) with 1-4 keywords.
-moments: exactly one per sentence of the narration, in order. "show" names the precise in-game thing on screen while that sentence is spoken (never a menu, store page, logo or text screen); keywords 1-4 short search terms. About a third carry a graphic (a figure the sentence says, a short list of things it names, a two-row compare); every figure in a graphic is in that sentence. "emphasis" lands a name or phrase from the sentence in about a third; empty when there is a graphic.
+moments: exactly one per sentence of the narration, in order. "show" names the precise in-game thing on screen while that sentence is spoken (never a menu, store page, logo or text screen); keywords 1-4 short search terms. ${GRAPHIC_RULE} Every figure in a graphic is in that sentence. "emphasis" lands a name or phrase from the sentence in about a third; empty when there is a graphic.
 ${FACT_RULE}${opts.discipline ? `\n${DISCIPLINE_RULE}` : ""}`;
 }
 
@@ -224,9 +251,22 @@ export async function writeGtaGuide(
       effort: "medium",
       maxTokens: 12000,
     });
+  // Items still under the bar after the send-back are dropped (never below the kind's minimum): the count, and with it
+  // the title and the intro's "these N", follow what is left.
+  plan = dropThinItems(plan, brief.kind).plan;
   const items = plan.items.map((x, i) => ({ ...x, number: i + 1 }));
+  // The whole video's floor holds with fewer items: each runs longer (7 items is about 190 words each).
+  const introOutro =
+    plan.intro.narration.split(/\s+/).length + plan.outro.narration.split(/\s+/).length;
+  const perItem = Math.min(
+    GUIDE_ITEM_WORDS[1] - 10,
+    Math.max(110, Math.ceil((GUIDE_WORDS[0] + 100 - introOutro) / Math.max(1, items.length))),
+  );
   const outline = items
-    .map((x) => `${x.number}. ${x.title} [${x.label}, ${x.basis}]: ${x.notes}`)
+    .map(
+      (x) =>
+        `${x.number}. ${x.title} [${x.label}, ${x.basis}]: how: ${x.how}; payoff: ${x.payoff}; ${x.notes}`,
+    )
     .join("\n");
   const written: GuideItem[] = [];
   for (const batch of batchesOf(items)) {
@@ -236,7 +276,7 @@ export async function writeGtaGuide(
     const r = await llm.structured({
       site: "gtaguide.items",
       system: batchPrompt(opts),
-      content: `${sources}\n\nThe intro (already written): ${plan.intro.narration}\n\nThe full list:\n${outline}\n\nWrite items ${batch.map((x) => x.number).join(", ")}.${before ? `\n\nHow the earlier items opened (never repeat these openings):\n${before}` : ""}${fb}`,
+      content: `${sources}\n\nThe intro (already written): ${plan.intro.narration}\n\nThe full list:\n${outline}\n\nWrite items ${batch.map((x) => x.number).join(", ")}, about ${perItem} spoken words each (there are ${items.length} items, so each needs its full how-to).${before ? `\n\nHow the earlier items opened (never repeat these openings):\n${before}` : ""}${fb}`,
       schema: BatchSchema,
       effort: "medium",
       maxTokens: 16000,
@@ -251,6 +291,8 @@ export async function writeGtaGuide(
         label: x.label,
         basis: x.basis,
         chip: x.chip.trim(),
+        how: x.how.trim(),
+        payoff: x.payoff.trim(),
         narration,
         footage: body?.footage ?? { want: "gameplay", keywords: [GTA_GAME] },
         claims: body?.claims ?? [],
@@ -258,7 +300,8 @@ export async function writeGtaGuide(
       });
     }
   }
-  return {
+  // The channel never uses em dashes; the writer still slips them in (26 Nov proof's hook), so they go here.
+  return scrubAll({
     kind: brief.kind.key,
     intro: plan.intro,
     items: written,
@@ -266,5 +309,5 @@ export async function writeGtaGuide(
     thumb_words: plan.thumb_words,
     description: plan.description,
     tags: plan.tags,
-  };
+  });
 }

@@ -864,6 +864,7 @@ import {
   guidePlanProblems,
   guideProblems,
   guideToScript,
+  guideQualityWarnings,
   isGtaGuide,
   kindOf,
   pickGuideTopic,
@@ -8220,6 +8221,9 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
   }
   if (!draft) throw new Error("GTA guide produced nothing");
   const script = guideToScript(draft, kind);
+  // Item quality: the plan check sent it back once and dropped what it could; what is left is noted, never a rewrite.
+  const thin = guideQualityWarnings(draft, kind);
+  if (thin.length) await logEvent(s.db, ep.id, "style_warnings", { problems: thin });
   const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
   if (longChecks.warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
   await guardScript(s, ep, script, "after writing");

@@ -402,6 +402,16 @@ export const SAID_AS_LETTERS = new Set(
  */
 type Said = string | ((match: string, ...groups: string[]) => string);
 const SAID_AS_WORDS: Array<[RegExp, Said]> = [
+  // Studios and publishers whose names hold digits, said the way fans say them (26 Nov 2026: "343 Industries" was read
+  // "three hundred forty-three Industries"). They run before the voice sees the digits.
+  [/\b343 Industries\b/g, "three four three Industries"],
+  [/\b4A Games\b/g, "four A Games"],
+  [/\b505 Games\b/g, "five oh five Games"],
+  [/\b2K Games\b/g, "two K Games"],
+  [/\b2K(?= (?:Sports|Marin|Boston|Czech|Australia|Vegas)\b)/g, "two K"],
+  [/\b3D Realms\b/g, "three D Realms"],
+  [/\b11 bit studios\b/gi, "eleven bit studios"],
+  [/\b1047 Games\b/g, "ten forty-seven Games"],
   [/\bGOTYs\b/g, "Game of the Year awards"],
   [/\bGOTY\b/g, "Game of the Year"],
   [/\bTGA\b/g, "The Game Awards"],
@@ -604,6 +614,13 @@ export function knownSpokenForm(token: string): string | undefined {
  * kept) and the written form. Used by displayWords in src/render/timeline.ts.
  */
 export const SAID_BACK: Array<[string[], string]> = [
+  [["three", "four", "three", "industries"], "343 Industries"],
+  [["four", "a", "games"], "4A Games"],
+  [["five", "oh", "five", "games"], "505 Games"],
+  [["two", "k", "games"], "2K Games"],
+  [["three", "d", "realms"], "3D Realms"],
+  [["eleven", "bit", "studios"], "11 bit studios"],
+  [["ten", "forty-seven", "games"], "1047 Games"],
   [["triple-a"], "AAA"],
   [["pc", "games", "n"], "PCGamesN"],
   [["pc", "games", "n's"], "PCGamesN's"],

@@ -4,6 +4,7 @@ import {
   backMeta,
   backMoments,
   escapeSignals,
+  judgeWindows,
   overlapsTaken,
   pickMoments,
   takenFrom,
@@ -340,4 +341,23 @@ test("a 1 or 2 star spell of half a minute that ends with the police lost is an 
     { t: 160, score: 1, detail: "lost the police at 2 stars after 60 s" },
     { t: 760, score: 1, detail: "lost the police at 3 stars after 60 s" },
   ]);
+});
+
+test("a window that is mostly cutscene is dropped, and one full of dialogue is held as a story moment", () => {
+  const samples = Array.from({ length: 40 }, (_, i) => ({
+    t: i * 2,
+    state: i < 20 ? "hud" : "other",
+    talk: i >= 20 && i < 30,
+  }));
+  const out = judgeWindows(
+    [
+      moment({ at: 14, start: 0, end: 40 }), // all live play, no talk
+      moment({ at: 34, start: 20, end: 60 }), // half live play, half talking
+      moment({ at: 64, start: 50, end: 90 }), // mostly cutscene
+    ],
+    samples,
+  );
+  assert.deepEqual(out.map((m) => [m.at, m.story]), [[14, false], [34, true]]);
+  // No reading over a window (a failed read): kept as found.
+  assert.equal(judgeWindows([moment({ at: 500, start: 486, end: 526 })], samples).length, 1);
 });

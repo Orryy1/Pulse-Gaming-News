@@ -159,5 +159,11 @@
   "ocrDet": {
     "limitType": "max",
     "sideLen": 960
-  }
+  },
+  "talkBox": [
+    0.18,
+    0.84,
+    0.82,
+    0.985
+  ]
 }

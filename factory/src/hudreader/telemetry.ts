@@ -36,6 +36,8 @@ export interface RawSample {
   money?: number;
   moneyDelta?: number;
   texts?: Record<string, string[]>;
+  /** Subtitles on screen (a profile's talkBox): someone is talking, so a story beat may be under way. */
+  talk?: boolean;
 }
 
 export interface RawPlace {
@@ -79,6 +81,8 @@ export interface HudProfile {
   calibrated: boolean;
   events: ProfileEvent[];
   areaPattern?: string;
+  /** Where subtitles are written (GTA VI): a sample with writing there is marked talk. */
+  talkBox?: number[];
   ignoreText?: string;
   /** Metres per map unit, once measured (calibration); null: distances stay in map units. */
   metresPerUnit?: number | null;

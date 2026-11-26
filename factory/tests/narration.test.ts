@@ -330,3 +330,29 @@ test("a trillion figure is not joined, so its old unit pardon still holds", () =
     true,
   );
 });
+
+test("dotted letters Whisper starts with a full stop go back onto the capital before them", () => {
+  // Cyberpunk 2077 documentary, 26 Nov 2026: "AV." heard as "A .V." was logged as a voice fault. ".NET" stays as it was.
+  for (const [meant, heard] of [
+    ["the AV. Club gave it a pass", "the A .V. Club gave it a pass"],
+    ["the A. V. Club gave it a pass", "the A .V. Club gave it a pass"],
+    ["built on .NET today", "built on .NET today"],
+  ] as const) {
+    const c = checkNarration(say(meant), say(heard));
+    assert.equal(c.ok, true, `${heard}: ${JSON.stringify(c.issues)}`);
+  }
+  assert.deepEqual(
+    joinFigures(say("A .V. Club")).map((w) => w.text),
+    ["A.V.", "Club"],
+  );
+  // Only after a lone capital: "the" + ".V." is not glued into one word.
+  assert.deepEqual(
+    joinFigures(say("the .V. Club")).map((w) => w.text),
+    ["the", ".V.", "Club"],
+  );
+  // A real slip next to the glued word is still caught: a dropped word is a fault.
+  assert.equal(
+    checkNarration(say("the AV. Club gave it a pass"), say("the A .V. gave it a pass")).ok,
+    false,
+  );
+});

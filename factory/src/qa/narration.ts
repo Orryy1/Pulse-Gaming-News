@@ -432,12 +432,21 @@ const similar = (a: string, b: string) => {
   return 1 - d[m]![n]! / Math.max(m, n) >= 0.7;
 };
 
-/** Whisper splits figures ("8" then ",049", "$59" then ".99"): joined back into one word. */
+/**
+ * Whisper splits figures ("8" then ",049", "$59" then ".99"): joined back into one word. It also writes dotted
+ * initials as "A" then ".V.": the Cyberpunk 2077 documentary (26 Nov 2026) logged "AV." heard as "A .V." as a voice
+ * fault. Dotted letters after a lone capital go back onto it ("A.V."), which tokens() reads as "av". Only letters:
+ * any other word starting with a stop (".NET", ".hack") stays apart, so a glued word never hides a dropped one.
+ */
 export function joinFigures(words: TimedWord[]): TimedWord[] {
   const out: TimedWord[] = [];
   for (const w of words) {
     const prev = out[out.length - 1];
-    if (prev && /^[,.]\d/.test(w.text) && /\d$/.test(prev.text))
+    const glued =
+      prev &&
+      /^\.(?:[A-Za-z]\.)*[A-Za-z]\.?[,;:!?]?$/.test(w.text) &&
+      /^(?:[A-Z]\.)*[A-Z]$/.test(prev.text);
+    if (glued || (prev && /^[,.]\d/.test(w.text) && /\d$/.test(prev.text)))
       out[out.length - 1] = { ...prev, text: prev.text + w.text, end: w.end };
     else out.push({ ...w });
   }

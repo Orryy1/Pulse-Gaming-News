@@ -74,6 +74,7 @@ import { KitOverlay } from "./components/GtaKit.tsx";
 import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
 import { lookTitleAt } from "./shortupgrades.ts";
 import { musicDipAt } from "./gamebed.ts";
+import { BoardMarks, BoardMode } from "./components/EvidenceStyle.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -752,6 +753,17 @@ export const Short: React.FC<ShortProps> = (props) => {
           />
         </Sequence>
       ))}
+      {/* EVIDENCE_STYLE board mode: the stills of a mystery or lore Short pinned to the board (absent: nothing). */}
+      {props.board ? (
+        <BoardMode
+          plan={{
+            ...props.board,
+            // A window gives way to a code scene drawn over its shot.
+            windows: props.board.windows.filter((w) => !scenes.some((x) => x.from < w.to && x.to > w.from)),
+          }}
+          images={props.images}
+        />
+      ) : null}
       <Scrim
         profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"}
         bright={props.bright}
@@ -967,6 +979,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           );
         return null;
       })}
+      {/* EVIDENCE_STYLE: the date cards, the case card and the red stamps, on their words (absent: nothing). */}
+      {props.board ? <BoardMarks plan={props.board} musicSrc={props.musicSrc} /> : null}
       {(props.stamps ?? []).map((st, i) => (up.depthTypes ?? []).some((d) => d.stamp === i) ? null : (
         <Sequence
           key={`stamp${i}`}

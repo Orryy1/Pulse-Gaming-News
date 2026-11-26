@@ -1488,6 +1488,11 @@ export interface Config {
   blender: BlenderSettings;
   /** Share of Shorts whose wide stills get depth layers, drifted like a camera move (src/render/shortdepth.ts); 0.5 is a fair test, 1 all: SHORT_PARALLAX_SHARE, default 0. */
   shortParallaxShare: number;
+  /** The documentary evidence board style (src/evidencestyle.ts; owner, 26 Nov 2026): date cards, typed case cards, red
+   * stamps and, for mystery and lore episodes, the stills pinned to a board joined by red string. EVIDENCE_STYLE, default off. */
+  evidenceStyle: boolean;
+  /** With EVIDENCE_STYLE, the share of eligible episodes in the board arm, split by episode (EVIDENCE_STYLE_SHARE, default 0.5). */
+  evidenceStyleShare: number;
   /** The 3D photo orbit (src/render/orbit.ts): the best wide key art of each chapter gets a depth mesh and the
    * camera swings round its subject, about once a chapter (DEPTH_ORBIT, default off until proven). Needs PARALLAX. */
   depthOrbit: boolean;
@@ -2700,6 +2705,8 @@ export function loadConfig(): Config {
     parallax: bool("PARALLAX", true),
     blender: blenderSettings(process.env),
     shortParallaxShare: Math.min(1, Math.max(0, Number(str("SHORT_PARALLAX_SHARE", "0")) || 0)),
+    evidenceStyle: bool("EVIDENCE_STYLE", false),
+    evidenceStyleShare: Math.min(1, Math.max(0, Number(str("EVIDENCE_STYLE_SHARE", "0.5")) || 0)),
     depthOrbit: bool("DEPTH_ORBIT", false),
     depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
     parallaxDeep: bool("PARALLAX_DEEP", false),

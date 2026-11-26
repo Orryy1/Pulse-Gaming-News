@@ -129,6 +129,7 @@ import {
   VersusMoment,
   WipeCompare,
 } from "./components/DocGraphics.tsx";
+import { BoardMarks, BoardMode } from "./components/EvidenceStyle.tsx";
 import {
   EvidenceBoard,
   Letterbox,
@@ -421,6 +422,9 @@ export type LongProps = {
   /** MENTION_* (src/render/mentions.ts): the mention insets on their words, and the video's cap. */
   mentions?: MentionInset[];
   mentionMax?: number;
+  /** EVIDENCE_STYLE (src/evidencestyle.ts): the evidence board's cards, stamps and board windows; in board mode the
+   * chapter breathers are the evidence board too. Absent: as before. */
+  board?: import("./evidenceboard.ts").EvidenceBoardPlan;
 };
 
 const resolveSrc = (src: string | null) =>
@@ -3266,6 +3270,16 @@ export const Long: React.FC<LongProps> = (props) => {
     [craft.jl, plan, props.clips, fps, entryFrames.join(",")],
   );
   // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
+  // EVIDENCE_STYLE: the words the narrator says, so a board print's caption is shown only when it is said.
+  const saidWords = useMemo(
+    () => new Set(props.words.map((w) => w.text.toLowerCase().replace(/[^a-z0-9]/g, ""))),
+    [props.words],
+  );
+  const saidAloud = (t: string) =>
+    t
+      .split(/\s+/)
+      .map((x) => x.toLowerCase().replace(/[^a-z0-9]/g, ""))
+      .every((x) => !x || saidWords.has(x));
   const details = useMemo(() => {
     const out: Array<{
       k: number;
@@ -4614,6 +4628,22 @@ export const Long: React.FC<LongProps> = (props) => {
           <Montage items={o.items} />
         </Sequence>
       ))}
+      {/* EVIDENCE_STYLE board mode: runs of stills pinned to the board, the camera pin to pin (absent: nothing). */}
+      {props.board && !props.audioOnly ? (
+        <BoardMode
+          plan={{
+            ...props.board,
+            // A window gives way to what is drawn on a still's own picture (a detail box, a marker) and to the
+            // opening montages, so nothing points at the cork or plays its sound under it.
+            windows: props.board.windows.filter(
+              (w) =>
+                !details.some((d) => d.from < w.to && d.from + d.len > w.from) &&
+                !openings.some((o) => o.from < w.to && o.from + montageFrames(o.items.length) > w.from),
+            ),
+          }}
+          images={props.images}
+        />
+      ) : null}
       {/* The lens's edges over the picture, under the type (CameraMoves.tsx LensOverlay). */}
       {cameraMoves?.plan.lens ? <LensOverlay /> : null}
       <Scrim />
@@ -4846,17 +4876,26 @@ export const Long: React.FC<LongProps> = (props) => {
             ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[
               k
             ] ?? 9;
+          // EVIDENCE_STYLE: only the pictures the style cleared (Pulse's own, no likeness) go on its boards.
+          const boardOk = new Set(props.board?.allowed ?? []);
           const boardPics: BoardPicture[] = props.images
             .filter(
-              (im) =>
-                im.beatIndex === b && im.aspect >= 0.75 && rankPic(im.kind) < 9,
+              (im, k) =>
+                im.beatIndex === b &&
+                im.aspect >= 0.75 &&
+                rankPic(im.kind) < 9 &&
+                (!props.board?.mode || boardOk.has(k)),
             )
             .sort((x, y) => rankPic(x.kind) - rankPic(y.kind))
             .slice(0, 3)
             .map((im, k) => ({
               src: im.src,
-              caption:
-                im.label && im.label.length <= 22
+              // EVIDENCE_STYLE: a print's caption only when the narration says its words; otherwise none.
+              caption: props.board?.mode
+                ? im.label && im.label.length <= 22 && saidAloud(im.label)
+                  ? displayText(im.label)
+                  : ""
+                : im.label && im.label.length <= 22
                   ? displayText(im.label)
                   : `Exhibit ${"ABC"[k]}`,
             }));
@@ -4891,8 +4930,18 @@ export const Long: React.FC<LongProps> = (props) => {
           const sameMotif =
             !!motif?.card &&
             chapterEntries.every((e) => motifOf(e)?.id === motif.id);
+          // EVIDENCE_STYLE board mode: every breather is the evidence board (a faulted one keeps the plain card).
+          const everyBoard = chapterEntries.every((e) =>
+            props.images.some(
+              (im, k) => im.beatIndex === e && im.aspect >= 0.75 && rankPic(im.kind) < 9 && boardOk.has(k),
+            ),
+          );
           const baseLook: string =
-            sameMotif && !(props.quietBreaks ?? []).length ? "motif" : "title";
+            props.board?.mode && everyBoard && boardPics.length && !(props.quietBreaks ?? []).includes(breakIndex)
+              ? "board"
+              : sameMotif && !(props.quietBreaks ?? []).length
+                ? "motif"
+                : "title";
           // SUBJECT_POP: on every other title opener (never a quiet break or the motif card), the chapter's subject
           // steps in front of its title when a picture's footprint lets it overlap the words a little without hiding
           // them (src/render/popout.ts). The pop-out is the title interlude with depth, so the one-look rule holds.
@@ -5362,6 +5411,8 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {/* EVIDENCE_STYLE: the date cards, the case cards and the red stamps, on their words (absent: nothing). */}
+      {props.board ? <BoardMarks plan={props.board} musicSrc={props.musicSrc} /> : null}
       {/* Zoom to the detail: the labelled box over the pushed-in picture. */}
       {details.map((d, i) => (
         <Sequence

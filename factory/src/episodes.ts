@@ -114,6 +114,7 @@ export interface EpisodeAssets {
   /** MENTION_*: the mention insets' pictures for the kinds the gather looked for (src/assets/mentions.ts). */
   mentions?: import("./assets/mentions.ts").MentionsFound;
   shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
+  evidenceArm?: "board" | "plain"; // EVIDENCE_STYLE_SHARE: the eligible (mystery or lore) episode's arm (src/evidencestyle.ts)
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */

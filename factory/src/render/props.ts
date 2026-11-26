@@ -97,6 +97,8 @@ export type ShortProps = {
    * orbit, the game's look and the 3D box. The render step turns the map's and the clips' files into URLs.
    */
   upgrades?: import("./shortupgrades.ts").ShortUpgrades;
+  /** EVIDENCE_STYLE (src/evidencestyle.ts): the evidence board's cards, stamps and board windows. Absent: as before. */
+  board?: import("./evidenceboard.ts").EvidenceBoardPlan;
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

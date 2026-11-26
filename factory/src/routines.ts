@@ -253,7 +253,7 @@ export function longsFromApi(
 ): LongVideo[] {
   return items
     .map((i) => ({ id: i.contentDetails?.videoId ?? "", title: i.snippet?.title ?? "" }))
-    .filter((v) => v.id && isoSeconds(durations[v.id] ?? "") >= 180 && isoSeconds(durations[v.id] ?? "") < 3 * 3600);
+    .filter((v) => v.id && isoSeconds(durations[v.id] ?? "") > 180 && isoSeconds(durations[v.id] ?? "") < 3 * 3600);
 }
 
 const PULSE_CHANNEL = "UCvgNDjtTezrpxL8oUe6mYwA";
@@ -263,22 +263,51 @@ const PULSE_CHANNEL = "UCvgNDjtTezrpxL8oUe6mYwA";
  * this is two Data API calls (2 quota units, 26 Nov 2026: the yt-dlp page read stopped once the anonymous YouTube lane
  * was retired, and the related-video plan failed with it); without a key it falls back to yt-dlp through the guard.
  */
-export async function channelLongs(fetchFn: typeof fetch = fetch): Promise<LongVideo[]> {
-  const key = process.env.YOUTUBE_API_KEY;
+let longsCache: { at: number; value?: LongVideo[]; error?: string } | undefined;
+const LONGS_TTL_MS = 2 * 3600_000;
+const LONGS_FAIL_TTL_MS = 15 * 60_000;
+
+/** The reason in a YouTube Data API error answer (quotaExceeded, keyInvalid...), never the key. */
+async function apiReason(r: Response): Promise<string> {
+  try {
+    const j = (await r.json()) as { error?: { errors?: Array<{ reason?: string }> } };
+    return j.error?.errors?.[0]?.reason ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export async function channelLongs(fetchFn: typeof fetch = fetch, now = Date.now()): Promise<LongVideo[]> {
+  const key = process.env.NODE_TEST_CONTEXT && fetchFn === fetch ? undefined : process.env.YOUTUBE_API_KEY;
   if (key) {
-    const api = "https://www.googleapis.com/youtube/v3";
-    const pl = await fetchFn(`${api}/playlistItems?part=contentDetails,snippet&maxResults=50&playlistId=UU${PULSE_CHANNEL.slice(2)}&key=${key}`);
-    if (!pl.ok) throw new Error(`YouTube Data API playlistItems HTTP ${pl.status}`);
-    const items = ((await pl.json()) as { items?: Array<{ contentDetails?: { videoId?: string }; snippet?: { title?: string } }> }).items ?? [];
-    const ids = items.map((i) => i.contentDetails?.videoId).filter(Boolean).join(",");
-    const durations: Record<string, string> = {};
-    if (ids) {
-      const vr = await fetchFn(`${api}/videos?part=contentDetails&id=${ids}&key=${key}`);
-      if (!vr.ok) throw new Error(`YouTube Data API videos HTTP ${vr.status}`);
-      for (const v of ((await vr.json()) as { items?: Array<{ id: string; contentDetails?: { duration?: string } }> }).items ?? [])
-        durations[v.id] = v.contentDetails?.duration ?? "";
+    // Kept for two hours (a failure for 15 minutes), so the related and A/B pages never spend quota per hit.
+    if (longsCache && fetchFn === fetch) {
+      if (longsCache.value && now - longsCache.at < LONGS_TTL_MS) return longsCache.value;
+      if (longsCache.error && now - longsCache.at < LONGS_FAIL_TTL_MS) throw new Error(longsCache.error);
     }
-    return longsFromApi(items, durations).slice(0, 30);
+    const api = "https://www.googleapis.com/youtube/v3";
+    try {
+      // UULF: the channel's long-form uploads only (no Shorts, no live archives), the same list as its Videos tab.
+      const pl = await fetchFn(`${api}/playlistItems?part=contentDetails,snippet&maxResults=50&playlistId=UULF${PULSE_CHANNEL.slice(2)}&key=${key}`);
+      if (!pl.ok) throw new Error(`YouTube Data API playlistItems HTTP ${pl.status} ${await apiReason(pl)}`.trim());
+      const items = (((await pl.json()) as { items?: Array<{ contentDetails?: { videoId?: string; videoPublishedAt?: string }; snippet?: { title?: string } }> }).items ?? [])
+        .slice()
+        .sort((a, b) => String(b.contentDetails?.videoPublishedAt ?? "").localeCompare(String(a.contentDetails?.videoPublishedAt ?? "")));
+      const ids = items.map((i) => i.contentDetails?.videoId).filter(Boolean).join(",");
+      const durations: Record<string, string> = {};
+      if (ids) {
+        const vr = await fetchFn(`${api}/videos?part=contentDetails&id=${ids}&key=${key}`);
+        if (!vr.ok) throw new Error(`YouTube Data API videos HTTP ${vr.status} ${await apiReason(vr)}`.trim());
+        for (const v of ((await vr.json()) as { items?: Array<{ id: string; contentDetails?: { duration?: string } }> }).items ?? [])
+          durations[v.id] = v.contentDetails?.duration ?? "";
+      }
+      const value = longsFromApi(items, durations).slice(0, 30);
+      if (fetchFn === fetch) longsCache = { at: now, value };
+      return value;
+    } catch (err) {
+      if (fetchFn === fetch) longsCache = { at: now, error: errorMessage(err) };
+      throw err;
+    }
   }
   const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
   const args = [

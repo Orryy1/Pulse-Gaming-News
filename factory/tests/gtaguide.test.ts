@@ -24,6 +24,13 @@ import {
   playEvidence,
   readFactPack,
   COMPLETE,
+  RANKING_TALK,
+  countsSaid,
+  dropThinItems,
+  guideGraphicKept,
+  itemQualityProblems,
+  scrubDashes,
+  withCount,
   type AskLike,
   type GuideDraft,
   type GuideItem,
@@ -41,6 +48,7 @@ import { maybeSelectLongform, type Services } from "../src/pipeline.ts";
 import { Thumb } from "../src/render/Brand.tsx";
 import { GuideThumb } from "../src/render/ThumbStudio.tsx";
 import type { Llm } from "../src/editorial/llm.ts";
+import { sentencesOf } from "../src/editorial/longform.ts";
 import { testDb, tmpDir, testConfig } from "./helpers.ts";
 
 const wish = kindOf("wish-i-knew")!;
@@ -64,6 +72,8 @@ function item(n: number, over: Partial<GuideItem> = {}): GuideItem {
     label: "confirmed",
     basis: "fact pack",
     chip: "Do this first",
+    how: "Open the bank app on the phone and deposit",
+    payoff: "A bust never takes the money you banked",
     narration,
     footage: { want: "gameplay", keywords: ["Vice City"] },
     claims: [
@@ -477,6 +487,8 @@ test("the plan check: count, item 1 first, no playthrough items without evidence
     items: Array.from({ length: 12 }, (_, i) => ({
       title: i === 0 ? "Never leave your car running" : `Tip ${i + 1}`,
       basis: "fact pack",
+      how: "Turn the engine off before you get out",
+      payoff: "Nobody drives off with your car and its trunk",
     })),
   };
   assert.deepEqual(guidePlanProblems(plan, wish, []), []);
@@ -553,7 +565,7 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
             : "Never leave your car running on the hard shoulder.";
         return {
           intro: {
-            narration: `${first} That is the first of twelve.`,
+            narration: `${first} That is the first of twelve\u2014all of them.`,
             on_screen: "Start right",
           },
           items: Array.from({ length: 12 }, (_, i) => ({
@@ -562,6 +574,8 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
             label: "confirmed",
             basis: "fact pack",
             chip: "Do it",
+            how: "Turn the engine off before you get out",
+            payoff: "Nobody drives off with your car and its trunk",
             notes: "from the pack",
           })),
           outro: {
@@ -574,7 +588,7 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
         } as never;
       }
       const want = [
-        ...String(o.content).matchAll(/Write items ([\d, ]+)\./g),
+        ...String(o.content).matchAll(/Write items (\d+(?:, \d+)*)/g),
       ][0]![1]!
         .split(",")
         .map((x) => Number(x.trim()));
@@ -612,6 +626,9 @@ test("the writer plans once, sends a plan back once, and writes the items in bat
   ]);
   assert.equal(d.items.length, 12);
   assert.match(d.intro.narration, /^Never leave/);
+  // The writer's own em dash never leaves it.
+  assert.doesNotMatch(JSON.stringify(d), /\u2014/);
+  assert.equal(d.items[0]!.payoff, "Nobody drives off with your car and its trunk");
   // One moment came back for two sentences: padded so every sentence has a picture.
   assert.equal(d.items[0]!.moments.length, 2);
   assert.deepEqual(
@@ -865,4 +882,290 @@ test("the guide thumbnail passes the thumbnail rule's design checks, its second 
   const { pinnedComment } = await import("../src/editorial/seo.ts");
   const ed = guideToScript({ ...draft(10), kind: "which-edition" }, kindOf("which-edition")!);
   assert.match(pinnedComment(ed), /edition/);
+});
+
+// ---- The first proof's faults (26 Nov 2026) ----------------------------------------------------------------------------
+
+const stat = (primary: string, secondary = "") => ({
+  kind: "stat" as const,
+  primary,
+  secondary,
+  items: [] as string[],
+});
+
+test("one order on screen: cards, chapters and narration count up 1..N as spoken; no graphic restates the number", async () => {
+  const { usefulGraphic } = await import("../src/render/longplan.ts");
+  const d = draft(12);
+  // The proof's writer put "No. 1" on item 1, a stream date on item 2 and a real date on item 3.
+  d.items[0]!.moments[0] = { ...d.items[0]!.moments[0]!, graphic: stat("No. 1", "Radio on foot") };
+  d.items[1]!.moments[1] = {
+    ...d.items[1]!.moments[1]!,
+    graphic: { kind: "date", primary: "November 25", secondary: "Forest path on stream", items: [] },
+  };
+  d.items[2] = item(3, {
+    narration:
+      "Number 3 is the bank app. The next update arrives on December 18 with new stock. Deposit before then. Banked money stays put. Then head out.",
+  });
+  d.items[2]!.moments[1] = {
+    ...d.items[2]!.moments[1]!,
+    graphic: { kind: "date", primary: "December 18", secondary: "Update arrives", items: [] },
+  };
+  d.items[3]!.moments[2] = { ...d.items[3]!.moments[2]!, graphic: stat("$500", "Stream footage") };
+  d.items[4]!.moments[2] = { ...d.items[4]!.moments[2]!, graphic: stat("$500", "Fine for a crash") };
+  const sc = guideToScript(d, wish);
+  // The card, the chapter index ("#1") and the YouTube chapter line all read visual.value_a: 1..N in beat order.
+  assert.deepEqual(
+    sc.beats.map((b) => b.visual?.value_a),
+    Array.from({ length: 12 }, (_, i) => i + 1),
+  );
+  // The render pairs beat k with the k-th entry from the highest rank down: beat 1's pictures are item 1's.
+  const paired = [...sc.entries!].sort((a, b) => b.rank - a.rank);
+  assert.equal(paired[2]!.moments![0]!.show, d.items[2]!.moments[0]!.show);
+  const g = (e: number, m: number) => (paired[e]!.moments![m] as { graphic: { kind: string; primary: string } }).graphic;
+  assert.equal(g(0, 0).kind, "none", "No. 1 repeats the card");
+  assert.equal(g(1, 1).kind, "none", "a stream date tells the viewer nothing");
+  assert.equal(g(2, 1).kind, "date", "a date that matters stays");
+  assert.equal(g(3, 2).kind, "none", "where the footage came from is not a graphic");
+  assert.equal(g(4, 2).primary, "$500");
+  // Rankings too: "No. 3" restates the rank card as surely as "#3".
+  assert.equal(usefulGraphic(stat("No. 3")), false);
+  assert.equal(usefulGraphic(stat("Number 3")), false);
+  assert.equal(usefulGraphic(stat("$500", "Fine")), true);
+  // The narration's number must be the card's.
+  const off = draft(12);
+  off.items[1] = item(2, { narration: off.items[1]!.narration.replace("Number 2", "Number 11") });
+  assert.ok(has(guideProblems(off, { kind: wish, evidence: [] }), /says it is number 11; on screen it is number 2/));
+  // The intro's count must be the list's.
+  const count = draft(12);
+  count.intro = { ...count.intro, narration: count.intro.narration.replace("twelve things", "fifteen things") };
+  assert.ok(has(guideProblems(count, { kind: wish, evidence: [] }), /says 15 items; the list has 12/));
+  assert.deepEqual(countsSaid("These 12 GTA 6 features, and GTA 5 things"), [12]);
+  assert.deepEqual(countsSaid("one of these 12 hidden features"), [12]);
+  assert.deepEqual(countsSaid("That is the first of twelve things"), [12]);
+});
+
+test("a guide never talks like a ranking: its own voice, and ranking talk goes back", async () => {
+  const { FORMAT_VOICE, voiceFor } = await import("../src/editorial/voice.ts");
+  const { planPrompt, batchPrompt } = await import("../src/editorial/gtaguidewriter.ts");
+  assert.match(FORMAT_VOICE.guide, /not a ranking/);
+  assert.match(voiceFor("guide"), /not a ranking/);
+  for (const k of GUIDE_KINDS) {
+    assert.doesNotMatch(planPrompt(k), /the ranking rule|hardest call honestly/);
+    assert.match(planPrompt(k), /not a ranking/);
+  }
+  assert.doesNotMatch(batchPrompt(), /the ranking rule/);
+  const d = draft(12);
+  d.outro = {
+    ...d.outro,
+    narration: `${d.outro.narration} Dirt racing over storm watching was the hardest call for me.`,
+  };
+  assert.ok(has(guideProblems(d, { kind: wish, evidence: [] }), /ranking talk/));
+  assert.match("I'm ranking everyday usefulness first", RANKING_TALK);
+  assert.match("I'd put portable radio ahead of a scenic detour", RANKING_TALK);
+  assert.doesNotMatch("Get ahead of the cops by cutting through the mall", RANKING_TALK);
+});
+
+test("no em dash anywhere a guide goes: hook, narration, cards, title, description, tags, pinned comment", async () => {
+  const { pinnedComment, keywordLead } = await import("../src/editorial/seo.ts");
+  const d = draft(12);
+  d.intro = {
+    narration:
+      "Tip 1 for your first hours: park before you touch the phone—it saves your car. That is the first of twelve things on this complete list, with no story spoilers at all, so you can start the right way tonight.\nNo greeting — just the list.",
+    on_screen: "Start — right",
+  };
+  d.items[1] = item(2, {
+    title: "Bank it — always",
+    chip: "Safe – money",
+    narration:
+      "Number 2 is the bank—use it. Deposit before every job. A bust takes what you carry — not what you banked. Check the app often. Then move on.",
+  });
+  d.items[1]!.moments[0] = { ...d.items[1]!.moments[0]!, show: "ATM — close up" };
+  d.description = "Twelve things — no spoilers.";
+  d.tags = ["gta 6 — tips"];
+  assert.ok(has(guideProblems(d, { kind: wish, evidence: [] }), /em dash/));
+  const sc = guideToScript(d, wish);
+  assert.doesNotMatch(JSON.stringify(sc), /—|\s–\s/);
+  assert.match(sc.hook, /phone, it saves your car\./);
+  assert.match(sc.hook, /\nNo greeting, just the list\./, "line breaks are kept");
+  // A dash becomes a comma, never a full stop, so every sentence keeps its picture.
+  assert.equal(sentencesOf(sc.beats[1]!.narration).length, sentencesOf(d.items[1]!.narration).length);
+  assert.equal(sc.beats[1]!.visual!.primary, "Bank it, always");
+  for (const k of GUIDE_KINDS) {
+    const s = guideToScript({ ...draft(k.items[0]), kind: k.key }, k);
+    for (const t of [s.youtube.title, pinnedComment(s), keywordLead(s), k.question, k.angle])
+      assert.doesNotMatch(t, /—/, k.key);
+  }
+  assert.equal(scrubDashes("a — b — c."), "a, b, c.");
+  assert.equal(scrubDashes("done—."), "done.");
+});
+
+// The twelve items of the 26 Nov proof, with the how and payoff a writer would give them.
+const PROOF_ITEMS = [
+  ["Take the radio on foot", "Plug headphones into the phone", "Music while you walk"],
+  ["Look underwater for ruins", "Dive off the coast near the keys", "Something different to see"],
+  ["Choose an on-demand podcast", "Open the podcast app on the phone", "Choose your listening"],
+  ["Go racing on a dirt track", "Drive to the dirt track", "A change of scenery from the streets"],
+  ["Listen with PS5 3D audio", "Use headphones on PS5", "Hear the city around you"],
+  ["Take a jet ski ride", "Rent one at the beach", "Explore the coast by water"],
+  ["Listen to the radio hosts", "Tune to a talk station", "It's fun to hear the hosts"],
+  ["Watch for tropical storms", "Look at the sky over Leonida", "Atmosphere you won't forget"],
+  ["Notice Vice City's art deco streets", "Walk Ocean Drive slowly", "A beautiful old district"],
+  ["Look for alligators in wetlands", "Head into the swamps", "Wildlife up close"],
+  ["Notice the DualSense haptics", "Drive over rough roads", "Feel the feedback"],
+  ["Look for a forest path", "Leave the road up north", "Change the scenery"],
+] as const;
+
+test("item quality: the proof's sightseeing, console features and trailer headlines are refused; real tips pass", () => {
+  const hidden = kindOf("hidden-features")!;
+  for (const [title, how, payoff] of PROOF_ITEMS)
+    assert.ok(itemQualityProblems({ title, how, payoff }, hidden).length > 0, title);
+  const good = [
+    {
+      title: "Bank your cash before a job",
+      how: "Open the bank app on the phone and deposit what you carry",
+      payoff: "A bust or a wipe-out never takes the money you banked",
+    },
+    {
+      title: "Duck into a car wash to lose the cops",
+      how: "Drive through any car wash while your wanted level is flashing",
+      payoff: "The search zone shrinks and you escape faster",
+    },
+    {
+      title: "Storms close the shops, so rob them after",
+      how: "Wait out a storm warning on the phone, then hit the boarded-up stores",
+      payoff: "The tills are full and the cops are slower to arrive",
+    },
+  ];
+  for (const g of good) assert.deepEqual(itemQualityProblems(g, hidden), [], g.title);
+  // No how or no payoff: refused.
+  assert.ok(itemQualityProblems({ title: "Bank your cash" }, hidden).some((p) => /what to do/.test(p)));
+  assert.ok(itemQualityProblems({ title: "Bank your cash", how: "Open the bank app" }, hidden).some((p) => /what you get/.test(p)));
+  // A console feature is fine only in the edition guide.
+  const pro = { title: "PS5 Pro gets a sharper mode", how: "Pick the performance mode in settings", payoff: "Steadier frame rate in chases" };
+  assert.ok(itemQualityProblems(pro, hidden).length > 0);
+  assert.deepEqual(itemQualityProblems(pro, kindOf("which-edition")!), []);
+});
+
+test("thin items are dropped down to the kind's minimum, and the count, intro and title follow", async () => {
+  const hidden = kindOf("hidden-features")!;
+  const goodItem = (i: number) => ({
+    title: `Bank your cash trick ${i}`,
+    how: "Open the bank app on the phone and deposit",
+    payoff: "A bust never takes the money you banked",
+    notes: "",
+    chip: "Bank it",
+  });
+  const plan = {
+    intro: { narration: "Bank your cash trick 1 before every job. These 10 hidden features come with no story spoilers.", on_screen: "x" },
+    items: [
+      ...Array.from({ length: 8 }, (_, i) => goodItem(i + 1)),
+      { title: "Look for alligators in wetlands", how: "Head into the swamps", payoff: "Wildlife up close", notes: "", chip: "Gators" },
+      { title: "Notice the DualSense haptics", how: "Drive over rough roads", payoff: "Feel the feedback", notes: "", chip: "Feel it" },
+    ],
+  };
+  const r = dropThinItems(plan, hidden);
+  assert.deepEqual(r.dropped, ["Look for alligators in wetlands", "Notice the DualSense haptics"]);
+  assert.equal(r.plan.items.length, 8);
+  assert.match(r.plan.intro.narration, /These 8 hidden features/);
+  assert.deepEqual(guidePlanProblems({ ...r.plan, items: r.plan.items.map((x) => ({ ...x, basis: "fact pack" })) }, hidden, []), []);
+  assert.equal(guideTitleFor(hidden, r.plan.items.length), "GTA 6: 8 Hidden Features Nobody Told You About (Full List)");
+  // Never below the minimum: the first thin item in spoken order fills the gap, the problems go back to the writer.
+  const short = { ...plan, items: plan.items.slice(2) };
+  const r2 = dropThinItems(short, hidden);
+  assert.equal(r2.plan.items.length, 7);
+  assert.deepEqual(r2.dropped, ["Notice the DualSense haptics"]);
+  assert.ok(has(guidePlanProblems({ ...short, items: short.items.map((x) => ({ ...x, basis: "fact pack" })) }, hidden, []), /sightseeing|console/));
+  assert.equal(withCount("All twelve things, and GTA 5 tips", 12, 8), "All eight things, and GTA 5 tips");
+  // Every count follows: the description, the outro, the kicker and the thumbnail words.
+  const full = dropThinItems(
+    {
+      ...plan,
+      description: "All 10 hidden features, no spoilers.",
+      outro: { narration: "Those are all 10 features. Bank first.", on_screen: "These 10 tricks" },
+      thumb_words: "10 SECRETS",
+    },
+    hidden,
+  ).plan;
+  assert.equal(full.description, "All 8 hidden features, no spoilers.");
+  assert.equal(full.outro.narration, "Those are all 8 features. Bank first.");
+  assert.equal(full.outro.on_screen, "These 8 tricks");
+  assert.equal(full.thumb_words, "8 SECRETS");
+  assert.deepEqual(kindOf("hidden-features")!.items, [7, 15]);
+});
+
+test("the proof never waits for the owner's footage: the sandbox switches the capture hold off", async () => {
+  const { gtaGuideProofEnv } = await import("../src/tools/gtaguide-proofenv.ts");
+  const { captureHold } = await import("../src/capture.ts");
+  const env = gtaGuideProofEnv({ data: "/tmp/d", backup: "/tmp/b" });
+  assert.equal(env.CAPTURE_CHECKLIST, "false");
+  assert.equal(env.DRY_RUN, "true");
+  assert.equal(env.DATABASE_URL, "");
+  assert.equal(env.AUTO_PUBLISH, "false");
+  const was = process.env.CAPTURE_CHECKLIST;
+  process.env.CAPTURE_CHECKLIST = env.CAPTURE_CHECKLIST;
+  try {
+    const cfg = loadConfig();
+    assert.equal(cfg.captureChecklist, false);
+    const s = {
+      cfg,
+      db: { query: async () => [{ remade: false, listed: true }] },
+      notify: async () => true,
+      now: () => NOW,
+    } as never;
+    const ep = {
+      id: "ep_x",
+      lane: "longform",
+      script_json: guideToScript(draft(12), wish),
+      publish_at: null,
+      slot_at: new Date(NOW.getTime() + 30 * 3600_000),
+    } as never;
+    assert.equal(await captureHold(s, ep), undefined);
+  } finally {
+    if (was === undefined) delete process.env.CAPTURE_CHECKLIST;
+    else process.env.CAPTURE_CHECKLIST = was;
+  }
+});
+
+test("the gates leave ordinary guide lines alone (the review's false positives)", () => {
+  const hidden = kindOf("hidden-features")!;
+  const money = kindOf("early-money")!;
+  // The baseline draft passes the count, number and ranking checks: its outro names "two things" and "two habits".
+  const base = guideProblems(draft(12), { kind: wish, evidence: [] });
+  assert.ok(!has(base, /items; the list has|says it is number|ranking talk|em dash/), base.join("\n"));
+  assert.deepEqual(countsSaid(draft().outro.narration), []);
+  for (const t of [
+    "The two items that matter most are the bank and the car wash.",
+    "This one is the first of these things.",
+    "The first three tips matter most.",
+    "You'll find 3 more tricks later.",
+    "Watch 10 seconds of tips.",
+    "Grand Theft Auto 6 features a phone.",
+    "Just remember these two things tonight.",
+    "Do all three of these things.",
+  ])
+    assert.deepEqual(countsSaid(t), [], t);
+  assert.deepEqual(countsSaid("These 12 GTA 6 features"), [12]);
+  // Ranking talk only where it ranks.
+  assert.doesNotMatch("Your wanted meter sits just below the minimap.", RANKING_TALK);
+  assert.doesNotMatch("Make the bank app top of your list on day one.", RANKING_TALK);
+  // "Your number one job" on item 3 is not a number clash; "Number 11" on item 2 is.
+  const d = draft(12);
+  d.items[2] = item(3, { narration: "Your number one job after a heist is to lose the car. Park it somewhere quiet. Walk away. Change clothes. Then go home." });
+  assert.ok(!has(guideProblems(d, { kind: wish, evidence: [] }), /says it is number/));
+  d.items[2] = item(3, { narration: "Tip eleven is the car wash. Park it somewhere quiet. Walk away. Change clothes. Then go home." });
+  assert.ok(has(guideProblems(d, { kind: wish, evidence: [] }), /says it is number 11/));
+  d.items[2] = item(3, { narration: "[curious] Number 9 is the car wash. Park it somewhere quiet. Walk away. Change clothes. Then go home." });
+  assert.ok(has(guideProblems(d, { kind: wish, evidence: [] }), /says it is number 9/));
+  // Money and real things in the game are not hardware or footage credits.
+  assert.deepEqual(
+    itemQualityProblems({ title: "Run the dock job twice a day", how: "Take the dock job from the phone", payoff: "Each run pays about $4K" }, money),
+    [],
+  );
+  assert.deepEqual(
+    itemQualityProblems({ title: "Duck into a car wash", how: "Drive through any car wash while wanted", payoff: "Cool down your wanted level twice as fast" }, hidden),
+    [],
+  );
+  assert.equal(guideGraphicKept({ kind: "stat", primary: "$1,200", secondary: "Extended clip" }, "The extended clip costs $1,200."), true);
+  assert.equal(guideGraphicKept({ kind: "stat", primary: "3 cameras", secondary: "CCTV footage" }, "Three cameras watch the till."), true);
+  assert.equal(guideGraphicKept({ kind: "stat", primary: "Jet ski", secondary: "On my stream" }, "I rode one."), false);
 });

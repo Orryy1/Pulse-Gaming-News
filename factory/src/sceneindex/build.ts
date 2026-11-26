@@ -9,7 +9,7 @@
 // Steps 3 and 4 are separate on purpose: reading and listening need only this machine, looking needs the PC's GPU.
 
 import { execFile } from "node:child_process";
-import { guardActive, guardedYt, ytGuard } from "../lib/ytguard.ts";
+import { guardActive, guardedYt, isYtPaused, ytGuard } from "../lib/ytguard.ts";
 import { signedInArgs } from "../lib/ytsignin.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
@@ -75,27 +75,33 @@ const run = (
   );
 
 /**
- * The cookies file a scene-index tool run may sign in with (pure): only the game footage fetcher's own runs,
- * `build --complete` (the turns GAME_FETCH starts), get YTDLP_COOKIES_FILE. Every other run is anonymous ("").
+ * The cookies file a scene-index tool run may sign in with (pure). Since 26 Nov 2026 (the anonymous lane is retired
+ * for good, so an anonymous build could never fetch anything; upgrade queue item 56) every build and light turn gets
+ * YTDLP_COOKIES_FILE, within the signed-in ration (src/lib/ytguard.ts): the game fetcher's and planned movies' turns
+ * as "movie", the rest as "library" (YT_PURPOSE, set by src/sceneindex/job.ts). Search, alive and the rest stay anonymous.
  */
 export function fetcherCookiesFile(command: string | undefined, complete: boolean, env: NodeJS.ProcessEnv): string {
-  return command === "build" && complete ? String(env.YTDLP_COOKIES_FILE ?? "").trim() : "";
+  void complete;
+  return command === "build" || command === "light" ? String(env.YTDLP_COOKIES_FILE ?? "").trim() : "";
 }
 
 /**
- * The game fetcher's own yt-dlp calls (its searches, its candidates' details and the chosen upload's proxy): signed
- * in with the download account's cookies when this build has them (s.cookiesFile, set only for the fetcher's
- * `build --complete` turns; src/lib/ytsignin.ts), else anonymous. Since 25 Nov 2026 a signed-in call is never made
+ * A build's yt-dlp calls (searches, candidates' details, the proxy, and the sections a build fetches when its proxy
+ * was released): signed in with the download account's cookies when this build has them (s.cookiesFile, every build
+ * and light turn since 26 Nov 2026; src/lib/ytsignin.ts), and then never anonymous. Since 25 Nov 2026 a signed-in call is never made
  * again anonymously, whatever its answer (its lane's pause, its budget, refused cookies): the guard has noted why, the
  * anonymous lane is the one YouTube refuses outright, and the fetcher simply tries again on a later turn.
  */
-async function fetcherRun(
+export async function fetcherRun(
   s: { ytdlp: string; cookiesFile?: string },
   args: string[],
   o: { cwd?: string; timeout?: number; env?: NodeJS.ProcessEnv } = {},
 ) {
   // The call's own arguments go with it: Pulse's own channel and videos are never fetched signed in (src/lib/ytown.ts).
   const signed = s.cookiesFile ? await signedInArgs({ ytdlpCookiesFile: s.cookiesFile }, undefined, undefined, args) : [];
+  // A build with cookies never goes anonymous (26 Nov 2026): cookies it cannot use now mean no call at all.
+  if (s.cookiesFile && !signed.length)
+    throw new Error("scene index: the download account's cookies cannot be used now; nothing is fetched anonymously");
   return run(s.ytdlp, [...signed, ...args], o);
 }
 
@@ -122,8 +128,8 @@ export interface BuildSettings {
   /** No source longer than this many hours (a 19-hour playthrough is 6 GB of proxy and days of the GPU). */
   maxHours: number;
   /**
-   * YTDLP_COOKIES_FILE for the game fetcher's `build --complete` turns only (fetcherCookiesFile): its searches,
-   * details and proxy download sign in with the download account. Empty or unset: anonymous.
+   * YTDLP_COOKIES_FILE for every build and light turn (fetcherCookiesFile, 26 Nov 2026): its YouTube calls sign in
+   * with the download account and never go anonymous. Empty or unset: anonymous (hand runs without cookies).
    */
   cookiesFile?: string;
 }
@@ -550,6 +556,8 @@ export async function chooseSource(
       const item = await (deps.details?.(hit) ?? uploadDetails(hit, s.ytdlp, s.cookiesFile));
       if (item) detailed.push(item);
     } catch (err) {
+      // The guard held the call back (the ration, its spacing): the next candidates would be held too.
+      if (isYtPaused(err)) break;
       log("warn", "scene index: source details failed", {
         videoId: hit.videoId,
         error: errorMessage(err),
@@ -614,8 +622,9 @@ async function ensureProxy(
     game: index.game,
     videoId: index.source.videoId,
   });
+  // Inside the job's four-hour turn (src/sceneindex/job.ts runTool), so yt-dlp never outlives the turn that asked.
   await fetcherRun(s, proxyArgs(index.source.videoId, s.proxyHeight, file), {
-    timeout: 6 * 3_600_000,
+    timeout: 3.5 * 3_600_000,
   });
   const size = (await fs.stat(file)).size;
   index.proxy = { file: "proxy.mp4", height: s.proxyHeight, bytes: size };
@@ -693,8 +702,8 @@ export function frameSource(
         if (current?.from !== from) {
           if (current) await fs.rm(current.file, { force: true }).catch(() => undefined);
           const file = path.join(work, `section_${from}.mp4`);
-          await run(
-            s.ytdlp,
+          await fetcherRun(
+            s,
             sectionArgs(index.source.videoId, from, Math.min(index.source.duration, from + SECTION_SECONDS), s.proxyHeight, file),
             { timeout: 20 * 60_000 },
           );
@@ -940,7 +949,7 @@ export async function hearInto(
     let heard: TextLine[];
     if (released) {
       const file = path.join(work, "stretch.mp4");
-      await run(s.ytdlp, sectionArgs(index.source.videoId, stretch.from, stretch.to, 360, file, "bv*[height<=360]+wa/b"), {
+      await fetcherRun(s, sectionArgs(index.source.videoId, stretch.from, stretch.to, 360, file, "bv*[height<=360]+wa/b"), {
         timeout: 30 * 60_000,
       });
       heard = (await hearStretch(file, 0, stretch.to - stretch.from, work, s, deps)).map((l) => ({
@@ -1225,11 +1234,23 @@ export async function buildStep(
     releasedOn?: string;
     /** ARCHIVE_PROXY=delete: remove the proxy once every stretch is indexed. */
     releaseProxy?: boolean;
+    /**
+     * A planned upload (src/sceneindex/movieplan.ts): the index is made from exactly this source, with no search and no
+     * details call, so the whole movie costs the signed-in lane one request (its proxy download); never replaced.
+     */
+    pinned?: SceneSource;
   } = {},
   deps: BuildDeps = {},
 ): Promise<BuildResult> {
   let index = await loadSceneIndex(s.dataDir, game);
-  if (!index || o.refreshSource) {
+  if (!index && o.pinned) {
+    index = emptySceneIndex(game, { ...o.pinned, pickedAt: (deps.now?.() ?? new Date()).toISOString() }, deps.now?.() ?? new Date());
+    const names = await (deps.names ?? gameNames)(baseGameOf(game)).catch(() => ({ cast: [], places: [] }));
+    index.cast = names.cast;
+    index.places = names.places;
+    await saveSceneIndex(s.dataDir, index);
+  }
+  if (!index || (o.refreshSource && !o.pinned)) {
     const source = await chooseSource(game, s, o, deps);
     if (!source && !index) return { did: "no-source" };
     const better = o.complete ? moreCompleteSource : betterSource;

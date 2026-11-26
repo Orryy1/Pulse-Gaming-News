@@ -10,7 +10,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import { franchisePublisher } from "./officialTrailer.ts";
 import {
   baseGameOf,
-  gameplayIndexName,
+  indexNamesFor,
   loadSceneIndex,
   sceneIndexDir,
   type SceneIndex,
@@ -92,7 +92,8 @@ export async function libraryWithIndexes(
 ): Promise<GameLibrary | undefined> {
   const lib = (await readLibrary(libraryRoot(dataDir), game)) ?? undefined;
   const items: LibItem[] = [...(lib?.items ?? [])];
-  for (const name of [game, gameplayIndexName(game)]) {
+  // The game's own index, its gameplay index and any later chapters or second playthroughs (src/sceneindex/movieplan.ts).
+  for (const name of indexNamesFor(dataDir, game)) {
     const index = await loadSceneIndex(dataDir, name).catch(() => undefined);
     if (!index) continue;
     const proxy = path.join(

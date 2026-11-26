@@ -3,7 +3,7 @@
 import { libraryRoot, libraryTrailers, readLibrary } from "./assets/gamelib.ts";
 import { sourceOf, storeSettings } from "./assets/gamelibstore.ts";
 import { readText, textBox } from "./assets/ocr.ts";
-import { gameplayIndexName, loadSceneIndex, sceneIndexDir } from "./sceneindex/schema.ts";
+import { indexNamesFor, loadSceneIndex, sceneIndexDir } from "./sceneindex/schema.ts";
 import { footageAllowed, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
 import { ReachClient } from "./reach.ts";
 import { logEvent } from "./episodes.ts";
@@ -445,7 +445,7 @@ export function createServices(db: Db, cfg: Config): Services {
           // The cutscene index and the gameplay index, each with its local proxy (never a YouTube pull here).
           sceneIndex: async (game) => {
             const out: Array<{ index: import("./sceneindex/schema.ts").SceneIndex; proxy?: string }> = [];
-            for (const name of [game, gameplayIndexName(game)]) {
+            for (const name of indexNamesFor(cfg.dataDir, game)) {
               const index = await loadSceneIndex(cfg.dataDir, name).catch(() => undefined);
               if (!index) continue;
               const proxy = path.join(sceneIndexDir(cfg.dataDir, name), index.proxy?.file || "proxy.mp4");

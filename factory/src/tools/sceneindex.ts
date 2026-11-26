@@ -61,6 +61,7 @@ import {
   type SceneIndex,
 } from "../sceneindex/schema.ts";
 import { findQuote, findShots } from "../sceneindex/lookup.ts";
+import { parsePin, pinSource } from "../sceneindex/job.ts";
 import { buildLight, pickLightSource } from "../sceneindex/light.ts";
 import { siblingsOf } from "../sceneindex/archive.ts";
 import { gameNames } from "../sceneindex/names.ts";
@@ -101,7 +102,7 @@ function settings(): BuildSettings {
     ocrFps: num(env.SCENE_INDEX_OCR_FPS, 2),
     chunkSeconds: num(env.SCENE_INDEX_CHUNK_MINUTES, 10) * 60,
     maxHours: num(env.SCENE_INDEX_MAX_HOURS, 12),
-    // The game fetcher's own turns (build --complete) alone may sign in with YTDLP_COOKIES_FILE.
+    // Every build and light turn signs in with YTDLP_COOKIES_FILE (26 Nov 2026), inside the signed-in ration.
     cookiesFile: fetcherCookiesFile(command, Boolean(flag("complete")), env),
   };
 }
@@ -464,6 +465,13 @@ async function main(): Promise<void> {
         return;
       }
       const steps = num(flag("steps"), 1000);
+      // A planned upload (src/sceneindex/movieplan.ts): the job hands its source over in SCENE_INDEX_PIN.
+      let pinned: ReturnType<typeof parsePin>;
+      try {
+        pinned = process.env.SCENE_INDEX_PIN ? parsePin(JSON.parse(process.env.SCENE_INDEX_PIN)) : undefined;
+      } catch {
+        pinned = undefined;
+      }
       for (let i = 0; i < steps; i++) {
         const t0 = Date.now();
         const r = await buildStep(
@@ -476,6 +484,7 @@ async function main(): Promise<void> {
             releasedOn: flag("released"),
             describeBatch: flag("no-describe") ? 0 : 300,
             releaseProxy: process.env.SCENE_INDEX_RELEASE_PROXY === "delete" || Boolean(flag("release-proxy")),
+            ...(pinned ? { pinned: pinSource(pinned, new Date()) } : {}),
           },
           deps,
         );

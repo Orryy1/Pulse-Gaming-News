@@ -101,6 +101,12 @@ export interface GuardSettings {
    * game fetcher (the light index, the trend feed) may take. A Short's or a long video's own pulls are not held to it.
    */
   signedClipShare: number;
+  /**
+   * YT_SIGNED_MOVIE_SHARE (default 0.5; 26 Nov 2026): the share of the day's background allowance kept for the game
+   * fetcher and covered games' movies ("fetcher", "movie"): the library, clips and the trend feed together stop at the
+   * rest, so a full movie always finds room in the day.
+   */
+  signedMovieShare: number;
   /** YT_ANON_LANE: auto (retire after failed lifts), on (never retire), off (never ask YouTube anonymously). */
   anonLane: "auto" | "on" | "off";
   /** YT_ANON_RETIRE_DAYS: how long the anonymous lane stays retired. */
@@ -145,6 +151,7 @@ export function guardSettings(
     signedShortMaxWaitMs: 8 * 60_000,
     signedLongMaxWaitMs: 15 * 60_000,
     signedClipShare: Math.min(1, num(env.YT_SIGNED_CLIP_SHARE, 0.5)),
+    signedMovieShare: Math.min(1, num(env.YT_SIGNED_MOVIE_SHARE, 0.5)),
     anonLane: anon === "on" || anon === "off" ? anon : "auto",
     anonRetireDays: num(env.YT_ANON_RETIRE_DAYS, 14),
     anonRetireAfterLiftFails: 2,
@@ -217,8 +224,20 @@ export type CallClass = "urgent" | "background";
  * that share YT_SIGNED_CLIP_SHARE of it: an age-gated clip pull (SIGNED_CLIPS), the light index (SIGNED_LIGHT_INDEX)
  * or the trend feed (TREND_FEED). Carried through the async call chain, so the callers' own runners need no change.
  */
-export type YtPurpose = "fetcher" | "clip" | "trend";
+export type YtPurpose = "fetcher" | "clip" | "trend" | "library" | "movie";
+// 26 Nov 2026 (every scene-index turn signs in now, src/sceneindex/job.ts): "movie" is a full cutscene movie or a
+// no-commentary playthrough for a covered game (a launch plan or a planned upload, src/sceneindex/movieplan.ts), the
+// most valuable background work, counted like the fetcher (other background yields to both, YT_SIGNED_MOVIE_SHARE).
+// "library" is the rest of the scene index (light turns, archive builds) and shares YT_SIGNED_CLIP_SHARE with clips
+// and trends. Background calls never wait for a slot (a Short's or long video's wait would grow behind a booking).
 const purposeStore = new AsyncLocalStorage<YtPurpose>();
+const PURPOSES: readonly YtPurpose[] = ["fetcher", "clip", "trend", "library", "movie"];
+
+/** YT_PURPOSE, set by the scene index job on its children (pure): the purpose their calls count as. */
+export function envPurpose(env: NodeJS.ProcessEnv = process.env): YtPurpose | undefined {
+  const v = String(env.YT_PURPOSE ?? "").trim().toLowerCase() as YtPurpose;
+  return PURPOSES.includes(v) ? v : undefined;
+}
 
 /** Runs `fn` with every YouTube call inside it counted as `purpose` on the signed-in lane. */
 export function withYtPurpose<T>(purpose: YtPurpose, fn: () => Promise<T>): Promise<T> {
@@ -227,7 +246,7 @@ export function withYtPurpose<T>(purpose: YtPurpose, fn: () => Promise<T>): Prom
 
 /** The purpose of the calls being made now (the fetcher when none was set). */
 export function currentYtPurpose(): YtPurpose {
-  return purposeStore.getStore() ?? "fetcher";
+  return purposeStore.getStore() ?? envPurpose() ?? "fetcher";
 }
 
 /**
@@ -290,6 +309,8 @@ export interface LaneState {
   dayBackground?: number[];
   /** Signed-in lane only: when a Short's or a long video's call last asked for the lane (what background yields to). */
   demand?: { short?: number; long?: number };
+  /** Signed-in lane only: the day's background calls by the library, clips and the trend feed (YT_SIGNED_MOVIE_SHARE). */
+  dayAux?: number[];
   /** Calls made since the last lift (or since the state began): the measured window, logged when a block starts. */
   sinceLift?: number;
   /** Calls made per UTC day, the last 14 days. */
@@ -434,6 +455,10 @@ function decideSigned(
   state.dayBackground = (state.dayBackground ?? []).filter((t) => now - t < DAY);
   const demand = (state.demand ??= {});
   if (priority !== "background") demand[priority] = now;
+  state.dayAux = (state.dayAux ?? []).filter((t) => now - t < DAY);
+  // The light index, the library, clips and the trend feed are the smaller background users; the game fetcher and a
+  // covered game's movie keep the rest of the background allowance.
+  const aux = priority === "background" && purpose !== "fetcher" && purpose !== "movie";
   let probe = false;
   if (state.block) {
     if (now < state.block.until) return { go: false, reason: "blocked", until: state.block.until };
@@ -449,12 +474,15 @@ function decideSigned(
     if (state.dayCalls.length >= daily) return { go: false, reason: "daily", until: state.dayCalls[0]! + DAY };
     if (priority !== "short" && state.dayCalls.length >= Math.floor(daily * (1 - s.signedShortReserve)))
       return { go: false, reason: "reserve", until: state.dayCalls[0]! + DAY };
-    if (priority === "background" && state.dayBackground.length >= Math.floor(daily * s.signedBackgroundShare))
+    const bgDaily = Math.floor(daily * s.signedBackgroundShare);
+    if (priority === "background" && state.dayBackground.length >= bgDaily)
       return { go: false, reason: "share", until: (state.dayBackground[0] ?? now) + DAY };
+    // The trend feed has only its hourly share: a busy day of light turns never shuts it out.
+    if (aux && purpose !== "trend" && state.dayAux.length >= Math.floor(bgDaily * (1 - s.signedMovieShare)))
+      return { go: false, reason: "share", until: (state.dayAux[0] ?? now) + DAY };
   }
   // The light index and the trend feed share YT_SIGNED_CLIP_SHARE of the hour among background users; the game
   // fetcher keeps the rest.
-  const aux = priority === "background" && purpose !== "fetcher";
   if (aux && hourly > 0 && state.auxCalls.length >= Math.floor(hourly * s.signedClipShare))
     return { go: false, reason: "share", until: (state.auxCalls[0] ?? now) + HOUR };
   const asked = (p: "short" | "long") => demand[p] !== undefined && now - demand[p]! < DEMAND_MS;
@@ -463,7 +491,11 @@ function decideSigned(
   if (priority === "long" && asked("short")) return { go: false, reason: "queue", until: demand.short! + DEMAND_MS };
   const at = Math.max(now, state.nextAt);
   const maxWait =
-    priority === "short" ? s.signedShortMaxWaitMs : priority === "long" ? s.signedLongMaxWaitMs : 0;
+    priority === "short"
+      ? s.signedShortMaxWaitMs
+      : priority === "long"
+        ? s.signedLongMaxWaitMs
+        : 0;
   if (at - now > maxWait) return { go: false, reason: "busy", until: at };
   state.nextAt = at + s.signedMinGapMs * (1 + 0.5 * rand);
   state.calls.push(at);
@@ -472,7 +504,10 @@ function decideSigned(
     state.backgroundCalls.push(at);
     state.dayBackground.push(at);
   }
-  if (aux) state.auxCalls.push(at);
+  if (aux) {
+    state.auxCalls.push(at);
+    if (purpose !== "trend") state.dayAux.push(at);
+  }
   if (probe) state.probeAt = now;
   countCall(state, at);
   return { go: true, at, probe };
@@ -1002,6 +1037,7 @@ function readState(file: string): GuardState {
               auxCalls: Array.isArray(j.signed.auxCalls) ? j.signed.auxCalls : [],
               dayCalls: Array.isArray(j.signed.dayCalls) ? j.signed.dayCalls : [],
               dayBackground: Array.isArray(j.signed.dayBackground) ? j.signed.dayBackground : [],
+              dayAux: Array.isArray(j.signed.dayAux) ? j.signed.dayAux : [],
             }
           : undefined,
       failures: j.failures && typeof j.failures === "object" ? j.failures : undefined,
@@ -1067,6 +1103,11 @@ export interface YtGuard {
     fn: () => Promise<T>,
     o?: GuardRunOptions,
   ): Promise<T>;
+  /**
+   * A flat search answered by the Data API only (its cache, then the day's API allowance at `priority`), in yt-dlp's
+   * own shape; undefined when the API cannot answer. Never a page request (src/sceneindex/movieplan.ts).
+   */
+  apiOnlySearch(args: readonly string[], priority?: YtPriority): Promise<string | undefined>;
   /** True when an anonymous call could go now: the lane is neither retired nor paused (read without the lock). */
   anonOpen(): boolean;
   /** Sends the queued Discord lines, each once. */
@@ -1354,6 +1395,13 @@ export function createYtGuard(io: GuardIo): YtGuard {
         await afterSignIn(lane, staleCookies ? "cookies" : outcome, args);
       }
     },
+    async apiOnlySearch(args, priority = "background") {
+      const hit = fromCache<{ stdout: string; stderr: string }>(args, true);
+      if (hit) return String(hit.stdout);
+      const out = await searchViaApi(args, io.settings(), priority);
+      if (out !== undefined) keep(args, { stdout: out }, true);
+      return out;
+    },
     needsSignIn(videoId) {
       return needsSignInNow(readState(stateFile()), videoId, io.now());
     },
@@ -1428,6 +1476,12 @@ export function onYtGuardAlert(fn: (text: string) => unknown): void {
   if (!guardActive()) return;
   void flushNow();
   setInterval(() => void flushNow(), 60_000).unref();
+}
+
+/** A Data API search through this process's guard (undefined when the guard is off or the API cannot answer). */
+export function guardedApiSearch(args: readonly string[], priority: YtPriority = "background"): Promise<string | undefined> {
+  if (!guardActive()) return Promise.resolve(undefined);
+  return ytGuard.apiOnlySearch(args, priority);
 }
 
 /** A yt-dlp call through this process's guard (or straight through when the guard is off). */

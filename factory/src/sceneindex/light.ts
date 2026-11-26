@@ -12,8 +12,8 @@
 // text reading) stays an upgrade for the few games where precision matters (src/sceneindex/archive.ts).
 
 import { execFile, spawn } from "node:child_process";
-import { guardedYt } from "../lib/ytguard.ts";
-import { envSwitch, signedPull, type SignedPullOptions } from "../lib/ytsignin.ts";
+import { guardedYt, isYtPaused } from "../lib/ytguard.ts";
+import { envCookiesFile, envSwitch, signedPull, type SignedPullOptions } from "../lib/ytsignin.ts";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -456,7 +456,9 @@ export interface LightSettings {
  * Comments and everything else stay anonymous; Pulse's own videos are never signed in (src/lib/ytsignin.ts).
  */
 export function lightSignedOptions(env: NodeJS.ProcessEnv = process.env): SignedPullOptions {
-  return { enabled: envSwitch("SIGNED_LIGHT_INDEX", env), what: "light index", purpose: "clip" };
+  // A scene-index light turn with the download account's cookies (src/sceneindex/job.ts, 26 Nov 2026) signs in only.
+  const signedOnly = Boolean(envCookiesFile(env));
+  return { enabled: signedOnly || envSwitch("SIGNED_LIGHT_INDEX", env), what: "light index", purpose: signedOnly ? "library" : "clip", signedOnly };
 }
 
 async function ytJson(
@@ -566,6 +568,9 @@ async function fetchComments(
   ytdlp: string,
 ): Promise<Array<{ text: string; likes?: number }>> {
   if (max <= 0) return [];
+  // A signed-in light turn reads no comments: the comment reader pages through many requests, and the turn makes no
+  // anonymous call (26 Nov 2026).
+  if (envCookiesFile()) return [];
   const info = await ytJson(
     ytdlp,
     [
@@ -772,6 +777,9 @@ export async function buildLight(
     const words = await (
       deps.captions ?? ((id, i, w) => fetchCaptions(id, i, w, s.ytdlp))
     )(source.videoId, info, work).catch((err) => {
+      // The guard held the captions back (the signed-in ration's gap after the details call): the turn waits and the
+      // next one, its details cached, asks only for the captions. A light index is never saved without them for that.
+      if (isYtPaused(err)) throw err;
       log("warn", "light index: no captions", {
         game,
         error: errorMessage(err),

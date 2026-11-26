@@ -1250,6 +1250,8 @@ export interface Config {
   gameFetchHours: number; // GAME_FETCH_HOURS: hours between searches from release until a clean upload is found
   gameFetchRecheckHours: number; // GAME_FETCH_RECHECK_HOURS: hours between looks for a longer or better upload
   gameFetchRecheckDays: number; // GAME_FETCH_RECHECK_DAYS: days after release the looks go on (at least the spoiler window)
+  moviePlan: boolean; // MOVIE_PLAN (default on): the owner's and the calendar's games get later movie chapters and clean playthroughs planned (src/sceneindex/movieplan.ts)
+  gameFetchCleanChannels: string; // GAME_FETCH_CLEAN_CHANNELS: no-commentary channels the planner prefers (comma separated)
   /**
    * ARCHIVE_BACKLOG: the curated evergreen archive (src/sceneindex/archive.ts): a light index (captions, chapters,
    * storyboard frames, comments; no video downloaded) for every backlog game, one at a time, at night; needs SCENE_INDEX.
@@ -2591,6 +2593,8 @@ export function loadConfig(): Config {
     gameFetchHours: Math.max(1, int("GAME_FETCH_HOURS", 3)),
     gameFetchRecheckHours: Math.max(6, int("GAME_FETCH_RECHECK_HOURS", 24)),
     gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
+    moviePlan: bool("MOVIE_PLAN", true),
+    gameFetchCleanChannels: str("GAME_FETCH_CLEAN_CHANNELS", ""),
     archiveBacklog: bool("ARCHIVE_BACKLOG", false),
     archiveFullTop: Math.max(0, int("ARCHIVE_FULL_TOP", 15)),
     archiveHours: str("ARCHIVE_HOURS", "22-7"),

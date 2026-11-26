@@ -14,7 +14,7 @@
 // GAME_FETCH_TITLES and the filed games), so a validator deep inside a writer can ask without new plumbing.
 
 import { findQuote } from "./lookup.ts";
-import { sceneSlug, type SceneIndex } from "./schema.ts";
+import { baseGameOf, sceneSlug, type SceneIndex } from "./schema.ts";
 
 export interface SpoilerWindow {
   game: string;
@@ -122,7 +122,8 @@ export function windowFor(
   now: Date,
 ): SpoilerWindow | undefined {
   if (!game?.trim()) return undefined;
-  const slug = sceneSlug(game);
+  // A gameplay index or a later chapter's index ("Grand Theft Auto VI (movie 2)") is under its game's window.
+  const slug = sceneSlug(baseGameOf(game.trim()));
   return windows.find(
     (w) => windowOpen(w, now) && w.aliases.some((a) => sceneSlug(a) === slug),
   );
@@ -139,12 +140,16 @@ export function mentionsGame(w: SpoilerWindow, text: string): boolean {
 
 // ---------------------------------------------------------------- the story position of footage
 
-/** True when a moment of the index's source is in the opening of the story. */
+/**
+ * True when a moment of the index's source is in the opening of the story. A source tagged as past the opening (a later
+ * chapter's movie or part, src/sceneindex/movieplan.ts) has no opening at all: the whole upload is held.
+ */
 export function inOpening(
   index: Pick<SceneIndex, "source">,
   at: number,
   share: number,
 ): boolean {
+  if (index.source.spoiler) return false;
   return index.source.duration > 0 && at <= index.source.duration * share;
 }
 

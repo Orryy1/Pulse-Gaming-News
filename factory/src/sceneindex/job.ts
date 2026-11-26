@@ -16,7 +16,7 @@ import { errorMessage, log } from "../lib/util.ts";
 import type { Config } from "../config.ts";
 import type { LaunchEntry } from "../discovery/launches.ts";
 import type { CalendarEntry } from "../calendar.ts";
-import { sceneIndexDir, sceneSlug } from "./schema.ts";
+import { baseGameOf, isGameplayIndex, sceneIndexDir, sceneSlug, type SceneSource } from "./schema.ts";
 
 export interface QueuedGame {
   game: string;
@@ -30,6 +30,82 @@ export interface QueuedGame {
   state?: "building" | "waiting" | "no-source" | "done";
   /** GAME_FETCH (src/sceneindex/gamefetch.ts): the launch fetcher's plan for a big release. */
   fetch?: FetchPlan;
+  /**
+   * A planned upload (src/sceneindex/movieplan.ts, 26 Nov 2026): a later movie chapter or a clean playthrough chosen
+   * from the Data API's search. Built from exactly this source (no search, no details call: one signed-in request for
+   * its proxy), never replaced by a recheck, and ahead of light turns. Wins over the launch plan on the same entry.
+   */
+  pin?: PinnedUpload;
+}
+
+/** A planned upload as the queue keeps it. */
+export interface PinnedUpload {
+  videoId: string;
+  title: string;
+  uploader: string;
+  /** Seconds. */
+  duration: number;
+  kind: SceneSource["kind"];
+  /** The movie's chapter (2 and up for a later chapter's index). */
+  chapter?: number;
+  /** The whole upload is past the story's opening: held during the spoiler window. */
+  spoiler?: boolean;
+  /** Its place in the queue (higher first), below the owner's own launch plan. */
+  priority: number;
+  plannedAt: string;
+  /** Why the planner chose it, for the log and the weekly report. */
+  why?: string;
+}
+
+/** A planned upload from the queue or the build's SCENE_INDEX_PIN (pure); undefined when it is not one. */
+export function parsePin(raw: unknown): PinnedUpload | undefined {
+  const p = raw as Partial<PinnedUpload> | null;
+  if (!p || typeof p !== "object" || !/^[\w-]{11}$/.test(String(p.videoId ?? ""))) return undefined;
+  const duration = Number(p.duration);
+  if (!Number.isFinite(duration) || duration <= 0) return undefined;
+  return {
+    videoId: String(p.videoId),
+    title: String(p.title ?? ""),
+    uploader: String(p.uploader ?? ""),
+    duration,
+    kind: p.kind === "playthrough" ? "playthrough" : "movie",
+    ...(Number.isInteger(p.chapter) && p.chapter! >= 1 ? { chapter: p.chapter } : {}),
+    ...(p.spoiler === true ? { spoiler: true } : {}),
+    priority: Number.isFinite(Number(p.priority)) ? Number(p.priority) : 0,
+    plannedAt: String(p.plannedAt ?? ""),
+    ...(typeof p.why === "string" && p.why ? { why: p.why } : {}),
+  };
+}
+
+/** The source a planned upload's index is made from (pure). */
+export function pinSource(p: PinnedUpload, now: Date): SceneSource {
+  return {
+    videoId: p.videoId,
+    title: p.title,
+    uploader: p.uploader,
+    duration: p.duration,
+    kind: p.kind,
+    pickedAt: now.toISOString(),
+    ...(p.chapter ? { chapter: p.chapter } : {}),
+    ...(p.spoiler ? { spoiler: true } : {}),
+  };
+}
+
+/** A queued game's place in the turn order (pure): its launch plan's or planned upload's priority, else 0. */
+export function jobPriority(g: QueuedGame): number {
+  return Math.max(g.fetch?.priority ?? 0, g.pin?.priority ?? 0);
+}
+
+/**
+ * True when other planned uploads carry this game's story on (pure): a launch plan whose later chapters are planned
+ * keeps the chapter it has, so the daily look for "a longer or better upload" never swaps it for a whole-story upload.
+ */
+export function hasPlannedParts(queue: SceneQueue, g: QueuedGame): boolean {
+  const kind = isGameplayIndex(g.game) ? "playthrough" : "movie";
+  const base = sceneSlug(baseGameOf(g.game));
+  return queue.games.some(
+    (x) => x !== g && x.pin?.kind === kind && sceneSlug(baseGameOf(x.game)) === base,
+  );
 }
 
 /** How the launch fetcher looks for a big release's uploads (GAME_FETCH). */
@@ -83,7 +159,13 @@ export function parseQueue(raw: unknown): SceneQueue {
         typeof g.game === "string" &&
         g.game.trim() &&
         typeof g.requestedAt === "string",
-    ),
+    ).map((g) => {
+      if (g.pin === undefined) return g;
+      const pin = parsePin(g.pin);
+      const { pin: _drop, ...rest } = g;
+      void _drop;
+      return pin ? { ...rest, pin } : rest;
+    }),
   };
 }
 
@@ -201,9 +283,11 @@ const HOUR = 3_600_000;
 export function nextJob(queue: SceneQueue, now: Date): QueuedGame | undefined {
   // A launch plan (GAME_FETCH) waits for release, searches every few hours and goes in its priority's order.
   const ready = queue.games.filter((g) => {
-    if (g.fetch?.notBefore && now.getTime() < Date.parse(g.fetch.notBefore)) return false;
-    if (g.state === "done") return sourceRecheckDue(g, now);
+    if (!g.pin && g.fetch?.notBefore && now.getTime() < Date.parse(g.fetch.notBefore)) return false;
+    // A planned upload is built once and kept; a launch plan with planned later chapters keeps its chapter.
+    if (g.state === "done") return !g.pin && !hasPlannedParts(queue, g) && sourceRecheckDue(g, now);
     const since = g.lastTry ? now.getTime() - Date.parse(g.lastTry) : Infinity;
+    if (g.state === "no-source" && g.pin) return false;
     if (g.state === "no-source")
       return g.fetch
         ? now.getTime() <= Date.parse(g.fetch.recheckUntil) && since >= g.fetch.searchEveryHours * HOUR
@@ -211,7 +295,7 @@ export function nextJob(queue: SceneQueue, now: Date): QueuedGame | undefined {
     if (g.state === "waiting") return since >= HOUR / 2;
     return true;
   });
-  return ready.sort((a, b) => (b.fetch?.priority ?? 0) - (a.fetch?.priority ?? 0))[0];
+  return ready.sort((a, b) => jobPriority(b) - jobPriority(a))[0];
 }
 
 /** A finished index is checked for a better source once a week for this long after it was asked for. */
@@ -223,7 +307,7 @@ export const RECHECK_DAYS = 45;
  * from the movie that follows). After that the index is left alone.
  */
 export function sourceRecheckDue(g: QueuedGame, now: Date): boolean {
-  if (g.state !== "done" || !g.lastTry) return false;
+  if (g.state !== "done" || !g.lastTry || g.pin) return false;
   // A launch plan looks daily (GAME_FETCH_RECHECK_HOURS) for a longer or better upload while people finish the game.
   if (g.fetch)
     return (
@@ -243,6 +327,11 @@ export function afterTurn(
   game: string,
   outcome: string,
   now: Date,
+  /**
+   * Whether a planned upload's "waiting" counts towards giving it up: only while its proxy is not yet fetched (the
+   * download is what a removed or private upload fails), never for the vision model being down or the Mac busy.
+   */
+  pinWaitCounts = true,
 ): SceneQueue {
   const slug = sceneSlug(game);
   const state: QueuedGame["state"] =
@@ -254,18 +343,29 @@ export function afterTurn(
           ? "building"
           : "waiting";
   return {
-    games: queue.games.map((g) =>
-      sceneSlug(g.game) === slug
-        ? {
-            ...g,
-            state,
-            lastTry: now.toISOString(),
-            tries: state === "no-source" ? (g.tries ?? 0) + 1 : g.tries,
-          }
-        : g,
-    ),
+    games: queue.games.map((g) => {
+      if (sceneSlug(g.game) !== slug) return g;
+      // A planned upload counts its turns that got nowhere (removed, private, refused): after PIN_MAX_TRIES it is
+      // given up ("no-source", never ready again); any progress starts the count again.
+      if (g.pin && state === "waiting") {
+        const tries = (g.tries ?? 0) + (pinWaitCounts ? 1 : 0);
+        return { ...g, state: tries >= PIN_MAX_TRIES ? "no-source" : state, lastTry: now.toISOString(), tries };
+      }
+      return {
+        ...g,
+        state,
+        lastTry: now.toISOString(),
+        tries: state === "no-source" ? (g.tries ?? 0) + 1 : g.pin ? 0 : g.tries,
+      };
+    }),
   };
 }
+
+/**
+ * Turns a planned upload may end "waiting" in a row before it is given up: the signed-in lane's longest pause (48
+ * hours) at a turn every half hour, and a day more.
+ */
+export const PIN_MAX_TRIES = 150;
 
 /** The last outcome word in a build's output ("stretch", "described", "done", "waiting", "no-source"); "" when none. */
 export function turnOutcome(stdout: string): string {
@@ -400,12 +500,33 @@ export async function requestSceneIndexes(
 /** Free disk above the floor a turn needs, GB: a proxy download for a launch plan, a proxy for anything else. */
 export const LAUNCH_PROXY_MARGIN_GB = 3;
 export const PROXY_MARGIN_GB = 6;
+/** A 480p proxy's size an hour of source, GB (GTA VI's 2.7-hour movie: 0.97 GB), rounded up. */
+export const PROXY_GB_PER_HOUR = 0.4;
+/** A launch plan at this priority or above (the owner's titles, the calendar) is a covered game's high-value work. */
+export const HIGH_VALUE_PRIORITY = 40;
+/** On the PC the D: drive keeps this much free whatever the turn (owner, 15 Nov: Lore Lodge stops at 300). */
+export const PC_D_MIN_FREE_GB = 320;
+
+/** Free disk above the floor a turn must fetch its proxy into (pure): a planned upload's by its length. */
+export function proxyMarginGb(g: QueuedGame): number {
+  if (g.pin) return Math.max(LAUNCH_PROXY_MARGIN_GB, Math.ceil((g.pin.duration / 3600) * PROXY_GB_PER_HOUR) + 1);
+  return g.fetch ? LAUNCH_PROXY_MARGIN_GB : PROXY_MARGIN_GB;
+}
+
+/**
+ * A covered game's full movie or playthrough (26 Nov 2026, owner: high-value background): a planned upload, or a
+ * launch plan for the owner's titles or the calendar. It goes before light turns whenever the disk allows.
+ */
+export function highValue(g: QueuedGame): boolean {
+  return Boolean(g.pin) || (g.fetch?.priority ?? 0) >= HIGH_VALUE_PRIORITY;
+}
 
 /** Whether a queued game's next turn is the light index (ARCHIVE_BACKLOG, src/sceneindex/light.ts): no video at all. */
 export function isLightTurn(g: QueuedGame, archiveBacklog: boolean, hasIndex: boolean): boolean {
   return (
     archiveBacklog &&
     !g.fetch &&
+    !g.pin &&
     !g.reason.startsWith("archive: full") &&
     g.state !== "done" &&
     !hasIndex
@@ -431,6 +552,10 @@ export function pickTurn(
     archiveBacklog: boolean;
     hasIndex: (g: QueuedGame) => boolean;
     hasProxy: (g: QueuedGame) => boolean;
+    /** The last turn was a covered game's movie: a ready light turn goes now, so neither starves the other. */
+    lastHighValue?: boolean;
+    /** On the PC: D:'s free space, GB; a proxy must leave PC_D_MIN_FREE_GB after it. */
+    pcFreeGb?: number;
   },
 ): { job?: QueuedGame; light?: boolean; blocked?: QueuedGame } {
   // Every ready game, in the order nextJob would give them.
@@ -443,18 +568,28 @@ export function pickTurn(
     rest = { games: rest.games.filter((x) => x !== g) };
   }
   const light = ready.filter((g) => isLightTurn(g, o.archiveBacklog, o.hasIndex(g)));
-  if (light.length && o.freeGb >= o.floorGb) return { job: light[0], light: true };
+  const fits = (g: QueuedGame) => {
+    const margin = o.hasProxy(g) ? 0 : proxyMarginGb(g);
+    return o.freeGb >= o.floorGb + margin && (margin === 0 || (o.pcFreeGb ?? Infinity) - margin >= PC_D_MIN_FREE_GB);
+  };
+  // 26 Nov 2026: 20-26 Nov light turns took every turn and GTA VI's movie and gameplay plans got none. A covered game's
+  // full movie or playthrough now goes first when the disk lets it, every other turn while light turns are waiting.
+  const lightReady = light.length > 0 && o.freeGb >= o.floorGb;
+  const first = ready.find((g) => !light.includes(g) && highValue(g) && fits(g));
+  if (first && !(o.lastHighValue && lightReady)) return { job: first, light: false };
+  if (lightReady) return { job: light[0], light: true };
   let blocked: QueuedGame | undefined;
   for (const g of ready) {
     if (light.includes(g)) continue;
-    const margin = o.hasProxy(g) ? 0 : g.fetch ? LAUNCH_PROXY_MARGIN_GB : PROXY_MARGIN_GB;
-    if (o.freeGb >= o.floorGb + margin) return { job: g, light: false };
+    if (fits(g)) return { job: g, light: false };
     blocked ??= g;
   }
   return { blocked: blocked ?? light[0] };
 }
 
 let running = false;
+/** Whether this process's last turn was a covered game's movie (pickTurn alternates it with light turns). */
+let lastHighValue = false;
 
 /** One turn's child process: its output and exit code (75: the Mac's turn-taker gave no turn). */
 function runTool(c: string, a: string[], e: NodeJS.ProcessEnv): Promise<{ stdout: string; code: number }> {
@@ -494,6 +629,9 @@ export async function sceneIndexTick(
   deps: {
     now?: () => Date;
     freeGb?: () => Promise<number>;
+    /** On the PC: the D: drive's free space, GB (PC_D_MIN_FREE_GB). */
+    pcFreeGb?: () => Promise<number>;
+    platform?: string;
     run?: (
       cmd: string,
       args: string[],
@@ -520,8 +658,22 @@ export async function sceneIndexTick(
       })
     )().catch(() => Infinity);
     const has = (g: QueuedGame, file: string) => fs.existsSync(path.join(sceneIndexDir(cfg.dataDir, g.game), file));
+    // The PC keeps D: above its floor (big downloads and libraries live there): below it, no turn that fetches a proxy.
+    const platform = deps.platform ?? process.platform;
+    const pcFree =
+      platform === "win32"
+        ? await (
+            deps.pcFreeGb ??
+            (async () => {
+              const s = await fsp.statfs("D:/");
+              return (s.bavail * s.bsize) / 1e9;
+            })
+          )().catch(() => Infinity)
+        : Infinity;
     const picked = pickTurn(queue, now(), {
       freeGb: free,
+      pcFreeGb: pcFree,
+      lastHighValue,
       floorGb: cfg.macMinFreeGb,
       archiveBacklog: Boolean(cfg.archiveBacklog),
       hasIndex: (g) => has(g, "index.json"),
@@ -536,7 +688,11 @@ export async function sceneIndexTick(
       return undefined;
     }
     const job = picked.job;
+    lastHighValue = highValue(job);
     const macrun = path.join(os.homedir(), "orch", "macrun.sh");
+    // Every turn signs in since 26 Nov 2026 (the anonymous lane is retired, so an anonymous turn fetched nothing):
+    // within the signed-in ration, a covered game's movie as "movie", everything else as "library" (src/lib/ytguard.ts).
+    const cookies = cfg.ytdlpCookiesFile ?? "";
     // ARCHIVE_BACKLOG (src/sceneindex/light.ts): a game a video asked for gets the light index first, built in a
     // minute from what YouTube serves without the video; the full build is for launch plans and the archive's top.
     if (picked.light) {
@@ -549,7 +705,7 @@ export async function sceneIndexTick(
         `--comments=${cfg.archiveComments ?? 300}`,
         ...(job.recentRelease ? ["--recent"] : []),
       ]);
-      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background", YTDLP_COOKIES_FILE: "" });
+      const lr = await (deps.run ?? runTool)(lc, la, { ...process.env, DATA_DIR: cfg.dataDir, YTDLP_PATH: cfg.ytdlpPath, MACRUN_WAIT_MIN: "20", YT_CLASS: "background", YT_PURPOSE: "library", YTDLP_COOKIES_FILE: cookies });
       const lightOut = lr.code === 75 ? "waiting" : turnOutcome(lr.stdout) || "waiting";
       await updateQueue(cfg.dataDir, (q) => afterTurn(q, job.game, lightOut, now()));
       log("info", "scene index: light turn finished", { game: job.game, outcome: lightOut });
@@ -567,8 +723,9 @@ export async function sceneIndexTick(
         job.game,
         `--steps=${cfg.sceneIndexTurnSteps}`,
         ...(job.recentRelease ? ["--recent"] : []),
-        ...(job.state === "done" ? ["--refresh"] : []),
-        ...(job.fetch ? ["--complete", ...(job.fetch.notBefore ? [`--released=${job.fetch.notBefore.slice(0, 10)}`] : [])] : []),
+        // A planned upload is built from its own source (SCENE_INDEX_PIN below): no refresh, no launch search.
+        ...(!job.pin && job.state === "done" ? ["--refresh"] : []),
+        ...(!job.pin && job.fetch ? ["--complete", ...(job.fetch.notBefore ? [`--released=${job.fetch.notBefore.slice(0, 10)}`] : [])] : []),
       ],
     );
     const env = {
@@ -583,9 +740,11 @@ export async function sceneIndexTick(
       MACRUN_WAIT_MIN: "20",
       // Library work: the YouTube guard gives it the background share and pauses it first (src/lib/ytguard.ts).
       YT_CLASS: "background",
-      // The download account's cookies go to the game fetcher's own turns only (a launch plan, built with
-      // --complete); every other build stays anonymous (src/lib/ytsignin.ts).
-      YTDLP_COOKIES_FILE: job.fetch ? (cfg.ytdlpCookiesFile ?? "") : "",
+      // The download account's cookies go to every build, inside the signed-in ration: a covered game's movie (a launch
+      // plan or a planned upload) as "movie", the rest as "library" (src/lib/ytguard.ts, src/lib/ytsignin.ts).
+      YTDLP_COOKIES_FILE: cookies,
+      YT_PURPOSE: job.fetch || job.pin ? "movie" : "library",
+      ...(job.pin ? { SCENE_INDEX_PIN: JSON.stringify(job.pin) } : {}),
       // ARCHIVE_PROXY=delete: the build removes the proxy once every stretch is indexed.
       ...(cfg.archiveProxy === "delete" ? { SCENE_INDEX_RELEASE_PROXY: "delete" } : {}),
     };
@@ -593,7 +752,8 @@ export async function sceneIndexTick(
     // Exit 75 is the turn-taker saying a render had the Mac the whole time: wait, it is not a failure.
     const outcome =
       r.code === 75 ? "waiting" : turnOutcome(r.stdout) || "waiting";
-    await updateQueue(cfg.dataDir, (q) => afterTurn(q, job.game, outcome, now()));
+    const pinWaitCounts = r.code !== 75 && !has(job, "proxy.mp4");
+    await updateQueue(cfg.dataDir, (q) => afterTurn(q, job.game, outcome, now(), pinWaitCounts));
     log("info", "scene index: turn finished", {
       game: job.game,
       outcome,

@@ -600,6 +600,8 @@ export function testConfig(
     gameFetchHours: 3,
     gameFetchRecheckHours: 24,
     gameFetchRecheckDays: 28,
+    moviePlan: false,
+    gameFetchCleanChannels: "",
     archiveBacklog: false,
     archiveFullTop: 15,
     archiveHours: "22-7",

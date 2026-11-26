@@ -274,3 +274,59 @@ test("Whisper's own spelling of the same sounds is no voice fault: Mount Kalaga 
   assert.notEqual(soundKey(["kalaga"]), soundKey(["kaluga"]));
   assert.notEqual(soundKey(["city"]), soundKey(["kity"]));
 });
+
+// Cyberpunk 2077 documentary, 25 Nov 2026: three false alarms that cost a second voicing of a 35-minute film.
+test("money with a scale word is one figure, as the voice reads it", () => {
+  const c = checkNarration(
+    say("sales of one point eight five billion dollars in a year"),
+    say("sales of $1.85 billion in a year"),
+  );
+  assert.equal(c.ok, true, JSON.stringify(c.issues));
+  // A plain price is still a price, and a changed figure is still a fault.
+  assert.equal(
+    checkNarration(say("it costs one dollar eighty-five"), say("it costs $1.85")).ok,
+    true,
+  );
+  assert.equal(
+    checkNarration(
+      say("sales of one point eight five billion dollars in a year"),
+      say("sales of $1.95 billion in a year"),
+    ).ok,
+    false,
+  );
+});
+
+test("initials written with full stops match the letters heard", () => {
+  const c = checkNarration(
+    say("the A. V. Club gave it a pass"),
+    say("the AV Club gave it a pass"),
+  );
+  assert.equal(c.ok, true, JSON.stringify(c.issues));
+});
+
+test("PCGamesN is respelt for the voice and still matches", async () => {
+  const { speakable } = await import("../src/voice/speakable.ts");
+  assert.match(speakable("PCGamesN said so"), /PC Games N said so/);
+  assert.equal(
+    checkNarration(say("PC Games N said so"), say("PCGamesN said so")).ok,
+    true,
+  );
+});
+
+test("captions show PCGamesN as written after the respelling", async () => {
+  const { speakable } = await import("../src/voice/speakable.ts");
+  const { displayWords } = await import("../src/render/timeline.ts");
+  assert.ok(typeof displayWords === "function");
+  const words = say(speakable("PCGamesN said so"));
+  assert.equal(
+    displayWords(words).map((w: { text: string }) => w.text).join(" "),
+    "PCGamesN said so",
+  );
+});
+
+test("a trillion figure is not joined, so its old unit pardon still holds", () => {
+  assert.equal(
+    checkNarration(say("about five trillion dollars here"), say("about $5 trillion here")).ok,
+    true,
+  );
+});

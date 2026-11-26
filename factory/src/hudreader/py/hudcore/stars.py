@@ -89,7 +89,7 @@ def _row(found, size):
     return sorted(best)
 
 
-def _slot_score(c, cx, cy, size, jitter):
+def _slot_score(c, cx, cy, size, jitter, lighter_only=False):
     """How star-like the slot at (cx, cy) is: (white score, grey score). The star's own colour is taken from the
     slot's middle, and a star pixel is one of that colour that differs from what surrounds the slot, so white,
     grey (and a new game's coloured) stars all read, whatever the picture behind them."""
@@ -110,10 +110,43 @@ def _slot_score(c, cx, cy, size, jitter):
     bg = int(np.median(far))
     if abs(centre - bg) < 30 or centre < 55:
         return 0.0, 0.0
+    # GTA VI draws its empty slots as dark see-through stars: a star darker than what is behind it is an empty slot.
+    if lighter_only and centre < bg:
+        return 0.0, 0.0
     m = ((np.abs(v - centre) < 28) & (hsv[..., 1] < 90)).astype(np.float32)
     t = star_template(size).astype(np.float32) * 2 - 1
     score = float(cv2.matchTemplate(m, t, cv2.TM_CCOEFF_NORMED).max())
     return (score, 0.0) if centre >= 200 else (0.0, score)
+
+
+def _outline_score(c, cx, cy, size, jitter):
+    """How much the slot looks like a star drawn as a thin light outline with a see-through middle (GTA VI's level
+    while the police search): at the best small shift, the share of the star's edge that is light, less the share of
+    its middle that is. Light is judged against the slot's own surroundings, so a bright sky is not one big outline."""
+    half = size // 2 + jitter + 4
+    x0, y0 = int(round(cx)) - half, int(round(cy)) - half
+    x1, y1 = x0 + 2 * half, y0 + 2 * half
+    if x0 < 0 or y0 < 0 or x1 > c.shape[1] or y1 > c.shape[0]:
+        return 0.0
+    hsv = cv2.cvtColor(c[y0:y1, x0:x1], cv2.COLOR_BGR2HSV)
+    v = hsv[..., 2].astype(np.int16)
+    lit = ((v >= max(150, int(np.median(v)) + 60)) & (hsv[..., 1] < 70)).astype(np.uint8)
+    near = cv2.dilate(lit, np.ones((3, 3), np.uint8)).astype(bool)
+    t = star_template(size)
+    edge = (t - cv2.erode(t, np.ones((3, 3), np.uint8))).astype(bool)
+    inner = cv2.erode(t, np.ones((7, 7), np.uint8)).astype(bool)
+    if not edge.any() or not inner.any():
+        return 0.0
+    best = 0.0
+    for dy in range(-jitter, jitter + 1):
+        for dx in range(-jitter, jitter + 1):
+            ox, oy = half - size // 2 + dx, half - size // 2 + dy
+            nw = near[oy:oy + size, ox:ox + size]
+            lw = lit[oy:oy + size, ox:ox + size].astype(bool)
+            if nw.shape != t.shape:
+                continue
+            best = max(best, float(nw[edge].mean()) - float(lw[inner].mean()))
+    return best
 
 
 def read_slots(frame, profile):
@@ -125,21 +158,33 @@ def read_slots(frame, profile):
     thr = profile.get("wanted", "minScore", default=0.7)
     jitter = max(2, size // 8)
     rows = sl["y"] if isinstance(sl["y"], list) else [sl["y"]]
+    # GTA V fills its slots from the left; GTA VI from the right ("fill": "right").
+    from_right = profile.get("wanted", "fill", default="left") == "right"
+    lighter_only = bool(profile.get("wanted", "emptyDarker", default=False))
+    outlines = bool(profile.get("wanted", "outlines", default=False))
+    outline_min = float(profile.get("wanted", "outlineMin", default=0.8))
     best = {"stars": 0, "dim": 0, "score": 0.0, "slots": "-" * len(sl["x"])}
     for fy in rows:
         marks = []
         for fx in sl["x"]:
-            w, g = _slot_score(frame, fx * W, fy * H, size, jitter)
+            w, g = _slot_score(frame, fx * W, fy * H, size, jitter, lighter_only)
+            if outlines and w < thr and g < thr:
+                # An outlined star is the level in its search phase: counted like a grey one. Outlines score 0.9 or
+                # more, scenery and empty slots under 0.4, the cash written across the row up to about 0.7.
+                o = _outline_score(frame, fx * W, fy * H, size, jitter)
+                if o >= outline_min:
+                    g = max(g, o)
             marks.append("w" if w >= thr and w >= g else ("g" if g >= thr else "-"))
         # Filled stars run from the first slot; a lone "star" further along is scenery.
         lead = 0
-        for m in marks:
+        for m in reversed(marks) if from_right else marks:
             if m == "-":
                 break
             lead += 1
         if lead <= best["stars"] + best["dim"]:
             continue
-        whites = marks[:lead].count("w")
+        filled = marks[len(marks) - lead:] if from_right else marks[:lead]
+        whites = filled.count("w")
         greys = lead - whites
         best = {"stars": lead if whites >= greys else 0, "dim": lead if greys > whites else 0, "score": 1.0,
                 "slots": "".join(marks), "row": round(fy, 4)}

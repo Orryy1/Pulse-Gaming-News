@@ -12,7 +12,7 @@ import type { Config } from "../config.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { listRecordings, type Recording } from "../vodindex/vods.ts";
 import { measuredFacts } from "./facts.ts";
-import { estimateMinutes, readArgs, runHud } from "./run.ts";
+import { estimateMinutes, readArgs, readFps, runHud } from "./run.ts";
 import type { HudSettings } from "./settings.ts";
 import { hudSignals } from "./signal.ts";
 import {
@@ -71,8 +71,14 @@ export async function readVod(
   s: HudSettings,
   dataDir: string,
   rec: Pick<Recording, "file" | "vodId"> & { game: string; seconds: number },
-  o: { runner?: HudSettings["runner"]; start?: number; duration?: number } = {},
+  o: {
+    runner?: HudSettings["runner"];
+    start?: number;
+    duration?: number;
+    keyframes?: boolean;
+  } = {},
 ): Promise<VodOutputs | undefined> {
+  const keyframes = o.keyframes ?? s.vodKeyframes;
   const dir = vodHudDir(dataDir, rec.vodId);
   await fs.mkdir(dir, { recursive: true });
   const out = path.join(dir, "raw.json");
@@ -85,10 +91,11 @@ export async function readVod(
       atlas: atlasDir(dataDir, rec.game),
       start: o.start,
       duration: o.duration,
+      keyframes,
     }),
     {
       job: `read ${rec.vodId}`,
-      est: estimateMinutes(o.duration || rec.seconds, s.fps),
+      est: estimateMinutes(o.duration || rec.seconds, readFps(s, keyframes)),
       runner: o.runner,
     },
   );

@@ -24,6 +24,14 @@ export interface HudSettings {
   matcher: HudMatcher;
   /** HUD_READER_OCR: read on-screen text with RapidOCR's PP-OCR models (Apache-2.0). */
   ocr: boolean;
+  /** HUD_READER_THREADS: CPU threads for OpenCV and the OCR; 0 (unset) leaves them every core, as before. */
+  threads: number;
+  /**
+   * HUD_READER_VOD_KEYFRAMES: whole recordings are read from their key frames only, at 0.5 fps (one every 2 s on
+   * Twitch): about a tenth of the CPU of every-frame decoding at 2 fps, a second either way on a moment. Live pieces
+   * and clips are always read in full.
+   */
+  vodKeyframes: boolean;
   /** HUD_READER_RUNNER: orch (PC orchestrator, class gpu, priority 20), mac (~/orch/macrun.sh) or direct (tests). */
   runner: HudRunner;
   /** HUD_READER_ORCH: the PC orchestrator's command. */
@@ -97,6 +105,8 @@ export function hudSettings(
         : path.posix.join(home, "PulseFactory/models/hud/hub")),
     matcher: matcher === "lightglue" ? "lightglue" : "sift",
     ocr: bool(env, "HUD_READER_OCR", true),
+    threads: Math.round(num(env, "HUD_READER_THREADS", 0, 0, 16)),
+    vodKeyframes: bool(env, "HUD_READER_VOD_KEYFRAMES", false),
     runner:
       runner === "direct" || runner === "mac" || runner === "orch"
         ? (runner as HudRunner)

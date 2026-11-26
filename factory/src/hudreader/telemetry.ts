@@ -196,7 +196,10 @@ export function wantedEvents(samples: RawSample[]): {
   let candN = 0;
   const plural = (n: number) => `${n} star${n === 1 ? "" : "s"}`;
   for (const s of samples) {
-    if (s.state !== "hud") {
+    // A frame without the HUD counts only when the reader saw stars on it anyway (GTA VI hides its radar during a
+    // chase now and then, the stars stay: the profile's wanted.anyScreen).
+    const starsAnyway = (s.stars ?? 0) > 0 || (s.dim ?? 0) > 0;
+    if (s.state !== "hud" && !starsAnyway) {
       level.set(s.t, { stars: cur, searching });
       continue;
     }

@@ -68,6 +68,8 @@ export async function inboxFiles(root: string): Promise<LibraryFile[]> {
     if (typeof game !== "string" || !game.trim() || meta.review.radio === true)
       continue;
     if (meta.status === "new" || meta.status === "reviewing") continue;
+    // Another streamer's play (a permitted channel, src/vodindex/sources.ts) is never "the owner's own footage".
+    if (meta.source?.credit) continue;
     const file = path.join(dir, meta.clip?.file || "clip.mp4");
     const st = await fs.stat(file).catch(() => undefined);
     if (st?.isFile())

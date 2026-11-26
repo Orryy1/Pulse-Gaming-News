@@ -6863,6 +6863,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
         await directFrames(source, meta.clip.seconds, look),
         ref.review,
         blacks,
+        meta.source.credit ?? "",
       ).catch(whenVisionPaused(undefined))
     : undefined;
   if (s.cfg.gameplayDirect) await fs.rm(look, { recursive: true, force: true });
@@ -6879,7 +6880,13 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       throw new FatalError("no clean payoff: the clip stops before anything is answered");
     const cut = directCut(direction, blacks, meta.clip.seconds);
     const lines = fitLines(direction, cut.payoffAt);
-    const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg), ref.live);
+    const script = gameplayScript(
+      ref.review,
+      ref.id,
+      await gameplayExperiments(s.cfg),
+      ref.live,
+      meta.source.credit ?? "",
+    );
     script.hook = lines.hook;
     script.beats = [
       {
@@ -6901,7 +6908,8 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_payoff: direction.focus_payoff,
     };
     // CHALLENGE_SERIES (src/challenge.ts): a tagged stream's clip is a challenge episode, and then never a Day N.
-    if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
+    // The owner's own series ("GTA 6 Day N", challenges) never take another streamer's play.
+    if (!meta.source.credit && !(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -6995,8 +7003,10 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     ref.id,
     await gameplayExperiments(s.cfg),
     ref.live,
+    meta.source.credit ?? "",
   );
-  if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
+  // The owner's own series ("GTA 6 Day N", challenges) never take another streamer's play.
+  if (!meta.source.credit && !(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,

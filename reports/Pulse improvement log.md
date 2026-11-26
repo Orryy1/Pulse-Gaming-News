@@ -4,7 +4,7 @@ One entry per improvement-engine run (scheduled task pulse-improvement-engine, e
 
 ## 26 Nov 2026, 10:30 UK: half the news slots skip "nothing known" and shopping stories
 
-**Change:** before the editor picks a news slot's story, a model-free check reads each candidate's headline. On the "gate" side of a 50/50 split by slot time, a story whose whole point is that nothing is known or confirmed, a price, preload, bonus or edition list, patch notes or an outage is dropped, unless the headline also carries a conflict or a surprise (layoffs, a delay, a lawsuit, a price rise or cut, a shutdown, a record). A slot where every candidate would go keeps them all, so no slot is left empty. Breaking news, big stories and the other lanes are untouched. Each gated slot logs a `premise_gate` event (arm, slot, what was dropped). Branch `claude/engine-premisegate` (737278084), through the merge gate (see the status line at the end).
+**Change:** before the editor picks a news slot's story, a model-free check reads each candidate's headline. On the "gate" side of a 50/50 split by slot time, a story whose whole point is that nothing is known or confirmed, a price, preload, bonus or edition list, patch notes or an outage is dropped, unless the headline also carries a conflict or a surprise (layoffs, a delay, a lawsuit, a price rise or cut, a shutdown, a record). A slot where every candidate would go keeps them all, so no slot is left empty. Breaking news, big stories and the other lanes are untouched. Each gated slot logs a `premise_gate` event (arm, slot, what was dropped). Branch `claude/engine-premisegate` (737278084), merge gate: typecheck clean, 3,526 of 3,526 tests pass, stage 6f41104bb, **deployed 10:52 UK**, factory healthy.
 
 **Evidence:**
 

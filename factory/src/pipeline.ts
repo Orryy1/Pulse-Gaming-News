@@ -1036,6 +1036,7 @@ import {
   heardInBed,
   longSoundClips,
 } from "./assets/gameaudio.ts";
+import { prepareEvidence } from "./evidencestep.ts";
 
 export interface Services {
   db: Db;
@@ -14500,6 +14501,27 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       blenderFiles = [];
     }
   }
+  // EVIDENCE_STYLE (src/evidencestep.ts): a mystery or lore long video in the board arm gets the date cards, the case
+  // cards, the red stamps, runs of its stills on the evidence board and the board as every chapter's breather; the
+  // plan follows the shot plan as it stands (the graphics check may make it again). Off or plain arm: nothing changes.
+  const evidence = await prepareEvidence({
+    cfg: s.cfg,
+    episodeId: ep.id,
+    frame: "long",
+    fps: LONG_FPS,
+    headline: script.headline,
+    title: script.youtube?.title,
+    game: script.game_title,
+    chapters: segments.flatMap((g) => (g.visual?.kind === "chapter" && g.visual.primary ? [g.visual.primary] : [])),
+    kind: doc ? "documentary" : undefined,
+    words,
+    segments,
+    images: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, provenance: i.provenance })),
+    dir,
+    breaks: assets.breaks,
+    event: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+  });
+  if (evidence) assets.evidenceArm = evidence.arm;
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -14573,6 +14595,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         imageFiles: images,
         clipFiles: clips,
         plan,
+        ...(() => {
+          const board = evidence?.plan(plan.shots, plan.totalFrames);
+          return board ? { board } : {};
+        })(),
         renderDate: s.now().toISOString().slice(0, 10),
         quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
         ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
@@ -16069,6 +16095,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           }
         : {}),
     }).catch(() => undefined);
+  // EVIDENCE_STYLE (src/evidencestep.ts): a mystery or lore Short in the board arm gets the date cards, the case card,
+  // the red stamps and its stills on the evidence board; off, ineligible or the plain arm: no plan, nothing changes.
+  const evidence = await prepareEvidence({
+    cfg: s.cfg,
+    episodeId: ep.id,
+    frame: "short",
+    fps: plan.fps,
+    headline: script.headline,
+    title: script.youtube?.title,
+    game: script.game_title,
+    chapters: segments.flatMap((g) => (g.visual?.primary ? [g.visual.primary] : [])),
+    words,
+    segments,
+    images: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, provenance: i.provenance })),
+    dir,
+    avoid: [
+      [0, shortLayoutNow.hookEnd],
+      [shortLayoutNow.loopFrom, plan.totalFrames],
+      ...shownStamps.map((st): [number, number] => [Math.round(st.at * plan.fps) - 15, Math.round(st.at * plan.fps) + 84]), // the word stamp's 2.8 s (components/Stamp.tsx STAMP_FRAMES)
+    ],
+    event: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+  });
+  if (evidence) assets.evidenceArm = evidence.arm;
+  const shortBoard = evidence?.plan(plan.shots, plan.totalFrames);
   await s.render({
     episodeDir: dir,
     outFile: raw,
@@ -16174,6 +16224,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(tracklist ? { tracklist } : {}),
       ...(mentions.length ? { mentionFiles: mentions } : {}),
       ...(upgraded && Object.keys(upgraded.upgrades).length ? { upgrades: upgraded.upgrades } : {}),
+      ...(shortBoard ? { board: shortBoard } : {}),
       ...(gameBed
         ? {
             gameBedFile: {

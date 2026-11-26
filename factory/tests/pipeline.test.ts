@@ -3980,3 +3980,37 @@ test("the premise gate never empties a slot: with only weak stories the slot kee
   assert.equal(ev[0]!.detail.dropped.length, 0);
   await db.close();
 });
+
+test("EVIDENCE_STYLE: off, a lore Short renders as before; on, the board arm's render carries the board and the arm is kept", async () => {
+  const lore = goodScript({ headline: "The secrets of Starfield's expansion" });
+  const renderOf = async (cfg: Partial<Config>) => {
+    const { s, db } = await setup(cfg, { script: lore });
+    const props: Array<Record<string, unknown>> = [];
+    const render = s.render;
+    s.render = async (input) => {
+      props.push(input.props as unknown as Record<string, unknown>);
+      await render(input);
+    };
+    await tick(s);
+    const [ep] = await db.query<{ assets_json: any; id: string }>(`SELECT id, assets_json FROM episodes`);
+    const events = await db.query<{ detail: any }>(`SELECT detail FROM events WHERE kind = 'evidence_style'`);
+    await db.close();
+    return { props: props[0], arm: ep?.assets_json?.evidenceArm, events };
+  };
+  const off = await renderOf({});
+  assert.ok(off.props, "rendered");
+  assert.equal("board" in off.props!, false, "no board prop at all when off");
+  assert.equal(off.arm, undefined);
+  assert.equal(off.events.length, 0);
+  const on = await renderOf({ evidenceStyle: true, evidenceStyleShare: 1 });
+  const board = on.props!.board as { cases: Array<{ topic: string }>; stamps: Array<{ text: string }> };
+  assert.equal(on.arm, "board");
+  assert.equal(board.cases[0]?.topic, "THE SECRETS OF STARFIELD'S", "the headline, cut at a word to fit the card");
+  // Stamped words are words the narrator says ("confirmed", "delayed"), spaced out.
+  assert.ok(board.stamps.length >= 1 && board.stamps.every((x) => /^(CONFIRMED|DELAYED)$/.test(x.text)), JSON.stringify(board.stamps));
+  assert.equal(on.events.length, 1);
+  assert.match(String(on.events[0]!.detail.passMark), /10 matched/);
+  const plain = await renderOf({ evidenceStyle: true, evidenceStyleShare: 0 });
+  assert.equal("board" in plain.props!, false);
+  assert.equal(plain.arm, "plain");
+});

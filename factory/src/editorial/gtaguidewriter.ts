@@ -1,6 +1,6 @@
 // The GTA guide's writer (GTA_GUIDES, src/gtaguide.ts): the plan in one call (the items in order, the intro that
 // delivers item 1 in its first sentence, the outro, the thumbnail words and the packaging), then the items in batches
-// of five, each with its narration, its labelled claims and its shot list (one moment per sentence, the long ranking's
+// of three, each with its narration, its labelled claims and its shot list (one moment per sentence, the long ranking's
 // moment schema, so the render's per-sentence footage targets work unchanged). Every fact comes from the fact pack;
 // the owner's play only from the play evidence. A plan that misses the list shape is sent back once with the problems
 // named, as the ranking's writer does.
@@ -183,7 +183,8 @@ export function fitMoments(narration: string, got: Moment[]): Moment[] {
 }
 
 /** The batches the items are written in (pure). */
-export function batchesOf<T>(xs: T[], size = 5): T[][] {
+// Three items a call: five with their shot lists ran past Codex's 705 s limit on the 26 Nov proof.
+export function batchesOf<T>(xs: T[], size = 3): T[][] {
   const out: T[][] = [];
   for (let i = 0; i < xs.length; i += size) out.push(xs.slice(i, i + size));
   return out;

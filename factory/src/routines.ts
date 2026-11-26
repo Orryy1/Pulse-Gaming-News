@@ -240,8 +240,46 @@ export interface RelatedItem {
   reason: string;
 }
 
-/** Long videos on the channel, newest first (the factory's own episodes miss older uploads). No API quota: yt-dlp reads the public page. */
-export async function channelLongs(): Promise<LongVideo[]> {
+/** ISO 8601 duration (PT1H2M3S) in seconds (pure). */
+export function isoSeconds(d: string): number {
+  const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(d ?? "");
+  return m ? Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0) : 0;
+}
+
+/** The channel's long videos from YouTube Data API answers (pure): uploads in their order, 3 min to 3 h only. */
+export function longsFromApi(
+  items: Array<{ contentDetails?: { videoId?: string }; snippet?: { title?: string } }>,
+  durations: Record<string, string>,
+): LongVideo[] {
+  return items
+    .map((i) => ({ id: i.contentDetails?.videoId ?? "", title: i.snippet?.title ?? "" }))
+    .filter((v) => v.id && isoSeconds(durations[v.id] ?? "") >= 180 && isoSeconds(durations[v.id] ?? "") < 3 * 3600);
+}
+
+const PULSE_CHANNEL = "UCvgNDjtTezrpxL8oUe6mYwA";
+
+/**
+ * Long videos on the channel, newest first (the factory's own episodes miss older uploads). With YOUTUBE_API_KEY set
+ * this is two Data API calls (2 quota units, 26 Nov 2026: the yt-dlp page read stopped once the anonymous YouTube lane
+ * was retired, and the related-video plan failed with it); without a key it falls back to yt-dlp through the guard.
+ */
+export async function channelLongs(fetchFn: typeof fetch = fetch): Promise<LongVideo[]> {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (key) {
+    const api = "https://www.googleapis.com/youtube/v3";
+    const pl = await fetchFn(`${api}/playlistItems?part=contentDetails,snippet&maxResults=50&playlistId=UU${PULSE_CHANNEL.slice(2)}&key=${key}`);
+    if (!pl.ok) throw new Error(`YouTube Data API playlistItems HTTP ${pl.status}`);
+    const items = ((await pl.json()) as { items?: Array<{ contentDetails?: { videoId?: string }; snippet?: { title?: string } }> }).items ?? [];
+    const ids = items.map((i) => i.contentDetails?.videoId).filter(Boolean).join(",");
+    const durations: Record<string, string> = {};
+    if (ids) {
+      const vr = await fetchFn(`${api}/videos?part=contentDetails&id=${ids}&key=${key}`);
+      if (!vr.ok) throw new Error(`YouTube Data API videos HTTP ${vr.status}`);
+      for (const v of ((await vr.json()) as { items?: Array<{ id: string; contentDetails?: { duration?: string } }> }).items ?? [])
+        durations[v.id] = v.contentDetails?.duration ?? "";
+    }
+    return longsFromApi(items, durations).slice(0, 30);
+  }
   const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
   const args = [
     ...YTDLP_TEXT.args,
@@ -251,7 +289,7 @@ export async function channelLongs(): Promise<LongVideo[]> {
     "30",
     "--print",
     "%(id)s\t%(duration)s\t%(title)s",
-    "https://www.youtube.com/channel/UCvgNDjtTezrpxL8oUe6mYwA/videos",
+    `https://www.youtube.com/channel/${PULSE_CHANNEL}/videos`,
   ];
   // Through the YouTube guard as background work: a kept listing for twelve hours, then the background share.
   const { stdout } = await guardedYt(

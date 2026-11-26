@@ -67,8 +67,26 @@ const coreOf = (t: string) =>
     .replace(/['’]s$/, "");
 
 /** The letters of a capitalised token as said ("PS5" is "PS", "NPCs" is "NPC"), or undefined when it is not one. */
-export function lettersOf(core: string): string | undefined {
+/**
+ * LETTER_WATCH_NAMES (src/config.ts, default on): a token built from capitalised word parts ("McCoy", "YouTube",
+ * "GameSpot", "LeBron") is a name, not letters, so the letter watch leaves it alone. On 25 Nov 2026 "McCoy's line" in
+ * the Titanfall 2 Short was logged and alerted as spelled letter by letter: its two capitals made it "MCCOY", and a
+ * name held before a pause looks as long as five letters. Every capital must start a lowercase run and the last part
+ * must have three letters or more, so "PvP", "PvPs", "LoL", "WoW" and "DeNA" stay watched.
+ */
+export interface LetterWatchOptions {
+  names?: boolean;
+}
+
+export const NAME_SHAPED = /^(?:[A-Z][a-z]+)+[A-Z][a-z]{2,}$/;
+
+export function nameShaped(core: string): boolean {
+  return NAME_SHAPED.test(core.replace(/['’]s$/, ""));
+}
+
+export function lettersOf(core: string, opts: LetterWatchOptions = {}): string | undefined {
   if (!/^[A-Za-z0-9]{2,9}$/.test(core)) return undefined;
+  if ((opts.names ?? true) && nameShaped(core)) return undefined;
   if ((core.match(/[A-Z]/g) ?? []).length < 2) return undefined;
   const letters = core.replace(/\d+/g, "").replace(/(?<=[A-Z])s$/, "");
   if (!/^[A-Za-z]{2,7}$/.test(letters)) return undefined;
@@ -85,6 +103,7 @@ export function lettersOf(core: string): string | undefined {
 export function letterReadings(
   meant: TimedWord[],
   heard: TimedWord[],
+  opts: LetterWatchOptions = {},
 ): LetterReading[] {
   // The two clocks can sit a little apart (Whisper's own habit): their median offset on matching long words.
   const offs: number[] = [];
@@ -105,7 +124,7 @@ export function letterReadings(
   const out: LetterReading[] = [];
   for (const m of meant) {
     const core = coreOf(m.text);
-    const letters = lettersOf(core);
+    const letters = lettersOf(core, opts);
     if (
       !letters ||
       SAID_AS_LETTERS.has(letters) ||
@@ -137,7 +156,7 @@ export function letterReadings(
     // The capitals themselves, held as long as letters take at this take's own pace.
     if (!spelled) {
       const k = heard.findIndex(
-        (h) => hs.includes(h) && lettersOf(coreOf(h.text)) === letters,
+        (h) => hs.includes(h) && lettersOf(coreOf(h.text), opts) === letters,
       );
       if (k >= 0) {
         const same = heard[k]!;
@@ -614,6 +633,7 @@ export function checkNarration(
   meant: TimedWord[],
   allHeard: TimedWord[],
   maxDrift = 0.35,
+  opts: LetterWatchOptions = {},
 ): NarrationCheck {
   const heard = heardSpeech(allHeard);
   const A: Array<{ t: string; at: number; w: string }> = [];
@@ -692,7 +712,7 @@ export function checkNarration(
   const real = dropShuffles(issues);
   return {
     heard: heard.map((w) => w.text).join(" "),
-    letters: letterReadings(meant, heard),
+    letters: letterReadings(meant, heard, opts),
     ok: !real.length && drift <= maxDrift,
     issues: real,
     drift: Math.round(drift * 100) / 100,

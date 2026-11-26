@@ -35,7 +35,7 @@ import { checkClip, hasSubjectFallback, lookSubject, namedSubjects, SUBJECT_CONF
 import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
 import type { VisualAsset } from "../assets/steam.ts";
 import { brollShotAtPlace, findQuote, findShots, shotAtPlace } from "./lookup.ts";
-import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
+import { indexNamesFor, loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
 import { sectionArgs } from "./build.ts";
 import {
@@ -679,6 +679,19 @@ async function findIndex(dataDir: string, game: string): Promise<SceneIndex | un
 }
 
 /**
+ * The game's later movie chapters' indexes (src/sceneindex/movieplan.ts: "<game> (movie 2)" and on), in chapter
+ * order, after the game's own index: lines the first chapter cannot show are looked for in the next.
+ */
+async function chapterIndexes(dataDir: string, first: SceneIndex): Promise<SceneIndex[]> {
+  const out: SceneIndex[] = [];
+  for (const name of indexNamesFor(dataDir, first.game, ["movie"]).slice(1)) {
+    const index = await loadSceneIndex(dataDir, name).catch(() => undefined);
+    if (index && index.source.videoId !== first.source.videoId) out.push(index);
+  }
+  return out;
+}
+
+/**
  * SCENE_MATCH: the picture check run on the index's low-resolution proxy (when it is on this machine): the same three
  * frames the clip would be judged on, cut from the proxy at the shot's time. Undefined when there is no proxy here.
  */
@@ -870,6 +883,21 @@ async function indexChain<O extends Parameters<typeof indexFirstCutscenes>[1]>(
         return [];
       }
       if (!indexFitsRelease(index, o.recentRelease)) return [];
+      // The game's own index first, then its later chapters' (each with its own spoiler tag), for what is still unfilled.
+      const out: CutsceneClip[] = [];
+      for (const ix of [index, ...(await chapterIndexes(cfg.dataDir, index))]) {
+        const filled = new Set(out.map(clipTargetKey));
+        const targets = o.targets.filter((t) => !filled.has(t.key));
+        const used = out.reduce((n, c) => n + Math.max(0, c.span.to - c.span.from), 0);
+        if (!targets.length || out.length >= o.maxClips || o.maxSeconds - used < MIN_CLIP_SECONDS) break;
+        out.push(...(await clipsFrom(ix, { ...o, targets, maxClips: o.maxClips - out.length, maxSeconds: o.maxSeconds - used })));
+      }
+      return out;
+    },
+    options.mode === "index" ? async () => [] : searched,
+  );
+
+  async function clipsFrom(index: SceneIndex, o: O): Promise<CutsceneClip[]> {
       // MATCH_SEMANTIC: the index's shot vectors against each line, blended into the word lookup.
       const semantic = await indexScorer(cfg, index, o.targets);
       return indexedCutsceneClips({
@@ -912,9 +940,7 @@ async function indexChain<O extends Parameters<typeof indexFirstCutscenes>[1]>(
           : {}),
         deps,
       });
-    },
-    options.mode === "index" ? async () => [] : searched,
-  );
+  }
 }
 /** SCENE_MATCH stills: a still is one frame, checked on its own (the frame on the word is the whole picture). */
 export function stillConfirmed(

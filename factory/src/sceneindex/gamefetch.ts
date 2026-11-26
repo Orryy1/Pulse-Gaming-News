@@ -42,6 +42,7 @@ import {
   sceneSlug,
   type SceneIndex,
 } from "./schema.ts";
+import { moviePlanPass } from "./movieplan.ts";
 import {
   lateTerms,
   setSpoilerWindows,
@@ -840,7 +841,23 @@ type FetchCfg = Pick<
   | "spoilerWindowDays"
   | "spoilerOpeningShare"
   | "bigStorySize"
->;
+> &
+  Partial<Pick<Config, "moviePlan" | "gameFetchCleanChannels" | "sceneIndexMaxHours">>;
+
+/**
+ * The games the movie planner looks after (pure): the owner's titles and the calendar's games, out and not dropped,
+ * while their launch plan runs (src/sceneindex/movieplan.ts).
+ */
+export function plannedGames(book: FiledBook, now: Date, recheckDays: number): string[] {
+  return book.games
+    .filter((g) => g.status !== "dropped" && !isGameplayIndex(g.game) && g.release)
+    .filter((g) => g.signals.some((sig) => sig === "owner" || sig === "calendar"))
+    .filter((g) => {
+      const out = Date.parse(g.release!.length === 10 ? `${g.release}T00:00:00Z` : g.release!);
+      return Number.isFinite(out) && now.getTime() >= out && now.getTime() <= out + Math.max(recheckDays, 28) * 86_400_000;
+    })
+    .map((g) => g.game);
+}
 
 const bookFile = (dataDir: string) =>
   path.join(dataDir, "sceneindex", "filed.json");
@@ -983,6 +1000,9 @@ export async function gameFetchPass(
           ...settings,
         }),
       );
+      // MOVIE_PLAN: later movie chapters and clean playthroughs for the covered games, through the Data API only.
+      if (cfg.moviePlan !== false)
+        await moviePlanPass(cfg, plannedGames(book, now, cfg.gameFetchRecheckDays), { now: () => now });
     }
     const queue = await readQueue(cfg.dataDir);
     const indexes = new Map<string, SceneIndex>();

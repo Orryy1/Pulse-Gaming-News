@@ -329,14 +329,16 @@ test("signedInArgs: off when empty, anonymous with one notice when the file is m
   assert.deepEqual(cookieArgs(file, undefined, true), []);
 });
 
-test("only the game fetcher's own build turns get the cookies file", () => {
+// 26 Nov 2026 (upgrade queue item 56): the anonymous lane is retired, so every scene-index build and light turn signs
+// in, inside the signed-in ration; the hand-run search and alive checks stay anonymous.
+test("every scene-index build and light turn gets the cookies file; search and alive do not", () => {
   const env = { YTDLP_COOKIES_FILE: "/f/data/yt_cookies.txt" };
   assert.equal(
     fetcherCookiesFile("build", true, env),
     "/f/data/yt_cookies.txt",
   );
-  assert.equal(fetcherCookiesFile("build", false, env), "");
-  assert.equal(fetcherCookiesFile("light", true, env), "");
+  assert.equal(fetcherCookiesFile("build", false, env), "/f/data/yt_cookies.txt");
+  assert.equal(fetcherCookiesFile("light", false, env), "/f/data/yt_cookies.txt");
   assert.equal(fetcherCookiesFile("search", true, env), "");
   assert.equal(fetcherCookiesFile("alive", false, env), "");
   assert.equal(fetcherCookiesFile("build", true, {}), "");
@@ -389,7 +391,8 @@ test("no other call site signs in: signedInArgs and --cookies appear only where 
     path.join(src, "sceneindex", "build.ts"),
     "utf8",
   );
-  // signedInArgs only inside fetcherRun and usableUpload; fetcherRun only for search, details and the proxy.
+  // signedInArgs only inside fetcherRun and usableUpload; fetcherRun for search, details, the proxy and the sections a
+  // build fetches when its proxy was released (26 Nov 2026: those were the last anonymous calls of a build).
   assert.equal(build.match(/signedInArgs\s*\(/g)?.length, 2);
   const runs = [...build.matchAll(/fetcherRun\s*\(/g)].map((m) => {
     // The function the call sits in (or, for its own definition, fetcherRun itself).
@@ -400,10 +403,15 @@ test("no other call site signs in: signedInArgs and --cookies appear only where 
   assert.deepEqual(runs.sort(), [
     "ensureProxy",
     "fetcherRun",
+    "frameSource",
+    "hearInto",
     "searchUploads",
     "uploadDetails",
   ]);
-  // The tool sets the cookies file from fetcherCookiesFile only, and the job hands it over for a launch plan only.
+  // No yt-dlp call of a build goes around fetcherRun: the one `run(s.ytdlp` left is fetcherRun's own.
+  assert.equal(build.match(/\brun\(\s*s\.ytdlp/g)?.length, 1);
+  assert.match(build, /return run\(s\.ytdlp, \[\.\.\.signed, \.\.\.args\], o\);/);
+  // The tool sets the cookies file from fetcherCookiesFile only, and the job hands it to every turn.
   const tool = fs.readFileSync(
     path.join(src, "tools", "sceneindex.ts"),
     "utf8",
@@ -416,16 +424,19 @@ test("no other call site signs in: signedInArgs and --cookies appear only where 
     job.match(/YTDLP_COOKIES_FILE:[^,}\r\n]*(?:\([^)]*\)[^,}\r\n]*)?/g) ?? [];
   assert.deepEqual(
     handed.map((h) => h.trim()),
-    [
-      'YTDLP_COOKIES_FILE: ""',
-      'YTDLP_COOKIES_FILE: job.fetch ? (cfg.ytdlpCookiesFile ?? "") : ""',
-    ],
+    ["YTDLP_COOKIES_FILE: cookies", "YTDLP_COOKIES_FILE: cookies"],
+  );
+  // The one value both get: the config's cookies file, read once for the turn.
+  assert.match(job, /const cookies = cfg\.ytdlpCookiesFile \?\? "";/);
+  assert.deepEqual(
+    job.match(/YT_PURPOSE: [^,}\r\n]*/g),
+    ['YT_PURPOSE: "library"', 'YT_PURPOSE: job.fetch || job.pin ? "movie" : "library"'],
   );
 });
 
-// Behaviour, not just source text: the scene index job hands the cookies file to the fetcher's launch-plan turn
-// (build --complete) and to nothing else.
-test("the job: a launch-plan turn gets YTDLP_COOKIES_FILE, an ordinary build turn gets it empty", async () => {
+// Behaviour, not just source text: the scene index job hands the cookies file to every turn (26 Nov 2026), the
+// launch plan's as a "movie" turn and an ordinary build's as "library", so the guard rations them apart.
+test("the job: every turn gets YTDLP_COOKIES_FILE; a launch plan counts as movie, an ordinary build as library", async () => {
   const cookies = "/f/data/yt_cookies.txt";
   const seen: Array<{ line: string; env: NodeJS.ProcessEnv }> = [];
   const run = async (cmd: string, args: string[], env: NodeJS.ProcessEnv) => {
@@ -442,7 +453,8 @@ test("the job: a launch-plan turn gets YTDLP_COOKIES_FILE, an ordinary build tur
   });
   assert.equal(seen.length, 1);
   assert.doesNotMatch(seen[0]!.line, /--complete/);
-  assert.equal(seen[0]!.env.YTDLP_COOKIES_FILE, "", "an ordinary build stays anonymous");
+  assert.equal(seen[0]!.env.YTDLP_COOKIES_FILE, cookies, "an ordinary build signs in too");
+  assert.equal(seen[0]!.env.YT_PURPOSE, "library");
 
   const fetch = await tmpDir();
   const cfgFetch = testConfig(fetch, { sceneIndex: true, macMinFreeGb: 40, ytdlpCookiesFile: cookies });
@@ -469,6 +481,7 @@ test("the job: a launch-plan turn gets YTDLP_COOKIES_FILE, an ordinary build tur
   assert.equal(seen.length, 2);
   assert.match(seen[1]!.line, /build Grand Theft Auto VI .*--complete/);
   assert.equal(seen[1]!.env.YTDLP_COOKIES_FILE, cookies, "the fetcher's own turn signs in");
+  assert.equal(seen[1]!.env.YT_PURPOSE, "movie");
 
   // Off: the fetcher's turn is anonymous too.
   const off = await tmpDir();

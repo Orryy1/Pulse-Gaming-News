@@ -881,6 +881,8 @@ export async function archiveTick(
       MACRUN_WAIT_MIN: "20",
       // Library work: the YouTube guard gives it the background share and pauses it first (src/lib/ytguard.ts).
       YT_CLASS: "background",
+      // The archive's own turns stay off the download account (26 Nov 2026: only the scene index job hands it over).
+      YTDLP_COOKIES_FILE: "",
     };
     const r = await (
       deps.run ??

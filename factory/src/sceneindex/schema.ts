@@ -7,6 +7,7 @@
 // small file helpers at the end).
 
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 
 /** Raised whenever the shape changes in a way old readers or old files cannot bridge (see parseSceneIndex). */
@@ -22,6 +23,16 @@ export interface SceneSource {
   /** A cutscene movie is every player's game; a playthrough is mostly the uploader's own play. */
   kind: "movie" | "playthrough";
   pickedAt: string;
+  /**
+   * The movie's chapter or the playthrough's part when the story is split across uploads (src/sceneindex/movieplan.ts,
+   * 26 Nov 2026): chapter 2 of a cutscene series is its own index, "<game> (movie 2)".
+   */
+  chapter?: number;
+  /**
+   * The whole upload is past the opening of the story (a later chapter or part): the spoiler guard holds all of it
+   * during the game's window (src/sceneindex/spoilers.ts inOpening), not just the stretch after the opening share.
+   */
+  spoiler?: boolean;
 }
 
 export interface SceneShot {
@@ -141,10 +152,61 @@ export interface SceneIndex {
 export const GAMEPLAY_SUFFIX = " (gameplay)";
 export const gameplayIndexName = (game: string): string =>
   isGameplayIndex(game) ? game : `${game.trim()}${GAMEPLAY_SUFFIX}`;
-export const isGameplayIndex = (name: string): boolean => name.endsWith(GAMEPLAY_SUFFIX);
-/** The game a gameplay index is of ("Grand Theft Auto V (gameplay)" -> "Grand Theft Auto V"); other names unchanged. */
+/** A numbered part index: a later movie chapter ("(movie 2)") or a second playthrough ("(gameplay 2)"). */
+const PART_SUFFIX = / \((movie|gameplay) (\d+)\)$/;
+export const isGameplayIndex = (name: string): boolean =>
+  name.endsWith(GAMEPLAY_SUFFIX) || PART_SUFFIX.exec(name)?.[1] === "gameplay";
+/** The game a gameplay or part index is of ("Grand Theft Auto V (gameplay)", "... (movie 2)" -> the game); other names unchanged. */
 export const baseGameOf = (name: string): string =>
-  isGameplayIndex(name) ? name.slice(0, -GAMEPLAY_SUFFIX.length) : name;
+  name.endsWith(GAMEPLAY_SUFFIX) ? name.slice(0, -GAMEPLAY_SUFFIX.length) : name.replace(PART_SUFFIX, "");
+/**
+ * The index name for one upload of a game split across several (pure; 26 Nov 2026, src/sceneindex/movieplan.ts):
+ * part 1 is the game's own index (a movie) or its gameplay index; later ones are "<game> (movie N)" and
+ * "<game> (gameplay N)", each its own folder, proxy and index.
+ */
+export function partIndexName(game: string, kind: "movie" | "playthrough", n: number): string {
+  const base = baseGameOf(game.trim());
+  if (n <= 1) return kind === "movie" ? base : gameplayIndexName(base);
+  return `${base} (${kind === "movie" ? "movie" : "gameplay"} ${Math.floor(n)})`;
+}
+/** The part number of an index name (pure): 1 for the game's own and its gameplay index. */
+export function partNumber(name: string): number {
+  return Number(PART_SUFFIX.exec(name)?.[2] ?? 1);
+}
+
+/**
+ * Every index name a game may have here (the game's own, its gameplay index, then its numbered movie chapters and
+ * playthroughs found on disk, in order). `kinds` limits it to movies or playthroughs. Names with no index are left
+ * for the caller to skip (loadSceneIndex gives undefined).
+ */
+export function indexNamesFor(
+  dataDir: string,
+  game: string,
+  kinds: ReadonlyArray<"movie" | "playthrough"> = ["movie", "playthrough"],
+  list: (dir: string) => string[] = (d) => {
+    try {
+      return fsSync.readdirSync(d);
+    } catch {
+      return [];
+    }
+  },
+): string[] {
+  const base = baseGameOf(game.trim());
+  const slug = sceneSlug(base);
+  if (!slug) return [];
+  const found: Array<{ kind: "movie" | "playthrough"; n: number }> = [];
+  for (const d of list(path.join(dataDir, "sceneindex"))) {
+    const m = /^(.*)-(movie|gameplay)-(\d+)$/.exec(d);
+    if (!m || m[1] !== slug || Number(m[3]) < 2) continue;
+    found.push({ kind: m[2] === "movie" ? "movie" : "playthrough", n: Number(m[3]) });
+  }
+  found.sort((a, b) => (a.kind === b.kind ? a.n - b.n : a.kind === "movie" ? -1 : 1));
+  const out: string[] = [];
+  if (kinds.includes("movie")) out.push(base);
+  if (kinds.includes("playthrough")) out.push(gameplayIndexName(base));
+  for (const f of found) if (kinds.includes(f.kind)) out.push(partIndexName(base, f.kind, f.n));
+  return out;
+}
 
 /** A game's folder name: lower case words joined by dashes, numerals kept ("Grand Theft Auto VI" -> "grand-theft-auto-vi"). */
 export function sceneSlug(game: string): string {
@@ -266,6 +328,8 @@ export function parseSceneIndex(raw: unknown): SceneIndex | undefined {
       ...(num(s.height) ? { height: s.height } : {}),
       kind: s.kind === "playthrough" ? "playthrough" : "movie",
       pickedAt: String(s.pickedAt ?? ""),
+      ...(num(s.chapter) && s.chapter >= 1 ? { chapter: Math.floor(s.chapter) } : {}),
+      ...(s.spoiler === true ? { spoiler: true } : {}),
     },
     builtAt: String(o.builtAt ?? ""),
     coverage: mergeCoverage(

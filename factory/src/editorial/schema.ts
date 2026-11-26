@@ -411,6 +411,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   };
   /** CHARACTER_QUOTES (src/editorial/charquote.ts): the game's own lines played between the narrator's lines. */
   character_quotes?: import("./charquote.ts").CharacterQuote[];
+  /** GTA_GUIDES (src/gtaguide.ts): a GTA 6 guide list: its kind, count, thumbnail words and each item's label. */
+  gta_guide?: import("../gtaguide.ts").GtaGuideMeta;
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

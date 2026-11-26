@@ -682,7 +682,7 @@ import {
 } from "./qa/graphicscheck.ts";
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
-import { guardScript, stopForWriterNotes } from "./writerguard.ts";
+import { guardScript, scriptSpoilers, stopForWriterNotes } from "./writerguard.ts";
 import { isContentFault, pausesEveryLane, platformAlert } from "./faultclass.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
@@ -854,6 +854,26 @@ import {
   isWeeklyGuide,
   readGuidePlan,
 } from "./longguide.ts";
+import {
+  DEFAULT_GUIDE_FACTS,
+  GTA_GAME,
+  GUIDE_DEMAND_DAYS,
+  GUIDE_QUERIES,
+  gtaGuideSlot,
+  guideDemand,
+  guidePlanProblems,
+  guideProblems,
+  guideToScript,
+  isGtaGuide,
+  kindOf,
+  pickGuideTopic,
+  playEvidence,
+  readFactPack,
+  type GtaGuideTopic,
+} from "./gtaguide.ts";
+import { guideLogo, loadGuideAsks, loadHudFacts, loadPlayRecordings, pickGuideFrame } from "./gtaguidestep.ts";
+import { writeGtaGuide } from "./editorial/gtaguidewriter.ts";
+import { OPENING_WORDS_MAX as GUIDE_OPENING_MAX } from "./editorial/longcontract.ts";
 import { applyPlannedChapters, factsPath, plannedFactsText, plannedTitle } from "./plannedoc.ts";
 import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
 import { editionOf } from "./assets/junk.ts";
@@ -5977,9 +5997,18 @@ export async function maybeSelectLongform(
         : undefined,
     });
   }
+  // GTA_GUIDES (src/gtaguide.ts): a share of the long slots goes to a post-launch GTA 6 guide list, decided per slot.
+  // Off (the default), gtaGuideSlot is false and nothing here runs. No guide topic left: the ranking takes the slot.
+  if (gtaGuideSlot(cfg, due)) {
+    const id = await selectGtaGuide(s, due).catch((err) => {
+      log("warn", "gta guide: selection failed, the ranking takes the slot", { error: errorMessage(err) });
+      return undefined;
+    });
+    if (id) return id;
+  }
   const covered = (
     await db.query<{ headline: string }>(
-      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days' AND factcheck_json->'gta_guide' IS NULL`,
       [now],
     )
   ).map((r) => r.headline);
@@ -6000,7 +6029,7 @@ export async function maybeSelectLongform(
   // the same day's duplicate check refuses it and the slot stays empty (Half-Life and Portal, 20 Nov).
   const failedThemes = (
     await db.query<{ theme: string | null }>(
-      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days'`,
+      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days' AND factcheck_json->'gta_guide' IS NULL`,
       [now],
     )
   )
@@ -6111,7 +6140,115 @@ export async function maybeSelectLongform(
     skipped.length,
   );
   log("info", "long-form topic selected", { id, theme: topic.theme });
+  // GTA_GUIDES' other arm: the rankings made while it is on, for the verdict (gtaGuideVerdict).
+  if (cfg.gtaGuides) await logEvent(db, id, "gta_guide", { arm: "ranking", slot_at: due.toISOString() }).catch(() => undefined);
   quietReset("long ranking");
+  return id;
+}
+
+/**
+ * GTA_GUIDES: the guide for a long slot (src/gtaguide.ts): the kind with the most demand, viewer questions and comments
+ * that was not made in the last 30 days (nor failed in the last two), as a longform episode whose factcheck carries it.
+ * Undefined when no kind is left, so the ranking takes the slot.
+ */
+async function guideDemandReading(s: Services, now: Date): Promise<Map<string, number>> {
+  const [row] = await s.db
+    .query<{ value: string }>(`SELECT value FROM settings WHERE key = 'gta_guide_demand'`)
+    .catch(() => [] as Array<{ value: string }>);
+  try {
+    const kept = row ? (JSON.parse(row.value) as { at: string; demand: Record<string, number> }) : undefined;
+    // A reading that found something is kept a week; an empty one (every search failed or found nothing) six hours.
+    const keep = kept && Object.keys(kept.demand).length ? GUIDE_DEMAND_DAYS * 86_400_000 : 6 * 3_600_000;
+    if (kept && now.getTime() - Date.parse(kept.at) < keep) return new Map(Object.entries(kept.demand));
+  } catch {
+    // An unreadable reading is measured again.
+  }
+  if (!s.cfg.demandCheck || !s.searchDemandMany) return new Map();
+  const rows = await s.searchDemandMany(GUIDE_QUERIES).catch(() => undefined);
+  if (!rows) return new Map();
+  const demand = guideDemand(rows);
+  await s.db
+    .query(
+      `INSERT INTO settings (key, value) VALUES ('gta_guide_demand', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify({ at: now.toISOString(), demand: Object.fromEntries(demand) })],
+    )
+    .catch(() => undefined);
+  return demand;
+}
+
+async function selectGtaGuide(s: Services, due: Date): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  // A guide that already failed for this slot hands it to the ranking: never a second guide's spend on the same slot.
+  const failedHere = await db.query(
+    `SELECT 1 FROM episodes WHERE lane = 'longform' AND slot_at = $1 AND status IN ('failed','rejected') AND factcheck_json->'gta_guide' IS NOT NULL LIMIT 1`,
+    [due],
+  );
+  if (failedHere.length) {
+    quietLog("gta guide", "a guide already failed for this slot, so the ranking takes it", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const made = await db.query<{ kind: string | null; at: string; status: string }>(
+    `SELECT factcheck_json->'gta_guide'->>'kind' AS kind, created_at AS at, status FROM episodes
+      WHERE lane = 'longform' AND factcheck_json->'gta_guide'->>'kind' IS NOT NULL
+        AND created_at > $1::timestamptz - interval '30 days'
+        AND (status NOT IN ('failed','rejected') OR created_at > $1::timestamptz - interval '2 days')`,
+    [now],
+  );
+  // The demand lookups (the Data API): one search a kind, the reading kept a week in settings so a slot never pays
+  // for it twice; trouble means no reading, and the stream asks decide alone.
+  const asks = await loadGuideAsks(cfg.dataDir).catch(() => []);
+  const madeKinds = made.filter((r) => r.kind).map((r) => ({ kind: r.kind!, at: r.at }));
+  // No kind free: nothing is searched.
+  const free = pickGuideTopic({ now, made: madeKinds, demand: new Map(), asks });
+  const demand = free ? await guideDemandReading(s, now) : new Map<string, number>();
+  const pick = pickGuideTopic({
+    now,
+    made: made.filter((r) => r.kind).map((r) => ({ kind: r.kind!, at: r.at })),
+    demand,
+    asks,
+  });
+  if (!pick) {
+    quietLog("gta guide", "every guide kind was made in the last 30 days", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const topic: GtaGuideTopic = {
+    kind: pick.kind.key,
+    why: pick.why,
+    asks: pick.asks,
+    demandViews: pick.demandViews,
+    slot_at: due.toISOString(),
+  };
+  const cluster: StoryCluster = {
+    hash: `gtaguide:${dayKey(now, cfg.timezone)}:${pick.kind.key}`,
+    headline: `${GTA_GAME}: ${pick.kind.name}`,
+    items: [],
+    sources: ["Rockstar Games"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: GTA_GAME,
+  };
+  const id = shortId();
+  if (!(await createEpisode(db, id, cluster, { lane: "longform", priority: LANE_PRIORITY.longform, slotAt: due }))) return undefined;
+  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ gta_guide: topic })]);
+  await logEvent(db, id, "selected", { headline: cluster.headline, lane: "longform", theme: GTA_GAME, reason: pick.why.join("; "), slot_at: due.toISOString() });
+  // The record the verdict reads (gtaGuideVerdict, src/gtaguide.ts). Pass mark: with 6 published videos per arm, the
+  // guides' median 7-day views AND median thumbnail CTR (from Test & compare) beat the long rankings' medians over the
+  // same weeks; under that the share goes back to 0, and a clear win raises GTA_GUIDE_SHARE.
+  await logEvent(db, id, "gta_guide", {
+    arm: "guide",
+    kind: pick.kind.key,
+    score: Math.round(pick.score * 10) / 10,
+    why: pick.why,
+    asks: pick.asks.length,
+    demand_views: pick.demandViews,
+    slot_at: due.toISOString(),
+  });
+  log("info", "gta guide selected", { id, kind: pick.kind.key });
+  quietReset("gta guide");
   return id;
 }
 
@@ -6143,6 +6280,7 @@ export async function maybeSelectCutdown(
     `SELECT e.* FROM episodes e
       WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
         AND COALESCE(e.script_json->>'evergreen_format', '') <> 'documentary'
+        AND e.script_json->'gta_guide' IS NULL
         AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz - interval '20 hours'
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - interval '21 days'
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('made_private','crosspost_skip') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
@@ -8030,6 +8168,88 @@ async function repairRanking(
   return true;
 }
 
+/**
+ * GTA_GUIDES: the guide's script (src/gtaguide.ts, src/editorial/gtaguidewriter.ts). Facts from the fact pack only,
+ * first-hand lines only from the owner's own recordings, HUD readings and stream checks; the list shape and the story
+ * guard sent back once, then the long ranking's fact-check (with the pack and the play evidence as its facts) decides.
+ */
+async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic): Promise<void> {
+  const kind = kindOf(topic.kind);
+  if (!kind) throw new FatalError(`unknown GTA guide kind "${topic.kind}"`);
+  const pack = readFactPack(s.cfg.gtaGuideFacts.length ? s.cfg.gtaGuideFacts : DEFAULT_GUIDE_FACTS);
+  if (!pack.confirmed) throw new FatalError("GTA guide: the fact pack is empty or unreadable");
+  const recordings = await loadPlayRecordings(s.cfg.dataDir).catch(() => []);
+  const dates = new Map(recordings.map((r) => [r.vodId, r.recordedOn ?? ""] as [string, string]));
+  const asks = await loadGuideAsks(s.cfg.dataDir).catch(() => []);
+  const hud = await loadHudFacts(s.cfg.dataDir, dates).catch(() => []);
+  const evidence = playEvidence({ recordings, hudFacts: hud, asks });
+  const rumours = asks
+    .filter((a) => a.rumour && !a.spoiler && a.status === "open")
+    .slice(0, 8)
+    .map((a) => a.claim || a.question);
+  const brief = { kind, facts: pack, evidence, asks: topic.asks, rumours };
+  const openingCap = s.cfg.longOpeningContract === "fix" || s.cfg.longArgues === "fix";
+  const opts = { openingCap, discipline: s.cfg.longFactDiscipline };
+  const ctx = { kind, evidence, ...(openingCap ? { introMax: GUIDE_OPENING_MAX } : {}) };
+  // The fact-check's facts: the pack's two parts, kept apart, and the play evidence.
+  const extra = [
+    { title: "GTA VI fact pack, confirmed", facts: pack.confirmed },
+    ...(pack.reported ? [{ title: "GTA VI fact pack, reported (only ever said as reported)", facts: pack.reported }] : []),
+    ...(evidence.length ? [{ title: "Pulse's own play (the owner's recordings, HUD readings and stream checks)", facts: evidence.join("\n") }] : []),
+    ...(rumours.length ? [{ title: "Rumours viewers repeat (only ever said as rumours)", facts: rumours.join("\n") }] : []),
+  ];
+  let draft: import("./gtaguide.ts").GuideDraft | undefined;
+  let feedback: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    draft = await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
+    const script = guideToScript(draft, kind);
+    const problems = [
+      ...guideProblems(draft, ctx),
+      ...scriptSpoilers(script, spoilerWindows(), s.now()).map(
+        (x) => `Story spoiler (${x.where}): "${x.phrase}" gives away ${x.what}; GTA VI's story is held until December 18.`,
+      ),
+    ];
+    const factual = await adjudicateRanking(s, ep, script, [], attempt, extra);
+    if (!problems.length && !factual.length) break;
+    if (attempt === 1 && problems.length) {
+      const hard = problems.filter((p) => /^Story spoiler|speaks first-hand|no play evidence/.test(p));
+      if (hard.length) throw new FatalError(`GTA guide still breaks a hard rule after the rewrite: ${hard[0]!.slice(0, 300)}`);
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
+    }
+    feedback = [...factual, ...problems];
+  }
+  if (!draft) throw new Error("GTA guide produced nothing");
+  const script = guideToScript(draft, kind);
+  const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
+  if (longChecks.warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
+  await guardScript(s, ep, script, "after writing");
+  const meta = script.gta_guide!;
+  await logEvent(s.db, ep.id, "gta_guide", {
+    stage: "scripted",
+    kind: kind.key,
+    title: script.youtube.title,
+    items: meta.items,
+    labels: {
+      confirmed: meta.labels.filter((l) => l.label === "confirmed").length,
+      reported: meta.labels.filter((l) => l.label === "reported").length,
+      rumour: meta.labels.filter((l) => l.label === "rumour").length,
+    },
+    my_playthrough: meta.labels.filter((l) => l.play).length,
+    evidence_lines: evidence.length,
+    facts_missed: pack.missed,
+    thumb: meta.thumb,
+  });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      gta_guide: topic,
+      evidence,
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
+    },
+  });
+}
+
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
@@ -8038,7 +8258,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     story?: ExplainedStory;
     stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
+    gta_guide?: GtaGuideTopic;
   } | null;
+  // GTA_GUIDES: a GTA 6 guide list (src/gtaguide.ts), written on its own, rendered as a ranking.
+  if (fc?.gta_guide && kindOf(fc.gta_guide.kind)) return stepScriptGtaGuide(s, ep, fc.gta_guide);
   if (fc?.recap && fc.stories?.length)
     return stepScriptRecap(s, ep, fc.stories);
   // The week's biggest story, explained (src/explainedstep.ts).
@@ -11144,7 +11367,7 @@ export async function gatherMedia(
           maxSeconds: job.maxSeconds, publisher: job.publisher, ...(job.mode ? { mode: job.mode } : {}),
           ...(job.ownMaxSeconds !== undefined ? { ownMaxSeconds: job.ownMaxSeconds } : {}),
           // A weekly guide never shows late story, warning or not (src/longguide.ts).
-          long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
+          long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && !isGtaGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
       });
       clips.push(
         ...added.map((c) => {
@@ -14161,9 +14384,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "packaging_panel", packagingPanelEvent(panel.record)).catch(() => undefined);
     }
   }
-  const footageCredit = clips.length
-    ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
-    : "";
+  const footageCredit = !clips.length
+    ? ""
+    : script.gta_guide
+      ? // GTA_GUIDES: the owner's own play first; a permitted streamer's footage carries its own credit on screen too.
+        ["FOOTAGE: PULSE'S OWN PLAY · ROCKSTAR GAMES", ...new Set((sounded?.clips ?? assets.clips ?? []).filter((c) => /^Permitted stream capture/.test(c.provenance ?? "") && c.credit).map((c) => c.credit!.toUpperCase()))].join(" · ")
+      : "FOOTAGE: OFFICIAL TRAILERS · STEAM";
   // The thumbnail: the winner's widest art, else the topic's.
   const winnerBeat = (script.entries?.length ?? 0) - 1;
   const thumbArt =
@@ -14202,7 +14428,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // the first is the thumbnail, the next two go to YouTube's Test & compare. The niche study ranked them:
   // a huge subject with a rim and a few words, a giant number, an old game's nostalgia, a hard versus, a
   // circle on the thing that matters; the older designs stay as fallbacks.
-  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : "RANKED";
+  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : script.gta_guide ? "GUIDE" : "RANKED";
   const text = thumbTitle(script);
   const entryInfo = (b: number | undefined) => {
     if (b === undefined) return undefined;
@@ -14311,7 +14537,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           },
         ]
       : []),
-    ...(lastArt && thumbArt
+    // A guide's items are not ranks: no last-against-first clash.
+    ...(lastArt && thumbArt && !script.gta_guide
       ? [
           {
             layout: "clash",
@@ -14402,7 +14629,25 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       : candidates;
   // STRAND_FRAMES: the strand's layout first, and its Test & compare variants the same layout on other art.
   const designs: Candidate[] = strand ? pinStrandLayout(designsAll, strand) : designsAll;
-  const [mainThumb, ...restThumbs] = designs;
+  // GTA_GUIDES: the guide's own thumbnail (src/render/ThumbStudio.tsx GuideThumb) leads, so Test & compare runs it
+  // against the current style's two best designs. Without a frame of the owner's footage the designs stay as they are.
+  const guideDesign =
+    script.gta_guide && isGtaGuide(ep.factcheck_json)
+      ? await gtaGuideDesign(s, dir, sounded?.clips ?? assets.clips ?? [], script.gta_guide).catch((err) => {
+          log("warn", "gta guide: thumbnail design failed, the current designs stand", { episode: ep.id, error: errorMessage(err) });
+          return undefined;
+        })
+      : undefined;
+  if (guideDesign)
+    await logEvent(s.db, ep.id, "gta_guide", {
+      stage: "thumbnail",
+      frame: guideDesign.frame,
+      lifted: Boolean(guideDesign.thumb.fgFile),
+      logo: Boolean(guideDesign.thumb.image2File),
+      words: guideDesign.thumb.headline,
+      against: designs.slice(0, 2).map((d) => d.layout),
+    }).catch(() => undefined);
+  const [mainThumb, ...restThumbs] = guideDesign ? [guideDesign as Candidate, ...designs] : designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
     thumb: c.thumb as never,
@@ -17127,7 +17372,7 @@ export function longChapters(ep: Episode): string[] {
         : seg.kind === "beat" && seg.visual?.kind === "chapter"
           ? seg.visual.primary
           : seg.kind === "take"
-            ? script!.evergreen_format === "documentary"
+            ? script!.evergreen_format === "documentary" || script!.gta_guide
               ? titleCaseLabel(script!.pulse_take.label)
               : "Our pick"
             : undefined;
@@ -18024,6 +18269,45 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
  * Hands a long video's Test & compare to the Studio browser task (scheduled task pulse-studio-abtest):
  * data/abtests/pending.json lists the video, its title and the alternatives, and its thumbnails.
  */
+/**
+ * GTA_GUIDES: the guide thumbnail's design (src/render/ThumbStudio.tsx GuideThumb): the best frame of the owner's own
+ * clips in this video (a permitted streamer's when he has none), its subject lifted with APPLE_SUBJECT_LIFT when the
+ * Mac can, the 2-3 words the script carries and the official GTA VI logo. Undefined without a usable frame.
+ */
+async function gtaGuideDesign(
+  s: Services,
+  dir: string,
+  clips: Array<{ file: string; provenance?: string; durationSeconds?: number }>,
+  meta: import("./gtaguide.ts").GtaGuideMeta,
+): Promise<
+  | {
+      layout: "guide";
+      frame: "own" | "permitted";
+      thumb: Record<string, unknown> & { imageFile: string | null; headline: string; fgFile?: string | null; image2File?: string | null };
+    }
+  | undefined
+> {
+  const frame = await pickGuideFrame(dir, clips, s.cfg.appleSubjectLift ? (f) => appleCut(dir, f) : undefined);
+  if (!frame) return undefined;
+  const logo = await guideLogo(s.cfg.dataDir, dir);
+  return {
+    layout: "guide",
+    frame: frame.owner,
+    thumb: {
+      layout: "guide",
+      headline: meta.thumb.big,
+      kicker: "",
+      subline: meta.thumb.small,
+      game: "",
+      accent: "#FF6B1A",
+      imageFile: frame.file,
+      fgFile: frame.fg ?? null,
+      image2File: logo ?? null,
+      ...(frame.x !== undefined ? { subjectX: frame.x } : {}),
+    },
+  };
+}
+
 async function queueAbTest(s: Services, ep: Episode): Promise<void> {
   try {
     const dir = episodeDir(s.cfg, ep.id);

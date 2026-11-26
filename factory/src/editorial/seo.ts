@@ -181,6 +181,9 @@ export function rankingTheme(raw: string): string {
 }
 
 export function evergreenTitle(script: Script): string | undefined {
+  // GTA_GUIDES (src/gtaguide.ts): the guide's title carries its count and completeness promise; it is ranking-shaped
+  // only for the render, so the "Every X Game Ranked" template never applies.
+  if (script.gta_guide && script.youtube.title.trim()) return script.youtube.title.trim();
   // Buy, Wait or Skip keeps its series pattern word for word ("Hades at $9.99: buy, wait or skip?"): it is how a
   // viewer knows the series at a glance (src/editorial/verdict.ts verdictTitle).
   if (script.evergreen_format === "buy_wait_skip" && script.youtube.title.trim())
@@ -243,6 +246,8 @@ export function evergreenTitle(script: Script): string | undefined {
 
 /** The short line on a ranking's thumbnail: "Every X Game Ranked" or "N X Games Ranked". */
 export function thumbTitle(script: Script): string {
+  // GTA_GUIDES: the guide's big words on every design, so Test & compare measures the design, not the words.
+  if (script.gta_guide?.thumb.big) return script.gta_guide.thumb.big;
   // The writer's own hook words (1-4, never the title restated) win: the strongest long-video
   // thumbnails in the niche study carried a short hook, the weakest a catalogue label.
   const hook = script.youtube?.thumb_text?.trim().replace(/\s+/g, " ");
@@ -438,6 +443,8 @@ export function keywordLead(script: Script): string {
     const theme = script.cutdown.theme || script.game_title;
     return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
   }
+  if (script.gta_guide)
+    return `${script.youtube.title.replace(/\.$/, "")}: a practical GTA 6 guide with no story spoilers. GTA 6 guide, GTA 6 tips, GTA 6 beginner guide, GTA VI, by Pulse Gaming News.`;
   if (script.recap)
     return `This week in gaming news: ${script.headline.replace(/\.$/, "")}. Gaming news this week, video game news recap, biggest gaming stories, by Pulse Gaming News.`;
   if (script.evergreen_format === "documentary")
@@ -486,6 +493,9 @@ export function pinnedComment(script: Script): string {
         ? `${script.cutdown.question.trim()} The full ${script.cutdown.kind}: https://youtu.be/${script.cutdown.parent_video}`
         : `${script.cutdown.question.trim()} The full guide, every step from real play: https://youtu.be/${script.cutdown.parent_video}`
       : script.cutdown.question.trim();
+  // GTA_GUIDES: a guide asks for the viewer's own tip, which feeds the stream asks list and the next guide.
+  if (script.gta_guide)
+    return script.gta_guide.question ?? "What's the one tip you'd give a new GTA 6 player? No story spoilers, please.";
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen

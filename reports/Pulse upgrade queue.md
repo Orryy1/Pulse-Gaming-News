@@ -480,3 +480,9 @@ Since claude/doc-after-target (969f362f9) the documentary and the long ranking a
 **Why:** gameplay Shorts from the owner's own streams always wait for a manual Discord tap (radio and Content ID risk). Two expired unanswered on 17 and 19 Nov; "GTA 6 Day 6: Can you lose a wanted level in a boat?" has waited since 24 Nov 06:11 and "Day 8" since 25 Nov 22:43. With the hands-off goal (25 Nov) nobody may tap, so these clips are lost.
 
 **Idea, not built (owner policy):** auto-release a gameplay Short after the reminder when the QA passed, no licensed music is detected in its audio (a music detector on the clip) and it is not a story spoiler; otherwise keep the tap. Needs the owner's yes on the weekly owner list, because manual approval for his own footage was his rule.
+
+## 57. A due Why slot gets one production seat past the limit (improvement engine, 26 Nov 07:00)
+
+In progress, owned by the improvement engine. `WHY_SLOT_SEAT` (default on): when MAX_PRODUCING (2) Shorts are mid-production, a Why slot whose window is open may still start one Short, inside the day's allowance; only the Why lane takes the seat, and each use is a `why_seat` event. Found: on 25 Nov every tick from 17:16 to 19:01 waited on "2 Shorts are already in production", so the 18:30 slot (GTA File part 4, else a Why) never started; 24 Nov lost 18:30 and 22:00 the same way (that day also parked Shorts, fixed 25 Nov 11:51). Output audit: Why 9-10 of 21 planned went public in 7 days. Judge by 3 Dec: `why_seat` events, Why picks per planned slot (target at least 19 of 21 slots picked), no rise in Shorts failing for media or render time-outs. Don't change MAX_PRODUCING while this is judged.
+
+GTA File: parts 3 to 7 moved by hand to 26-30 Nov this run. Not built: parts are dated, so a missed part is still never made later; idea: a missed part moves to the next free 18:30 slot and later parts follow.

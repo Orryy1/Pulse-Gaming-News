@@ -2,6 +2,26 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 07:00 UK: a due "why" slot gets one production seat, and the GTA File back in order
+
+**Change:** selection stops while 2 Shorts are mid-production (MAX_PRODUCING). A "why" slot whose window is open may now start one Short past that limit, inside the day's Shorts allowance; only the "why" lane takes the seat, and each use is a `why_seat` event. Data fix alongside it: GTA File parts 3 to 7 move from 24-28 Nov to 26-30 Nov. Branch `claude/engine-whyseat` (014f985f9, c741f778d), stage 735120b3a, **deployed 07:05 UK**, factory healthy.
+
+**Evidence:**
+
+- Output audit (25 Nov): "why" 9 to 10 of 21 planned slots went public in 7 days. "Why" Shorts convert about 6 times better than news Shorts.
+- Slot by slot since 21 Nov (slots 12:00, 18:30, 22:00): 24 Nov lost 18:30 and 22:00, 25 Nov lost 18:30. Factory log, 25 Nov: every selection tick from 17:16 to 19:01 UK said "waiting: 2 Shorts are already in production", the whole 18:30 window. The status file also records big stories missed on 24 Nov "while 2 Shorts were already in production".
+- The 18:30 slot is the GTA File's. Parts 3 (24 Nov) and 4 (25 Nov) never started, and parts are matched by date, so they were lost for good. Tonight's part 5 brief told the writer to open with "GTA File, part 5" and a callback to a part 4 nobody saw. Now part 3 runs tonight, with its recap of part 2 (which aired on 23 Nov).
+- Real replay as a test: the 25 Nov situation (two Shorts busy, 17:16, a planned 18:30 topic) now starts the Short for 18:30; it is still one seat (the next tick waits), off with the setting, nothing past 3 busy, nothing when no "why" slot is open, nothing past the allowance. Typecheck clean; merge gate 3,504 of 3,504 pass (6 new, tests/why-seat.test.ts). code-reviewer: no blockers; its first point fixed (fatal errors still announced).
+- No on-screen change, so no frame review was needed.
+
+**Setting:** `WHY_SLOT_SEAT` (on by default; `false` restores the old wait). No .env change.
+
+**Judged:** by 3 Dec. Pass mark: at least 19 of 21 "why" slots picked in the week (from about 16), `why_seat` used at least once, and no rise in Shorts failing on media or render time-outs. If Shorts fail or slots run late because of the extra Short in production, set it to false.
+
+**Judged this run:** FACT_REPAIR (due 26 Nov): not passed yet, extended to 28 Nov. In 7 days 22 attempts: 18 not repairable, 2 failed the recheck, 2 repaired. The 25 Nov 23:07 repair ("Ranking EVERY Half-Life and Portal Game") is voiced and due out today at 17:00; if it publishes with no comment saying a fact is wrong, it passes. It stays on (it cannot publish anything that failed its recheck). Core numbers: no drop tied to an engine change (the last one, at 03:00, has under 4 hours of data).
+
+**Also looked at, not changed:** the PC picture checker (Ollama) went down and up 7 times in a day; that is the PC orchestrator chat's area, not changed here.
+
 ## 26 Nov 2026, 03:00 UK: the voice check stops mistaking names like "McCoy" for spelled letters
 
 **Change:** after every voicing, the narration check's letter watch lists capitals the voice read letter by letter, logs unknown ones and posts an alert. Any word with two capitals counted, so "McCoy's line" in the Titanfall 2 Short (25 Nov) was logged and alerted as spelled out. Names built from capitalised parts (McCoy, YouTube, GameSpot, LeBron) are now left alone; real mixed-case abbreviations (LoL, WoW, PvP) are still watched. The daily digest also drops names logged before the rule. "GOG" (read G-O-G in the Cyberpunk 2077 documentary, an accepted way to say it) is on the said-as-letters list. Branch `claude/engine-namewatch` (6f54155a1, f9c26d9ed), stage 87091b5f6, **deployed 03:02 UK**, factory healthy.

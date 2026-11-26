@@ -545,7 +545,8 @@ export function scoreCandidate(
     fame: scoreFame(s),
     arc: arc.score,
     peg: scorePeg(s.pegs, now),
-    demand: s.demand ? DEMAND_SCORE[s.demand.level] : 0.5,
+    // An older reading (stale) counts as unknown: it never penalises a topic harder than having no figure.
+    demand: s.demand && !s.demand.stale ? DEMAND_SCORE[s.demand.level] : 0.5,
     freshness: scoreFreshness(c, s),
   };
   // The arc is the breakout's engine, not one factor among five: a famous, pegged, in-demand topic with no fall,
@@ -573,7 +574,7 @@ export function scoreCandidate(
     `fame ${parts.fame} (${fame.join(", ")})`,
     `arc ${parts.arc} (${arc.families.join(" + ") || "no clear arc"})`,
     `peg ${parts.peg}${peg ? ` (${peg.kind}: "${peg.headline.slice(0, 90)}")` : " (nothing in the news)"}`,
-    `demand ${parts.demand} (${s.demand ? `${short(s.demand.views)} views on its top YouTube videos this week, ${s.demand.level}` : "unknown"})`,
+    `demand ${parts.demand} (${s.demand ? `${short(s.demand.views)} views on its top YouTube videos ${s.demand.stale ? `when last measured on ${s.demand.at.slice(0, 10)}, counted as unknown` : "this week"}, ${s.demand.level}` : "unknown"})`,
     `freshness ${parts.freshness}${BIG_CHANNEL_COVERAGE[c.subject] ? " (already covered by big channels)" : ""}${s.relatedPulse ? ` (close to Pulse's "${s.relatedPulse}")` : ""}`,
   ];
   return {
@@ -722,6 +723,11 @@ export async function gatherDocSignals(
   const first = rankDocCandidates(cands, out, d.now)
     .filter((s) => !s.excluded)
     .slice(0, Math.max(0, d.lookups));
+  // The demand of every looked-up candidate in one run (one batch, one log line), read in the loop below.
+  if (d.demand?.prefetch)
+    await d.demand
+      .prefetch(first.map(({ candidate: c }) => DEMAND_QUERY[c.subject] ?? c.subject))
+      .catch(() => undefined);
   for (const { candidate: c } of first) {
     const s = out.get(c.subject)!;
     if (d.steam && c.steam) {

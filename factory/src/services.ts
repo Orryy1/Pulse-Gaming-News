@@ -86,7 +86,7 @@ import { steamDeals } from "./discovery/deals.ts";
 import { verdictCandidates } from "./discovery/verdicts.ts";
 import { libraryClips } from "./assets/library.ts";
 import { trendingVideos } from "./discovery/demand.ts";
-import { parseDemandRows } from "./discovery/searchdemand.ts";
+import { demandApiSearch, type DemandGet } from "./discovery/demandapi.ts";
 import { runCapped } from "./lib/child.ts";
 import { anonClosedWindow, guardActive, guardSettings, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
 import { FFMPEG, FFPROBE, YTDLP_TEXT } from "./lib/bin.ts";
@@ -137,6 +137,41 @@ const pixabayBreaker = breaker("pixabay");
 const archiveBreaker = breaker("internet archive");
 
 /** The stock libraries a line's B-roll search asks, Pexels first (each behind its setting and key). */
+/**
+ * The demand check's searches on the YouTube Data API (src/discovery/demandapi.ts), never yt-dlp: YOUTUBE_API_KEY when
+ * set, else the factory's own login. Each search.list counts in the search bucket and keeps the uploads' reserve, as
+ * the trailer searches do; the videos.list units go on the shared ledger. The key is never logged.
+ */
+export function demandSearcher(db: Db, cfg: Config) {
+  return async (queries: string[]) => {
+    if (process.env.NODE_TEST_CONTEXT) throw new Error("no YouTube Data API calls in tests");
+    const key = String(process.env.YOUTUBE_API_KEY ?? "").trim();
+    const get: DemandGet = async (p) => {
+      const base = `https://www.googleapis.com/youtube/v3/${p}`;
+      try {
+        if (key) return await fetchWithTimeout(`${base}&key=${encodeURIComponent(key)}`);
+        const token = await accessToken(db, oauthConfig(cfg));
+        return await fetchWithTimeout(base, { headers: { authorization: `Bearer ${token}` } });
+      } catch (err) {
+        // Only the method and the error's kind: the request (and its key) is never repeated.
+        throw new Error(`YouTube Data API ${p.split("?")[0]} request failed (${(err as Error)?.name ?? "error"})`);
+      }
+    };
+    return demandApiSearch(queries, {
+      get,
+      now: new Date(),
+      allowSearch: async () => {
+        const now = new Date();
+        if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay) return false;
+        if ((await quotaUsed(db, now)) + 1 + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+        await quotaCall(db, now, "search");
+        return true;
+      },
+      charge: (units) => quotaAdd(db, new Date(), units),
+    });
+  };
+}
+
 export function stockLibraries(
   cfg: Pick<Config, "pexelsApiKey" | "libraryPixabay" | "pixabayApiKey" | "libraryArchive">,
 ): StockLibrary[] {
@@ -557,23 +592,13 @@ export function createServices(db: Db, cfg: Config): Services {
             llm: cfg.clipRanking === "llm" ? llm : undefined,
           })
         : Promise.resolve([]),
-    // The demand check's search page: yt-dlp reads YouTube's own results (no API quota), 20 videos at most.
+    // The demand check's searches: the Data API, 20 videos a topic, never yt-dlp (its anonymous lane is retired).
+    searchDemandMany: demandSearcher(db, cfg),
     searchDemand: async (url) => {
-      const { stdout } = await runCapped(
-        cfg.ytdlpPath || "yt-dlp",
-        [
-          ...YTDLP_TEXT.args,
-          "--no-warnings",
-          "--flat-playlist",
-          "--playlist-end",
-          "20",
-          "--print",
-          "%(id)s\t%(view_count)s\t%(channel)s\t%(title)s",
-          url,
-        ],
-        { timeout: 60_000, maxBuffer: 4 * 1024 * 1024, env: YTDLP_TEXT.env },
-      );
-      return parseDemandRows(stdout);
+      const q = (new URL(url).searchParams.get("search_query") ?? "").trim();
+      const r = (await demandSearcher(db, cfg)([q])).get(q);
+      if (r instanceof Error) throw r;
+      return r ?? [];
     },
     trending: () =>
       trendingVideos(

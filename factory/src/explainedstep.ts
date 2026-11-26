@@ -16,8 +16,10 @@ import { narrationOf } from "./editorial/schema.ts";
 import type { SegmentInput } from "./render/timeline.ts";
 import type { EvergreenCandidate } from "./editorial/evergreen.ts";
 import {
+  dbDemandBudget,
   dbDemandCache,
   demandFor,
+  demandSearchers,
   type Demand,
 } from "./discovery/searchdemand.ts";
 import { guardScript } from "./writerguard.ts";
@@ -166,7 +168,7 @@ export async function weekStories(
  * DEMAND_LOOKUPS pages at most); off or unavailable, every story counts as unknown demand.
  */
 export async function chooseWeekStory(
-  s: Pick<Services, "db" | "cfg" | "searchDemand">,
+  s: Pick<Services, "db" | "cfg" | "searchDemand" | "searchDemandMany">,
   now: Date,
 ): Promise<{
   pick?: RankedStory;
@@ -185,14 +187,16 @@ export async function chooseWeekStory(
       : rankStories(stories, d);
   const first = rank();
   let demand = new Map<string, Demand>();
-  if (s.cfg.demandCheck && s.searchDemand) {
+  if (s.cfg.demandCheck && (s.searchDemand || s.searchDemandMany)) {
     const top = first
       .filter((r) => !r.score.excluded)
       .slice(0, 5)
       .map((r) => ({ name: demandQuery(r.story) }) as EvergreenCandidate);
     demand = await demandFor(top, {
-      search: (url) => s.searchDemand!(url),
-      cache: dbDemandCache(s.db, () => now),
+      ...demandSearchers(s),
+      budget: dbDemandBudget(s.db, s.cfg.demandApiPerDay, () => now),
+      label: "explained",
+      cache: dbDemandCache(s.db, () => now, (s.cfg.demandCacheDays ?? 7) * 24),
       lookups: s.cfg.demandLookups,
       minViews: s.cfg.demandMinViews,
       now,

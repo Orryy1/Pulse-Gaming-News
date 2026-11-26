@@ -399,6 +399,8 @@ export function testConfig(
     demandMinViews: 20000,
     demandLookups: 12,
     demandStaleDays: 0,
+    demandCacheDays: 7,
+    demandApiPerDay: 8,
     repeatMax: 0,
     spareUploads: false,
     spareSlots: ["19:00", "15:00", "11:00"],

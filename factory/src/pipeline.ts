@@ -626,9 +626,11 @@ import { lossThumb, pickWhyDied } from "./whydied.ts";
 import { proposeCompleteCuts, stanceProblems } from "./stance.ts";
 import { applyShortTitleGameFirst, applyStrandFrame } from "./strandstep.ts";
 import {
+  dbDemandBudget,
   dbDemandCache,
   demandFor,
   demandLine,
+  demandSearchers,
   rankByDemand,
   type Demand,
 } from "./discovery/searchdemand.ts";
@@ -1200,10 +1202,14 @@ export interface Services {
   ): Promise<import("./editorial/verdict.ts").VerdictData[]>;
   /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
   trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
-  /** One YouTube search page's videos with their views, read without the API (src/discovery/searchdemand.ts); absent in tests. */
+  /** One demand search (a results-page URL) answered by the Data API (src/discovery/demandapi.ts); absent in tests. */
   searchDemand?(
     url: string,
   ): Promise<import("./discovery/searchdemand.ts").SearchRow[]>;
+  /** Several topics' demand searches at once on the Data API, view counts batched; an Error for a failed one. */
+  searchDemandMany?(
+    queries: string[],
+  ): Promise<Map<string, import("./discovery/searchdemand.ts").SearchRow[] | Error>>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(
     title: string,
@@ -3516,11 +3522,13 @@ async function demandRanked(
   demand: Map<string, Demand>;
   skipped: EvergreenCandidate[];
 }> {
-  if (!s.cfg.demandCheck || !s.searchDemand)
+  if (!s.cfg.demandCheck || (!s.searchDemand && !s.searchDemandMany))
     return { candidates: base, demand: new Map(), skipped: [] };
   const demand = await demandFor(base, {
-    search: (url) => s.searchDemand!(url),
-    cache: dbDemandCache(s.db, () => s.now()),
+    ...demandSearchers(s),
+    budget: dbDemandBudget(s.db, s.cfg.demandApiPerDay, () => s.now()),
+    label: "pick",
+    cache: dbDemandCache(s.db, () => s.now(), (s.cfg.demandCacheDays ?? 7) * 24),
     lookups: s.cfg.demandLookups,
     minViews: s.cfg.demandMinViews,
     now: s.now(),
@@ -3545,7 +3553,7 @@ async function reportDemand(
   d: Demand | undefined,
   skipped: number,
 ): Promise<void> {
-  if (!s.cfg.demandCheck || !s.searchDemand) return;
+  if (!s.cfg.demandCheck || (!s.searchDemand && !s.searchDemandMany)) return;
   await s
     .notify({ content: demandLine(lane, picked, d, skipped, s.now()) })
     .catch(() => undefined);

@@ -881,3 +881,24 @@ test("a cut piece the splitter took from after an abbreviation is refused too", 
   ]);
   assert.deepEqual(ok.unrepaired, []);
 });
+
+// 26 Nov 2026: chapter 10 of "Cyberpunk 2077: Pulled, Patched and Forgiven" was dropped over a disputed venue alone
+// ("in an open letter"): the whole sentence could not go because the next one ("He blamed the streaming engine...")
+// leans on it. The venue phrase now goes by itself and the claim and the line after it stay.
+test("a disputed venue ('in an open letter') goes alone, so the next line that leans on the sentence survives", () => {
+  const sentence =
+    "Badowski said in an open letter that the Switch 2 version was the hardest port the studio had attempted.";
+  const next = "He blamed the streaming engine, which loads the city in as you drive.";
+  const item: DocFactItem = {
+    quote: "in an open letter",
+    problem: "The source does not establish that this was said in an open letter.",
+  };
+  const r = repairDocChapter(docChapter(`${sentence} ${next}`), [item]);
+  assert.deepEqual(r.unrepaired, [], r.unrepaired[0]?.why ?? "");
+  assert.equal(r.repairs[0]!.kind, "drop_clause");
+  assert.match(
+    spoken(r.chapter),
+    /Badowski said that the Switch 2 version was the hardest port the studio had attempted\. He blamed the streaming engine/,
+  );
+  assert.doesNotMatch(spoken(r.chapter), /open letter/);
+});

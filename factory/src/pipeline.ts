@@ -2088,6 +2088,7 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       whySeatOpen(cfg.whySlotSeat, producing, cfg.maxProducing) &&
       (await shortsTowardTarget(db, cfg)) < dailyTargetNow(cfg, now)
         ? await maybeSelectWhy(s).catch((err) => {
+            if (err instanceof FatalError) throw err; // announced by tick(), as on the usual path
             log("warn", "why seat selection failed", { error: errorMessage(err) });
             return undefined;
           })

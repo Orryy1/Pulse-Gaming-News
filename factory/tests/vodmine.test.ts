@@ -331,7 +331,13 @@ test("a 1 or 2 star spell of half a minute that ends with the police lost is an 
     ev("wanted_start", 300, 2),
     ev("wanted_clear", 310, 0),
     ev("wanted_start", 500, 3),
-    ev("wanted_clear", 600, 0),
+    { kind: "wanted_clear", t: 600, value: 0, from: 3, detail: "" } as never,
+    ev("wanted_start", 700, 3),
+    ev("wanted_down", 720, 2),
+    { kind: "wanted_clear", t: 760, value: 0, from: 2, detail: "" } as never,
   ]);
-  assert.deepEqual(sig, [{ t: 160, score: 1, detail: "lost the police at 2 stars after 60 s" }]);
+  assert.deepEqual(sig, [
+    { t: 160, score: 1, detail: "lost the police at 2 stars after 60 s" },
+    { t: 760, score: 1, detail: "lost the police at 3 stars after 60 s" },
+  ]);
 });

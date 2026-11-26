@@ -92,6 +92,8 @@ import {
 } from "./youtube/branding.ts";
 import { channelPage, SERIES_BANNER_FILE } from "./channelpage.ts";
 import { getEpisode, listEpisodes, logEvent, transition } from "./episodes.ts";
+import { REWRITE_CLEARED_COLUMNS, rewriteRetry } from "./adminretry.ts";
+import { clearDocCheckpoint } from "./editorial/doccheckpoint.ts";
 import { outputAudit } from "./outputaudit.ts";
 import { verifyToken, signToken, safeEqual } from "./lib/crypto.ts";
 import {
@@ -1062,15 +1064,52 @@ document.getElementById("copy").onclick=async(e)=>{e.preventDefault();await copy
       const ep = await getEpisode(db, url.searchParams.get("id") ?? "");
       // rewrite=1: a failed episode that never reached the voice (stopped at writing, e.g. a spoiler or fact-check
       // door after a fix to the writer) is written again from its stored story (20 Nov 2026: the weekly explainer).
-      if (ep && ep.status === "failed" && !ep.assets_json?.audio && url.searchParams.get("rewrite") === "1") {
-        await db.query(
-          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, script_json = NULL WHERE id = $1`,
-          [ep.id],
+      // A rejected one too, voiced or not, unless it reached YouTube: its voice and assets go with the script
+      // (25 Nov 2026: the Cyberpunk 2077 documentary, rejected for disputed lines, src/adminretry.ts).
+      const rewrite = ep && url.searchParams.get("rewrite") === "1" ? rewriteRetry(ep) : undefined;
+      if (ep && rewrite && !rewrite.ok && ep.status === "rejected") {
+        res.writeHead(400, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error: rewrite.why }));
+        return;
+      }
+      if (ep && rewrite?.ok) {
+        const fail = (error: string) =>
+          res.writeHead(409, { "content-type": "application/json" }).end(JSON.stringify({ ok: false, error }));
+        if (rewrite.clearAssets) {
+          // A writer may still be at work on an episode rejected mid-script (rejecting from "selected" is allowed): its
+          // late "scripted" would land on the revived episode. Nothing logged for 45 minutes means nothing is running.
+          const [last] = await db.query<{ at: string | null }>(
+            `SELECT max(created_at) AS at FROM events WHERE episode_id = $1`,
+            [ep.id],
+          );
+          if (last?.at && Date.now() - new Date(last.at).getTime() < 45 * 60_000)
+            return fail("something was logged on it in the last 45 minutes (the reject click counts too); try again once it has been quiet that long");
+          // Its slot was given up when it was rejected: never take it back from the episode that holds it now.
+          if (ep.slot_at) {
+            const [holder] = await db.query<{ id: string }>(
+              `SELECT id FROM episodes WHERE slot_at = $1 AND id <> $2 AND status NOT IN ('failed','rejected') LIMIT 1`,
+              [ep.slot_at, ep.id],
+            );
+            if (holder) return fail(`its slot now belongs to ${holder.id}`);
+          }
+        }
+        const cleared = rewrite.clearAssets ? REWRITE_CLEARED_COLUMNS : (["script_json"] as const);
+        // Only from the status just read, so a second click or a step moving it meanwhile changes nothing.
+        const [moved] = await db.query<{ id: string }>(
+          `UPDATE episodes SET status = 'selected', attempts = 0, next_attempt_at = NULL, last_error = NULL, ${cleared.map((c) => `${c} = NULL`).join(", ")} WHERE id = $1 AND status = $2 RETURNING id`,
+          [ep.id, ep.status],
         );
-        await logEvent(db, ep.id, "retried", { after: ep.last_error ?? "", rewrite: true }).catch(() => undefined);
+        if (!moved) return fail(`it is no longer "${ep.status}"`);
+        // A documentary's chapter checkpoint would bring the old chapters back: it goes too.
+        clearDocCheckpoint(cfg.dataDir, ep.id);
+        await logEvent(db, ep.id, "retried", {
+          after: ep.last_error ?? "",
+          rewrite: true,
+          from: ep.status,
+          ...(rewrite.clearAssets ? { cleared: [...cleared] } : {}),
+        }).catch(() => undefined);
         res
           .writeHead(200, { "content-type": "application/json" })
-          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true }));
+          .end(JSON.stringify({ ok: true, id: ep.id, rewrite: true, from: ep.status, slot_at: ep.slot_at }));
         return;
       }
       if (!ep || ep.status !== "failed" || !ep.assets_json?.audio) {

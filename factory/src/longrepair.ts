@@ -260,7 +260,7 @@ function rankYearFix(
  * A sentence opening on a word that leans on the one before it: cutting that one would leave it dangling ("He drew
  * every poster." after "Kojima hired Yoji Shinkawa."). "It" is left out: in an entry it is nearly always the game.
  */
-const LEANS_BACK =
+export const LEANS_BACK =
   /^\s*["'“‘]?(?:that|this|these|those|which|even so|even then|because of (?:that|this)|despite (?:that|this)|he|she|they|his|her|their|them|but|and|so|still|yet|then|there|also)\b/i;
 
 /** An opening subordinate or prepositional clause: what follows its comma is the main clause, never an aside. */

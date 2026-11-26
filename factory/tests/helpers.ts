@@ -155,6 +155,8 @@ export function testConfig(
     codexGrammarFallback: true,
     factRepair: true,
     longFactDiscipline: false,
+    docFactDiscipline: true,
+    docFactCutPercent: 20,
     visionPaidFallback: false,
     codexTimeoutMinutes: 20,
     codexShortTimeoutMinutes: 12,

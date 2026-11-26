@@ -223,6 +223,17 @@ export interface Config {
    */
   longFactDiscipline: boolean;
   /**
+   * DOC_FACT_DISCIPLINE (default on, src/docfacts.ts): a documentary, weekly explainer or weekly recap chapter never
+   * keeps a line its fact-check says the source does not support. After the rewrites each disputed line is mended
+   * (src/factrepair.ts line rules) or its sentence cut, within DOC_FACT_CUT_PERCENT of the chapter's words, and the
+   * chapter is checked once more; only a clean re-check keeps it. Otherwise the chapter is dropped where
+   * DOC_DROP_REFUSED_CHAPTER allows, or the episode fails. Off only brings back the old warning, which broke the
+   * verified-sources rule (25 Nov 2026: Cyberpunk 2077 documentary, 18 disputed lines kept).
+   */
+  docFactDiscipline: boolean;
+  /** DOC_FACT_CUT_PERCENT (default 20, 0-40): the most of one chapter's spoken words DOC_FACT_DISCIPLINE may cut. */
+  docFactCutPercent: number;
+  /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
    */
@@ -1857,6 +1868,8 @@ export function loadConfig(): Config {
     codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
     factRepair: bool("FACT_REPAIR", true),
     longFactDiscipline: bool("LONG_FACT_DISCIPLINE", false),
+    docFactDiscipline: bool("DOC_FACT_DISCIPLINE", true),
+    docFactCutPercent: Math.min(40, Math.max(0, int("DOC_FACT_CUT_PERCENT", 20))),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
     codexShortTimeoutMinutes: int("CODEX_SHORT_TIMEOUT_MINUTES", 12),

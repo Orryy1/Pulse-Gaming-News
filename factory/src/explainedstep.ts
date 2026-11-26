@@ -25,6 +25,7 @@ import { spoilerProblems } from "./sceneindex/spoilers.ts";
 import {
   chapterRefusal,
   checkChapter,
+  checkChapterItems,
   groundCallouts,
   groundDocMoments,
   validateBookends,
@@ -63,6 +64,7 @@ import { longRulesFor, youShortfall } from "./editorial/longrules.ts";
 import { excludeDropStories } from "./editorial/dropangle.ts";
 import { dayKey } from "./lanes.ts";
 import { errorMessage, FatalError, log } from "./lib/util.ts";
+import { disciplineChapter, docFactLine, type DocFactItem } from "./docfacts.ts";
 
 type Url = { url: string; source: string; title: string };
 
@@ -346,6 +348,8 @@ export async function stepScriptExplained(
   for (const [index] of EXPLAINED_PARTS.entries()) {
     let chapter: DocChapter | undefined;
     let feedback: string[] = [];
+    // DOC_FACT_DISCIPLINE: the last check's disputed lines, undefined when that check could not run.
+    let disputed: DocFactItem[] | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       chapter = await writeExplainedChapter(s.llm, {
         story,
@@ -365,10 +369,15 @@ export async function stepScriptExplained(
               youFloor,
             )
           : undefined;
-      const unsupported = await checkChapter(s.llm, chapter, source).catch(
-        () => [] as string[],
-      );
-      feedback = [
+      let unsupported: string[];
+      if (s.cfg.docFactDiscipline) {
+        disputed = await checkChapterItems(s.llm, chapter, source).catch(() => undefined);
+        unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
+      } else
+        unsupported = await checkChapter(s.llm, chapter, source).catch(
+          () => [] as string[],
+        );
+      const others = [
         ...validateExplainedChapter(chapter, {
           earlier: done.map((d) => d.chapter),
           rumour: story.rumour,
@@ -385,14 +394,55 @@ export async function stepScriptExplained(
           s.now(),
           games,
         ),
+      ];
+      feedback = [
+        ...others,
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
       ];
       if (!feedback.length) break;
+      // Under DOC_FACT_DISCIPLINE the disputed lines are settled just below, never kept as a warning.
       if (attempt === 2)
         warnings.push(
-          ...feedback.map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
+          ...(s.cfg.docFactDiscipline ? others : feedback).map((f) => `${EXPLAINED_PARTS[index]!.label}: ${f}`),
+        );
+    }
+    // DOC_FACT_DISCIPLINE (src/docfacts.ts): what the fact check still disputes is mended or its sentence cut within
+    // the part's cap, then checked once more; a part that still isn't clean is dropped as a refused part would be
+    // (at most one, never the first, DOC_DROP_REFUSED_CHAPTER), or the explainer stops. A refusal is handled below.
+    if (s.cfg.docFactDiscipline && !(s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)) {
+      const label = EXPLAINED_PARTS[index]!.label;
+      const settled = await disciplineChapter({
+        chapter: chapter!,
+        disputed,
+        check: (c) => checkChapterItems(s.llm, c, source),
+        maxCutShare: s.cfg.docFactCutPercent / 100,
+      });
+      await logEvent(s.db, ep.id, "doc_fact_discipline", {
+        part: label,
+        ok: settled.ok,
+        disputed: disputed?.length ?? null,
+        repairs: settled.repairs,
+        ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
+      }).catch(() => undefined);
+      if (settled.ok) {
+        if (settled.repairs.length) {
+          chapter = settled.chapter;
+          warnings.push(docFactLine(label, settled.repairs));
+        }
+      } else if (settled.errored) {
+        // The check itself could not run: no verdict, so the step is tried again later.
+        throw new Error(`explainer part "${label}": ${settled.why}; trying again later`);
+      } else if (s.cfg.docDropRefusedChapter && index > 0 && dropped.size === 0) {
+        dropped.add(index);
+        warnings.push(`${label}: dropped, its fact check still disputes it after the rewrites and the cuts (${settled.why.slice(0, 200)})`);
+        await logEvent(s.db, ep.id, "explained_part_dropped", { part: label, why: settled.why.slice(0, 300), facts: true }).catch(() => undefined);
+        log("warn", "explained part dropped", { episode: ep.id, part: label, facts: true });
+        continue;
+      } else
+        throw new FatalError(
+          `explainer part "${label}" fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,
         );
     }
     // A spoiler that survives the last rewrite: its sentences are cut, so one phrase never stops the whole video.

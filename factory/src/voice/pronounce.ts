@@ -13,7 +13,7 @@
 // voices once more. Pure, apart from the log file.
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LetterReading } from "../qa/narration.ts";
+import { nameShaped, type LetterReading } from "../qa/narration.ts";
 import { knownSpokenForm, romanValue, SAID_AS_LETTERS } from "./speakable.ts";
 
 /**
@@ -222,7 +222,8 @@ export async function recordUnknown(
 
 /**
  * The alert digest's line about the running list (pure): tokens still unknown to the tables, most frequent first.
- * A token since added to SAID_AS_LETTERS or given a spoken form drops out on its own.
+ * A token since added to SAID_AS_LETTERS or given a spoken form drops out on its own, and so does a name the letter
+ * watch no longer flags (LETTER_WATCH_NAMES: "McCoy", logged on 25 Nov 2026 before the rule).
  */
 export function unknownDigestLine(list: UnknownList): string | undefined {
   const open = Object.entries(list)
@@ -230,7 +231,8 @@ export function unknownDigestLine(list: UnknownList): string | undefined {
       ([t]) =>
         !SAID_AS_LETTERS.has(t.toUpperCase()) &&
         !knownSpokenForm(t) &&
-        !LOOSE_FORMS[t],
+        !LOOSE_FORMS[t] &&
+        !nameShaped(t),
     )
     .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
   if (!open.length) return undefined;

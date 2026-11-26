@@ -154,6 +154,7 @@ export function testConfig(
     codexVision: false,
     codexGrammarFallback: true,
     factRepair: true,
+    letterWatchNames: true,
     longFactDiscipline: false,
     docFactDiscipline: true,
     docFactCutPercent: 20,

@@ -788,7 +788,7 @@ export function createServices(db: Db, cfg: Config): Services {
         : [],
     checkNarration: async (file, words) =>
       cfg.whisperPython || cfg.macAsr
-        ? checkNarration(words, await speechWords(file))
+        ? checkNarration(words, await speechWords(file), undefined, { names: cfg.letterWatchNames })
         : undefined,
     youtube: (account = "") =>
       new YouTubeClient(() => accessToken(db, oauthConfig(cfg), account)),

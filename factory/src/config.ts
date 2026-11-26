@@ -214,6 +214,8 @@ export interface Config {
   /** FACT_REPAIR (default on): a ranking whose fact-check still fails on one or two lines after the rewrite gets
    * those lines mended (a rounded figure hedged, an unsupported side line cut) and checked again, instead of failing. */
   factRepair: boolean;
+  /** LETTER_WATCH_NAMES (default on, src/qa/narration.ts nameShaped): names like "McCoy" are not flagged as spelled letters. */
+  letterWatchNames: boolean;
   /**
    * LONG_FACT_DISCIPLINE (default off, src/editorial/longfacts.ts): a long ranking is checked without a model before its
    * fact-check (absolutes and series-wide firsts named for the rewrite; cards whose figures, games or dates are not in
@@ -1867,6 +1869,7 @@ export function loadConfig(): Config {
     codexVision: bool("CODEX_VISION", false),
     codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
     factRepair: bool("FACT_REPAIR", true),
+    letterWatchNames: bool("LETTER_WATCH_NAMES", true),
     longFactDiscipline: bool("LONG_FACT_DISCIPLINE", false),
     docFactDiscipline: bool("DOC_FACT_DISCIPLINE", true),
     docFactCutPercent: Math.min(40, Math.max(0, int("DOC_FACT_CUT_PERCENT", 20))),
@@ -2904,6 +2907,7 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     maxWeekCapPercent: c.maxWeekCapPercent,
     maxForCodexSites: c.maxForCodexSites,
     factRepair: c.factRepair,
+    letterWatchNames: c.letterWatchNames,
     longFactDiscipline: c.longFactDiscipline,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,

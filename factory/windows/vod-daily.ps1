@@ -143,12 +143,14 @@ try {
   }
 
   # The index: a recording not fully indexed is worked on for up to 90 minutes a run, at test priority.
+  # --kind pulse:vodindex (26 Nov 2026): under the shared pulse:gpu kind the orchestrator swapped --est for the p50 of
+  # Pulse's short picture checks (2.6 min), so a normal 90-minute run read as stuck. Its own kind keeps --est 140 (a run took 128).
   Set-Location $Factory
   $status = & node --import tsx src/tools/vodpc.ts status 2>&1
   $status | ForEach-Object { Log "  $_" }
   if ($status | Where-Object { $_ -notmatch 'READY' }) {
     Log "Indexing through the orchestrator"
-    & $Orch run --class gpu --project pulse --job "vodpc: index stream recordings" --priority 20 --est 95 -- node --import tsx src/tools/vodpc.ts index --hours 1.5 2>&1 |
+    & $Orch run --class gpu --project pulse --job "vodpc: index stream recordings" --kind pulse:vodindex --priority 20 --est 140 -- node --import tsx src/tools/vodpc.ts index --hours 1.5 2>&1 |
       Select-Object -Last 15 | ForEach-Object { Log "  $_" }
   }
   $keep = if ($env:VOD_KEEP_DAYS) { $env:VOD_KEEP_DAYS } else { "10" }

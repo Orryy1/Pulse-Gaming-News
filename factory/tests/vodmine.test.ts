@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   backMeta,
   backMoments,
+  escapeSignals,
   overlapsTaken,
   pickMoments,
   takenFrom,
@@ -319,4 +320,18 @@ test("a credited clip never feeds the owner's own footage, his series or a 'we t
   );
   assert.equal(his.gameplay?.credit, "Gameplay: Spencey96 on Twitch");
   assert.deepEqual(articleFields(his.gameplay!, "Grand Theft Auto VI"), {});
+});
+
+test("a 1 or 2 star spell of half a minute that ends with the police lost is an escape signal; short or 3-star ones are not", () => {
+  const ev = (kind: string, t: number, value?: number) => ({ kind, t, value, detail: "" }) as never;
+  const sig = escapeSignals([
+    ev("wanted_start", 100, 1),
+    ev("wanted_up", 120, 2),
+    ev("wanted_clear", 160, 0),
+    ev("wanted_start", 300, 2),
+    ev("wanted_clear", 310, 0),
+    ev("wanted_start", 500, 3),
+    ev("wanted_clear", 600, 0),
+  ]);
+  assert.deepEqual(sig, [{ t: 160, score: 1, detail: "lost the police at 2 stars after 60 s" }]);
 });

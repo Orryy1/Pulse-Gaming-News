@@ -38,3 +38,15 @@ Daily record of the 30-day growth sprint (21 Nov to 20 Dec 2026), written by the
 - Make sure archives are public: DONE, with a problem found. 5BiBlfAsi7I (7 h 14 min, 20 Nov) is public but blocked worldwide by 16 blocking music claims (radio); the five 18-19 Nov stubs (5 s to 7 min) stay private with the owner's earlier yes. Erase song is available; not applied without the owner's yes because it edits a published video. Logged in the fault ledger.
 - OWNER (Xbox): stream GTA VI 2 h+ today, radio volume at 0. Sent in the final reply.
 - Not done by this run (not a sprint item): the waiting claude/stage deploy (narration sound-alike fix, GTA VI gameplay in docs) is left to the routine deploy.
+
+## 22-25 Nov
+
+- No sprint-log entries were written for these days (the pulse-growth-sprint task was replaced by this daily review on 25 Nov). Status of their "Me" items is not verified here; the weekly review on Fri 27 Nov should audit them against the plan.
+
+## Thu 26 Nov (day 6, daily review, run at about 09:20-11:15 UK)
+
+- Judge fact repair: DONE (by the improvement engine at 15:00 on 25 Nov, re-read here). Missed its pass mark: 22 attempts in 7 days, 2 repaired, none saved a video yet. Kept on (it cannot publish anything that failed its recheck); verdict extended to 28 Nov, with tonight's 17:00 Half-Life ranking (a repaired script) as the live test.
+- Set Test and compare on the four old long videos: PARTLY DONE. Found why no tests had run since about 12 Nov: the PC's thumbnail copier task is missing. Ran it by hand; 3 old long videos (GTA ranking, GTA 13 years doc, Call of Duty ranking) are now marked ready for the pulse-studio-abtest run at 11:32 today. The other 4 have lost their spare thumbnails on the Mac. Carried: check the 11:32 run's report; title-only tests for the 4 once the route drops missing files.
+- OWNER (Reporting API, PC Brave): not opened today; carried to the weekly review, since the plan says only if Google asks.
+- OWNER inbox 36: double-click install-routine-files-pull.cmd on the PC (the session could not recreate the task).
+- Also shipped (fault fix, not a sprint item): LONG_RESLOT 24748f3e5, so the late Cyberpunk documentary goes out at 19:00 tonight instead of in the night.

@@ -2,6 +2,27 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 03:00 UK: the voice check stops mistaking names like "McCoy" for spelled letters
+
+**Change:** after every voicing, the narration check's letter watch lists capitals the voice read letter by letter, logs unknown ones and posts an alert. Any word with two capitals counted, so "McCoy's line" in the Titanfall 2 Short (25 Nov) was logged and alerted as spelled out. Names built from capitalised parts (McCoy, YouTube, GameSpot, LeBron) are now left alone; real mixed-case abbreviations (LoL, WoW, PvP) are still watched. The daily digest also drops names logged before the rule. "GOG" (read G-O-G in the Cyberpunk 2077 documentary, an accepted way to say it) is on the said-as-letters list. Branch `claude/engine-namewatch` (6f54155a1, f9c26d9ed), stage 87091b5f6, **deployed 03:02 UK**, factory healthy.
+
+**Evidence:**
+
+- Unknown-pronunciation list on the Mac: 3 entries, HDMI (already fixed 25 Nov), McCoy (a false alarm), GOG (real, now on the letters list).
+- Real take, proof: the Titanfall 2 voice (ep_20261125_d007d47a) transcribed on the Mac, 165 words. Old watch: flags "McCoy's" (held 27.76 to 28.76 s before a pause). New watch: flags nothing.
+- Typecheck clean; merge gate 3,492 of 3,492 tests pass, 6 new (tests/letter-watch-names.test.ts). code-reviewer: no blockers; its three points (digest still showing old names, a moved doc comment, test gaps) fixed.
+
+**Honest size:** small. It removes false alerts and keeps the pronunciation list clean so real voice faults stand out; it does not change what viewers see. Every bigger fault in this run's evidence is already built or owned by another session (long-ranking fact checks: LONG_FACT_DISCIPLINE, live since 25 Nov 19:01, and its first ranking under it repaired and voiced at 23:07; documentary fact discipline; why-lane retries exist; the "primary" crash is being watched with stacks).
+
+**Setting:** `LETTER_WATCH_NAMES` (on by default; `false` restores the old watch). No .env change.
+
+**Judged:** by 3 Dec. Pass mark: no name-shaped token added to data/admin/pronunciation_unknown.json or the alerts, and spelled tokens still caught (at least one real flag in the week, or none voiced). If a real fault was missed because of the rule, set it to false.
+
+**Also looked at, not changed:**
+
+- Two GTA 6 gameplay Shorts (the owner's own footage) wait for a manual tap, one since 24 Nov 06:11; two expired unanswered on 17 and 19 Nov. Manual approval is the owner's rule (radio and Content ID), so not changed; queued as item 56 for the weekly owner list.
+- Older changes: SHORT_PARALLAX_SHARE (29 Nov), DEMAND_STALE_DAYS and SHORT_CLIP_EDGE_TEXT (27 Nov), LONG_WEEKLY_AFTER_TARGET (28 Nov): not due. Core numbers: no drop tied to an engine change, nothing to revert.
+
 ## 25 Nov 2026, 23:00 UK: Friday's long video is still picked once the day's Shorts are made
 
 **Change:** once the day's Shorts allowance (5) was used, the selector only tried the documentary and the long ranking. Friday's long video (the round-up of the week's Shorts, or the explainer on test weeks) sat inside the weekly lane, which also makes Shorts, so it was never tried past the allowance and its 20:00 slot could pass empty. It is now its own picker, tried in its usual place and again after the allowance. Same keys and the same once-a-day marker, so it can't make two and spends no extra model calls. Branch `claude/engine-weeklylong` (f6652ff0a), merged into `claude/stage` (b5123c2a3) and `C:\PulseFactory`. **Deploy waiting** (the 23:30 slot was within 50 minutes; the next run finishes it with `--deploy-only`).

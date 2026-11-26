@@ -3,7 +3,7 @@
 // each game has its own "on". Slots run from the plan's first date every `every_days` days at its hour; each slot
 // takes the first game in the plan's order that is on, allowed and filed:
 //   - allowed: after its `allowed_from` date (the end of its spoiler window: the Ocarina remake from 4 Dec, GTA VI
-//     from 18 Dec) and with no spoiler window open for it when it goes out (src/sceneindex/spoilers.ts). A
+//     from 3 Dec, owner 26 Nov 2026) and with no spoiler window open for it when it goes out (src/sceneindex/spoilers.ts). A
 //     retrospective spoils everything, so it never runs inside a window, warning or not;
 //   - filed: its full-story movie or playthrough is in the scene index (GAME_FETCH), nearly all of it indexed and with
 //     enough heard lines to tell the story from (retroIndexProblems). A game that is not filed yet is queued for the

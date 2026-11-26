@@ -622,6 +622,7 @@ export function testConfig(
     levers: leverSettings({}),
     spoilerWindowDays: 28,
     spoilerOpeningShare: 0.1,
+    spoilerEarlyFree: [],
     characterQuotes: false,
     characterQuotesLong: 3,
     characterQuotesShort: 1,

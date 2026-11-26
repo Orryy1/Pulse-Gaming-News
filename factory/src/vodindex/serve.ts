@@ -38,9 +38,9 @@ import { findVodMoments, loadVodTags, tagFile, untagged } from "./tags.ts";
 const exec = promisify(execFile);
 
 export const MAX_CLIP_SECONDS = 30;
-/** The PC's spoiler windows when GAME_FETCH_TITLES is not set here: the Mac's own GTA VI window (until 18 Dec). */
+/** The PC's spoiler windows when GAME_FETCH_TITLES is not set here: the Mac's own GTA VI window (lifts on 3 Dec). */
 export const DEFAULT_SPOILER_TITLES =
-  "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17";
+  "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-03T00:00Z";
 
 export interface VodServeContext {
   /** Where the stream indexes are (<data>/vodindex/<id>). */

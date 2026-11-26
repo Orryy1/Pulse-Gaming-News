@@ -401,17 +401,71 @@ export const SAID_AS_LETTERS = new Set(
  * Fantasy 7", not "F F seven"; "Modern Warfare 4", not "M W four"; "Pub-G", not "P U B G".
  */
 type Said = string | ((match: string, ...groups: string[]) => string);
-const SAID_AS_WORDS: Array<[RegExp, Said]> = [
-  // Studios and publishers whose names hold digits, said the way fans say them (26 Nov 2026: "343 Industries" was read
-  // "three hundred forty-three Industries"). They run before the voice sees the digits.
-  [/\b343 Industries\b/g, "three four three Industries"],
-  [/\b4A Games\b/g, "four A Games"],
-  [/\b505 Games\b/g, "five oh five Games"],
-  [/\b2K Games\b/g, "two K Games"],
-  [/\b2K(?= (?:Sports|Marin|Boston|Czech|Australia|Vegas)\b)/g, "two K"],
-  [/\b3D Realms\b/g, "three D Realms"],
+/**
+ * Studios and publishers whose names hold digits, said the way fans say them (26 Nov 2026: "343 Industries" was read
+ * "three hundred forty-three Industries"). They run before the voice sees the digits. Case is ignored ("343
+ * INDUSTRIES"); the spoken form is always in the studio's own casing. "343's" is the studio's short form.
+ */
+const DIGIT_STUDIOS: Array<[RegExp, string]> = [
+  [/\b343 Industries\b/gi, "three four three Industries"],
+  [/\b343(?=['’]s\b)/g, "three four three"],
+  [/\b4A Games\b/gi, "four A Games"],
+  [/\b505 Games\b/gi, "five oh five Games"],
+  [/\b2K Games\b/gi, "two K Games"],
+  [/\b2K(?= (?:Sports|Marin|Boston|Czech|Australia|Vegas)\b)/gi, "two K"],
+  [/\b3D Realms\b/gi, "three D Realms"],
   [/\b11 bit studios\b/gi, "eleven bit studios"],
-  [/\b1047 Games\b/g, "ten forty-seven Games"],
+  [/\b1047 Games\b/gi, "ten forty-seven Games"],
+];
+/** The same studios spoken back to their written names (SAID_BACK), longest first. The narration check uses these too. */
+export const STUDIO_SAID_BACK: Array<[string[], string]> = [
+  [["three", "four", "three", "industries"], "343 Industries"],
+  [["three", "four", "three's"], "343's"],
+  [["four", "a", "games"], "4A Games"],
+  [["five", "oh", "five", "games"], "505 Games"],
+  [["two", "k", "games"], "2K Games"],
+  // "two K" only before the studio words it is said with, so a script's own "two K" is left alone.
+  ...["Sports", "Marin", "Boston", "Czech", "Australia", "Vegas"].map(
+    (s): [string[], string] => [["two", "k", s.toLowerCase()], `2K ${s}`],
+  ),
+  [["three", "d", "realms"], "3D Realms"],
+  [["eleven", "bit", "studios"], "11 bit studios"],
+  [["ten", "forty-seven", "games"], "1047 Games"],
+];
+
+/**
+ * How the voice says toks[i] when it starts a studio name with digits ("343" before "Industries" is "three four
+ * three", not a count), or undefined when it does not. For callers that speak one written token at a time.
+ */
+export function saidInName(toks: string[], i: number): string | undefined {
+  for (const k of [2, 1, 0]) {
+    if (i + k >= toks.length) continue;
+    const joined = toks.slice(i, i + k + 1).join(" ");
+    const rest = toks.slice(i + 1, i + k + 1).join(" ").toLowerCase();
+    const said = DIGIT_STUDIOS.reduce((t, [re, to]) => t.replace(re, to), joined);
+    if (said === joined) continue;
+    if (!rest) return said;
+    if (said.toLowerCase().endsWith(" " + rest)) return said.slice(0, said.length - rest.length - 1);
+  }
+  return undefined;
+}
+
+/**
+ * The words a lone figure is said as when it starts a studio name ("343" as "three four three"), for checks that see
+ * a figure on screen and look for it in the spoken words. Possessive endings are dropped.
+ */
+export function studioFigureSaid(fig: string): string[][] {
+  const forms = STUDIO_SAID_BACK.flatMap(([said, written]) => {
+    const w = written.split(" ");
+    const head = w[0]!.replace(/['’]s$/, "");
+    if (head.toLowerCase() !== fig.toLowerCase()) return [];
+    return [said.slice(0, said.length - (w.length - 1)).map((x) => x.replace(/['’]s$/, "")).join(" ")];
+  });
+  return [...new Set(forms)].map((f) => f.split(" "));
+}
+
+const SAID_AS_WORDS: Array<[RegExp, Said]> = [
+  ...DIGIT_STUDIOS,
   [/\bGOTYs\b/g, "Game of the Year awards"],
   [/\bGOTY\b/g, "Game of the Year"],
   [/\bTGA\b/g, "The Game Awards"],
@@ -614,13 +668,7 @@ export function knownSpokenForm(token: string): string | undefined {
  * kept) and the written form. Used by displayWords in src/render/timeline.ts.
  */
 export const SAID_BACK: Array<[string[], string]> = [
-  [["three", "four", "three", "industries"], "343 Industries"],
-  [["four", "a", "games"], "4A Games"],
-  [["five", "oh", "five", "games"], "505 Games"],
-  [["two", "k", "games"], "2K Games"],
-  [["three", "d", "realms"], "3D Realms"],
-  [["eleven", "bit", "studios"], "11 bit studios"],
-  [["ten", "forty-seven", "games"], "1047 Games"],
+  ...STUDIO_SAID_BACK,
   [["triple-a"], "AAA"],
   [["pc", "games", "n"], "PCGamesN"],
   [["pc", "games", "n's"], "PCGamesN's"],

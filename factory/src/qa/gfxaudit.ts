@@ -37,7 +37,7 @@ import { isEntryCard } from "../render/rankcard.ts";
 import { keyTime } from "../render/longplan.ts";
 import { wrapText } from "../render/components/packs/fit.ts";
 import { CARD_WIDTH, HERO_TOP, BANDS } from "../render/layout.ts";
-import { speakable } from "../voice/speakable.ts";
+import { speakable, studioFigureSaid } from "../voice/speakable.ts";
 import {
   peopleGroups,
   tracklistSeconds,
@@ -383,9 +383,10 @@ export function figureSupported(
   // Nothing at all is said as "no", "none" or "without".
   if (Number(n) === 0 && spoken.some((w) => /^(no|none|without|zero)$/.test(w)))
     return true;
-  const want = tok(speakable(fig));
-  for (let k = 0; want.length && k + want.length <= spoken.length; k++)
-    if (want.every((w, j) => spoken[k + j] === w)) return true;
+  // "343" is also said "three four three" when it starts the studio's name (speakable.ts DIGIT_STUDIOS).
+  for (const want of [tok(speakable(fig)), ...studioFigureSaid(fig).map((s) => s.flatMap(tok))])
+    for (let k = 0; want.length && k + want.length <= spoken.length; k++)
+      if (want.every((w, j) => spoken[k + j] === w)) return true;
   // A rounded or scaled figure ("$942M" for "942 million") is the same number: the digits are what matter.
   const digits = n.replace(/\D/g, "");
   return (

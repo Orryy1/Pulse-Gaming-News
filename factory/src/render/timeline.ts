@@ -468,9 +468,11 @@ const possessive = (text: string | undefined) =>
  * spelled out letter by letter for the voice ("T G G" is "TGG"), and "point oh" read as a figure ("1.0").
  */
 export function writtenForms(words: Word[]): Word[] {
+  // A plain or curly apostrophe after the last word ("343 Industries' next game") is punctuation kept on the
+  // written form; inside a word ("three's") the two apostrophes are one.
   const bare = (w: Word | undefined) =>
-    (w?.text ?? "").toLowerCase().replace(/[.,;:!?)"”’]+$/, "");
-  const tail = (w: Word) => w.text.match(/[.,;:!?)"”’]+$/)?.[0] ?? "";
+    (w?.text ?? "").toLowerCase().replace(/[.,;:!?)"”’']+$/, "").replace(/’/g, "'");
+  const tail = (w: Word) => w.text.match(/[.,;:!?)"”’']+$/)?.[0] ?? "";
   const out: Word[] = [];
   for (let i = 0; i < words.length; i++) {
     const w = words[i]!;
@@ -482,7 +484,9 @@ export function writtenForms(words: Word[]): Word[] {
     );
     if (hit) {
       const last = words[i + hit[0].length - 1]!;
-      out.push({ text: `${hit[1]}${tail(last)}`, start: w.start, end: last.end });
+      // A curly apostrophe in what was said stays curly on screen ("343’s").
+      const written = last.text.includes("’") ? hit[1].replace(/'/g, "’") : hit[1];
+      out.push({ text: `${written}${tail(last)}`, start: w.start, end: last.end });
       i += hit[0].length - 1;
       continue;
     }

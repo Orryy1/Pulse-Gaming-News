@@ -32,13 +32,16 @@ $Channels = @(
 New-Item -ItemType Directory -Force (Split-Path $Log), $Temp | Out-Null
 function Log($msg) { "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" | Add-Content -Encoding utf8 $Log }
 
-# One run at a time: a lock younger than 12 hours means another run is still going, unless the run that wrote it is
-# gone. A PC restart (25 Nov 2026, 23:37) killed a run mid-index and left its lock, so the next run would have skipped.
-if ((Test-Path $Lock) -and ((Get-Date) - (Get-Item $Lock).LastWriteTime).TotalHours -lt 12) {
+# One run at a time: the lock blocks while the PowerShell run that wrote it is still going, however old it is. A lock
+# whose run is gone is taken over: a PC restart (25 Nov 2026, 23:37) killed a run mid-index and left its lock, so the
+# next run would have skipped. A lock with no readable run id falls back to the old 12-hour rule.
+if (Test-Path $Lock) {
   $holder = (Get-Content -LiteralPath $Lock -TotalCount 1 -ErrorAction SilentlyContinue) -as [int]
-  $alive = $holder -and (Get-Process -Id $holder -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "powershell" })
-  if ($alive) { Log "Skipped: another run holds the lock"; exit 0 }
-  Log "Stale lock from run $holder (no longer running): taking it over"
+  if ($holder) {
+    $alive = Get-Process -Id $holder -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -in 'powershell', 'pwsh' }
+    if ($alive) { Log "Skipped: another run holds the lock"; exit 0 }
+    Log "Stale lock from run $holder (no longer running): taking it over"
+  } elseif (((Get-Date) - (Get-Item $Lock).LastWriteTime).TotalHours -lt 12) { Log "Skipped: another run holds the lock"; exit 0 }
 }
 Set-Content -Path $Lock -Value $PID
 try {

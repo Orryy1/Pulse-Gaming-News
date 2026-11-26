@@ -2,6 +2,16 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 23:00 UK: the torn depth still fix is merged (deploy after the 23:30 slot)
+
+**Change:** none new. This run finished shipping the 19:00 change (`QA_FLATTEN_DEPTH`, a faulted layered still renders flat on the Short's retry), rather than starting a second change to the same pictures. The merge gate passed on the third try: merged onto claude/stage 53bccb639 as 0cd0d59e6, typecheck clean, 3,694 tests pass, no backspace bytes, pushed, C:\PulseFactory fast-forwarded. Exit 3: the deploy waits because the 23:30 slot is within 50 minutes; the next run deploys it with `--deploy-only`.
+
+**Evidence looked at:** factory healthy (5 published in 24 h, 628 stories seen, 9 in flight). "Bread and Fred is free to keep on Epic" is taking off (228 views in about 3 hours, 45x usual pace); "Aeterna Lucis" 646 and "Silksong Cherry Time" 1,213 lead the week. Output audit still the weak spot (why 8 of 21 public in 7 days); 19:00 entry and items 54-57 already work on it. PC vision relay flickered down and up once in the last hours.
+
+**Setting:** `QA_FLATTEN_DEPTH` (on by default once deployed; `false` restores the old retry).
+
+**Judged:** by 3 Dec, pass mark as in the 19:00 entry. No older engine change due (next 28 and 29 Nov). CI: last two "Pulse factory" runs green; the run for 0cd0d59e6 starts with the deploy, so the next run checks it.
+
 ## 26 Nov 2026, 19:00 UK: a torn depth still renders flat on the retry instead of the same tear again (built, merge waits)
 
 **Change:** when the final picture check faults a Short's layered still for its edges (a jagged or torn cut-out, repeated strips, stray lines along a seam), the retry now renders that still flat and keeps it. Before, "jagged cutout edges" matched no fault word, so the retry rendered the same tear again; "rendering artefact" did match, so a good picture was thrown away and marked faulty in the game library. A still with another fault on its frame (a logo, lettering, a source artefact) is still dropped. Branch `claude/engine-flatdepth` (d6690fe60).

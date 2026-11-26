@@ -15,6 +15,7 @@ import {
   SAID_AS_LETTERS,
   speakExact,
   SPOKEN_BACK,
+  STUDIO_SAID_BACK,
 } from "../voice/speakable.ts";
 
 const run = promisify(execFile);
@@ -548,6 +549,8 @@ PROTECTED.delete("and");
 
 /** A word in one spelling for both sides of the Atlantic: rumoured/rumored, realise/realize, centre/center, travelled/traveled. */
 export function usUk(w: string): string {
+  // Number words are not spellings: "four" is not "for" ("four A Games", 26 Nov 2026).
+  if (NUMBERISH.has(w) || NUMBERISH.has(w.replace(/s$/, ""))) return w;
   return w
     .replace(/our(s|ed|ing|ite|ites|able)?$/, "or$1")
     .replace(/is(e|es|ed|ing|ation|ations)$/, "iz$1")
@@ -615,6 +618,8 @@ function benign(meant: string[], heard: string[]): boolean {
   const a = meant.join(""),
     b = heard.join("");
   if (a === b) return true; // compounds: "rockstar"/"rock star"
+  // "four" and "for" are one sound: Whisper's homophone is no voice fault (usUk leaves number words alone).
+  if (meant.length === 1 && heard.length === 1 && [a, b].every((x) => x === "four" || x === "for")) return true;
   // The same word in US and UK spelling ("rumored" heard as "rumoured", 15 Nov 2026) is no voice fault.
   if (usUk(a) === usUk(b)) return true;
   // The same number written as a figure or a word, split anywhere ("GTA six's" heard as "GT A6's", 15 Nov 2026).
@@ -649,6 +654,45 @@ export function heardSpeech(heard: TimedWord[]): TimedWord[] {
   );
 }
 
+type Tok = { t: string; at: number; w: string };
+let studioTokens: Array<{ said: string[]; written: string[] }> | undefined;
+/**
+ * Studio names with digits in one form on both sides (26 Nov 2026): the voice says "three four three Industries" and
+ * Whisper writes "343 Industries" (tokens: "three hundred forty three"), or the words it heard. Both become the written
+ * name's tokens, so a correct reading passes and a different figure ("353 Industries") is still a fault.
+ */
+export function studioNames(xs: Tok[]): Tok[] {
+  studioTokens ??= STUDIO_SAID_BACK.map(([said, written]) => ({
+    said: said.flatMap((w) => tokens(w)),
+    written: written.split(" ").flatMap((w) => tokens(w)),
+  }))
+    .filter((r) => r.said.join(" ") !== r.written.join(" "))
+    .sort((a, b) => b.said.length - a.said.length);
+  const out: Tok[] = [];
+  for (let k = 0; k < xs.length; k++) {
+    const hit = studioTokens.find((r) =>
+      r.said.every((t, j) => xs[k + j]?.t === t),
+    );
+    if (!hit) {
+      out.push(xs[k]!);
+      continue;
+    }
+    const first = xs[k]!;
+    const last = xs[k + hit.said.length - 1]!;
+    const w = xs
+      .slice(k, k + hit.said.length)
+      .map((x) => x.w)
+      .filter((x, i, all) => all.indexOf(x) === i)
+      .join(" ");
+    // The last word keeps its own time ("Industries" when it was said), so the drift measure is not skewed.
+    hit.written.forEach((t, j) =>
+      out.push({ t, at: j === hit.written.length - 1 ? last.at : first.at, w }),
+    );
+    k += hit.said.length - 1;
+  }
+  return out;
+}
+
 /** Compares the script's words (with their timings) with what Whisper heard. Pure. */
 export function checkNarration(
   meant: TimedWord[],
@@ -657,12 +701,14 @@ export function checkNarration(
   opts: LetterWatchOptions = {},
 ): NarrationCheck {
   const heard = heardSpeech(allHeard);
-  const A: Array<{ t: string; at: number; w: string }> = [];
+  const rawA: Tok[] = [];
   for (const w of joinLetters(meant))
-    for (const t of tokens(w.text)) A.push({ t, at: w.start, w: w.text });
-  const B: Array<{ t: string; at: number; w: string }> = [];
+    for (const t of tokens(w.text)) rawA.push({ t, at: w.start, w: w.text });
+  const rawB: Tok[] = [];
   for (const w of joinLetters(joinFigures(heard)))
-    for (const t of tokens(w.text)) B.push({ t, at: w.start, w: w.text });
+    for (const t of tokens(w.text)) rawB.push({ t, at: w.start, w: w.text });
+  const A = studioNames(rawA);
+  const B = studioNames(rawB);
   // "a hundred" is "one hundred": the voice said "100" as people do, and Whisper wrote "a" (it failed
   // a good narration and paid for a second voicing, QA notes 26 Oct 2026). Only before a scale word.
   for (const xs of [A, B])

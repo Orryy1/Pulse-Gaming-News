@@ -12,5 +12,5 @@ set "LOG=%WIKIART_DIR%\crawl.out.log"
 echo ==== %DATE% %TIME% >> "%LOG%"
 rem The owner's drop folder first (quick, no web, no orchestrator turn): see windows\wikiart-drop.cmd.
 node --import tsx src/tools/wikiart.ts import-drop >> "%LOG%" 2>&1
-call C:\Claude\orchestrator\orch.cmd run --class cpu --project pulse --job "wiki art crawl" --priority 20 --est 120 -- node --import tsx src/tools/wikiart.ts crawl --minutes=110 "--import=Grand Theft Auto VI;Grand Theft Auto V" >> "%LOG%" 2>&1
+call C:\Claude\orchestrator\orch.cmd run --class cpu --project pulse --job "wiki art crawl" --kind pulse:wikiart --priority 20 --est 120 -- node --import tsx src/tools/wikiart.ts crawl --minutes=110 "--import=Grand Theft Auto VI;Grand Theft Auto V" >> "%LOG%" 2>&1
 exit /b %ERRORLEVEL%

@@ -1,7 +1,7 @@
 // Builds one recording's stream index by hand (the same steps the VOD_MINER job runs in the background):
 //   npx tsx src/tools/vodindex.ts "<recording.mp4>" [--game "Grand Theft Auto V"] [--data <dir>] [--steps 50]
 // Run GPU work through the orchestrator on the PC:
-//   C:\Claude\orchestrator\orch.cmd run --class gpu --project pulse --priority 20 --est 30 -- npx tsx src/tools/vodindex.ts ...
+//   C:\Claude\orchestrator\orch.cmd run --class gpu --project pulse --kind pulse:vodindex-tool --priority 20 --est 30 -- npx tsx src/tools/vodindex.ts ...
 // Prints one line a step and the index's file at the end.
 
 import path from "node:path";

@@ -5,7 +5,7 @@
 //   node --import tsx src/tools/vodpc.ts prune [--days 10] [--dry]  recordings older than that, fully indexed, archived to the Mac
 //   node --import tsx src/tools/vodpc.ts search "<game>" "<line>"   the moments a line finds (held ones marked)
 // The heavy part (Whisper, the vision model, SigLIP) runs through the orchestrator, from windows/vod-daily.ps1:
-//   C:\Claude\orchestrator\orch.cmd run --class gpu --project pulse --priority 20 --est 120 -- node --import tsx src/tools/vodpc.ts index
+//   C:\Claude\orchestrator\orch.cmd run --class gpu --project pulse --kind pulse:vodindex --priority 20 --est 140 -- node --import tsx src/tools/vodpc.ts index
 // VOD_DATA_DIR (default C:/pulse-vods/data) holds the indexes; the recordings are never changed here, only moved by
 // prune to the Mac mini's USB drive once old and indexed (src/vodindex/archive.ts).
 

@@ -1016,6 +1016,7 @@ import {
   recentEndingForms,
   type EndingForm,
 } from "./editorial/endingforms.ts";
+import { gateCandidates, premiseArmFor } from "./editorial/premisegate.ts";
 import {
   fitClipsAroundQuotes,
   quotesAfterGaps,
@@ -2348,12 +2349,37 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     });
     return undefined;
   }
-  return createFromChoice(
+  // STORY_PREMISE_GATE_SHARE (src/editorial/premisegate.ts): on the "gate" side of the slot split, a story whose whole
+  // point is that nothing is known, a price or edition list, patch notes or an outage, with no conflict or surprise,
+  // is dropped before the editor sees the slot; when every candidate would go, the slot keeps them all.
+  const premiseArm =
+    cfg.storyPremiseGateShare > 0
+      ? premiseArmFor(unitHash(`premise:${slot.toISOString()}`), cfg.storyPremiseGateShare)
+      : undefined;
+  const gated = premiseArm ? gateCandidates(candidates, premiseArm) : undefined;
+  const id = await createFromChoice(
     s,
-    candidates,
+    gated?.kept ?? candidates,
     { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
     `news slot ${slot.toISOString()}`,
   );
+  // Logged per slot, made or not (the slot is the unit of the test): the episode it made, else none. A dropped story
+  // stays eligible, so it may be made in a later "open" slot; the dropped headlines let the verdict see that.
+  if (premiseArm && gated) {
+    await logEvent(db, id ?? null, "premise_gate", {
+      arm: premiseArm,
+      slot: slot.toISOString(),
+      dropped: gated.dropped,
+      allFlagged: gated.allFlagged,
+      candidates: candidates.length,
+    }).catch(() => undefined);
+    if (gated.dropped.length)
+      log("info", "premise gate dropped stories", {
+        id: id ?? null,
+        dropped: gated.dropped.map((d) => `${d.kind}: ${d.headline}`),
+      });
+  }
+  return id;
 }
 
 /** Whether the gameplay inbox holds a clip of the franchise, so a GTA File part can open on the owner's footage. */

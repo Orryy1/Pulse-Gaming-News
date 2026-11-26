@@ -554,6 +554,7 @@ export function testConfig(
     shortSpeed: 1,
     voiceTestShare: 0,
     endingFormsShare: 0,
+    storyPremiseGateShare: 0,
     bufferApiKey: "",
     bufferTiktokChannel: "",
     voiceTakeCheck: true,

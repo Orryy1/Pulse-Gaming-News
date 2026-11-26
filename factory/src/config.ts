@@ -689,6 +689,10 @@ export interface Config {
   /** Share of Pulse Check Shorts whose take ends on a varied closing form instead of a spoken "My verdict:" line
    * (ENDING_FORMS_SHARE, frontier check 25 Nov 2026, src/editorial/endingforms.ts); 0, the default, changes nothing. */
   endingFormsShare: number;
+  /** Share of news slots whose candidates pass the story premise gate first (STORY_PREMISE_GATE_SHARE, frontier check
+   * 25 Nov 2026, src/editorial/premisegate.ts): no "nothing known", price list, patch notes or outage story without a
+   * conflict or surprise. 0, the default, changes nothing. */
+  storyPremiseGateShare: number;
   /** Buffer's API key and its Pulse TikTok channel (BUFFER_API_KEY, BUFFER_TIKTOK_CHANNEL): TikTok posts go out with no tap. */
   bufferApiKey: string;
   bufferTiktokChannel: string;
@@ -2317,6 +2321,7 @@ export function loadConfig(): Config {
     bufferTiktokChannel: str("BUFFER_TIKTOK_CHANNEL", ""),
     voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
     endingFormsShare: Math.min(1, Math.max(0, Number(str("ENDING_FORMS_SHARE", "0")) || 0)),
+    storyPremiseGateShare: Math.min(1, Math.max(0, Number(str("STORY_PREMISE_GATE_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     // Not a number keeps the default rather than 0, the most erratic delivery.

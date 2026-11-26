@@ -379,34 +379,62 @@ async function checkDisk(cfg: Config): Promise<Check> {
   }
 }
 
-async function checkPublicUrl(cfg: Config): Promise<Check | undefined> {
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl))
-    return undefined;
-  try {
-    // The approve route with a wrong token: the factory itself answers 403. (/health is hidden from the internet
-    // by a Cloudflare rule, so its 404 said nothing about whether approval links work.)
-    const res = await steadyFetch(
-      `${cfg.publicUrl}/episodes/doctor/approve?t=0`,
-      { redirect: "manual" },
-      8_000,
-    );
-    const ok = res.status === 403;
-    return {
-      name: "public_url",
-      ok,
-      critical: false,
-      detail: ok
-        ? `${cfg.publicUrl} reachable (approval links work from a phone)`
-        : `${cfg.publicUrl} approval route answered HTTP ${res.status}`,
-    };
-  } catch {
+/**
+ * Every per-episode link something outside fetches: approval and reject pages, the Short Instagram and Threads
+ * pull, and (SHORT_FULL_COVER) the social copy TikTok pulls through Buffer and its cover still. The tunnel's
+ * ingress list must let each one through; on 25-26 Nov 2026 social.mp4 was missing from it and every
+ * TikTok draft of a Short with a social copy failed ("Video could not be read from its URL").
+ */
+export const PUBLIC_EPISODE_ROUTES = ["approve", "reject", "video.mp4", "social.mp4", "cover.jpg"] as const;
+
+/** The public routes that did not reach the factory: it answers a wrong token with 403, anything else (0 = no answer) is the tunnel or Cloudflare. */
+export function blockedPublicRoutes(statuses: Readonly<Record<string, number>>): string[] {
+  return PUBLIC_EPISODE_ROUTES.filter((r) => statuses[r] !== 403);
+}
+
+/** The check's verdict from each route's status (0 when it never answered). */
+export function publicUrlCheck(publicUrl: string, statuses: Readonly<Record<string, number>>): Check {
+  const blocked = blockedPublicRoutes(statuses);
+  if (blocked.length === PUBLIC_EPISODE_ROUTES.length && blocked.every((r) => !statuses[r]))
     return {
       name: "public_url",
       ok: false,
       critical: false,
-      detail: `${cfg.publicUrl} unreachable: timeout approvals are held until the tunnel is up (windows\\install-tunnel.ps1)`,
+      detail: `${publicUrl} unreachable: timeout approvals are held until the tunnel is up (windows\\install-tunnel.ps1)`,
     };
-  }
+  return {
+    name: "public_url",
+    ok: blocked.length === 0,
+    critical: false,
+    detail:
+      blocked.length === 0
+        ? `${publicUrl} reachable (approval and video links work from outside)`
+        : `${publicUrl} blocks ${blocked.map((r) => `${r} (${statuses[r] ? `HTTP ${statuses[r]}` : "no answer"})`).join(", ")}: add it to the tunnel's episodes path rule (cloudflared-pulse.yml)`,
+  };
+}
+
+export async function checkPublicUrl(
+  cfg: Pick<Config, "publicUrl">,
+  fetcher: (url: string) => Promise<Response> = (url) => steadyFetch(url, { redirect: "manual" }, 8_000),
+): Promise<Check | undefined> {
+  if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl))
+    return undefined;
+  // Each route with a wrong token: the factory itself answers 403. (/health is hidden from the internet
+  // by a Cloudflare rule, so its 404 said nothing about whether the links work.) The changing query keeps
+  // a cached 404 from Cloudflare out of the answer. A route that never answers counts as 0, not the lot.
+  const statuses: Record<string, number> = {};
+  await Promise.all(
+    PUBLIC_EPISODE_ROUTES.map(async (route) => {
+      try {
+        const res = await fetcher(`${cfg.publicUrl}/episodes/doctor/${route}?t=0&n=${Date.now()}`);
+        statuses[route] = res.status;
+        await res.body?.cancel().catch(() => undefined);
+      } catch {
+        statuses[route] = 0;
+      }
+    }),
+  );
+  return publicUrlCheck(cfg.publicUrl, statuses);
 }
 
 async function checkDiscord(cfg: Config): Promise<Check | undefined> {

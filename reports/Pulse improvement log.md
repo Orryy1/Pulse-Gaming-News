@@ -2,6 +2,25 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 19:00 UK: a torn depth still renders flat on the retry instead of the same tear again (built, merge waits)
+
+**Change:** when the final picture check faults a Short's layered still for its edges (a jagged or torn cut-out, repeated strips, stray lines along a seam), the retry now renders that still flat and keeps it. Before, "jagged cutout edges" matched no fault word, so the retry rendered the same tear again; "rendering artefact" did match, so a good picture was thrown away and marked faulty in the game library. A still with another fault on its frame (a logo, lettering, a source artefact) is still dropped. Branch `claude/engine-flatdepth` (d6690fe60).
+
+**Evidence:**
+
+- Factory logs 20-26 Nov: 16 of 51 Short QA failures named depth-layer edges (10 of 39 on 20 Nov when the depth camera went on, 6 of 8 today). Replayed through the new rule: 11 would have kept a good picture, 5 would no longer repeat the tear.
+- Real output: the Garry's Mod Short (GMLijn1nq88, live 16:30) failed its first check for "jagged cutout edges", was retried unchanged, passed, and went out with the tear: the man's outline pixelated, his face smeared, the gravity gun gone. The same still drawn flat is clean (D:\pulse-data\scratch\flatdepth-proof\before_after.jpg). Flat is the long-standing renderer (every still before 15 Nov and the flat test arm), so no new drawing path.
+- Typecheck clean; merge gate twice: 3,623 then 3,631 tests pass, no backspace bytes. 8 new tests built from today's real QA messages.
+- code-reviewer: no blocker; its one correctness note fixed (only a depth-edge problem has its "artefact" words discounted). Its other notes are queue item 58.
+
+**Not shipped this run:** the merge gate refused twice with "claude/stage moved while testing" (other sessions merged studio names at 19:01 and a depth camera sharpness fix at 19:18). Same refusal twice, so I stopped as the rules say. The branch merges cleanly onto the new stage (checked); the 23:00 run re-runs the gate. The 19:18 parallaxfix (owner: "pixely, jaggy, blurry") attacks the cause; this is the safety net for tears that still get through.
+
+**Setting:** `QA_FLATTEN_DEPTH` (on by default once deployed; `false` restores the old retry).
+
+**Judged:** by 3 Dec. Pass mark: "depth_flattened" events appear, and no Short fails or publishes with the same edge fault on the same still after a retry; picture drops for "artefact" faults fall. If flat retries still fail on edges, the cause is the re-layering cap (item 58a).
+
+**Also looked at:** output is the biggest weak spot (3-4 Shorts a day since 20 Nov against the slot plan; Short views 5,596 against 9,399 a week, following output, not an engine change, so nothing reverted). Evergreen: rankings hold (Fallout 1,116, Assassin's Creed 881) while deals average about 100 views; the formats gate already closes weak formats. Earlier deploy (claude/hudon) still pending a slot window. No older engine change due for judging (next 28 and 29 Nov).
+
 ## 26 Nov 2026, 15:00 UK: Shorts with an explainer no longer crash on their retry
 
 **Change:** when the after-render frame check faults a card, the retry stops drawing it. A line's animated explainer draws in its card's place, so the faulted frame is often the explainer, but the retry removed only the card's text and kept the explainer. The same explainer was drawn again with no card, and the graphics audit crashed reading the missing card ("Cannot read properties of undefined (reading 'primary')"), so the Short failed its last two attempts and was lost. Now a faulted card takes its line's explainer with it (takes and rank cards keep their card), and the audit's card checks skip lines that draw no card of their own. Branch `claude/engine-explainercard` (c1ca2b9e2), stage 246abc051, **deployed 15:06 UK** (release cc702431c), factory healthy.

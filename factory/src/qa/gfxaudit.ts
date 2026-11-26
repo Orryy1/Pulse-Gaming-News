@@ -189,6 +189,9 @@ export function readNeed(n: number, perWord = READ_PER_WORD): number {
   return n <= 0 ? 0 : Math.max(READ_FLOOR, READ_BASE + perWord * n);
 }
 
+/** Whether a line draws a card of its own (a line with only an explainer has none to check). */
+const hasCard = (s: Pick<Segment, "kind" | "visual" | "label">) => cardText(s) !== "";
+
 /** The words a card shows, as the house card and the vertical styles draw them. */
 export function cardText(
   s: Pick<Segment, "kind" | "visual" | "label">,
@@ -664,7 +667,9 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         `word moment "${input.stampWritten}" is cut to "${input.stampWritten.toUpperCase().slice(0, STAMP_CHARS)}"`,
         "trim",
       );
-    if (e.kind === "take" && e.segment !== undefined) {
+    // EXPLAINERS: a line whose explainer takes its card's place may have no card of its own; the explainer has
+    // its own guard (src/render/components/explainers/ground.ts), so the card checks below skip it.
+    if (e.kind === "take" && e.segment !== undefined && hasCard(segments[e.segment]!)) {
       const v = segments[e.segment]!.visual!;
       const lines = wrapText(
         v.primary.toUpperCase(),
@@ -739,6 +744,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
     if (
       (e.kind === "card" || e.kind === "take") &&
       e.segment !== undefined &&
+      hasCard(segments[e.segment]!) &&
       e.shown > 0
     ) {
       const own = e.segment;
@@ -810,7 +816,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         );
     }
     // Meaning: a caption repeated word for word, a generic label, or nothing to do with the narration.
-    if (e.kind === "card" && e.segment !== undefined) {
+    if (e.kind === "card" && e.segment !== undefined && hasCard(segments[e.segment]!)) {
       const v = segments[e.segment]!.visual!;
       const mine = content(cardText(segments[e.segment]!));
       const figs = figuresIn(cardText(segments[e.segment]!));

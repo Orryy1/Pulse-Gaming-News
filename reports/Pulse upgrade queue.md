@@ -399,6 +399,8 @@ From the weekly frontier check (report: `reports/frontier/Frontier check 2026-11
 
 ## 47. Story premise gate: no "nothing known" or shopping-list Shorts without a conflict (frontier check 25 Nov)
 
+**Status (26 Nov 10:40): in progress, owned by the improvement engine** on `claude/engine-premisegate`.
+
 **Why:** seven of the ten lowest-marked Shorts this week were GTA 6 utility or "nothing known" stories (presets unconfirmed, New Zealand switch unconfirmed, bonus cutoff, preorder price, track list, patch notes, outage reports). An "unconfirmed" story with a real conflict (Rockstar layoffs) scored best, so the test is conflict or surprise, not the word. Payoff links to views (0.24) and one point to average viewed (0.33).
 
 **Build:** `STORY_PREMISE_GATE` (off by default; 50/50 by episode). Before writing, one cheap check drops a candidate whose whole point is that nothing is known, a price or edition list, or patch notes, unless it carries a named conflict or a surprise, and takes the next candidate. Log what it dropped.

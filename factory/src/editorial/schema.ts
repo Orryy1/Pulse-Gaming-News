@@ -387,6 +387,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     real_test?: boolean;
     /** Cut from the live stream minutes after it happened (LIVE_CLIPS): one-tap card, out on approval. */
     live?: boolean;
+    /** Another streamer's play, used with permission: the credit shown ("Gameplay: Spencey96 on Twitch"). */
+    credit?: string;
     /** The rebuilt Short (src/gameplaydirect.ts): the cut's timing and the narrator's lines; older Shorts lack it. */
     direct?: {
       hook: string;

@@ -141,11 +141,11 @@ test("the HUD reader and every output are off by default; the summary says so", 
   assert.equal(hudSettings({ HUD_READER_FPS: "99" }).fps, 10);
 });
 
-test("the shipped profiles parse, their patterns compile, GTA V is calibrated and GTA VI waits for calibration", async () => {
+test("the shipped profiles parse, their patterns compile and both games are calibrated", async () => {
   const v = await loadProfile("gta5");
   const vi = await loadProfile("gta6");
   assert.equal(v.calibrated, true);
-  assert.equal(vi.calibrated, false);
+  assert.equal(vi.calibrated, true);
   for (const p of [v, vi]) {
     for (const e of p.events)
       assert.doesNotThrow(() => new RegExp(e.pattern, "i"));
@@ -750,6 +750,17 @@ test("the reader's command line keeps a VOD name with % in one argument and adds
     duration: 40,
   });
   assert.equal(args[args.indexOf("--video") + 1], vod);
+  // Every core unless HUD_READER_THREADS caps it (the miner caps it at 2 on the shared PC).
+  assert.ok(!args.includes("--threads"));
+  const capped = readArgs(hudSettings({ HUD_READER_THREADS: "2" }), { video: vod, profile: "p", out: "o" });
+  assert.equal(capped[capped.indexOf("--threads") + 1], "2");
+  assert.ok(!args.includes("--keyframes"));
+  // A whole recording from its key frames: one every 2 s on Twitch, so 0.5 fps whatever HUD_READER_FPS says.
+  const kf = readArgs(s, { video: vod, profile: "p.json", out: "o.json", keyframes: true });
+  assert.ok(kf.includes("--keyframes"));
+  assert.equal(kf[kf.indexOf("--fps") + 1], "0.5");
+  assert.equal(hudSettings({}).vodKeyframes, false);
+  assert.equal(hudSettings({ HUD_READER_VOD_KEYFRAMES: "true" }).vodKeyframes, true);
   assert.ok(
     args.includes("--atlas") &&
       args.includes("--start") &&

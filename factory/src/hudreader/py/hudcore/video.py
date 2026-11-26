@@ -3,6 +3,7 @@ sequence pattern, and the owner's VOD names carry one, "GTA V 100% [v...]"). The
 never through a shell."""
 
 import subprocess
+import sys
 
 import numpy as np
 
@@ -21,13 +22,21 @@ def probe(ffprobe, path):
     return int(vals["width"]), int(vals["height"]), float(vals.get("duration", "0") or 0)
 
 
-def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None, threads=2, quiet=False):
-    """Yields (seconds, BGR frame) at `fps`, from `start`, scaled to width x height when both are given."""
+def frames(ffmpeg, path, fps, start=0.0, duration=None, width=None, height=None, threads=2, quiet=False,
+           keyframes=False):
+    """Yields (seconds, BGR frame) at `fps`, from `start`, scaled to width x height when both are given.
+    `keyframes`: decode only the key frames (a Twitch recording has one every 2 s), about 40 times less work than
+    decoding every frame; for a whole recording read at 0.5 fps, where a second either way does not matter."""
     w, h = width, height
     vf = f"fps={fps}"
     if w and h:
         vf += f",scale={w}:{h}"
     args = [ffmpeg, "-v", "error", "-nostdin", "-threads", str(threads)]
+    # The Mac mini decodes on its media engine (falls back to software by itself), which leaves the CPU for the reading.
+    if sys.platform == "darwin":
+        args += ["-hwaccel", "videotoolbox"]
+    if keyframes:
+        args += ["-skip_frame", "nokey"]
     if start > 0:
         args += ["-ss", f"{start:.3f}"]
     args += ["-i", path]

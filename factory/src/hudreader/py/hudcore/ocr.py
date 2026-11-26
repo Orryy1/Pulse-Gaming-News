@@ -9,7 +9,7 @@ import numpy as np
 
 
 class Reader:
-    def __init__(self, libs=None):
+    def __init__(self, libs=None, threads=None, det=None):
         self.engine = None
         self.error = None
         if libs and libs not in sys.path:
@@ -17,7 +17,15 @@ class Reader:
         try:
             from rapidocr_onnxruntime import RapidOCR  # noqa: E402
 
-            self.engine = RapidOCR()
+            kw = {}
+            if threads:
+                kw.update(intra_op_num_threads=threads, inter_op_num_threads=1)
+            # The text finder enlarges a crop until its short side is 736 px by default: a wide banner strip becomes
+            # thousands of pixels across. "max" caps the long side instead (a profile's "ocrDet"), same words, a third
+            # of the time on GTA VI's large writing.
+            if det:
+                kw.update(det_limit_type=det.get("limitType", "min"), det_limit_side_len=float(det.get("sideLen", 736)))
+            self.engine = RapidOCR(**kw)
         except Exception as e:  # missing package or model: text is simply not read
             self.error = f"{type(e).__name__}: {e}"
         self.reads = 0

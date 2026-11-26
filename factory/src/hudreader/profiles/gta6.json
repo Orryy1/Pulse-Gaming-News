@@ -1,90 +1,89 @@
 {
   "game": "gta6",
   "label": "GTA VI",
-  "calibrated": false,
-  "note": "A starting point copied from GTA V. GTA VI's HUD is learned from a few frames of the owner's first stream (tsx src/tools/hudreader.ts calibrate --game gta6), which writes calibrated: true. Until then nothing reads GTA VI footage.",
+  "calibrated": true,
+  "note": "Measured by hand on the owner's GTA VI streams (26 Nov 2026, v2938662394 and Spencey96's v2934022144): the radar is a flat rounded rectangle bottom left with no health strip under it, so live play is told by its outline; six star slots top right, the level lit from the right in light grey, empty slots dark and see-through; cash top right with a second balance under it; the area name on a blue label above the radar.",
   "base": [
     1920,
     1080
   ],
   "minimap": {
     "box": [
-      0.02344,
-      0.7963,
-      0.17188,
-      0.95741
+      0.01667,
+      0.81852,
+      0.17396,
+      0.97407
     ],
     "player": [
-      0.09531,
-      0.9
+      0.09479,
+      0.93796
     ],
     "tilt": {
-      "k": 6.264,
-      "a": 0.56
+      "k": 0.0,
+      "a": 1.0
     },
     "trim": [
-      0.042,
-      0.115,
-      0.042,
-      0
+      0.03,
+      0.12,
+      0.03,
+      0.04
     ],
     "playerMaskRadius": 0.0148,
-    "bars": {
-      "box": [
-        0.025,
-        0.963,
-        0.1656,
-        0.9685
-      ],
-      "minShare": 0.6
+    "frame": {
+      "minShare": 0.7,
+      "step": 22,
+      "reach": 0.003,
+      "corner": 0.12,
+      "points": 12,
+      "note": "GTA VI draws no health strip under the radar; live play is told by the radar's thin light outline.",
+      "arrow": {
+        "ring": 0.45,
+        "core": 0.3
+      }
     },
-    "altimeter": {
-      "box": [
-        0.0885,
-        0.8,
-        0.1021,
-        0.9
-      ],
-      "minDashes": 4
-    }
+    "track": false
   },
   "wanted": {
     "box": [
-      0.74,
-      0.02,
+      0.86,
+      0.01,
       0.995,
-      0.17
+      0.07
     ],
-    "max": 5,
+    "max": 6,
     "slots": {
       "x": [
-        0.90885,
-        0.92344,
-        0.93802,
-        0.95313,
-        0.96771
+        0.88125,
+        0.9,
+        0.91927,
+        0.93854,
+        0.95677,
+        0.975
       ],
       "y": [
-        0.03796,
-        0.07037
+        0.03981
       ],
-      "size": 0.03056
+      "size": 0.025
     },
-    "starHeight": 0.03056,
+    "starHeight": 0.025,
     "minScore": 0.7,
-    "filledLevel": 200,
-    "edgeDrop": 50,
-    "note": "Slots measured on 4 grey stars at 9:12 of the 2 Nov stream (no cash shown). The second row (cash shown) is an estimate until a frame with both is seen."
+    "note": "Slots measured on 1 lit star at 1:19:40 of v2938662394 (centres x 1692-1872 px, y 43 px, stars 27 px).",
+    "fill": "right",
+    "emptyDarker": true,
+    "outlines": true,
+    "anyScreen": true,
+    "outlineMin": 0.8
   },
   "money": {
     "box": [
-      0.74,
-      0.02,
+      0.875,
+      0.012,
       0.995,
-      0.15
+      0.1
     ],
     "pattern": "\\$\\s?([0-9][0-9,.]{0,13})",
-    "deltaPattern": "([+-])\\s?\\$\\s?([0-9][0-9,.]{0,11})"
+    "deltaPattern": "([+-])\\s?\\$\\s?([0-9][0-9,.]{0,11})",
+    "first": true
   },
   "texts": {
     "banner": [
@@ -100,22 +99,10 @@
       0.64
     ],
     "area": [
-      0.66,
-      0.86,
-      0.995,
-      0.995
-    ],
-    "subtitle": [
+      0.012,
+      0.765,
       0.18,
-      0.84,
-      0.82,
-      0.985
-    ],
-    "help": [
-      0.008,
-      0.015,
-      0.36,
-      0.24
+      0.818
     ]
   },
   "menu": {
@@ -166,6 +153,11 @@
     }
   ],
   "areaPattern": "^[A-Z][A-Za-z'. ]{2,30}$",
-  "ignoreText": "^(browse|hide menu|back|select|map|brief|stats|settings|game|online)$",
-  "metresPerUnit": null
+  "ignoreText": "^(browse|hide menu|back|select|map|brief|stats|settings|game|online|open|turn\\s*(left|right|eft)?|keep\\s*(left|right)?|left|right|eft|[0-9.,o]+\\s*(ft|mi))$",
+  "metresPerUnit": null,
+  "ocrUpscale": 1.0,
+  "ocrDet": {
+    "limitType": "max",
+    "sideLen": 960
+  }
 }

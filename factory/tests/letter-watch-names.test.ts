@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { checkNarration, letterReadings, lettersOf, nameShaped } from "../src/qa/narration.ts";
 import { SAID_AS_LETTERS } from "../src/voice/speakable.ts";
 import { loadConfig } from "../src/config.ts";
+import { unknownDigestLine } from "../src/voice/pronounce.ts";
 
 test("name-shaped tokens are names; letter runs stay watched", () => {
   for (const n of ["McCoy", "McCoy's", "YouTube", "GameSpot", "LeBron", "DeLorean", "MacArthur"])
@@ -38,16 +39,23 @@ test("a name held before a pause is not logged as spelled", () => {
   assert.equal(checkNarration(meant, heard).letters?.length ?? 0, 0);
 });
 
-test("a real spelled token is still caught next to a name", () => {
-  const m = [...meant, { text: "GOTY", start: 2.3, end: 3.3 }];
+test("a mixed-case abbreviation spelled in the same take is still caught next to the name", () => {
+  const m = [...meant, { text: "LoL", start: 2.3, end: 3.05 }];
   const h = [
     ...heard,
-    { text: "G", start: 2.3, end: 2.55 },
+    { text: "L", start: 2.3, end: 2.55 },
     { text: "O", start: 2.55, end: 2.8 },
-    { text: "T", start: 2.8, end: 3.05 },
-    { text: "Y", start: 3.05, end: 3.3 },
+    { text: "L", start: 2.8, end: 3.05 },
   ];
-  assert.deepEqual(letterReadings(m, h).map((l) => l.token), ["GOTY"]);
+  assert.deepEqual(letterReadings(m, h).map((l) => l.token), ["LoL"]);
+});
+
+test("the daily digest drops a name logged before the rule, and keeps real unknowns", () => {
+  const entry = { count: 1, first: "2026-11-25T20:31:21.879Z", last: "2026-11-25T20:31:21.879Z", episodes: ["ep_x"], heard: "x" };
+  assert.equal(unknownDigestLine({ McCoy: entry }), undefined);
+  assert.equal(unknownDigestLine({ GOG: entry }), undefined);
+  assert.match(unknownDigestLine({ McCoy: entry, QWZ: entry }) ?? "", /QWZ/);
+  assert.doesNotMatch(unknownDigestLine({ McCoy: entry, QWZ: entry }) ?? "", /McCoy/);
 });
 
 test("GOG is said as letters, and the setting defaults on", () => {

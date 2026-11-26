@@ -66,7 +66,6 @@ const coreOf = (t: string) =>
     .replace(/[)"”’'\].,!?;:…]+$/, "")
     .replace(/['’]s$/, "");
 
-/** The letters of a capitalised token as said ("PS5" is "PS", "NPCs" is "NPC"), or undefined when it is not one. */
 /**
  * LETTER_WATCH_NAMES (src/config.ts, default on): a token built from capitalised word parts ("McCoy", "YouTube",
  * "GameSpot", "LeBron") is a name, not letters, so the letter watch leaves it alone. On 25 Nov 2026 "McCoy's line" in
@@ -84,6 +83,7 @@ export function nameShaped(core: string): boolean {
   return NAME_SHAPED.test(core.replace(/['’]s$/, ""));
 }
 
+/** The letters of a capitalised token as said ("PS5" is "PS", "NPCs" is "NPC"), or undefined when it is not one. */
 export function lettersOf(core: string, opts: LetterWatchOptions = {}): string | undefined {
   if (!/^[A-Za-z0-9]{2,9}$/.test(core)) return undefined;
   if ((opts.names ?? true) && nameShaped(core)) return undefined;

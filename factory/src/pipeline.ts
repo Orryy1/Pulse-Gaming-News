@@ -521,6 +521,7 @@ import { holdoutOf } from "./learn/holdout.ts";
 import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
 import { learnTick } from "./learn/tick.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
+import { whySeatOpen } from "./whyseat.ts";
 import {
   refreshChatter,
   bigCluster,
@@ -2047,6 +2048,23 @@ export async function maybeSelectLongAfterTarget(s: Services): Promise<string | 
   );
 }
 
+/** The day's Shorts that count toward SHORTS_PER_DAY: spare, big-story and search Shorts (and, with
+ * DAILY_TARGET_SHORTS_ONLY, long videos) are extra. */
+async function shortsTowardTarget(db: Db, cfg: Config): Promise<number> {
+  return (
+    (await countToday(db, cfg.timezone)) -
+    (await countSpareToday(db, cfg.timezone)) -
+    (await bigMadeToday(db, cfg.timezone)) -
+    (await searchMadeToday(db, cfg.timezone)) -
+    (cfg.dailyTargetShortsOnly ? await countToday(db, cfg.timezone, "longform") : 0)
+  );
+}
+
+/** Today's Shorts allowance: SHORTS_PER_DAY, plus SPRINT_EXTRA in a launch wave. */
+function dailyTargetNow(cfg: Config, now: Date): number {
+  return cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0);
+}
+
 export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
@@ -2062,7 +2080,24 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     await bigStep(`story selection is paused: ${paused}`);
     return undefined;
   }
-  if ((await countProducing(db)) >= cfg.maxProducing) {
+  const producing = await countProducing(db);
+  if (producing >= cfg.maxProducing) {
+    // WHY_SLOT_SEAT (src/whyseat.ts): a Why slot whose window is open gets one seat past the limit, so two slow
+    // Shorts no longer empty it (25 Nov 2026: 17:16 to 19:01 every tick waited, and the 18:30 Why never started).
+    const seated =
+      whySeatOpen(cfg.whySlotSeat, producing, cfg.maxProducing) &&
+      (await shortsTowardTarget(db, cfg)) < dailyTargetNow(cfg, now)
+        ? await maybeSelectWhy(s).catch((err) => {
+            if (err instanceof FatalError) throw err; // announced by tick(), as on the usual path
+            log("warn", "why seat selection failed", { error: errorMessage(err) });
+            return undefined;
+          })
+        : undefined;
+    if (seated) {
+      log("info", "why slot took the spare production seat", { id: seated, producing, max: cfg.maxProducing });
+      await logEvent(db, seated, "why_seat", { producing, max: cfg.maxProducing });
+      return seated;
+    }
     await bigStep(`waiting: ${cfg.maxProducing} Shorts are already in production`);
     return undefined;
   }
@@ -2105,18 +2140,11 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (replied) return replied;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts. Nor does a big story, and a long
   // video is not a Short at all (4 Nov 2026: a documentary and a ranking used up the 22:00 slot's turn, silently).
-  const total =
-    (await countToday(db, cfg.timezone)) -
-    (await countSpareToday(db, cfg.timezone)) -
-    (await bigMadeToday(db, cfg.timezone)) -
-    (await searchMadeToday(db, cfg.timezone)) -
-    (cfg.dailyTargetShortsOnly
-      ? await countToday(db, cfg.timezone, "longform")
-      : 0);
+  const total = await shortsTowardTarget(db, cfg);
   // A long video is not one of the day's Shorts, so the Shorts allowance never holds it back (24-25 Nov 2026: the
   // documentary failed in the afternoon and, with the day's Shorts made, nothing could pick its replacement until
   // the next day; the 19:00 slot passed empty). Documentary first, then the long ranking, then spare Shorts.
-  if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0))
+  if (total >= dailyTargetNow(cfg, now))
     return (await maybeSelectLongAfterTarget(s)) ?? (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);

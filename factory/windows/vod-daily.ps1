@@ -32,8 +32,14 @@ $Channels = @(
 New-Item -ItemType Directory -Force (Split-Path $Log), $Temp | Out-Null
 function Log($msg) { "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" | Add-Content -Encoding utf8 $Log }
 
-# One run at a time: a lock younger than 12 hours means another run is still going.
-if ((Test-Path $Lock) -and ((Get-Date) - (Get-Item $Lock).LastWriteTime).TotalHours -lt 12) { Log "Skipped: another run holds the lock"; exit 0 }
+# One run at a time: a lock younger than 12 hours means another run is still going, unless the run that wrote it is
+# gone. A PC restart (25 Nov 2026, 23:37) killed a run mid-index and left its lock, so the next run would have skipped.
+if ((Test-Path $Lock) -and ((Get-Date) - (Get-Item $Lock).LastWriteTime).TotalHours -lt 12) {
+  $holder = (Get-Content -LiteralPath $Lock -TotalCount 1 -ErrorAction SilentlyContinue) -as [int]
+  $alive = $holder -and (Get-Process -Id $holder -ErrorAction SilentlyContinue | Where-Object { $_.ProcessName -eq "powershell" })
+  if ($alive) { Log "Skipped: another run holds the lock"; exit 0 }
+  Log "Stale lock from run $holder (no longer running): taking it over"
+}
 Set-Content -Path $Lock -Value $PID
 try {
   $ytdlp = (Get-Command yt-dlp -ErrorAction SilentlyContinue).Source

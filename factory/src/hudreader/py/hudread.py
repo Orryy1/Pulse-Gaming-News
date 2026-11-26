@@ -76,6 +76,7 @@ def cmd_read(a):
     upscale = float(profile.get("ocrUpscale", default=2.0))
     track_map = profile.get("minimap", "track", default=True) is not False
     stars_any = bool(profile.get("wanted", "anyScreen", default=False))
+    talk_box = profile.get("talkBox")
     samples = []
     t0 = time.time()
     duration = a.duration or max(0.0, dur - a.start)
@@ -84,6 +85,10 @@ def cmd_read(a):
                                  keyframes=a.keyframes):
         state, conf = classify(frame, profile)
         s = {"t": round(t, 2), "state": state}
+        # Spoken lines on screen (subtitles), told without reading them: the miner holds a stretch full of dialogue
+        # as a story moment (a mission's or a cutscene's talk), the spoiler rule's cheapest sure sign.
+        if talk_box and state != "black" and has_text(crop(frame, talk_box), H):
+            s["talk"] = True
         if state == "other" and stars_any:
             # GTA VI hides its radar now and then during a chase while the stars stay up: they are read anyway (the
             # fixed slots, right-hand fill and outline checks keep scenery out). Only a frame that shows some count.
@@ -176,6 +181,8 @@ def cmd_read(a):
         "seconds": round(time.time() - t0, 1),
         # The reader's own CPU time (ffmpeg's decoding runs in its own process and is not in it).
         "cpuSeconds": round(time.process_time(), 1),
+        # Whether spoken lines were looked for (a profile's talkBox): a read without it cannot tell dialogue.
+        "talkRead": bool(talk_box),
         "places": atlas.places,
         "islands": {str(i): {"coverage": c.coverage(), "bbox": c.bbox()} for i, c in atlas.islands.items()},
         "samples": samples,

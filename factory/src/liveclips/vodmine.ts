@@ -197,7 +197,7 @@ export function backMeta(
             at: now.toISOString(),
             keep: false,
             reason:
-              "A story moment (the HUD read a mission result): held until the spoiler window closes.",
+              "A story moment (a mission result or dialogue on screen): held until the spoiler window closes.",
             spoiler_held_until: heldUntil,
           },
         }
@@ -235,4 +235,37 @@ export function escapeSignals(events: HudEvent[], minSeconds = 30): HudSignal[] 
     }
   }
   return out;
+}
+
+/**
+ * What the reader saw over a clip's window (pure): the share of live play and the share with subtitles on screen.
+ * A window that is mostly cutscene is no gameplay Short (an "escape" is often the stars vanishing as a cutscene
+ * starts), and one full of dialogue is a story moment, held for spoilers.
+ */
+export function windowShares(
+  samples: Array<{ t: number; state: string; talk?: boolean }>,
+  start: number,
+  end: number,
+): { hud: number; talk: number } | undefined {
+  const inside = samples.filter((s) => s.t >= start && s.t < end);
+  if (!inside.length) return undefined;
+  return {
+    hud: inside.filter((s) => s.state === "hud").length / inside.length,
+    talk: inside.filter((s) => s.talk).length / inside.length,
+  };
+}
+
+/** Moments whose window is mostly live play, story-marked when dialogue fills it (pure). */
+export function judgeWindows(
+  moments: BackMoment[],
+  samples: Array<{ t: number; state: string; talk?: boolean }>,
+  o: { minHud: number; storyTalk: number } = { minHud: 0.4, storyTalk: 0.3 },
+): BackMoment[] {
+  return moments.flatMap((m) => {
+    const w = windowShares(samples, m.start, m.end);
+    // No reading over the window (a failed or short read): the moment is kept as the detector found it.
+    if (!w) return [m];
+    if (w.hud < o.minHud) return [];
+    return [{ ...m, story: m.story || w.talk >= o.storyTalk }];
+  });
 }

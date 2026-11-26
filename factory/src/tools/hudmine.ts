@@ -35,6 +35,7 @@ import {
   backMeta,
   backMoments,
   escapeSignals,
+  judgeWindows,
   pickMoments,
   type BackMoment,
 } from "../liveclips/vodmine.ts";
@@ -111,9 +112,12 @@ async function hudFor(
   file: string,
   vodId: string,
   seconds: number,
-): Promise<HudSignal[]> {
+): Promise<{ signals: HudSignal[]; samples: RawTelemetry["samples"] }> {
   const dir = vodHudDir(dataDir!, vodId);
   let raw = await readJson<RawTelemetry>(path.join(dir, "raw.json"));
+  // A read made before the profile looked for subtitles cannot tell dialogue: it is read again.
+  const profile = await loadProfile("gta6");
+  if (raw && profile.talkBox && !(raw as { talkRead?: boolean }).talkRead) raw = undefined;
   if (!raw) {
     const t0 = Date.now();
     const out = await readVod(
@@ -127,9 +131,12 @@ async function hudFor(
       `  hud read ${Math.round(seconds / 60)} min in ${Math.round((Date.now() - t0) / 1000)} s`,
     );
   }
-  if (!raw) return [];
+  if (!raw) return { signals: [], samples: [] };
   const track = buildTrack(raw, await loadProfile(raw.game));
-  return [...hudSignals(track.events), ...escapeSignals(track.events)];
+  return {
+    signals: [...hudSignals(track.events), ...escapeSignals(track.events)],
+    samples: raw.samples,
+  };
 }
 
 async function samplesFor(
@@ -232,7 +239,11 @@ for (const dir of vodDirs) {
     );
     const hud = await hudFor(file, n.vodId, seconds);
     const samples = await samplesFor(file, n.vodId, startMs, seconds);
-    const moments = backMoments(samples, hud, { startMs, minScore: 1 });
+    // Mostly-cutscene windows out, dialogue-filled ones held as story moments.
+    const moments = judgeWindows(
+      backMoments(samples, hud.signals, { startMs, minScore: 1 }),
+      hud.samples,
+    );
     const picked = pickMoments(moments, taken[n.vodId] ?? [], {
       top,
       hudOnly: !credit,
@@ -240,7 +251,7 @@ for (const dir of vodDirs) {
       minScore: 1,
     });
     console.log(
-      `  ${hud.length} hud signals, ${moments.length} moments, ${picked.length} picked`,
+      `  ${hud.signals.length} hud signals, ${moments.length} moments, ${picked.length} picked`,
     );
     for (const m of picked) {
       const entry: Record<string, unknown> = {
@@ -269,7 +280,16 @@ for (const dir of vodDirs) {
           entry.already = true;
         } else {
           const tmp = path.join(outDir!, `.tmp_${meta.id}`);
-          meta.frames = await cut(file, m, tmp);
+          // A cut that fails (a busy disk) is tried once more, then the moment is left out and said so.
+          const frames = await cut(file, m, tmp).catch(() => cut(file, m, tmp)).catch((err: unknown) => {
+            console.log(`  cut at ${m.start} s failed: ${String(err).slice(0, 200)}`);
+            return undefined;
+          });
+          if (!frames) {
+            await fs.rm(tmp, { recursive: true, force: true });
+            continue;
+          }
+          meta.frames = frames;
           await fs.writeFile(
             path.join(tmp, "meta.json"),
             JSON.stringify(meta, null, 2),

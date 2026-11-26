@@ -2,6 +2,24 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 26 Nov 2026, 15:00 UK: Shorts with an explainer no longer crash on their retry
+
+**Change:** when the after-render frame check faults a card, the retry stops drawing it. A line's animated explainer draws in its card's place, so the faulted frame is often the explainer, but the retry removed only the card's text and kept the explainer. The same explainer was drawn again with no card, and the graphics audit crashed reading the missing card ("Cannot read properties of undefined (reading 'primary')"), so the Short failed its last two attempts and was lost. Now a faulted card takes its line's explainer with it (takes and rank cards keep their card), and the audit's card checks skip lines that draw no card of their own. Branch `claude/engine-explainercard` (c1ca2b9e2), stage 246abc051, **deployed 15:06 UK** (release cc702431c), factory healthy.
+
+**Evidence:**
+
+- Factory logs: the crash took ep_20261121_1fa87316, ep_20261123_2a95e764 and today's 12:00 "why" Short, "Why did Bungie walk away from Halo after Halo 3?" (ep_20261126_b7fa6af6). Attempt 1 failed the frame check ("Frame 3: The timeline is unfinished, with three markers but no dates or event labels", the timeline explainer), then attempts 2 and 3 crashed in the audit. The 10:30 run had parked this crash waiting for a stack; today's log had it.
+- A new test rebuilds the case (an explainer line with no card) and fails with the exact production error before the fix; a second drives the retry's mute through the real gate. Typecheck clean; merge gate 3,572 of 3,572 tests pass.
+- code-reviewer: no blockers; its notes applied (one shared "draws a card" check, no "undefined is never said" warning, the take path pinned in the test). Its wider note (empty explainer spans, explainer words not counted) is queue item 57.
+- Real output: the Halo Short was retried at 15:07 on the new release. Its graphics audit ran clean ("unreadable 1 -> 0, 1 trimmed") and it rendered, with no crash. It then failed the picture check on a footage frame (blocky corruption, a blurred HALO title), the ordinary media fault the retry handles by dropping that clip; it has two attempts left.
+- No change to what a working Short shows (only a faulted explainer is removed), so no before/after frame review was needed.
+
+**Setting:** none; a crash fix, always on.
+
+**Judged:** by 3 Dec. Pass mark: no "reading 'primary'" failures in the factory log, and no Short lost after a "graphics:" frame-check fault on an explainer. If the dropped explainers leave lines bare too often, the reviewer's alternative (keep the never-faulted card) is the fallback.
+
+**Also looked at, not changed:** FACT_REPAIR (extended to 28 Nov) waits on the repaired Half-Life ranking due at 17:00 today. Core numbers: no 20% drop tied to an engine change (the premise gate has 4 hours of data). Output today is thin (4 published in 24 hours); the main tick's timestamp was 80 minutes old at 14:34 while Shorts were still producing; left for the hourly watch.
+
 ## 26 Nov 2026, 10:30 UK: half the news slots skip "nothing known" and shopping stories
 
 **Change:** before the editor picks a news slot's story, a model-free check reads each candidate's headline. On the "gate" side of a 50/50 split by slot time, a story whose whole point is that nothing is known or confirmed, a price, preload, bonus or edition list, patch notes or an outage is dropped, unless the headline also carries a conflict or a surprise (layoffs, a delay, a lawsuit, a price rise or cut, a shutdown, a record). A slot where every candidate would go keeps them all, so no slot is left empty. Breaking news, big stories and the other lanes are untouched. Each gated slot logs a `premise_gate` event (arm, slot, what was dropped). Branch `claude/engine-premisegate` (737278084), merge gate: typecheck clean, 3,526 of 3,526 tests pass, stage 6f41104bb, **deployed 10:52 UK**, factory healthy.

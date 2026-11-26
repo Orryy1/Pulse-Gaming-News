@@ -507,3 +507,15 @@ GTA File: parts 3 to 7 moved by hand to 26-30 Nov this run. Not built: parts are
 **Build:** `VISION_RATE` on the Mac. It sets a per-minute cap on PC vision calls. Non-urgent checks (library tagging, scene index, background screening) queue for a nightly bulk window. Slot-bound Shorts and long videos keep priority. Measure calls a minute and GPU busy % before and after.
 
 **Measure:** PC GPU busy outside renders under 50%; no slot missed for want of a picture check.
+
+## 55. "Road trip through Leonida" map-flight format (owner liked it, 26 Nov)
+
+**Seen:** a 69 s 1080p video, "Road trip: every town in Leonida before GTA 6 comes out" (x.com/facetagramai/status/2125611308204855606). A camera flies over a stylised Leonida map with neon route lines, labelled towns and islands, and "Region 1 of 6" highway-sign title cards over trailer shots.
+
+**Pulse version:**
+- A Shorts series (one region per Short, "Region N of 6") plus a long video joining them.
+- Build our OWN map layer, never the community fan map. Use the owner's own GTA VI streams (the in-game map screen and flights, tagged by VOD_TAGS once indexing is back on), the factory's MAP_PINS and gamemaps, and the Blender globe or flyover scene (src/render/blender.ts).
+- Use the GTA motion-graphics kit (claude/gtakit) for the highway-sign cards and the route line.
+- Footage per region from the owner's streams first, then official trailers under the usual rules. The GTA story spoiler hold until 18 Dec still applies.
+
+**Measure:** views and average viewed against the GTA Shorts median (GTA saturation note: max 2 GTA Shorts a day); subscribers per 1,000 views.

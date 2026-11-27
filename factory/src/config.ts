@@ -1415,6 +1415,7 @@ export interface Config {
   /** Games the owner plays (and records): long videos about them send them a "record these moments" list. */
   ownerGames: string[];
   captureChecklist: boolean; // send that list on Discord when a long video or documentary covers one of their games
+  longRenderIgnoreShortWindows?: boolean; // proofs only (src/tools/gtaguide-proofenv.ts): a sandbox's long render never waits for the live Shorts' windows (LONG_RENDER_IGNORE_SHORT_WINDOWS, off)
   footageLibrary: string; // the owner's own recordings (NVIDIA: Videos\\<Game>\\...); empty = off
   /** GAME_LIBRARY (default on): Shorts pick each sentence's scene and still from the game media library and scene indexes (src/assets/shortlibrary.ts). */
   gameLibrary: boolean;
@@ -2671,6 +2672,7 @@ export function loadConfig(): Config {
       .map((g) => g.trim())
       .filter(Boolean),
     captureChecklist: bool("CAPTURE_CHECKLIST", true),
+    longRenderIgnoreShortWindows: bool("LONG_RENDER_IGNORE_SHORT_WINDOWS", false),
     // The owner's recordings under ~/Videos/<Game>/: USERPROFILE on Windows, the home folder anywhere else (on the Mac
     // this read "Videos", relative to the factory folder, so the owner's footage was never found there).
     footageLibrary: str("FOOTAGE_LIBRARY", path.join(process.env.USERPROFILE || os.homedir(), "Videos")),

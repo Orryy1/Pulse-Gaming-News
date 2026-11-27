@@ -1126,6 +1126,10 @@ test("the proof never waits for the owner's footage: the sandbox switches the ca
   const { captureHold } = await import("../src/capture.ts");
   const env = gtaGuideProofEnv({ data: "/tmp/d", backup: "/tmp/b" });
   assert.equal(env.CAPTURE_CHECKLIST, "false");
+  assert.equal(env.LONG_RENDER_IGNORE_SHORT_WINDOWS, "true");
+  const pipeSrc = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipeSrc, /if \(s\.cfg\.longRenderIgnoreShortWindows\) return 180;/);
+  assert.equal(loadConfig().longRenderIgnoreShortWindows, false, "off in the factory");
   assert.equal(env.DRY_RUN, "true");
   assert.equal(env.DATABASE_URL, "");
   assert.equal(env.AUTO_PUBLISH, "false");

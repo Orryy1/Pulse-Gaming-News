@@ -51,7 +51,25 @@ export type GuideKindKey =
   | "mistakes"
   | "early-money"
   | "hidden-features"
-  | "which-edition";
+  | "which-edition"
+  // VERSUS_LONG (src/versus.ts): a then-vs-now long video, the new game against an old one, one system a chapter.
+  | "vs-gta5"
+  | "vs-rdr2";
+
+/** A versus kind's old game (VERSUS_LONG, src/versus.ts): what the "then" side of every chapter is. */
+export interface VersusInfo {
+  /** The old game's full title, as the footage gather and the library name it. */
+  old: string;
+  /** How the narration and the title say it ("GTA 5"). */
+  oldShort: string;
+  oldYear: number;
+  /** The year its Steam page gives (GTA V reached Steam in 2015), for the store lookup's year check. */
+  steamYear?: number;
+  /** Words that name the old game or its people in a line ("Trevor", "Los Santos"). */
+  oldNames: RegExp;
+  /** The old game's official logo (a transparent PNG): Steam's library logo for the game. */
+  oldLogoUrl: string;
+}
 
 export interface GuideKind {
   key: GuideKindKey;
@@ -71,6 +89,8 @@ export interface GuideKind {
   items: [number, number];
   /** The pinned comment's question: the viewer's own tip, which feeds the stream asks list and the next guide. */
   question: string;
+  /** VERSUS_LONG: the old game this kind compares GTA 6 with; absent on every guide kind. */
+  versus?: VersusInfo;
 }
 
 export const GUIDE_KINDS: readonly GuideKind[] = [
@@ -186,8 +206,56 @@ export const GUIDE_KINDS: readonly GuideKind[] = [
   },
 ];
 
+/**
+ * VERSUS_LONG (src/versus.ts; off by default): the versus kinds. Kept out of GUIDE_KINDS, so GTA_GUIDES' picker, its
+ * demand searches and its rules never see them; a versus slot picks one of these itself. Adding a pair is data: a kind
+ * here and an "### ... baseline (<key>)" section of the old game's facts in guide_facts_gta6_mechanics.md.
+ */
+export const VERSUS_KINDS: readonly GuideKind[] = [
+  {
+    key: "vs-gta5",
+    name: "GTA 6 vs GTA 5: every system compared",
+    title: (n) => `GTA 6 Can Do ${n} Things GTA 5 Never Could`,
+    thumb: () => ({ big: "", small: "" }),
+    angle:
+      "Every gameplay system GTA 6 changed from GTA 5, one system a chapter: what GTA 5 did, what GTA 6 does now, and what that means for how you play. The released game, post-launch, so each chapter says how it works, not what a trailer hinted.",
+    queries: ["gta 6 vs gta 5"],
+    askWords: /\b(gta ?(5|v)|vs|versus|compared?|differen\w*|changed?|any ?more|no longer)\b/i,
+    items: [15, 30],
+    question: "If you could send one GTA 6 system back to the way GTA 5 did it, which one would it be?",
+    versus: {
+      old: "Grand Theft Auto V",
+      oldShort: "GTA 5",
+      oldYear: 2013,
+      steamYear: 2015,
+      oldNames: /\b(gta ?(5|v)|grand theft auto (5|v)|los santos|blaine county|michael|franklin|trevor)\b/i,
+      oldLogoUrl: "https://cdn.cloudflare.steamstatic.com/steam/apps/271590/logo.png",
+    },
+  },
+  {
+    key: "vs-rdr2",
+    name: "GTA 6 vs Red Dead 2: what came over",
+    title: (n) => `GTA 6 Took ${n} Ideas From Red Dead 2, and Changed Them`,
+    thumb: () => ({ big: "", small: "" }),
+    angle:
+      "The systems GTA 6 took from Red Dead Redemption 2 and how it changed them, one system a chapter: what Red Dead 2 did, what GTA 6 does now, and what that means for how you play.",
+    queries: ["gta 6 vs red dead 2"],
+    askWords: /\b(red dead|rdr ?2|arthur|honou?r|dead ?eye|vs|versus|compared?)\b/i,
+    items: [15, 30],
+    question: "Which Red Dead 2 system should GTA 6 have taken all the way, and which should it have left behind?",
+    versus: {
+      old: "Red Dead Redemption 2",
+      oldShort: "Red Dead 2",
+      oldYear: 2018,
+      steamYear: 2019,
+      oldNames: /\b(red dead( redemption)? ?(2|ii)|rdr ?2|arthur( morgan)?|dutch|van der linde)\b/i,
+      oldLogoUrl: "https://cdn.cloudflare.steamstatic.com/steam/apps/1174180/logo.png",
+    },
+  },
+];
+
 export const kindOf = (key: string): GuideKind | undefined =>
-  GUIDE_KINDS.find((k) => k.key === key);
+  GUIDE_KINDS.find((k) => k.key === key) ?? VERSUS_KINDS.find((k) => k.key === key);
 
 // ---- The share of long slots ------------------------------------------------------------------------------------------
 
@@ -373,7 +441,9 @@ export interface GtaGuideMeta {
   thumb: { big: string; small: string };
   labels: Array<{ number: number; label: ClaimLabel; play: boolean }>;
   /** Each item's line, what to do and what you get, in spoken order (for the proof report and the record). */
-  list?: Array<{ number: number; title: string; how: string; payoff: string }>;
+  list?: Array<{ number: number; title: string; how: string; payoff: string; then?: string }>;
+  /** VERSUS_LONG: the old game, for the footage gather (its "old" moments), the thumbnail and the QA's game names. */
+  versus?: { old: string; oldShort: string; oldYear: number; steamYear?: number };
   /** The pinned comment's question (the kind's own), carried so the SEO module needs no import of this one. */
   question?: string;
 }
@@ -420,11 +490,14 @@ export function factPackText(
 
 /** The text without the sections headed for another guide kind ("### Mistakes to avoid (mistakes)") (pure). */
 export function kindSections(text: string, kind: string): string {
-  const keys = new Set(GUIDE_KINDS.map((k) => k.key as string));
+  // A versus reads every guide kind's sections (each holds GTA 6 systems it compares) and only its own baseline; a
+  // guide never reads a versus baseline.
+  const versus = VERSUS_KINDS.some((k) => k.key === kind);
+  const keys = new Set((versus ? VERSUS_KINDS : [...GUIDE_KINDS, ...VERSUS_KINDS]).map((k) => k.key as string));
   const out: string[] = [];
   let skip = false;
   for (const line of text.split("\n")) {
-    const h3 = line.match(/^###\s.*\(([a-z-]+)\)\s*$/);
+    const h3 = line.match(/^###\s.*\(([a-z0-9-]+)\)\s*$/);
     if (h3) skip = keys.has(h3[1]!) && h3[1] !== kind;
     else if (/^#{1,3}\s/.test(line)) skip = false;
     if (!skip) out.push(line);
@@ -565,6 +638,8 @@ export interface GuideItem {
   how?: string;
   /** What you get for it: money, time, a way out, an item kept (the plan's). */
   payoff?: string;
+  /** VERSUS_LONG: what the old game did (the plan's "then"); "how" is then what the new game does, "payoff" what it means. */
+  then?: string;
   narration: string;
   footage: { want: string; keywords: string[] };
   claims: Array<{ claim: string; label: ClaimLabel; source: ClaimSource }>;
@@ -579,6 +654,8 @@ export interface GuideDraft {
   thumb_words: string;
   description: string;
   tags: string[];
+  /** VERSUS_LONG: the writer's one comment question (src/versus.ts versusQuestion checks it). */
+  question?: string;
 }
 
 // Up to 240 words an item: a guide may have as few as 7 items rather than padding, and each then carries its how-to.
@@ -868,8 +945,13 @@ export function dropThinItems<
     thumb_words?: string;
     items: Array<{ title: string; how?: string; payoff?: string; notes?: string; chip?: string }>;
   },
->(plan: P, kind: GuideKind): { plan: P; dropped: string[] } {
-  const thin = plan.items.map((x, i) => i > 0 && itemQualityProblems(x, kind).length > 0);
+>(
+  plan: P,
+  kind: GuideKind,
+  /** The bar an item must meet (a versus has its own, src/versus.ts versusItemProblems). */
+  quality: (x: P["items"][number], kind: GuideKind) => string[] = (x, k) => itemQualityProblems(x, k),
+): { plan: P; dropped: string[] } {
+  const thin = plan.items.map((x, i) => i > 0 && quality(x, kind).length > 0);
   const good = thin.filter((t) => !t).length;
   // Down to the minimum, never below: the first thin items in spoken order fill any gap.
   let spare = Math.max(0, kind.items[0] - good);

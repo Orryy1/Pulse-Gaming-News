@@ -78,6 +78,8 @@ export function thumbFiles(thumbs: LongThumbsInput["thumbs"]): string[] {
       thumb.imageFile,
       thumb.image2File,
       thumb.fgFile,
+      thumb.logoFile,
+      thumb.logo2File,
       ...(thumb.pictureFiles ?? []),
     ])
       if (f) out.add(f.replace(/\\/g, "/"));

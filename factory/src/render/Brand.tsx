@@ -6,7 +6,7 @@ import { AbsoluteFill, Img, staticFile } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
 import { titleLines } from "./longplan.ts";
-import { ClashThumb, GuideThumb, HeroThumb, MotifThumb, MysteryThumb, NumberThumb, PosterThumb, RetroThumb } from "./ThumbStudio.tsx";
+import { ClashThumb, GuideThumb, HeroThumb, MotifThumb, MysteryThumb, NumberThumb, PosterThumb, RetroThumb, VersusSplitThumb } from "./ThumbStudio.tsx";
 
 const Grid: React.FC<{ opacity?: number; cell?: number }> = ({
   opacity = 0.05,
@@ -204,7 +204,8 @@ export type ThumbProps = {
   // A/B designs for YouTube's Test & compare: "split" (the default), "full" bleed art with a
   // short line, or "versus": last place against the winner.
   // "guide" (GTA_GUIDES, src/gtaguide.ts): the owner's frame, 2-3 huge words, the GTA VI logo (image2Src) in a corner.
-  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash" | "motif" | "poster" | "guide";
+  // "vsplit" (VERSUS_LONG, src/versus.ts): the old game dusty on the left, the new vivid on the right, both logos, no words.
+  layout?: "split" | "full" | "versus" | "depth" | "clipping" | "hero" | "number" | "retro" | "mystery" | "clash" | "motif" | "poster" | "guide" | "vsplit";
   image2Src?: string | null; // versus: the winner's art (imageSrc is last place)
   fgSrc?: string | null; // depth: the art's foreground cut-out (src/render/parallax.ts), set in front of the headline
   subjectX?: number; // depth: where the subject stands (0-1); the headline goes on the other side so it stays readable
@@ -218,11 +219,15 @@ export type ThumbProps = {
   subjectY?: number; // poster: how far down the picture its subject is (0-1)
   zoom?: number; // poster: enlarge the picture at least this much (1-1.4)
   subline?: string; // guide: the small second line on its red bar ("NO SPOILERS"), drawn at 80 px or more
+  logoSrc?: string | null; // vsplit: the old game's official logo (left)
+  logo2Src?: string | null; // vsplit: the new game's official logo (right)
 };
 
 /** Long-form thumbnail, 1280x720, in one of three designs. */
 export const Thumb: React.FC<ThumbProps> = (p) =>
-  p.layout === "guide" ? (
+  p.layout === "vsplit" ? (
+    <VersusSplitThumb {...p} />
+  ) : p.layout === "guide" ? (
     <GuideThumb {...p} />
   ) : p.layout === "poster" ? (
     <PosterThumb {...p} />

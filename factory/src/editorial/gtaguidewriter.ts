@@ -26,6 +26,7 @@ import {
   type GuideItem,
   type GuideKind,
 } from "../gtaguide.ts";
+import { VERSUS_INTRO_WORDS, VERSUS_ITEM_WORDS, VERSUS_OUTRO_WORDS, VERSUS_WORDS, versusItemProblems } from "../versus.ts";
 
 const LABEL = z.enum(["confirmed", "reported", "rumour"]);
 const SOURCE = z.enum(["fact pack", "my playthrough"]);
@@ -325,5 +326,206 @@ export async function writeGtaGuide(
     thumb_words: plan.thumb_words,
     description: plan.description,
     tags: plan.tags,
+  });
+}
+
+// ---- VERSUS_LONG (src/versus.ts): the then-vs-now writer --------------------------------------------------------------
+// The guide's two steps (the plan in one call, then the chapters in batches), with a versus's plan (each chapter's then,
+// now and what it means), a verdict for the outro, one comment question, and a shot list that marks which game each line
+// shows ("old" lines are gathered from the old game's footage). Study: reports/frontier/GTAbites versus study 2026-11-27.md.
+
+export const VersusPlanSchema = z.object({
+  intro: z.object({
+    narration: z
+      .string()
+      .describe(
+        "The cold open. Its FIRST sentence is chapter 1 as one contrast that names both games ('In GTA 5 the cops forget you once you're round the corner; in GTA 6 they remember your shirt.'); then two or three more quick contrasts from later chapters; then one line with the count of chapters and no story spoilers; then an open loop to the flip-side chapter near the end. No greeting, no channel name",
+      ),
+    on_screen: z.string().describe("3-8 word kicker under the title"),
+  }),
+  items: z
+    .array(
+      z.object({
+        number: z.number().int().min(1),
+        title: z.string().describe("The system as a 2-6 word on-screen line: 'Six wanted stars', 'Cars need fuel'"),
+        label: LABEL.describe(
+          "confirmed: the fact pack's confirmed part or my own footage; reported: the fact pack's reported part; rumour: said as one",
+        ),
+        basis: SOURCE.describe("The fact pack, or what my own recordings show (only when the play evidence holds it)"),
+        chip: z.string().describe("1-4 words of punch for the card"),
+        then: z.string().describe("What the old game did, concretely, from its baseline facts ('Five stars, and cops showed on the radar')"),
+        now: z.string().describe("What GTA 6 does instead, concretely ('Six stars, and police hunt your outfit and car from witness reports')"),
+        means: z
+          .string()
+          .describe("What that changes for how you play: the consequence or what to do ('Change clothes and swap cars to lose the heat')"),
+        notes: z.string().describe("1-2 sentences of notes: which source lines it rests on, any hedge it needs (not narration)"),
+      }),
+    )
+    .describe("Numbered 1..N in the order spoken; grouped so each chapter leads into the next; fewer real chapters beat padding"),
+  outro: z.object({
+    narration: z
+      .string()
+      .describe(
+        "The verdict: one line that says what the change means as a whole (a thesis, not a score), three or four earlier chapters called back as evidence, one honest cost, a landing line, and last the comment question said once",
+      ),
+    on_screen: z.string().describe("3-8 word verdict"),
+  }),
+  question: z
+    .string()
+    .describe("One sharp either/or question for the pinned comment, 6-30 words, ending in '?', tied to the verdict; never 'let me know'"),
+  description: z.string().describe("3-5 sentences, no hashtags, no timestamps"),
+  tags: z.array(z.string()).max(15),
+});
+export type VersusPlan = z.infer<typeof VersusPlanSchema>;
+
+const VersusMomentSchema = MomentSchema.extend({
+  game: z
+    .enum(["old", "new"])
+    .describe("Which game the picture shows on this line: 'old' for a line about what the old game did, 'new' for GTA 6"),
+});
+const VersusBatchSchema = z.object({
+  items: z.array(
+    ItemBodySchema.extend({
+      moments: z.array(VersusMomentSchema).describe("Exactly one per sentence of this chapter's narration, in order"),
+    }),
+  ),
+});
+
+function versusFacts(kind: GuideKind): string {
+  const v = kind.versus!;
+  return `${FACT_RULE}
+${v.oldShort}'s side of every chapter comes from the "${v.oldShort} baseline" lines and the "What changed from GTA 5" lines of the fact pack; never from memory. A ${v.oldShort} fact that is not in the pack is not said.`;
+}
+
+export function versusPlanPrompt(kind: GuideKind, opts: GuideWriterOptions = {}): string {
+  const v = kind.versus!;
+  const introMax = opts.openingCap ? Math.min(OPENING_WORDS_MAX, VERSUS_INTRO_WORDS[1]) : VERSUS_INTRO_WORDS[1];
+  return `${housePrompt()}
+
+You are planning a long versus video, ${VERSUS_WORDS[0]}-${VERSUS_WORDS[1]} spoken words (about fifteen to thirty minutes): GTA 6 against ${v.old} (${v.oldYear}), one gameplay system a chapter. The best of these grew huge on one device: every chapter is old game, new game, what it means for you.
+This video: ${kind.name}. ${kind.angle}
+Structure:
+1. intro.narration: ${VERSUS_INTRO_WORDS[0]}-${introMax} words. The FIRST sentence is chapter 1 as one contrast naming both games ("In ${v.oldShort} ..., in GTA 6 ..."). Then two or three quick contrasts from later chapters, one line with the count of chapters and no story spoilers, and an open loop to the flip-side chapter ("and there's one thing ${v.oldShort} let you do that GTA 6 took away; we'll get there"). No greeting, no channel name, no "welcome", no "in this video".
+2. items: ${kind.items[0]}-${kind.items[1]} chapters (aim for 16-22), numbered 1..N in the order spoken, each ONE concrete system (wanted level, police, stealing cars, fuel, weapons carried, money, robberies, fitness, food, the leads, controls, cheats, the map). The biggest change first. Group them so one leads into the next (police, then the disguises that beat them, then the body that changes, then the car that carries your guns), and call earlier chapters back. One chapter near the end is the flip side: something ${v.oldShort} let you do that GTA 6 does not (pays off the intro's open loop). Each chapter names then (what ${v.oldShort} did), now (what GTA 6 does) and means (what it changes for you).
+Never a chapter about a console, controller, frame rate or resolution, scenery, or a trailer headline with nothing at stake.
+3. outro.narration: ${VERSUS_OUTRO_WORDS[0]}-${VERSUS_OUTRO_WORDS[1]} words, the verdict, naming both games: what the change means as a whole in one line (a thesis, not a score), three or four earlier chapters called back as evidence, one honest cost, a landing line, then the comment question said once.
+4. question: the same comment question, one sharp either/or, 6-30 words.
+A versus compares, it never ranks: never "ranking", "I'd put X ahead of Y". The title is set from the chapter count. No em dashes anywhere.
+${versusFacts(kind)}${opts.discipline ? `\n${DISCIPLINE_RULE}` : ""}
+
+This step plans only: the order, the chapter lines with then, now and means, labels, bases and notes, the intro, the verdict, the question and the packaging. The chapter narration is written next from your plan.`;
+}
+
+export function versusBatchPrompt(kind: GuideKind, opts: GuideWriterOptions = {}): string {
+  const v = kind.versus!;
+  return `${housePrompt()}
+
+You are writing chapters of a long versus video, GTA 6 against ${v.old}, from the plan you are given. Each chapter's narration is ${VERSUS_ITEM_WORDS[0]}-${VERSUS_ITEM_WORDS[1]} spoken words, six to twelve short sentences, in this order:
+- open with ${v.oldShort} in one short sentence that names it (its then; a named ${v.oldShort} character or place makes it vivid where the facts allow), and never open two chapters the same way (the earlier openings are listed);
+- then GTA 6 in one or two sentences (its now), then how it works in practice, concretely, from the sources;
+- then what it means for you (its means), with one light touch of humour or a sharp line where it fits;
+- close with a one-line then-vs-now summary or a hand-over that leads into the next chapter's system.
+Speak to the viewer ("you"); "I" only for a view or my own play, and only what the play evidence shows. No em dashes. Never compare a chapter's place in the list with another's.
+${REHOOK_RULE} In a versus that means about one in every third chapter, often the hand-over line.
+footage names what the picture should show with 1-4 keywords.
+moments: exactly one per sentence of the narration, in order. "game" is "old" on the line(s) about what ${v.oldShort} did (its footage shows ${v.old}) and "new" on every other line (GTA 6). Every chapter has at least one "old" line and at least two "new" lines. "show" names the precise in-game thing on screen for that sentence, in that game (never a menu, store page, logo or text screen); keywords 1-4 short search terms. ${GRAPHIC_RULE} A then-vs-now "compare" graphic (two 'label: value' rows, ${v.oldShort} first, e.g. "${v.oldShort}: 5 stars", "GTA 6: 6 stars") suits the line where the contrast lands, when both values are in that sentence. "emphasis" lands a name or phrase from the sentence in about a third; empty when there is a graphic.
+${versusFacts(kind)}${opts.discipline ? `\n${DISCIPLINE_RULE}` : ""}`;
+}
+
+/** Four chapters a call: a versus chapter is about two thirds of a guide item, so four fit Codex's limit as three items did. */
+export const VERSUS_BATCH = 4;
+
+/**
+ * Writes the versus: the plan (sent back once with its misses), the chapters in batches of four (each batch sees how the
+ * earlier chapters opened). Thin chapters are dropped to the minimum; too few that meet the bar stops before any chapter
+ * is paid for (GuideTooThinError, so the slot goes to the ranking).
+ */
+export async function writeVersus(
+  llm: Llm,
+  brief: GuideBrief,
+  feedback: string[] = [],
+  opts: GuideWriterOptions = {},
+  planCheck?: (plan: VersusPlan) => string[],
+): Promise<GuideDraft> {
+  const kind = brief.kind;
+  const fb = feedback.length
+    ? `\n\nA previous draft was rejected. Fix every one of these problems:\n${feedback.map((f) => `- ${f}`).join("\n")}`
+    : "";
+  const sources = sourceBlock(brief);
+  let plan = await llm.structured({
+    site: "versus.plan",
+    system: versusPlanPrompt(kind, opts),
+    content: `${sources}${fb}`,
+    schema: VersusPlanSchema,
+    effort: "medium",
+    maxTokens: 14000,
+  });
+  const asItems = (p: VersusPlan) => p.items.map((x) => ({ ...x, how: x.now, payoff: x.means }));
+  const misses = planCheck?.(plan) ?? [];
+  if (misses.length)
+    plan = await llm.structured({
+      site: "versus.plan",
+      system: versusPlanPrompt(kind, opts),
+      content: `${sources}\n\nYour plan:\n${JSON.stringify(plan)}\n\nFix these problems and return the whole plan again:\n${misses.map((m) => `- ${m}`).join("\n")}`,
+      schema: VersusPlanSchema,
+      effort: "medium",
+      maxTokens: 14000,
+    });
+  const quality = (x: { title: string; then?: string; how?: string; payoff?: string }) => versusItemProblems(x, kind);
+  const dropped = dropThinItems({ ...plan, items: asItems(plan) }, kind, quality).plan;
+  const good = dropped.items.filter((x) => !quality(x).length).length;
+  if (good < kind.items[0])
+    throw new GuideTooThinError(
+      `versus "${kind.key}": only ${good} planned chapter${good === 1 ? "" : "s"} meet the bar (${kind.items[0]} needed); the fact pack is too thin for this kind`,
+    );
+  const items = dropped.items.map((x, i) => ({ ...x, number: i + 1 }));
+  const introOutro = dropped.intro.narration.split(/\s+/).length + (dropped.outro?.narration ?? "").split(/\s+/).length;
+  const perItem = Math.min(
+    VERSUS_ITEM_WORDS[1] - 20,
+    Math.max(110, Math.ceil((VERSUS_WORDS[0] + 200 - introOutro) / Math.max(1, items.length))),
+  );
+  const outline = items
+    .map((x) => `${x.number}. ${x.title} [${x.label}, ${x.basis}]: then: ${x.then}; now: ${x.how}; means: ${x.payoff}; ${x.notes}`)
+    .join("\n");
+  const written: GuideItem[] = [];
+  for (const batch of batchesOf(items, VERSUS_BATCH)) {
+    const before = written.map((w) => `${w.number}: "${sentencesOf(w.narration)[0] ?? ""}"`).join("\n");
+    const r = await llm.structured({
+      site: "versus.items",
+      system: versusBatchPrompt(kind, opts),
+      content: `${sources}\n\nThe cold open (already written): ${dropped.intro.narration}\n\nThe full list of chapters:\n${outline}\n\nWrite chapters ${batch.map((x) => x.number).join(", ")}, about ${perItem} spoken words each.${before ? `\n\nHow the earlier chapters opened (never repeat these openings):\n${before}` : ""}${fb}`,
+      schema: VersusBatchSchema,
+      effort: "medium",
+      maxTokens: 16000,
+    });
+    for (const x of batch) {
+      const body = r.items.find((b) => b.number === x.number) ?? r.items[batch.indexOf(x)];
+      const narration = body?.narration?.trim() ?? "";
+      const got = (body?.moments ?? []) as Array<Moment & { game?: "old" | "new" }>;
+      written.push({
+        number: x.number,
+        title: x.title.trim(),
+        label: x.label,
+        basis: x.basis,
+        chip: x.chip.trim(),
+        then: x.then.trim(),
+        how: x.how.trim(),
+        payoff: x.payoff.trim(),
+        narration,
+        footage: body?.footage ?? { want: "gameplay", keywords: [GTA_GAME] },
+        claims: body?.claims ?? [],
+        moments: fitMoments(narration, got).map((m, k) => ({ ...m, game: got[k]?.game === "old" ? "old" : "new" })),
+      });
+    }
+  }
+  return scrubAll({
+    kind: kind.key,
+    intro: dropped.intro,
+    items: written,
+    outro: dropped.outro ?? plan.outro,
+    thumb_words: "",
+    description: dropped.description ?? plan.description,
+    tags: plan.tags,
+    question: plan.question,
   });
 }

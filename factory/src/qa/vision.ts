@@ -90,6 +90,9 @@ Write every problem as "Frame N: what is wrong", using the frame numbers given. 
 /** What the thumbnail check adds under the hero rule (THUMB_HERO_RULE, src/qa/thumbrule.ts). */
 export const THUMB_HERO_PROMPT = `These thumbnails follow a rule: one recognisable hero and at most four big words (one strong word is fine, even one that repeats the title's promise). Also fail a thumbnail for: artwork clearly showing a different game from the one named in the Game line or in its own words (any game of the named series is right when its words name no single game); no clear main subject a fan would recognise, a character, creature or vehicle filling much of the frame (a landscape, a blurred wash or a crowd of tiny figures is not one); a logo or title baked into the picture that the crop cuts off or that collides with the words; words that mean nothing to someone who has not watched the video, such as a bare rank; an arrow, circle or other pointer mark; a photograph of a real person's face. The plain dark gradient behind the words is deliberate. The comic-panel grid described above is the one approved exception to the hero and word rules.`;
 
+/** VERSUS_LONG (src/versus.ts): added only when the Game line is a versus's (src/versus.ts qaGameTitle). */
+export const THUMB_VERSUS_PROMPT = `This video compares two games: the versus split screen is approved. The older game's key art graded dusty on the left, the newer game's vivid on the right, a diagonal divider, each game's official logo and no words: each half is its own hero, and both games named in the Game line are right.`;
+
 const FRAME_REF = /frames?\s+(\d+(?:\s*(?:,|and|&)\s*\d+)*)/gi;
 
 /**
@@ -163,7 +166,7 @@ export async function visionQa(
           ? SHORT_GRAPHICS_PROMPT
         : context.format === "thumbs"
           ? context.heroRule
-            ? `${THUMB_VISION_PROMPT}\n${THUMB_HERO_PROMPT}`
+            ? `${THUMB_VISION_PROMPT}\n${THUMB_HERO_PROMPT}${/\(a comparison video that shows both games\)/.test(context.gameTitle ?? "") ? `\n${THUMB_VERSUS_PROMPT}` : ""}`
             : THUMB_VISION_PROMPT
           : VISION_PROMPT;
   // The graphics check now looks at every graphic of a long video (up to 200 stills before the render), so it

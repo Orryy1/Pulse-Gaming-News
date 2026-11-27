@@ -14,6 +14,8 @@ import { loadVodTags } from "./vodindex/tags.ts";
 import { sourceByChannel, vodSources } from "./vodindex/sources.ts";
 import { readAsks } from "./streamasks/job.ts";
 import type { AskLike, PlayHudFact, PlayRecording } from "./gtaguide.ts";
+import { libraryDir, libraryRoot, readLibrary } from "./assets/gamelib.ts";
+import { keyArtCandidates } from "./versus.ts";
 
 const run = promisify(execFile);
 const GTA6 = /grand theft auto vi\b|\bgta ?(6|vi)\b/i;
@@ -351,6 +353,107 @@ export async function gtaGuideResults(db: import("./db.ts").Db): Promise<import(
       const ctr = Number(typeof r.ctr === "string" ? JSON.parse(r.ctr) : r.ctr);
       return {
         arm: r.arm as "guide" | "ranking",
+        views7d: Number(r.v7),
+        ...(Number.isFinite(ctr) && r.ctr !== null ? { ctr } : {}),
+      };
+    });
+}
+
+// ---- VERSUS_LONG (src/versus.ts): the split-screen thumbnail's parts and the A/B results -------------------------------
+
+/**
+ * One game's thumbnail picture from the game library (data/gamelib): official key art first, then official and store
+ * screenshots (src/versus.ts keyArtCandidates), up to six tried, the brightest clear one kept (frameScore), copied to
+ * assets/versus_<side>.jpg. With none bright enough the first key art stands; undefined when the library has nothing.
+ */
+export async function versusArt(
+  dataDir: string,
+  episodeDir: string,
+  game: string,
+  side: "old" | "new",
+): Promise<string | undefined> {
+  const root = libraryRoot(dataDir);
+  const lib = await readLibrary(root, game).catch(() => undefined);
+  if (!lib) return undefined;
+  const dir = libraryDir(root, game);
+  // The library's list can name pictures no longer on disk (27 Nov: 3 of the first 4 GTA V key arts were gone), so only
+  // files that are there are tried, up to six.
+  const scored: Array<{ file: string; score: number }> = [];
+  for (const c of keyArtCandidates(lib.items)) {
+    if (scored.length >= 6) break;
+    const file = path.join(dir, c.file);
+    if (!(await fsp.stat(file).catch(() => undefined))?.isFile()) continue;
+    const st = await frameStats(file);
+    scored.push({ file, score: st ? frameScore(st.yavg, st.satavg) : -1 });
+  }
+  const best = scored.filter((x) => x.score >= 0).sort((a, b) => b.score - a.score)[0] ?? scored[0];
+  if (!best) return undefined;
+  const rel = path.join("assets", `versus_${side}${path.extname(best.file) || ".jpg"}`);
+  try {
+    await fsp.mkdir(path.join(episodeDir, "assets"), { recursive: true });
+    await fsp.copyFile(best.file, path.join(episodeDir, rel));
+    return rel;
+  } catch (err) {
+    log("warn", "versus: thumbnail picture copy failed", { game, error: errorMessage(err) });
+    return undefined;
+  }
+}
+
+/**
+ * The old game's official logo as a PNG in the episode folder (Steam's library logo, a transparent PNG), cached once
+ * beside the GTA VI logo; undefined when it can't be had, and the thumbnail goes without it.
+ */
+export async function versusLogo(
+  dataDir: string,
+  episodeDir: string,
+  url: string,
+  slug: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<string | undefined> {
+  const cache = path.join(dataDir, "mentioncache", "inworld", "logos", `${slug}.png`);
+  try {
+    const have = await fsp.stat(cache).catch(() => undefined);
+    if (!have || have.size < 2000) {
+      const res = await fetchFn(url, {
+        headers: { "user-agent": "PulseGamingFactory/1.0 (licensed picture research; one request)" },
+        signal: AbortSignal.timeout(20_000),
+      });
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!res.ok || buf.length < 2000 || buf.subarray(1, 4).toString("ascii") !== "PNG")
+        throw new Error(`logo fetch gave ${res.status}, ${buf.length} bytes`);
+      await fsp.mkdir(path.dirname(cache), { recursive: true });
+      await fsp.writeFile(cache, buf);
+    }
+    const rel = path.join("assets", `${slug}_logo.png`);
+    await fsp.mkdir(path.join(episodeDir, "assets"), { recursive: true });
+    await fsp.copyFile(cache, path.join(episodeDir, rel));
+    return rel;
+  } catch (err) {
+    log("warn", "versus: old game's logo unavailable", { slug, error: errorMessage(err) });
+    return undefined;
+  }
+}
+
+/**
+ * The versus verdict's numbers (src/versus.ts versusVerdict): every long video the "versus" event put in an arm, once
+ * published with its 7-day views in, and its thumbnail click-through where the reach reports have one.
+ */
+export async function versusResults(db: import("./db.ts").Db): Promise<import("./versus.ts").VersusResult[]> {
+  const rows = await db.query<{ arm: string; v7: number | null; ctr: unknown }>(
+    `SELECT DISTINCT ON (e.id) v.detail->>'arm' AS arm,
+            (SELECT m.views FROM video_metrics m WHERE m.episode_id = e.id AND m.label = '7d') AS v7,
+            (SELECT m.raw->'ctr' FROM video_metrics m WHERE m.episode_id = e.id AND m.label = 'ctr') AS ctr
+       FROM events v JOIN episodes e ON e.id = v.episode_id
+      WHERE v.kind = 'versus' AND v.detail->>'arm' IN ('versus','ranking')
+        AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
+      ORDER BY e.id`,
+  );
+  return rows
+    .filter((r) => r.v7 !== null)
+    .map((r) => {
+      const ctr = Number(typeof r.ctr === "string" ? JSON.parse(r.ctr) : r.ctr);
+      return {
+        arm: r.arm as "versus" | "ranking",
         views7d: Number(r.v7),
         ...(Number.isFinite(ctr) && r.ctr !== null ? { ctr } : {}),
       };

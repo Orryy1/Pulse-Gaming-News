@@ -77,6 +77,8 @@ export interface LongClip {
   cutsceneMatch?: { targetKey?: string; how: "chapter" | "caption" | "scene upload" | "spread" | "index" };
   /** Licensed stock, not the game: never on a chapter's card or a line naming a real person, never to fill a gap. */
   stock?: boolean;
+  /** VERSUS_LONG (src/versus.ts): footage of the old game; it plays only on the old game's lines (oldLines). */
+  old?: boolean;
   /** Where in its source video the clip was cut (seconds), when known: two clips overlapping there are one moment. */
   span?: { source: string; from: number; to: number };
 }
@@ -415,6 +417,12 @@ export interface LongPlanInput {
    * first, in the closing any unplayed clip, then remainders) before a still.
    */
   oneGame?: boolean;
+  /**
+   * VERSUS_LONG (src/versus.ts): per chapter, per sentence, whether the line is about the old game. Given, a clip
+   * fills only lines of its own game (LongClip.old against this), in every fill and replay path, so a GTA 6 line never
+   * plays GTA 5 footage and an old line never runs on into GTA 6 footage. Absent: no game barrier, as before.
+   */
+  oldLines?: boolean[][];
 }
 
 const PREVIEW_STOP = new Set(
@@ -879,7 +887,11 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         .filter((k) => clips[k]!.beatIndex === entry);
       let reuse = 0;
       // A stock clip plays only on the sentence it was found for, and not where it would pass for the real thing.
+      // VERSUS_LONG: a clip of the other game than the line's is barred everywhere the stock bar is asked.
+      const gameBarred = (k: number, moment: number) =>
+        !!input.oldLines && entry !== undefined && !!clips[k]!.old !== !!input.oldLines[entry]?.[moment];
       const stockBarred = (k: number, moment: number) =>
+        gameBarred(k, moment) ||
         !!clips[k]!.stock &&
         !!input.noStockOn &&
         (moment === 0 ||
@@ -916,7 +928,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
         if (loose !== undefined) return loose;
         const gone = entryClips.find((k) => ok(k) && clips[k]!.moment !== undefined && clips[k]!.moment! < current);
         if (gone !== undefined) return gone;
-        const kin = kinClips.find((k) => !clipUsed[k]);
+        const kin = kinClips.find((k) => !clipUsed[k] && !gameBarred(k, current));
         if (kin !== undefined) return kin;
         // LONG_CLIP_REMAINDERS: then the unseen rest of a clip already cut short (its own sentence or one gone by).
         return remainderOf([
@@ -926,7 +938,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               !stockBarred(k, current) &&
               (clips[k]!.moment === undefined || clips[k]!.moment! <= current),
           ),
-          ...kinClips,
+          ...kinClips.filter((k) => !gameBarred(k, current)),
         ]);
       };
       /** movingFirst: whether this chapter still has footage left to play (its own, or its game's from other chapters). */
@@ -951,7 +963,9 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
             (k) => !clipUsed[k] && !stockBarred(k, current) && !clips[k]!.cutsceneMatch?.targetKey,
           );
           if (fresh !== undefined) return { type: "clip", index: fresh };
-          const game = entryClips.filter((k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey);
+          const game = entryClips.filter(
+            (k) => !clips[k]!.stock && !clips[k]!.cutsceneMatch?.targetKey && !gameBarred(k, current),
+          );
           // LONG_CLIP_REMAINDERS: the unseen rest of the chapter's own footage before any replay or borrowed art.
           const rest = remainderOf(game);
           if (rest !== undefined) return { type: "clip", index: rest };
@@ -961,7 +975,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
               index: game[reuse++ % game.length]!,
             };
           // Out of its own: the same game's unseen footage from the film's other chapters, then its art.
-          const borrowed = kinClips.find((k) => !clipUsed[k]);
+          const borrowed = kinClips.find((k) => !clipUsed[k] && !gameBarred(k, current));
           if (borrowed !== undefined) return { type: "clip", index: borrowed };
           if (kinImages.length) {
             // LONG_STILL_MAX_SHOWS: among the same game's pictures, only those the cap still lets on screen.
@@ -973,7 +987,7 @@ export function buildLongPlan(input: LongPlanInput): LongPlan {
           }
           // Then, in a film about one game, a replay: there a repeat is a lesser fault than an empty slate. A chapter
           // with no such family keeps the plate, and a video with too much of it stops before its render (qa/slate.ts).
-          const again = group === undefined ? [] : game.length ? game : kinClips;
+          const again = group === undefined ? [] : game.length ? game : kinClips.filter((k) => !gameBarred(k, current));
           if (again.length)
             return { type: "clip", index: again[replay++ % again.length]! };
           if (kinImages.length) {

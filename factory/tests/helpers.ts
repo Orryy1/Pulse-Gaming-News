@@ -754,6 +754,8 @@ export function testConfig(
     gtaGuides: false,
     gtaGuideShare: 0.5,
     gtaGuideFacts: [],
+    versusLong: false,
+    versusShare: 0.5,
     guideOwnFirst: true,
     retroEnabled: false,
     retroFile: "",

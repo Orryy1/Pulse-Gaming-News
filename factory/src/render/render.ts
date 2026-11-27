@@ -819,12 +819,14 @@ export interface LongThumbsInput {
 
 type ThumbInput = Omit<
   ThumbProps,
-  "imageSrc" | "image2Src" | "fgSrc" | "pictureSrcs"
+  "imageSrc" | "image2Src" | "fgSrc" | "pictureSrcs" | "logoSrc" | "logo2Src"
 > & {
   imageFile: string | null;
   image2File?: string | null;
   fgFile?: string | null; // depth: the art's foreground layer
   pictureFiles?: string[]; // motif: pictures for its panels and screens
+  logoFile?: string | null; // vsplit: the old game's logo
+  logo2File?: string | null; // vsplit: the new game's logo
 };
 
 /** The long composition's props with every episode file as a URL on the loopback server. */
@@ -1107,13 +1109,15 @@ export async function renderLongThumbs(input: LongThumbsInput): Promise<void> {
   const chromiumOptions = { gl: input.gl ?? "swangle" } as const;
   try {
     for (const t of input.thumbs) {
-      const { imageFile, image2File, fgFile, pictureFiles, ...thumb } = t.thumb;
+      const { imageFile, image2File, fgFile, pictureFiles, logoFile, logo2File, ...thumb } = t.thumb;
       const thumbProps: ThumbProps = {
         ...thumb,
         imageSrc: imageFile ? `${files.url}/${webPath(imageFile)}` : null,
         image2Src: image2File ? `${files.url}/${webPath(image2File)}` : null,
         fgSrc: fgFile ? `${files.url}/${webPath(fgFile)}` : null,
         pictureSrcs: pictureFiles?.map((f) => `${files.url}/${webPath(f)}`),
+        logoSrc: logoFile ? `${files.url}/${webPath(logoFile)}` : null,
+        logo2Src: logo2File ? `${files.url}/${webPath(logo2File)}` : null,
       };
       const still = await selectComposition({
         serveUrl,

@@ -28,12 +28,12 @@ export function seriesPrefix(title: string): string {
 const BAD_TITLE_WORDS =
   /\b(shocking|insane|you won'?t believe|unbelievable|omg|wtf|must watch|gone wrong|clickbait|exposed|destroyed|rip)\b/i;
 const CLICKBAIT_PUNCT = /[!?]{2,}|\.{3,}|\s!$/;
-const SERIES_PREFIX = /^[^:#]{2,30}#\d{1,3}:\s+/;
+const SERIES_PREFIX = /^(GTA VI File|The Why) #\d{1,3}:\s+/;
 /** A hashtag in a title; with TITLE_KEEP_WHOLE a part number ("#3") is not one. */
-const TITLE_HASHTAG = /#[A-Za-z_]\w*/g;
+const TITLE_HASHTAG = /#[\p{L}_][\p{L}\p{N}_]*/gu;
 /** Words a cut title must not end on ("... When You're on"). */
 const DANGLING_END =
-  /\s+(a|an|and|as|at|but|by|for|from|in|into|is|its|of|on|or|than|that|the|their|to|when|with|your|you're|you’re|not)$/i;
+  /\s+(a|an|and|as|at|but|by|for|from|in|into|is|its|of|on|or|than|that|the|their|to|when|with|your|you're|you’re|you|will|be|it|has|have|are|was|can)$/i;
 
 /** Franchise and platform keywords worth stacking when they appear in the story. */
 export const KEYWORD_TABLE: Array<[RegExp, string[]]> = [
@@ -344,10 +344,20 @@ export function polishTitle(script: Script): string {
     (initials.length >= 3 && new RegExp(`\\b${initials}\\b`).test(early));
   const gameFirst = !game || mentionsEarly;
   const clean = !BAD_TITLE_WORDS.test(title) && !CLICKBAIT_PUNCT.test(title);
-  if (
-    !series &&
-    (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12)
-  ) {
+  if (series)
+    title = (
+      series +
+      title
+        .slice(series.length)
+        .replace(new RegExp(BAD_TITLE_WORDS.source, "gi"), "")
+        .replace(/([!?])[!?]+/g, "$1")
+        .replace(/\.{3,}/g, "")
+        .replace(/\s+!$/, "")
+    )
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([?!,.:])/g, "$1")
+      .trim();
+  else if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
     const esc = (g: string) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const fact = script.headline
       .replace(
@@ -392,7 +402,7 @@ export function titleProblems(title: string): string[] {
       `Title uses a clickbait word (${title.match(BAD_TITLE_WORDS)?.[0]}).`,
     );
   if (CLICKBAIT_PUNCT.test(title)) p.push("Title uses clickbait punctuation.");
-  if ((titleKeepWhole() ? /#[A-Za-z_]/ : /#/).test(title))
+  if ((titleKeepWhole() ? /#[\p{L}_]/u : /#/).test(title))
     p.push("No hashtags in the title.");
   if (title === title.toUpperCase() && /[A-Z]{4,}/.test(title))
     p.push("Title is shouting (all caps).");

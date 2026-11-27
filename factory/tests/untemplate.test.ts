@@ -6,7 +6,6 @@ import {
   FIRST_SHOT_MIN,
   firstShotArm,
   holdFirstShot,
-  hookLine,
   LOWER_WIDTH,
   idHash,
   inShare,
@@ -359,68 +358,15 @@ test("the lower third takes a headline only when it fits one readable line", () 
   );
 });
 
-test("the lower third takes three or four words of the spoken hook, the headline only when the hook gives none", () => {
-  // Never a bare first-words cut: a long hook with no short first clause gives no line.
-  assert.equal(hookLine("Is this the biggest delay of the year so far"), undefined);
-  // Cutting what limits a negation or a verb makes a false claim: every one of these falls back to the headline.
-  for (const h of [
-    "GTA 6 won't launch on PC at first.",
-    "Starfield isn't coming to PS5 this year.",
-    "Fable isn't coming in 2026 after all.",
-    "Sony is not shutting down Bungie.",
-    "Nintendo just cancelled the Switch 2 Lite.",
-  ]) {
-    assert.equal(hookLine(h), undefined, h);
-    assert.equal(lowerLine("Headline", undefined, h), "Headline", h);
-  }
-  // A whole short hook, or a whole short first clause, is taken as said.
-  assert.equal(hookLine("GTA 6 slipped again."), "GTA 6 slipped again");
-  // Only the whole hook: what follows a short first clause or sentence can take it back or limit it.
-  assert.equal(hookLine("GTA 6 slipped again. Here is why it matters"), undefined);
-  for (const h of [
-    "Fable isn't coming. Not in 2026, anyway.",
-    "Xbox is dead, if you believe the rumours.",
-    "GTA 6 is delayed, maybe.",
-    "Silksong is out, on PC only.",
-    "The PS6 is here. Well, almost.",
-  ]) {
-    assert.equal(hookLine(h), undefined, h);
-    assert.equal(lowerLine("Headline", undefined, h), "Headline", h);
-  }
-  // Never a weak last word: "Nintendo just killed the" reads "Nintendo just killed".
-  assert.equal(hookLine("Nintendo just killed the Switch price cut"), undefined);
-  // Never more than four words, every word whole, and always inside the width.
-  for (const h of [
-    "Is this the biggest delay of the year so far",
-    "Rockstar finally confirmed what everyone suspected",
-    "Supercalifragilistic extraordinarily overwhelmingly unbelievable",
-  ]) {
-    const t = hookLine(h);
-    if (t === undefined) continue;
-    assert.ok(t.split(" ").length >= 2 && t.split(" ").length <= 4, t);
-    assert.ok(h.replace(/[.,!?]/g, "").startsWith(t), t);
-    assert.ok(lowerLineSize(t), t);
-  }
-  // Never cut after a figure, before a figure or between a figure and its unit; never on a negation; never an
-  // attributed clause: each falls back to the headline.
-  assert.equal(hookLine("PS5 Pro sold 2.4 million in a week"), undefined);
-  assert.equal(hookLine("Switch 2 costs $449 now, and that is the cheap one"), undefined);
-  assert.equal(hookLine("Xbox is dead, says nobody at Microsoft"), undefined);
-  assert.notEqual(hookLine("This game was never cancelled at all"), "This game was never");
-  assert.equal(hookLine("That is what you\u2019re"), undefined, "a curly apostrophe still reads as a weak word");
-  assert.equal(hookLine("GTA 6 slips again today"), undefined);
-  assert.equal(hookLine("GTA 6 slips again"), "GTA 6 slips again");
-  // The render step passes the written hook, not the voice's respelt one: a figure stays a figure on screen.
-  assert.equal(lowerLine("Switch 2 price rises", undefined, "Switch 2 costs $449 now, and that is the cheap one"), "Switch 2 price rises");
+test("the lower third never comes from the spoken hook: the headline, else the thumbnail words, never cut", () => {
+  // Every shortened hook found on 27 Nov could mislead: a cut negation, a dropped qualifier, a question shown as a
+  // statement, scare quotes removed. The lower third reads only the packaging text, which is never cut.
+  assert.equal(lowerLine.length, 2, "lowerLine takes the headline and thumbnail text only");
+  assert.equal(lowerLine("Headline", undefined), "Headline");
+  const src = fs.readFileSync(new URL("../src/render/untemplate.ts", import.meta.url), "utf8");
+  assert.ok(!/export function hookLine/.test(src), "no hook-to-line cut exists");
   const pipelineSrc = fs.readFileSync(new URL("../src/pipeline.ts", import.meta.url), "utf8");
-  assert.ok(/shapeShort\(\{[\s\S]{0,400}hook: script\.hook,/.test(pipelineSrc), "shapeShort gets script.hook");
-  // Unusable hooks: empty, one word, or nothing that fits.
-  assert.equal(hookLine(""), undefined);
-  assert.equal(hookLine("Wow."), undefined);
-  assert.equal(hookLine("Supercalifragilisticexpialidocious extraordinarilyoverwhelming"), undefined);
-  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar moved it again"), "Rockstar moved it again");
-  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar just moved it again"), "GTA 6 slips to November");
-  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Wow."), "GTA 6 slips to November");
+  assert.ok(!/shapeShort\(\{[\s\S]{0,400}hook: script\.hook,/.test(pipelineSrc), "shapeShort is not given the hook");
   assert.equal(lowerLine("GTA 6 slips to November", "DELAYED"), "GTA 6 slips to November");
   // The lower third stays inside the safe area: its text width is the content box less the bar, padding and spacing.
   assert.equal(LOWER_WIDTH, SAFE.right - SAFE.left - 72);
@@ -795,7 +741,6 @@ test("a retry keeps the shape and the sparse sequence an earlier render chose, w
       clean: true,
       rumour,
       headline: "GTA 6 slips",
-      hook: "Rockstar moved it again",
       memory: { sequences: [], shapes: recent },
       assets,
     });
@@ -1014,7 +959,6 @@ test("with every setting off, a stored Short's plan, effects and overlays are ex
     clean: true,
     rumour: false,
     headline: "Nintendo Rules Out Another Switch 2 Hike, For Now",
-    hook: fx.segments.find((g) => g.kind === "hook")?.text,
     memory: undefined,
     assets,
   });

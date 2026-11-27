@@ -13,7 +13,7 @@
 //   scene arrives; never the same sequence as any of the newest 30 Shorts where a choice exists; one music dip of
 //   0.7 to 1.5 s before the verdict line when the voice already leaves that gap (the audio is never re-timed).
 // - SHORT_LAYOUTS=on (SHORT_LAYOUTS_SHARE): three openings (today's headline card, full-frame picture with captions
-//   only, a one-line lower third from the spoken hook that leaves after the hook) and two closings (today's return to
+//   only, the headline as one uncut lower-third line that leaves after the hook) and two closings (today's return to
 //   the headline card, holding on the payoff), chosen so no opening takes more than 40% of the newest 30 Shorts whose
 //   shape the test chose (the Shorts off the test all open on the card, so the channel as a whole stays card-heavy at
 //   any share under 1). The cover and the custom thumbnail always show today's card opening (src/render/render.ts).
@@ -457,8 +457,8 @@ export function silenceDipAt(
 
 /**
  * How a Short opens: "card" today's headline card (or poster) over the hook; "footage" the picture full frame with
- * captions only and the small Pulse mark; "lower" three or four words of the spoken hook as one lower-third line
- * (the headline only when the hook gives none) that leaves after the hook.
+ * captions only and the small Pulse mark; "lower" the headline (or the thumbnail words) as one uncut lower-third
+ * line that leaves after the hook.
  */
 export type ShortOpen = "card" | "footage" | "lower";
 /** How a Short closes: "card" today's return to the headline card; "hold" the last shot stays with the last caption. */
@@ -497,62 +497,14 @@ export function lowerLineSize(text: string): number | undefined {
   return size >= LOWER_MIN_SIZE ? size : undefined;
 }
 
-/** Most words the lower third takes from the spoken hook. */
-export const HOOK_LINE_MAX_WORDS = 4;
-/** Words a line never ends on: it would read as a cut-off fragment ("THE ONE THING THAT"). */
-const WEAK_END = new Set(
-  (
-    "a an the and or but so of to in on at for from by with as into onto than that this these those which who whose " +
-    "what when where why how is are was were be been being has have had do does did will would can could should may " +
-    "might must just not no its it's your you're you my our their his her if then about over after before " +
-    "never still longer only even ever also almost nearly barely hardly really very"
-  ).split(" "),
-);
-/** A word that closes a clause. */
-const CLAUSE_END = /[.,!?;:\u2013\u2014]$/;
-
 /**
- * Two to four words from the spoken hook for the lower third (pure): the hook's whole first clause, or the whole hook
- * when it is one clause, and only when that is four words or fewer. Never a cut inside a clause: "GTA 6 won't launch on
- * PC at first" cut to "GTA 6 WON'T LAUNCH" is a false claim on screen, and the channel never shows an unverified
- * claim as fact. Also undefined when the clause ends on a weak word, is attributed to someone ("..., says nobody"),
- * or does not fit one readable line: the lower third then takes the headline.
+ * The lower third's text (pure): the headline when it fits one readable line, else the thumbnail's words when they do,
+ * else none (and the Short does not open on a lower third). Never cut and never taken from the spoken hook: three
+ * reviews on 27 Nov 2026 found every way of shortening a hook could put a false claim on screen (a cut negation, a
+ * dropped qualifier, a question shown as a statement, scare quotes removed), and hooks are written at 5 to 10 words,
+ * so a whole-hook line would almost never apply.
  */
-export function hookLine(hook?: string): string | undefined {
-  const flat = (hook ?? "")
-    .replace(/[\u201c\u201d"]/g, "")
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!flat) return undefined;
-  const words = flat.split(" ");
-  // Only the whole hook, and only when it is one clause: whatever follows a first clause or sentence can take it back
-  // or limit it ("Fable isn't coming. Not in 2026, anyway."; "Xbox is dead, if you believe the rumours."), so a
-  // short piece of a longer hook is never put on screen alone (re-review, 27 Nov 2026).
-  const clauseEnd = words.findIndex((w) => CLAUSE_END.test(w));
-  if (clauseEnd >= 0 && clauseEnd < words.length - 1) return undefined;
-  const n = words.length;
-  if (n > HOOK_LINE_MAX_WORDS) return undefined;
-  const out = words.slice(0, n).map((w) => w.replace(/[.,!?;:\u2013\u2014]+$/, "")).filter(Boolean);
-  if (out.length < 2) return undefined;
-  if (WEAK_END.has(out.at(-1)!.toLowerCase().replace(/[^a-z']/g, ""))) return undefined;
-  const t = out.join(" ");
-  return lowerLineSize(t) ? t : undefined;
-}
-
-/**
- * The lower third's text (pure): the whole spoken hook when it is one clause of two to four words (hookLine); only
- * when the hook gives none,
- * the headline when it fits one readable line, else the thumbnail's words when they do, else none (and the Short does
- * not open on a lower third). A headline or thumbnail line is never cut: a cut headline can mislead.
- */
-export function lowerLine(
-  headline: string,
-  thumbText?: string,
-  hook?: string,
-): string | undefined {
-  const fromHook = hookLine(hook);
-  if (fromHook) return fromHook;
+export function lowerLine(headline: string, thumbText?: string): string | undefined {
   for (const t of [headline, thumbText ?? ""]) {
     const clean = t.replace(/\s+/g, " ").trim();
     if (clean && lowerLineSize(clean)) return clean;

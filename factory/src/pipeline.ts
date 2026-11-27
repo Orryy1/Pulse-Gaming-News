@@ -16391,8 +16391,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     rumour: Boolean(script.is_rumour),
     headline: script.headline,
     thumbText: script.youtube?.thumb_text,
-    // The written hook: the hook segment's text is respelt for the voice (numbers in words, RESPELL).
-    hook: script.hook,
     memory: untemplateMemory,
     assets,
   });

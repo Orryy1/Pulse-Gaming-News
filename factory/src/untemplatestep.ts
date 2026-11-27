@@ -101,7 +101,7 @@ export type FirstShotRecord = {
 /**
  * The stored shape when it still applies (pure): an earlier render of this episode chose it on the test's side, and
  * the opening is still allowed (a lower third needs a line and never goes on a rumour). Its line is the one worked out
- * now, from the same hook.
+ * now, from the same headline.
  */
 function storedShape(
   prev: unknown,
@@ -133,8 +133,6 @@ export function shapeShort(o: {
   rumour: boolean;
   headline: string;
   thumbText?: string;
-  /** The spoken hook (the first line): the lower third's three or four words come from it. */
-  hook?: string;
   memory: ShortMemory | undefined;
   assets: { shortShape?: unknown; shortFirstShot?: FirstShotRecord };
 }): ShortShape | undefined {
@@ -144,7 +142,7 @@ export function shapeShort(o: {
   if (!o.cfg.shortLayouts) delete o.assets.shortShape;
   if (o.cfg.shortLayouts) {
     if (arm === "on" && o.clean) {
-      const line = lowerLine(o.headline, o.thumbText, o.hook);
+      const line = lowerLine(o.headline, o.thumbText);
       shape =
         storedShape(o.assets.shortShape, { rumour: o.rumour, line }) ??
         pickShape({

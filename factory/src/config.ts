@@ -1519,8 +1519,8 @@ export interface Config {
   shortSoundSparseShare: number;
   /**
    * More than one Short layout (src/render/untemplate.ts): three openings (today's headline card, the picture full
-   * frame with captions only, three or four words of the spoken hook as one lower-third line that leaves after the
-   * hook) and two closings (today's return to the headline card, holding on the payoff), chosen so no opening takes
+   * frame with captions only, the headline (or the thumbnail words) as one uncut lower-third line that leaves after
+   * the hook) and two closings (today's return to the headline card, holding on the payoff), chosen so no opening takes
    * more than 40% of the newest 30 Shorts whose shape the test chose (Shorts off the test all open on the card, so the
    * channel as a whole stays mostly card at any share under 1). The cover and custom thumbnail keep today's card. A
    * retry keeps the shape first chosen. Clean-frame Shorts only (one overlay at a time). Applies to the share in

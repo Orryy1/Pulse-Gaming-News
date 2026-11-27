@@ -623,3 +623,5 @@ Their art is AI-made illustration.
 62. Merge gate: use its own private worktree (e.g. D:\pulse-data\handsoff\merge-gate\stage) instead of the shared scratchpad stage that fix sessions check other branches out in. On 26 and 27 Nov the gate refused because stage was on another branch with uncommitted edits (claude/subtitle-wide).
 
 63. TikTok captions hook-first test: open each TikTok caption with the stake or the "why" line (the Short's hook) instead of the title. Orryy's data (27 Nov, command centre): hook-first captions median 2,178 views vs 1,335. Split 50/50 by episode, record the arm, judge after about 20 each on 48 h views.
+
+64. Blender 3D time estimates: the planner assumes 1.5-2 min per clip but the Mac takes 11-21, so documentaries ask for far more 3D than fits the 150-min wait and the Blender queue runs about 3 h deep, which starves Shorts of 3D. Measure real per-clip times and plan against them (27 Nov, doc-replan-loop diagnosis).

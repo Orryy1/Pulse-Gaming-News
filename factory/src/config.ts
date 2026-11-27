@@ -1200,6 +1200,11 @@ export interface Config {
   downloadTimeoutSeconds: number;
   /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released. */
   longTickStallMinutes: number;
+  /** DEPLOY_WAIT_LONG (default on): /health reports long_running while the long lane builds a video, and mac/deploy.sh,
+   *  the deploy hook and the merge gate wait for it (src/longlane.ts longBusyForDeploy). */
+  deployWaitLong: boolean;
+  /** DEPLOY_WAIT_LONG_MAX_MINUTES (default 240): a long tick holding its lease longer than this counts as stuck, not busy (a real build past it is restarted by a deploy; the lane watchdog releases a lease after LONG_TICK_STALL_MINUTES anyway). */
+  deployWaitLongMaxMinutes: number;
   /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
   localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
@@ -2570,6 +2575,8 @@ export function loadConfig(): Config {
     gatherMaxMinutes: int("GATHER_MAX_MINUTES", 45),
     downloadTimeoutSeconds: int("DOWNLOAD_TIMEOUT_SECONDS", 300),
     longTickStallMinutes: int("LONG_TICK_STALL_MINUTES", 150),
+    deployWaitLong: bool("DEPLOY_WAIT_LONG", true),
+    deployWaitLongMaxMinutes: int("DEPLOY_WAIT_LONG_MAX_MINUTES", 240),
     localizeLanguages: str("LOCALIZE_LANGUAGES", "es,pt,de,fr,ja")
       .split(",")
       .map((l) => l.trim())

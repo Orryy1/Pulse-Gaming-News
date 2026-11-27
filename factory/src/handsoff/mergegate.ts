@@ -145,6 +145,9 @@ export function deployWindow(p: {
   rendering: boolean;
   uploadsActive: number;
   holdRestart: boolean;
+  /** DEPLOY_WAIT_LONG: the Mac's /health says a long video is being built (long_running). */
+  longRunning?: boolean;
+  longMinutes?: number;
   guardMin?: number;
   deployMin?: number;
 }): WindowCheck {
@@ -166,6 +169,11 @@ export function deployWindow(p: {
     return { ok: false, why: `${p.uploadsActive} upload(s) running` };
   if (p.holdRestart)
     return { ok: false, why: "the Mac's hold-restart flag is set" };
+  if (p.longRunning)
+    return {
+      ok: false,
+      why: `a long video is being built on the Mac (${p.longMinutes ?? 0} min in)`,
+    };
   return { ok: true, why: "clear" };
 }
 

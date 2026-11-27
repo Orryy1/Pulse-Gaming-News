@@ -14,6 +14,32 @@ import { log } from "./lib/util.ts";
 export const LONG_URGENT_HOURS = 3;
 /** The long lane's lease name (src/pipeline.ts tickLong). */
 export const LONG_LEASE = "tick-long";
+/** How long the long tick's lease lasts once taken (src/pipeline.ts tickLong). */
+export const LONG_LEASE_TTL_S = 360 * 60;
+
+/**
+ * DEPLOY_WAIT_LONG (27 Nov 2026, on unless "false"): whether a deploy or restart should wait for the long lane, read
+ * from the tick-long lease and reported by /health as long_running. On the night of 26-27 Nov the "Cyberpunk 2077:
+ * Pulled, Patched and Forgiven" documentary began its build at 02:41 after nine hours of waiting for Short slots, and
+ * the deploys at 02:50, 05:17 and 05:30 restarted the factory in the middle of it each time (Codex shot plans, 3D
+ * photos, a 20-minute Blender clip), because mac/deploy.sh and the merge gate counted only a running render or upload
+ * as busy. A lease held longer than maxMinutes is treated as stuck, not busy, so a stuck tick never blocks deploys
+ * for good (the lane watchdog releases those too). Pure.
+ */
+export function longBusyForDeploy(p: {
+  expiresAt: string | Date | null | undefined;
+  now: Date;
+  maxMinutes: number;
+  enabled: boolean;
+  ttlSeconds?: number;
+}): { busy: boolean; minutes: number } {
+  if (!p.expiresAt) return { busy: false, minutes: 0 };
+  const left = new Date(p.expiresAt).getTime() - p.now.getTime();
+  if (!Number.isFinite(left) || left <= 0) return { busy: false, minutes: 0 };
+  const ttl = (p.ttlSeconds ?? LONG_LEASE_TTL_S) * 1000;
+  const minutes = Math.max(0, Math.round((ttl - left) / 60_000));
+  return { busy: p.enabled && minutes < p.maxMinutes, minutes };
+}
 
 /** The statuses before anything is made: an episode here still needs the whole lane. */
 const UNMADE = new Set(["selected", "scripted"]);

@@ -559,6 +559,7 @@ import {
   openOnOwnClip,
   type GtaFile,
 } from "./gtafile.ts";
+import { filterCapped, gameCountsToday, reserveFor } from "./gamecap.ts";
 import {
   askFirst,
   claimDay,
@@ -2099,6 +2100,32 @@ function dailyTargetNow(cfg: Config, now: Date): number {
   return cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0);
 }
 
+/**
+ * GAME_DAY_CAP (src/gamecap.ts): today's Shorts per capped game. The day's planned GTA File part counts while it is not
+ * yet made and its slot is less than two hours past, so the news gives way to the series instead of the series losing
+ * a numbered part; a part that could not be made frees its place.
+ */
+export async function gameCapCounts(s: Services): Promise<Map<string, number>> {
+  const { db, cfg } = s;
+  const now = s.now();
+  let reserved = new Map<string, number>();
+  const file = gtaFileFrom(cfg);
+  if (file) {
+    const today = dayKey(now, cfg.timezone);
+    const part = readRun(file.runFile).find((e): e is RunFile => e.kind === "file" && e.date === today);
+    const slot = part ? localTime(part.date, part.slot ?? file.slot, cfg.timezone) : undefined;
+    if (part && slot && slot.getTime() > now.getTime() - 2 * 3_600_000) {
+      const [made] = await db.query(
+        `SELECT 1 AS made FROM episodes WHERE story_hash = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+        [`gtafile:${part.part}`],
+      );
+      if (!made)
+        reserved = reserveFor(cfg.gameDayCap, `${gtaFileTitle(part.part, part.title)} ${part.game ?? GTA_FILE_GAME}`);
+    }
+  }
+  return gameCountsToday(db, cfg.gameDayCap, cfg.timezone, now, reserved);
+}
+
 export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
@@ -2155,10 +2182,20 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (premade) return premade;
   // SEARCH_SHORTS (src/searchq): a search slot due now takes the best makeable query of the last harvest. Its own
   // slots and its own allowance: it never takes a news slot, and it is not counted in the daily target below.
+  // GAME_DAY_CAP: counted once a tick, before the search and news slots read it; a fault leaves the cap open.
+  const capCounts = cfg.gameDayCap.length
+    ? await gameCapCounts(s).catch((err) => {
+        log("warn", "game day cap count failed", { error: errorMessage(err) });
+        return undefined;
+      })
+    : undefined;
   const searched = await maybeSelectSearch({
     db,
     cfg,
     now: s.now,
+    skipText: capCounts
+      ? (text) => filterCapped([text], (t) => t, cfg.gameDayCap, capCounts).dropped.length > 0
+      : undefined,
     ownFootage: (game) =>
       franchiseOwnFootage(cfg, { aliases: gameAliases(game) }),
   }).catch((err) => {
@@ -2388,10 +2425,29 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     cfg.storyPremiseGateShare > 0
       ? premiseArmFor(unitHash(`premise:${slot.toISOString()}`), cfg.storyPremiseGateShare)
       : undefined;
-  const gated = premiseArm ? gateCandidates(candidates, premiseArm) : undefined;
+  // GAME_DAY_CAP (src/gamecap.ts): a story naming a game whose Shorts for the day are used up leaves the slot's list;
+  // when every candidate names one, the slot keeps them all (an empty slot costs more than one more Short on it).
+  const capCut = capCounts
+    ? filterCapped(candidates, (c) => `${c.headline} ${c.gameHint ?? ""}`, cfg.gameDayCap, capCounts)
+    : undefined;
+  if (capCut?.dropped.length || capCut?.allCapped) {
+    log("info", "game day cap held stories back", {
+      slot: slot.toISOString(),
+      dropped: capCut.dropped.map((d) => `${d.game}: ${d.item.headline}`),
+      allCapped: capCut.allCapped,
+    });
+    await logEvent(db, null, "game_day_cap", {
+      slot: slot.toISOString(),
+      dropped: capCut.dropped.map((d) => ({ game: d.game, headline: d.item.headline })),
+      allCapped: capCut.allCapped,
+      counts: Object.fromEntries(capCounts ?? []),
+    }).catch(() => undefined);
+  }
+  const slotCandidates = capCut?.kept ?? candidates;
+  const gated = premiseArm ? gateCandidates(slotCandidates, premiseArm) : undefined;
   const id = await createFromChoice(
     s,
-    gated?.kept ?? candidates,
+    gated?.kept ?? slotCandidates,
     { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
     `news slot ${slot.toISOString()}`,
   );

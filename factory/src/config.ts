@@ -7,6 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseCameraSetting, type CameraTechnique } from "./render/camera.ts";
 import { newsSlotsFor, parseHomeShelf, rumourShareFrom } from "./series.ts";
+import { parseGameDayCap, type GameCap } from "./gamecap.ts";
 import { macVisionMode } from "./assets/macvision.ts";
 import type { SoundCraft } from "./render/soundfx.ts";
 import { renderSpeedFrom, type RenderSpeed } from "./render/renderspeed.ts";
@@ -906,6 +907,9 @@ export interface Config {
   newsLateSlotEnabled: boolean;
   /** Plan item 2: breaking news only on a HOME_SHELF game, or when the story desk rates it major: BREAKING_HOME_ONLY, default off. */
   breakingHomeOnly: boolean;
+  /** GAME_DAY_CAP (src/gamecap.ts): Shorts a day that may name one game, "alias|alias=N; ..."; empty is off. News slot
+   * candidates and the search pick naming a full game are dropped; breaking news and the GTA File part are never held. */
+  gameDayCap: GameCap[];
   /** The home shelf, "|"-separated names a headline would use: HOME_SHELF, default GTA and Resident Evil. */
   homeShelf: string[];
   /** The series cover strip (src/render/components/SeriesStrip.tsx, format plan item 5): an amber strip at the top of
@@ -2387,6 +2391,7 @@ export function loadConfig(): Config {
     shortMinSeconds: Math.max(0, int("SHORT_MIN_SECONDS", 0)),
     newsLateSlotEnabled: bool("NEWS_LATE_SLOT_ENABLED", true),
     breakingHomeOnly: bool("BREAKING_HOME_ONLY", false),
+    gameDayCap: parseGameDayCap(str("GAME_DAY_CAP", "")),
     homeShelf: parseHomeShelf(str("HOME_SHELF", "GTA|Grand Theft Auto|Resident Evil")),
     seriesCoverStyle: str("SERIES_COVER_STYLE", "off").toLowerCase() === "strip" ? "strip" : "off",
     seriesEpisodeNumbers: bool("SERIES_EPISODE_NUMBERS", false),

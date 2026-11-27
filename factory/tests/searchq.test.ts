@@ -737,3 +737,44 @@ test("launch questions die once the game has been out 36 hours (19 Nov 2026: a N
   assert.equal(after.find((r) => r.query.includes("pre order"))!.dropped, "a launch question, and the game is out everywhere now");
   assert.notEqual(after.find((r) => r.query.includes("worth"))?.dropped, "a launch question, and the game is out everywhere now");
 });
+
+test("GAME_DAY_CAP: the search slot passes over a query naming a game whose Shorts for the day are used up", async () => {
+  const now = new Date("2026-11-10T10:00:00Z");
+  const hhmm = slotLabel(new Date(now.getTime() + 60 * 60_000), "Europe/London");
+  const settings = searchShortsSettings({
+    SEARCH_SHORTS: "true",
+    SEARCH_SLOTS: hhmm,
+    SEARCH_PER_DAY: "1",
+    SEARCH_PER_DAY_LAUNCH: "1",
+  });
+  const ranked = rankQueries([obs("gta 6 pre order", 0), obs("does gta 6 have a disc", 1)], {
+    now,
+    facts: { [GTA]: facts },
+    notes: {},
+    releases: { [GTA]: "2026-11-18T11:00:00Z" },
+    covered: [],
+  });
+  const setup = async () => {
+    const db = await testDb();
+    const dir = await tmpDir();
+    await writeQueries(path.join(dir, "search"), {
+      harvestedAt: now.toISOString(),
+      games: [GTA],
+      requests: 2,
+      failed: 0,
+      refused: [],
+      observations: 2,
+      queries: ranked,
+    });
+    return { db, cfg: { ...testConfig(dir), searchShorts: settings }, now: () => now };
+  };
+  // Every query names the capped game: no search Short this slot.
+  const capped = await setup();
+  assert.equal(await maybeSelectSearch({ ...capped, skipText: (t) => /gta 6/i.test(t) }), undefined);
+  // Only the first is held: the next makeable query is taken instead.
+  const second = await setup();
+  const id = await maybeSelectSearch({ ...second, skipText: (t) => /pre order/i.test(t) });
+  assert.ok(id);
+  const [ep] = await second.db.query<{ story_json: any }>(`SELECT story_json FROM episodes WHERE id = $1`, [id]);
+  assert.equal(ep!.story_json.search.query, "does gta 6 have a disc");
+});

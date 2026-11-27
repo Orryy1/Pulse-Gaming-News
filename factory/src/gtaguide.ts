@@ -385,20 +385,31 @@ export const DEFAULT_GUIDE_FACTS = [
   "guide_facts_gta6.md",
   "guide_facts_gta6_before_you_play.md",
   "guide_facts_gta6_leonida.md",
+  // Post-launch mechanics (27 Nov 2026): systems, controls, economy and settings from the released game, sectioned
+  // by guide kind ("### Hidden features (hidden-features)"), so each guide reads only its own kind's sections.
+  "guide_facts_gta6_mechanics.md",
 ].map((f) => path.join(path.dirname(fileURLToPath(import.meta.url)), "..", f));
 
 /**
  * The fact pack (pure on the texts): each file's confirmed part and its reported part, kept apart and headed so the
  * writer and the fact-check see which label a line allows. Leaks and datamines never appear in these files.
  */
-export function factPackText(files: Array<{ name: string; text: string }>): {
+export function factPackText(
+  files: Array<{ name: string; text: string }>,
+  /** The guide's kind: a "### ... (other-kind)" section is left out, so every call carries only what this guide can use. */
+  kind?: string,
+): {
   confirmed: string;
   reported: string;
 } {
   const confirmed: string[] = [];
   const reported: string[] = [];
   for (const f of files) {
-    const [conf, ...rest] = f.text.split(/^##\s+Reported[^\n]*$/im);
+    // An "## Owner's play" section is notes about the owner's footage, never a fact: his play reaches the writer only
+    // as play evidence (playEvidence), so a pack line can't be said first-hand or as "reportedly".
+    const own = f.text.replace(/^##\s+Owner'?s play[^\n]*\n[\s\S]*?(?=^##\s|(?![\s\S]))/im, "");
+    const text = kind ? kindSections(own, kind) : own;
+    const [conf, ...rest] = text.split(/^##\s+Reported[^\n]*$/im);
     const c = (conf ?? "").replace(/^#[^\n]*\n/, "").trim();
     if (c) confirmed.push(`(${path.basename(f.name)})\n${c}`);
     const r = rest.join("\n").trim();
@@ -407,8 +418,22 @@ export function factPackText(files: Array<{ name: string; text: string }>): {
   return { confirmed: confirmed.join("\n\n"), reported: reported.join("\n\n") };
 }
 
+/** The text without the sections headed for another guide kind ("### Mistakes to avoid (mistakes)") (pure). */
+export function kindSections(text: string, kind: string): string {
+  const keys = new Set(GUIDE_KINDS.map((k) => k.key as string));
+  const out: string[] = [];
+  let skip = false;
+  for (const line of text.split("\n")) {
+    const h3 = line.match(/^###\s.*\(([a-z-]+)\)\s*$/);
+    if (h3) skip = keys.has(h3[1]!) && h3[1] !== kind;
+    else if (/^#{1,3}\s/.test(line)) skip = false;
+    if (!skip) out.push(line);
+  }
+  return out.join("\n");
+}
+
 /** Reads the fact files; a file that won't open is left out and named. */
-export function readFactPack(files: readonly string[]): {
+export function readFactPack(files: readonly string[], kind?: string): {
   confirmed: string;
   reported: string;
   missed: string[];
@@ -422,7 +447,7 @@ export function readFactPack(files: readonly string[]): {
       missed.push(f);
     }
   }
-  return { ...factPackText(got), missed };
+  return { ...factPackText(got, kind), missed };
 }
 
 /** One recording of the game, with its tags, as the evidence builder reads it (src/vodindex/tags.ts VodTags). */
@@ -732,6 +757,16 @@ export function spokenItemNumber(sentence: string): number | undefined {
 export const RANKING_TALK =
   /\b(i'?m ranking|ranked|my ranking|this ranking|ranking (them|these|it|everyday|by)|hardest call|least (sure|certain) (about|of)|i'?d put [^.]{0,60}?\b(ahead of|above|below|at the top)|top of (this|my) list|number one spot)\b/i;
 
+/** The writer talking about its sources instead of the game (27 Nov proof: "The recordings provide no reproducible escape methods"). */
+export const META_TALK =
+  /\b(fact pack|play evidence|my recordings|the (sources?|material) (provides?|do not|don'?t|does not|doesn'?t|lacks?|shows? no|holds? no|gives? no)|(the )?sources (are|is) (thin|incomplete))/i;
+/**
+ * Source talk that also reads as game talk ("the evidence doesn't lead back to you", "the recording doesn't save"):
+ * checked only in the intro and the description, where the game's own evidence and recordings never come up.
+ */
+export const META_FRAMING =
+  /\b(the (recordings?|brief|evidence) (provides?|do not|don'?t|does not|doesn'?t|lacks?|shows? no|holds? no|gives? no)|recordings (are|is) (thin|incomplete)|no (usable|reproducible) (escape|methods?|instructions?|details?|items?|information))\b/i;
+
 /** Em dashes and spaced en dashes, said as the pause they are: a comma, so a sentence count never changes (pure). */
 export function scrubDashes(t: string): string {
   if (!/—|\s–\s/.test(t)) return t;
@@ -943,6 +978,11 @@ export function guideProblems(
     p.push(
       `"${ranked[0]}" is ranking talk; a guide is a list in the order spoken, never a ranking.`,
     );
+  const meta =
+    guideNarration(d).concat(" ", d.description).match(META_TALK) ??
+    `${d.intro.narration} ${d.description}`.match(META_FRAMING);
+  if (meta)
+    p.push(`"${meta[0]}" talks about the sources; the viewer hears only the game.`);
   if (/\u2014/.test(JSON.stringify(d)))
     p.push("An em dash is in the text; the channel never uses them.");
   if (FIRST_HAND.test(d.intro.narration) && !ctx.evidence.length)
@@ -1170,6 +1210,7 @@ export function gtaGuideVerdict(
 export function guidePlanProblems(
   plan: {
     intro: { narration: string };
+    description?: string;
     items: Array<{
       title: string;
       basis: string;
@@ -1201,6 +1242,10 @@ export function guidePlanProblems(
   for (const c of countsSaid(plan.intro.narration))
     if (c !== plan.items.length)
       p.push(`The intro says ${c} items; the plan has ${plan.items.length}.`);
+  const framing = `${plan.intro.narration} ${plan.description ?? ""}`;
+  const meta = framing.match(META_TALK) ?? framing.match(META_FRAMING);
+  if (meta)
+    p.push(`"${meta[0]}" talks about the sources; the viewer hears only the game. Leave thin parts out.`);
   const ranked = plan.intro.narration.match(RANKING_TALK);
   if (ranked)
     p.push(

@@ -9,6 +9,7 @@ import {
   GUIDE_KINDS,
   GUIDE_QUERIES,
   factPackText,
+  kindSections,
   gtaGuideSlot,
   gtaGuideVerdict,
   guideDemand,
@@ -24,6 +25,7 @@ import {
   playEvidence,
   readFactPack,
   COMPLETE,
+  META_TALK,
   RANKING_TALK,
   countsSaid,
   dropThinItems,
@@ -275,6 +277,32 @@ test("the fact pack keeps confirmed and reported apart, and the shipped pack has
   const real = readFactPack(DEFAULT_GUIDE_FACTS);
   assert.ok(real.confirmed.length > 500);
   assert.deepEqual(real.missed, []);
+});
+
+test("the post-launch mechanics file is read, each guide only its own kind's sections, inside a prompt budget", () => {
+  assert.ok(DEFAULT_GUIDE_FACTS.some((f) => f.endsWith("guide_facts_gta6_mechanics.md")));
+  const hidden = readFactPack(DEFAULT_GUIDE_FACTS, "hidden-features");
+  // A hidden-features line is in; a mistakes line and an early-money line are not; its reported money loop is reported.
+  assert.match(hidden.confirmed, /Leave a car with the engine running/);
+  assert.doesNotMatch(hidden.confirmed, /### Mistakes to avoid/);
+  assert.doesNotMatch(hidden.reported, /### Early money/);
+  const money = readFactPack(DEFAULT_GUIDE_FACTS, "early-money");
+  assert.match(money.reported, /warehouse/i);
+  assert.doesNotMatch(money.confirmed, /### Hidden features/);
+  // The pre-launch files are kept whole for every kind (they have no kind sections).
+  assert.match(money.confirmed, /\$79\.99/);
+  // The owner's footage notes are never facts: his play comes in only as play evidence.
+  assert.doesNotMatch(hidden.reported, /Owner's play|2 stars lost in 17 seconds/);
+  assert.match(hidden.reported, /Never use/);
+  for (const k of GUIDE_KINDS) {
+    const p = readFactPack(DEFAULT_GUIDE_FACTS, k.key);
+    const size = p.confirmed.length + p.reported.length;
+    assert.ok(size < 40_000, `${k.key}: ${size} characters of facts in every call`);
+  }
+  assert.equal(
+    kindSections("## Confirmed\n### A (mistakes)\n- m\n### B (early-money)\n- e\n## Reported\n- r", "early-money"),
+    "## Confirmed\n### B (early-money)\n- e\n## Reported\n- r",
+  );
 });
 
 test("play evidence is only the owner's own recordings, never story or menus, sure HUD facts and settled checks", () => {
@@ -1168,4 +1196,91 @@ test("the gates leave ordinary guide lines alone (the review's false positives)"
   assert.equal(guideGraphicKept({ kind: "stat", primary: "$1,200", secondary: "Extended clip" }, "The extended clip costs $1,200."), true);
   assert.equal(guideGraphicKept({ kind: "stat", primary: "3 cameras", secondary: "CCTV footage" }, "Three cameras watch the till."), true);
   assert.equal(guideGraphicKept({ kind: "stat", primary: "Jet ski", secondary: "On my stream" }, "I rode one."), false);
+});
+
+test("a plan too thin for the bar stops before any item is paid for, and source talk goes back", async () => {
+  const sites: string[] = [];
+  const llm: Llm = {
+    async structured(o) {
+      sites.push(o.site ?? "?");
+      return {
+        intro: { narration: "Never leave your car running on the hard shoulder.", on_screen: "x" },
+        items: Array.from({ length: 3 }, (_, i) => ({
+          number: i + 1,
+          title: i === 0 ? "Never leave your car running" : "Look for alligators",
+          label: "confirmed",
+          basis: "fact pack",
+          chip: "Do it",
+          how: "Turn the engine off first",
+          payoff: i === 0 ? "Nobody drives off with your car" : "Wildlife up close",
+          notes: "",
+        })),
+        outro: { narration: "x", on_screen: "x" },
+        thumb_words: "DON'T STOP",
+        description: "The recordings provide no reproducible escape methods.",
+        tags: [],
+      } as never;
+    },
+  };
+  await assert.rejects(
+    writeGtaGuide(
+      llm,
+      { kind: kindOf("hidden-features")!, facts: { confirmed: "c", reported: "" }, evidence: [], asks: [], rumours: [] },
+      [],
+      {},
+      (plan) => guidePlanProblems(plan, kindOf("hidden-features")!, []),
+    ),
+    /only 1 planned item meet the bar \(7 needed\)/,
+  );
+  assert.deepEqual(sites, ["gtaguide.plan", "gtaguide.plan"]);
+  assert.ok(
+    has(
+      guidePlanProblems(
+        { intro: { narration: "x" }, description: "The recordings provide no reproducible escape methods.", items: [] },
+        wish,
+        [],
+      ),
+      /talks about the sources/,
+    ),
+  );
+  const d = draft(12);
+  d.description = "The fact pack lacks detail.";
+  assert.ok(has(guideProblems(d, { kind: wish, evidence: [] }), /talks about the sources/));
+  assert.doesNotMatch("Your phone's map shows every shop you can walk into.", META_TALK);
+  // Game talk in item narration is never source talk.
+  for (const line of [
+    "Burn the clothes, and the evidence doesn't lead back to you.",
+    "The recording doesn't save if you're busted.",
+    "The mission brief gives no time limit.",
+    "There's no usable cover on the bridge.",
+  ]) {
+    const g = draft(12);
+    g.items[3] = item(4, { narration: `Number 4 is the bridge. ${line} Park it somewhere quiet. Walk away. Then go home.` });
+    assert.ok(!has(guideProblems(g, { kind: wish, evidence: [] }), /talks about the sources/), line);
+  }
+});
+
+test("a kind that failed as too thin stays out for a week; an ordinary failure for two days", async () => {
+  for (const [error, blocked] of [
+    ['GTA guide "which-edition": only 2 planned items meet the bar (6 needed); the fact pack and play evidence are too thin for this kind', true],
+    ["fact-check still failing after a rewrite", false],
+  ] as const) {
+    const { db, s } = await rig({ gtaGuides: true, gtaGuideShare: 1 });
+    const first = await maybeSelectLongform(s);
+    assert.ok(first);
+    const [a] = await db.query<{ k: string }>(`SELECT factcheck_json->'gta_guide'->>'kind' AS k FROM episodes WHERE id = $1`, [first]);
+    // Failed three days ago for another slot.
+    await db.query(
+      `UPDATE episodes SET status = 'failed', story_hash = story_hash || ':old', last_error = $2, slot_at = $3::timestamptz - interval '3 days',
+         created_at = $3::timestamptz - interval '3 days' WHERE id = $1`,
+      [first, error, s.now()],
+    );
+    const second = await maybeSelectLongform(s);
+    assert.ok(second && second !== first);
+    const [b] = await db.query<{ k: string | null }>(`SELECT factcheck_json->'gta_guide'->>'kind' AS k FROM episodes WHERE id = $1`, [second]);
+    assert.ok(b!.k, "the slot stays a guide");
+    if (blocked) assert.notEqual(b!.k, a!.k, error);
+    else assert.equal(b!.k, a!.k, error);
+    await db.close();
+  }
 });

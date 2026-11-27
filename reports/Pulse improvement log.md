@@ -2,6 +2,24 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 27 Nov 2026, 07:00 UK: deploys wait while a long video is being built
+
+**Change:** the factory health check now says when the long-video lane is building something (`long_running`, `long_minutes`, read from its tick-long lease), and mac/deploy.sh (code deploys and `--restart`) and the merge gate wait for it like they wait for a render or an upload. Until now only a running render or upload counted as busy, so every deploy during a long video's preparation (Codex shot plans, 3D photos, Blender clips, picture passes) restarted the factory and threw that work away. A lease held past 240 minutes counts as stuck, not busy. A failed ssh in the busy check now stops the deploy instead of reading as quiet. Queue item 32 (open since 14 Nov). Branch `claude/engine-longdeploy` (2abebd459), stage 717c31b80, **deployed 06:53 UK**, factory healthy, /health shows the new fields.
+
+**Evidence:**
+
+- Factory logs: on 20 and 25-27 Nov, 42 of 77 factory boots logged `stale leases cleared at boot: tick-long`, i.e. a long tick was cut off (10/32, 16/19, 9/19, 7/7 by day).
+- "Cyberpunk 2077: Pulled, Patched and Forgiven" (ep_20261125_87abc5a2) waited for Short slots from 17:15 to 01:34, began its build at 02:41, and the deploys at 02:50, 05:17 and 05:30 restarted it each time (the Discord channel shows its picture and mix alerts four times). The 06:53 deploy of this change cut it once more, as the old check was still in force.
+- 7 new tests, including the real deploy.sh busy function run in bash with a stand-in health reply and a failed ssh; typecheck clean; merge gate 3,730 of 3,730 pass. Dry run of `deploy.sh --restart` against the live Mac: quiet, as /health reported long_running false at that moment.
+- code-reviewer: found that the Mac's deploy hook is only installed at cutover (so editing it did nothing, and an installed version could not see the PC override), and that a failed ssh would have read as quiet. The hook edit was dropped, the ssh fault fixed; the remaining gaps (hook race, canary rollback, nobody retries a waiting deploy) are queue item 32 "Left".
+- No change to video frames, so no frame review was needed.
+
+**Setting:** `DEPLOY_WAIT_LONG` on the Mac (on unless "false"), `DEPLOY_WAIT_LONG_MAX_MINUTES` (240); `DEPLOY_IGNORE_LONG=1` on the PC deploys anyway.
+
+**Judged:** by 4 Dec. Pass mark: fewer than 1 in 5 factory boots clear a tick-long lease (from 42 of 77), the Cyberpunk documentary and the Friday round-up publish, and no deploy is stuck waiting more than 6 hours (pending-deploy.json). If deploys starve, lower the max minutes.
+
+**Also looked at:** factory healthy (9 published in 24 h). "The Call of Duty 4 Modern Warfare setting dispute" took off at 104x usual pace (421 views in an hour). PC vision relay dropped again overnight (Master orchestrator's area). The shared stage worktree is on another session's branch (claude/subtitle-wide), so the gate ran with MERGE_GATE_STAGE pointing at a new worktree (scratchpad/stage-engine). The public RSS feed answered 503. No older engine change due for judging (next 28 and 29 Nov). Claude week 82%.
+
 ## 27 Nov 2026, 03:00 UK: titles keep their part number and their last word
 
 **Change:** the YouTube title cleaner no longer mangles titles. A part number ("#3") is no longer treated as a hashtag, a GTA VI File or The Why title gets its prefix's length on top of the 60-character budget and is never rebuilt from the headline (it is still cleaned of clickbait words and punctuation), a cut title never ends on a dangling small word ("on", "of", "you") or a one- or two-word broken clause, and the word after "?" or "!" is capitalised. Hashtags in any alphabet ("#Pokémon") come out whole. Branch `claude/engine-titlekeep` (38eeab549, 6b5076bc8), stage 8186cf0d7, **deployed 03:00 UK**, factory healthy. Also finished the waiting deploy of the torn depth still fix (d6c819401) at the start of the run.

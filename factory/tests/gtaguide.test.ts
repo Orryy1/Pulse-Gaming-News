@@ -1364,3 +1364,63 @@ test("the proof stops at its cut or its time, and a reuse clears only the render
   assert.ok(PROOF_MAX_MINUTES < 90, "under the Mac's proof cap");
   assert.ok(REUSE_CLEAR.includes("short.mp4") && !REUSE_CLEAR.some((f) => /voice|audio|captions/.test(f)));
 });
+
+// ---- The run7 re-render's faults (27 Nov 2026) ---------------------------------------------------------------------
+
+test("a pop-out title is fitted beside the subject, never under it or clipped; no room means no pop-out card", async () => {
+  const { popTitleFit, popPicture, POP_TITLE_MIN, POP_TITLE_MAX, GRID_W, GRID_H } = await import("../src/render/popout.ts");
+  const { ANTON, fitsAt } = await import("../src/render/components/motifs/franchises/shared.ts");
+  // A subject filling the right 45% of the picture (the key art in the proof: Jason and Lucia on the right).
+  const grid = Array.from({ length: GRID_H }, () =>
+    Array.from({ length: GRID_W }, (_, x) => (x >= Math.round(GRID_W * 0.55) ? "9" : "0")).join(""),
+  ).join("");
+  const title = "Don't Buy the Wrong GTA 6 Edition: 7 Differences (Full Guide)";
+  const fit = popTitleFit(title, "left", grid, 16 / 9)!;
+  assert.ok(fit, "it fits at some size");
+  const subjectX = Math.round(GRID_W * 0.55) / GRID_W;
+  assert.ok(fit.x1 <= subjectX - 0.025, `the words stop short of the subject (x1 ${fit.x1.toFixed(3)})`);
+  assert.ok(fit.size >= POP_TITLE_MIN && fit.size <= POP_TITLE_MAX);
+  assert.ok(fit.lines.length <= 4);
+  // Every line, at the size it is drawn, fits the room (Anton's measured widths): nothing is clipped.
+  const width = (fit.x1 - fit.x0) * 1920;
+  for (const l of fit.lines) assert.ok(fitsAt(l, ANTON, { width, height: 1000, lineHeight: 1, maxLines: 1, minSize: fit.size, maxSize: fit.size }), l);
+  assert.equal(fit.lines.join(" "), title.toUpperCase());
+  // A subject that leaves the left box almost no room: the title can't fit, and the picture is passed over.
+  const wall = Array.from({ length: GRID_H }, () =>
+    Array.from({ length: GRID_W }, (_, x) => (x >= 4 && x < 20 ? "9" : "0")).join(""),
+  ).join("");
+  assert.equal(popTitleFit(title, "left", wall, 16 / 9), undefined);
+  const pic = [{ kind: "hero", aspect: 16 / 9, layers: { mesh: { grid } } }];
+  const chosen = popPicture(pic, undefined, true, title);
+  if (chosen) assert.ok(chosen.fit, "a chosen pop-out always carries its fitted title");
+  // Centred: the widest clear run wins, including the one open at the right edge; an empty box uses all of it.
+  const leftSubject = Array.from({ length: GRID_H }, () =>
+    Array.from({ length: GRID_W }, (_, x) => (x >= 7 && x < 11 ? "9" : "0")).join(""),
+  ).join("");
+  const centred = popTitleFit("Seven Checks Before You Buy", "centre", leftSubject, 16 / 9)!;
+  assert.ok(centred && centred.x0 > 0.35 && centred.x1 >= 0.79, JSON.stringify(centred));
+  const empty = "0".repeat(GRID_W * GRID_H);
+  const open = popTitleFit("Seven Checks Before You Buy", "centre", empty, 16 / 9)!;
+  assert.ok(open && Math.abs(open.x0 - 0.2) < 1e-9 && Math.abs(open.x1 - 0.8) < 1e-9, JSON.stringify(open));
+  // An empty chapter title still pops the old way: nothing to clip.
+  assert.ok(popPicture(pic, undefined, true, "")?.fit === undefined);
+  const pop = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "render", "components", "PopOut.tsx"), "utf8");
+  assert.doesNotMatch(pop, /\(1 - ease\) \* 0\.25\}em/, "no letter spread past the fitted room");
+  assert.match(pop, /fit\?\.size/);
+  assert.doesNotMatch(pop, /fontSize: big \? 104 : 128/);
+});
+
+test("the owner's murky play is left out; bright play is kept", async () => {
+  const { ownClipVisible, OWN_CLIP_MIN_LUMA } = await import("../src/assets/library.ts");
+  // The proof's warehouse: 30-58 mean brightness.
+  assert.equal(ownClipVisible([38, 46, 43, 39, 30, 32, 39, 37, 40]), false);
+  assert.equal(ownClipVisible([81, 81, 90, 104]), true);
+  assert.equal(ownClipVisible([]), true, "no reading keeps the clip");
+  // Night play stays: a night drive or a club around 50-70.
+  assert.equal(ownClipVisible([52, 58, 61, 55]), true);
+  assert.ok(OWN_CLIP_MIN_LUMA >= 40 && OWN_CLIP_MIN_LUMA < 50);
+  const lib = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "assets", "library.ts"), "utf8");
+  assert.match(lib, /if \(!ownClipVisible\(await sampledLumas\(/);
+  const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipe, /ownClipVisible\(await sampledLumas\(path\.join\(dir, c\.file\)\)\)/, "a re-render leaves murky own play out too");
+});

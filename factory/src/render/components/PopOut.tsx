@@ -15,6 +15,8 @@ import {
   GRID_W,
   parseGrid,
   POP_BOXES,
+  POP_TEXT_Y,
+  type PopTitleFit,
   POP_SCALE,
   popAmount,
   type PopAlign,
@@ -51,6 +53,8 @@ export const PopOut: React.FC<{
   sub?: string;
   /** Opens from black (a chapter's breather) rather than over the shot before. */
   fromBlack?: boolean;
+  /** The title's room and size (popTitleFit): set, the words stay clear of the subject and are never clipped. */
+  fit?: PopTitleFit;
 }> = ({
   far,
   fg,
@@ -62,6 +66,7 @@ export const PopOut: React.FC<{
   title,
   sub,
   fromBlack = true,
+  fit,
 }) => {
   const frame = useCurrentFrame();
   // From black on a breather; over the shot before (a dissolve) for the title drop.
@@ -74,9 +79,11 @@ export const PopOut: React.FC<{
   const rule = interpolate(frame, [landAt + 8, landAt + 26], [0, 1], clamp);
   const pop = popAmount(frame, landAt + 26, len);
   const c = centre(grid);
-  const box = POP_BOXES[align];
-  const lines = titleLines(displayText(title));
-  const big = title.length > 26;
+  const box = fit
+    ? { x0: fit.x0, x1: fit.x1, y0: POP_TEXT_Y[0], y1: POP_TEXT_Y[1] }
+    : POP_BOXES[align];
+  const lines = fit?.lines ?? titleLines(displayText(title));
+  const titleSize = fit?.size ?? (title.length > 26 ? 104 : 128);
   const layer = (src: string, extra = 1, opacity = 1, shadow = false) => (
     <Img
       src={src}
@@ -157,12 +164,14 @@ export const PopOut: React.FC<{
           <div
             style={{
               fontFamily: DISPLAY,
-              fontSize: big ? 104 : 128,
+              fontSize: titleSize,
+              whiteSpace: "nowrap",
               lineHeight: 0.98,
               color: COLOUR.paper,
               textTransform: "uppercase",
               opacity: ease,
-              letterSpacing: `${0.01 + (1 - ease) * 0.25}em`,
+              // Fixed spacing: the fitted lines never spread past their room while landing (the blur carries it).
+              letterSpacing: "0.01em",
               filter: `blur(${(1 - ease) * 6}px)`,
               textShadow: "0 10px 50px rgba(0,0,0,0.75)",
             }}

@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Llm } from "../editorial/llm.ts";
 import { errorMessage, log } from "../lib/util.ts";
-import { matchClips, type FootageTarget } from "./clipscore.ts";
+import { matchClips, parseSignalStats, type FootageTarget } from "./clipscore.ts";
 import { trailerMatchesGame } from "./commons.ts";
 import type { VisualAsset } from "./steam.ts";
 import { keepGameSound } from "./talk.ts";
@@ -196,7 +196,14 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
     : [];
   await fs.rm(work, { recursive: true, force: true }).catch(() => undefined); // removes the links only; the recordings stay
   const out: VisualAsset[] = [];
+  const dark: string[] = [];
   for (const c of clips) {
+    // Murky play never goes out as the owner's footage (27 Nov guide proof: a dim warehouse, mean brightness 30-58,
+    // under the first twenty seconds); the next footage takes its place.
+    if (!ownClipVisible(await sampledLumas(path.join(o.episodeDir, c.file)))) {
+      dark.push(c.file);
+      continue;
+    }
     const audio = await keepGameSound(path.join(o.episodeDir, c.file)).catch(
       () => false,
     );
@@ -208,6 +215,8 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
         : c.provenance,
     });
   }
+  if (dark.length)
+    log("info", "own gameplay too dark, left out", { game: o.game, clips: dark.length });
   if (out.length)
     log("info", "own gameplay used", {
       game: o.game,
@@ -215,4 +224,36 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
       withSound: out.filter((c) => c.audio).length,
     });
   return out;
+}
+
+/**
+ * The owner's clip must average at least this brightness (0-255) to be shown. The proof's dim warehouse averaged
+ * about 38; GTA night driving and clubs sit around 50-70, so they stay. (The thumbnails' floor is 80.)
+ */
+export const OWN_CLIP_MIN_LUMA = 45;
+
+/** A clip's brightness, two frames a second at 320 px wide: the same average as every frame, at a fraction of the decode. */
+export async function sampledLumas(file: string): Promise<number[]> {
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { FFMPEG } = await import("../lib/bin.ts");
+    const { stdout, stderr } = await promisify(execFile)(
+      FFMPEG,
+      ["-hide_banner", "-t", "30", "-i", file, "-vf", "fps=2,scale=320:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      { maxBuffer: 8 * 1024 * 1024 },
+    );
+    return parseSignalStats(`${stdout}\n${stderr}`).map((f) => f.luma);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Whether an own-play clip is bright enough to show (pure): its frames' mean brightness at OWN_CLIP_MIN_LUMA or more.
+ * No reading (ffmpeg could not say) keeps the clip, as before.
+ */
+export function ownClipVisible(lumas: readonly number[]): boolean {
+  if (!lumas.length) return true;
+  return lumas.reduce((a, b) => a + b, 0) / lumas.length >= OWN_CLIP_MIN_LUMA;
 }

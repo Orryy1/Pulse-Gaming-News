@@ -2982,8 +2982,8 @@ export const Long: React.FC<LongProps> = (props) => {
   // The title drop's subject pop-out: the video's own key art first, else any wide picture whose subject fits.
   const dropPop =
     drop && props.subjectPop
-      ? (popPicture(props.images, undefined) ??
-        popPicture(props.images, undefined, true))
+      ? (popPicture(props.images, undefined, false, props.title) ??
+        popPicture(props.images, undefined, true, props.title))
       : undefined;
   if (props.debugCamera && drop)
     console.log(`DEPTH ${JSON.stringify({ drop, pop: dropPop ?? null })}`);
@@ -4951,7 +4951,7 @@ export const Long: React.FC<LongProps> = (props) => {
             baseLook === "title" &&
             !(props.quietBreaks ?? []).includes(breakIndex) &&
             ((b ?? 0) + props.variant) % 2 === 1
-              ? popPicture(props.images, b)
+              ? popPicture(props.images, b, false, s.visual?.primary ?? "")
               : undefined;
           const look: string = pop ? "pop" : baseLook;
           const board = look === "board";
@@ -5007,6 +5007,7 @@ export const Long: React.FC<LongProps> = (props) => {
                         grid={mesh.grid}
                         len={pause}
                         align={pop.layout.align}
+                        fit={pop.fit}
                         kicker={`CHAPTER ${s.visual.value_a ?? (b ?? 0) + 1}`}
                         title={s.visual.primary}
                         sub={[s.visual.secondary, s.visual.items?.[0]]
@@ -5590,6 +5591,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   grid={im.layers!.mesh!.grid}
                   len={drop.len}
                   align={dropPop.layout.align}
+                  fit={dropPop.fit}
                   landAt={Math.max(12, drop.landAt)}
                   kicker={
                     props.recap

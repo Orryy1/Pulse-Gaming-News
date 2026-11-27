@@ -143,7 +143,7 @@ const ThenYear: React.FC<{ year: string; accent: string }> = ({ year, accent }) 
 };
 
 /**
- * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts lowerLine): a few words of the hook (else the headline)
+ * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts lowerLine): the headline (else the thumbnail words), never cut
  * as one line above the captions, in from
  * the left over 8 frames and gone by the hook's end, the picture full frame behind it.
  */

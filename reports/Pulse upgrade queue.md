@@ -485,12 +485,10 @@ Since claude/doc-after-target (969f362f9) the documentary and the long ranking a
 ## 53. Hands-off hygiene: own worktrees for fix sessions, and the gate retries a lone crashed test file (25 Nov night)
 
 **Why:**
-
 - At 23:25 a fix session started by the new watch, or another routine, checked out claude/late-shorts-free-slot inside the shared stage worktree (scratchpad\stage) with uncommitted edits, so the merge gate refused to run.
-- At 23:16 the gate stopped on a V8 crash ("Check failed: jit*page*->allocations\_.erase") in tests/gameplay-lane.test.ts while the PC was short of RAM. The file passed 16/16 on its own.
+- At 23:16 the gate stopped on a V8 crash ("Check failed: jit_page_->allocations_.erase") in tests/gameplay-lane.test.ts while the PC was short of RAM. The file passed 16/16 on its own.
 
 **Build:**
-
 - src/handsoff/pulse-fix-rules.md and the engine prompt: always work in a fresh worktree on its own claude/ branch, never in the shared stage folder.
 - merge-gate.ts: when exactly one test file fails with no assertion (a crash or "test failed" with no subtest failure), rerun that file alone once and continue if it passes, logging the retry.
 
@@ -525,7 +523,6 @@ GTA File: parts 3 to 7 moved by hand to 26-30 Nov this run. Not built: parts are
 **Seen:** a 69 s 1080p video, "Road trip: every town in Leonida before GTA 6 comes out" (x.com/facetagramai/status/2125611308204855606). A camera flies over a stylised Leonida map with neon route lines, labelled towns and islands, and "Region 1 of 6" highway-sign title cards over trailer shots.
 
 **Pulse version:**
-
 - A Shorts series (one region per Short, "Region N of 6") plus a long video joining them.
 - Build our OWN map layer, never the community fan map. Use the owner's own GTA VI streams (the in-game map screen and flights, tagged by VOD_TAGS once indexing is back on), the factory's MAP_PINS and gamemaps, and the Blender globe or flyover scene (src/render/blender.ts).
 - Use the GTA motion-graphics kit (claude/gtakit) for the highway-sign cards and the route line.
@@ -554,14 +551,13 @@ Done 26 Nov 15:00 (engine): a faulted card now drops its line's explainer, and e
 
 The proof is in D:\pulse-data\scratch\evidence-proof\out (Short sheet and long stills). No black frames. The Short looks right: pins, string, a LEAKED stamp, a 19 NOVEMBER 2026 date card, a CASE card. Fix:
 
-1. **Letterbox on the long board.** long*on*\*.jpg shows black bands top and bottom: the board must fill 16:9.
+1. **Letterbox on the long board.** long_on_*.jpg shows black bands top and bottom: the board must fill 16:9.
 2. **A real-world street photo pinned** (long_on_1294.jpg, Miami Ocean Drive with people). Only game art, game footage stills and the owner's stream frames may be pinned. Tighten the source filter (Commons and real photos refused even without a face).
 3. **A frozen stretch.** The long scan shows 24.10 s frozen for 4.03 s (also 1.5-2.1 s ones). The board camera must keep moving between pins.
 4. **Date-card order.** "2014 NOVEMBER" and "2014 FEBRUARY" should read "NOVEMBER 2014".
 5. **Repeated pins in one Short.** The same two stills (01 and 02) come back across the board. Pin each picture at most once per board.
 
 Then re-render the same proof, check the frames, and switch EVIDENCE_STYLE=true with EVIDENCE_STYLE_SHARE=0.5 (pass mark in src/evidencestyle.ts).
-
 ## 58. Depth layers tear people and props on Shorts' stills (improvement engine 26 Nov 19:00)
 
 **Seen:** the published Garry's Mod Short (GMLijn1nq88, 26 Nov 16:30) ends on a layered still where the man's outline is pixelated and torn, his face is smeared and the gravity gun has gone; the same still drawn flat is clean (D:\pulse-data\scratch\flatdepth-proof\before_after.jpg). The final check caught it on the first render, the retry rendered the same tear, and the second check passed it. 16 of 51 Short QA failures from 20 to 26 Nov named these depth edges, after the depth camera (PARALLAX_DEEP) went on 20 Nov with SHORT_PARALLAX_SHARE at 1 (owner, 20 Nov).
@@ -575,16 +571,15 @@ Then re-render the same proof, check the frames, and switch EVIDENCE_STYLE=true 
 
 **GameSight** (UCnHUWXEQmgNbuHYj2JpXtxQ, 17.4k subs) went from a few hundred views to 100k-190k by switching to GTA 6 guide lists:
 
-| Video                                                     | Views |
-| --------------------------------------------------------- | ----- |
-| "77 Things Confirmed" (25 min)                            | 189k  |
-| "30 Things You NEED To Do When GTA 6 Releases" (16 min)   | 182k  |
-| "Don't Buy the Wrong GTA 6 Edition ($80 vs $100 vs $400)" | 129k  |
-| "Beginner's Guide: 25 Things I Wish I Knew (No Spoilers)" | 97k   |
-| "Will Be HARDER Than You Think"                           | 41k   |
+| Video | Views |
+| --- | --- |
+| "77 Things Confirmed" (25 min) | 189k |
+| "30 Things You NEED To Do When GTA 6 Releases" (16 min) | 182k |
+| "Don't Buy the Wrong GTA 6 Edition ($80 vs $100 vs $400)" | 129k |
+| "Beginner's Guide: 25 Things I Wish I Knew (No Spoilers)" | 97k |
+| "Will Be HARDER Than You Think" | 41k |
 
 Thumbnails are in D:\pulse-data\scratch\gamesight\ (sheet.jpg):
-
 - one big character or scene;
 - 2-3 word warning or number text ("DON'T RUN.", "DON'T SWIM", "DAY 1", "25 THINGS / NO SPOILERS", "77+ ACTIVITIES CONFIRMED");
 - the GTA VI logo in a corner;
@@ -593,7 +588,6 @@ Thumbnails are in D:\pulse-data\scratch\gamesight\ (sheet.jpg):
 Their art is AI-made illustration.
 
 **Pulse version:**
-
 - A post-launch GTA 6 guide lane: long lists of 12-25 min. Examples: "things I wish I knew (no spoilers)", "things you can't do any more", "don't do X", "which edition".
 - Each claim is labelled confirmed, reported or rumour.
 - Built from the owner's own stream footage (now tagged by the HUD reader and the stream index) plus official trailers.
@@ -612,7 +606,7 @@ Their art is AI-made illustration.
 
 ## 60. Merge gate deploy window too wide on busy evenings (26 Nov)
 
-**Why:** the gate refuses a deploy within 50 minutes on either side of any slot. On 26 Nov the evening slots (20:00, 21:00, 22:00, 23:30) left no deploy gap from 20:00 to about 00:20, so the parallax and studio-name fixes missed every evening Short. The old hand rule was 30 minutes _before_ a slot, plus "not while the Mac renders or uploads".
+**Why:** the gate refuses a deploy within 50 minutes on either side of any slot. On 26 Nov the evening slots (20:00, 21:00, 22:00, 23:30) left no deploy gap from 20:00 to about 00:20, so the parallax and studio-name fixes missed every evening Short. The old hand rule was 30 minutes *before* a slot, plus "not while the Mac renders or uploads".
 
 **Build:** in src/handsoff/mergegate.ts, refuse from 30 minutes before a slot until that slot's upload has finished (read uploads_active and the episode status from /health), not a flat 50 minutes after. Test it on the 26 Nov evening slot plan.
 

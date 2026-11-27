@@ -105,6 +105,8 @@ interface MacState {
   uploadsActive: number;
   rendering: boolean;
   holdRestart: boolean;
+  longRunning: boolean;
+  longMinutes: number;
   slots: Date[];
 }
 
@@ -136,7 +138,12 @@ function macState(): MacState {
     if (m) sec[(name = m[1]!)] = "";
     else if (name) sec[name] += `${line}\n`;
   }
-  let health: { ok?: boolean; uploads_active?: number } = {};
+  let health: {
+    ok?: boolean;
+    uploads_active?: number;
+    long_running?: boolean;
+    long_minutes?: number;
+  } = {};
   try {
     health = JSON.parse(sec.health ?? "{}");
   } catch {
@@ -176,6 +183,8 @@ function macState(): MacState {
     uploadsActive: Number(health.uploads_active ?? 0),
     rendering: rendering((sec.procs ?? "").split("\n").filter((l) => l.trim())),
     holdRestart: (sec.hold ?? "").includes("hold-restart"),
+    longRunning: health.long_running === true,
+    longMinutes: Number(health.long_minutes ?? 0),
     slots,
   };
 }
@@ -212,6 +221,8 @@ function deployAndVerify(target: string): never {
     rendering: mac.rendering,
     uploadsActive: mac.uploadsActive,
     holdRestart: mac.holdRestart,
+    longRunning: mac.longRunning,
+    longMinutes: mac.longMinutes,
   });
   record.window = w;
   const pending = path.join(WORK, "pending-deploy.json");

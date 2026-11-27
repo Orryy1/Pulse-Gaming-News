@@ -48,6 +48,8 @@ export function testConfig(
     shortAdSafeGate: false,
     qaAdSwap: true,
     qaFlattenDepth: true,
+    deployWaitLong: true,
+    deployWaitLongMaxMinutes: 240,
     creditScrub: true,
     strandFrames: false,
     shortTitleGameFirst: false,

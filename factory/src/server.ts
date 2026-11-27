@@ -71,7 +71,7 @@ import {
   renderEngage,
   sweepRenderTemp,
 } from "./render/render.ts";
-import { watchLongLane } from "./longlane.ts";
+import { LONG_LEASE, longBusyForDeploy, watchLongLane } from "./longlane.ts";
 import {
   handleSite,
   startGameWarmer,
@@ -343,6 +343,22 @@ export function createApp(
       const [met] = await db.query<Record<string, string>>(
         `SELECT count(*) AS metrics_captured_7d FROM video_metrics WHERE captured_at > now() - interval '7 days'`,
       );
+      // DEPLOY_WAIT_LONG: a long video being built counts as busy for deploys (src/longlane.ts longBusyForDeploy).
+      let long = { busy: false, minutes: 0 };
+      try {
+        const [lease] = await db.query<{ expires_at: string | Date }>(
+          `SELECT expires_at FROM leases WHERE name = $1`,
+          [LONG_LEASE],
+        );
+        long = longBusyForDeploy({
+          expiresAt: lease?.expires_at,
+          now: new Date(),
+          maxMinutes: cfg.deployWaitLongMaxMinutes,
+          enabled: cfg.deployWaitLong,
+        });
+      } catch {
+        /* health still answers */
+      }
       res.writeHead(200, { "content-type": "application/json" }).end(
         JSON.stringify({
           ok: true,
@@ -350,6 +366,8 @@ export function createApp(
           ...sight,
           ...met,
           uploads_active: activeUploads(),
+          long_running: long.busy,
+          long_minutes: long.minutes,
           lastTick: state.lastTick,
           lastLongTick: state.lastLongTick,
           lastError: state.lastError,

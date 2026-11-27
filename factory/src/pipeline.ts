@@ -699,6 +699,7 @@ import {
 } from "./assets/gatherbudget.ts";
 import {
   LONG_LEASE,
+  LONG_LEASE_TTL_S,
   LONG_URGENT_HOURS,
   isUrgentLong,
   orderLongEpisodes,
@@ -18822,7 +18823,7 @@ async function pushEpisode(s: Services, ep: Episode): Promise<void> {
 export async function tickLong(
   s: Services,
 ): Promise<{ ran: boolean; episodes?: string[] }> {
-  const result = await withLease(s.db, LONG_LEASE, 360 * 60, async (lease) => {
+  const result = await withLease(s.db, LONG_LEASE, LONG_LEASE_TTL_S, async (lease) => {
     // One step at a time, the lane re-ordered after each (src/longlane.ts): the nearest slot first, and an
     // unscripted video due within hours ahead of everything, so another's gather or render never queues it
     // (30 Oct 2026: the recap for 20:00 sat behind the Halo ranking's gather and missed its slot). An episode

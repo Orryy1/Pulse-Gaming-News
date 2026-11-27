@@ -6,6 +6,7 @@
 # new code dies inside three minutes mac/run.sh goes back to the old code by itself and says so in Discord.
 #   bash mac/deploy.sh --restart              settings changed, no new code: wait for quiet, then restart
 #   DEPLOY_WAIT_MINUTES=30   how long to wait for a quiet moment (default 30), then give up changing nothing
+#   DEPLOY_IGNORE_LONG=1     do not wait for a long video being built (/health long_running, DEPLOY_WAIT_LONG on the Mac)
 #   DEPLOY_DRY=1             say what it would do, changing nothing
 #   DEPLOY_FLIGHTSIM=2       first fly the new code for 2 simulated days with every fault (src/tools/flightsim.ts) and
 #                            refuse on a broken invariant (default 0: off). DEPLOY_FLIGHTSIM_FAULTS picks the faults
@@ -53,8 +54,12 @@ if [ -n "$new" ] && [ "${DEPLOY_FLIGHTSIM:-0}" -gt 0 ] 2>/dev/null; then
 fi
 
 # Why not now: the same checks as the hook, read from here so the wait is visible.
+# A long video being built (27 Nov 2026: three deploys restarted the Cyberpunk documentary's build) counts too.
 why_busy() {
-  on_mac 'R=${PULSE_ROOT:-$HOME/PulseFactory}; [ -f "$R/factory/data/admin/hold-restart" ] && echo "hold-restart flag"; pgrep -f "[r]emotion|[c]hrome-headless-shell" >/dev/null && echo "a render"; curl -s -m 10 "http://127.0.0.1:${PULSE_PORT:-8080}/health" 2>/dev/null | grep -q "\"uploads_active\":[1-9]" && echo "an upload"; true' | tr '\n' ' '
+  local w
+  w=$(on_mac 'R=${PULSE_ROOT:-$HOME/PulseFactory}; [ -f "$R/factory/data/admin/hold-restart" ] && echo "hold-restart flag"; pgrep -f "[r]emotion|[c]hrome-headless-shell" >/dev/null && echo "a render"; H=$(curl -s -m 10 "http://127.0.0.1:${PULSE_PORT:-8080}/health" 2>/dev/null); echo "$H" | grep -q "\"uploads_active\":[1-9]" && echo "an upload"; echo "$H" | grep -q "\"long_running\":true" && echo "a long video being built"; true') || return 1
+  if [ "${DEPLOY_IGNORE_LONG:-}" = 1 ]; then w=$(printf '%s\n' "$w" | grep -v "a long video being built" || true); fi
+  printf '%s' "$w" | tr '\n' ' '
 }
 deadline=$(( $(date +%s) + ${DEPLOY_WAIT_MINUTES:-30} * 60 ))
 while :; do

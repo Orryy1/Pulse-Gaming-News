@@ -8,7 +8,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Llm } from "../editorial/llm.ts";
 import { errorMessage, log } from "../lib/util.ts";
-import { matchClips, parseSignalStats, type FootageTarget } from "./clipscore.ts";
+import { matchClips, type FootageTarget } from "./clipscore.ts";
 import { trailerMatchesGame } from "./commons.ts";
 import type { VisualAsset } from "./steam.ts";
 import { keepGameSound } from "./talk.ts";
@@ -227,33 +227,63 @@ export async function libraryClips(o: LibraryClipOpts): Promise<VisualAsset[]> {
 }
 
 /**
- * The owner's clip must average at least this brightness (0-255) to be shown. The proof's dim warehouse averaged
- * about 38; GTA night driving and clubs sit around 50-70, so they stay. (The thumbnails' floor is 80.)
+ * Murky play (27 Nov guide proof: a dim warehouse, raw frames averaging 45-55 with nothing brighter than about 110 and
+ * almost no colour) is told from night play (dark on average, but lit: headlights, neon, street lamps) by the bright
+ * end and the colour of each frame. A frame is murky when its average is under MURKY_LUMA, its bright end (signalstats
+ * YHIGH, the 90th percentile) under MURKY_HIGH and its colour (SATAVG) under MURKY_SAT: a night road lit by a few small
+ * lamps or one neon sign keeps its colour. With no bright-end reading, murky is an average under OWN_CLIP_MIN_LUMA.
+ * (YMAX can't tell them apart: the white HUD text keeps it near 200 in the warehouse too.)
  */
 export const OWN_CLIP_MIN_LUMA = 45;
+export const MURKY_LUMA = 70;
+export const MURKY_HIGH = 120;
+export const MURKY_SAT = 15;
 
-/** A clip's brightness, two frames a second at 320 px wide: the same average as every frame, at a fraction of the decode. */
-export async function sampledLumas(file: string): Promise<number[]> {
+export type FrameLight = number | { luma: number; high?: number; sat?: number };
+
+/** Whether one sampled frame is murky (pure). */
+export function murkyFrame(f: FrameLight): boolean {
+  const { luma, high, sat } = typeof f === "number" ? { luma: f, high: undefined, sat: undefined } : f;
+  return high === undefined
+    ? luma < OWN_CLIP_MIN_LUMA
+    : luma < MURKY_LUMA && high < MURKY_HIGH && (sat ?? 0) < MURKY_SAT;
+}
+
+/**
+ * Whether an own-play clip is fit to show (pure): fewer than half its sampled frames murky. No reading (ffmpeg could
+ * not say) keeps the clip, as before.
+ */
+export function ownClipVisible(frames: readonly FrameLight[]): boolean {
+  if (!frames.length) return true;
+  return frames.filter(murkyFrame).length / frames.length < 0.5;
+}
+
+/** A clip's light, two frames a second at 320 px over its first 30 s: each frame's average and bright end. */
+export async function sampledLumas(file: string): Promise<Array<{ luma: number; high?: number; sat?: number }>> {
   try {
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const { FFMPEG } = await import("../lib/bin.ts");
     const { stdout, stderr } = await promisify(execFile)(
       FFMPEG,
-      ["-hide_banner", "-t", "30", "-i", file, "-vf", "fps=2,scale=320:-2,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-", "-f", "null", "-"],
+      ["-hide_banner", "-t", "30", "-i", file, "-vf", "fps=2,scale=320:-2,format=yuv420p,signalstats,metadata=print:file=-", "-f", "null", "-"],
       { maxBuffer: 8 * 1024 * 1024 },
     );
-    return parseSignalStats(`${stdout}\n${stderr}`).map((f) => f.luma);
+    return lightFrames(`${stdout}\n${stderr}`);
   } catch {
     return [];
   }
 }
 
-/**
- * Whether an own-play clip is bright enough to show (pure): its frames' mean brightness at OWN_CLIP_MIN_LUMA or more.
- * No reading (ffmpeg could not say) keeps the clip, as before.
- */
-export function ownClipVisible(lumas: readonly number[]): boolean {
-  if (!lumas.length) return true;
-  return lumas.reduce((a, b) => a + b, 0) / lumas.length >= OWN_CLIP_MIN_LUMA;
+/** ffmpeg's metadata=print output as frames of average and bright end (pure). */
+export function lightFrames(text: string): Array<{ luma: number; high?: number; sat?: number }> {
+  const out: Array<{ luma: number; high?: number; sat?: number }> = [];
+  for (const block of text.split(/frame:\d+/).slice(1)) {
+    const luma = Number(block.match(/YAVG=([\d.]+)/)?.[1]);
+    const high = Number(block.match(/YHIGH=([\d.]+)/)?.[1]);
+    const sat = Number(block.match(/SATAVG=([\d.]+)/)?.[1]);
+    if (!Number.isFinite(luma)) continue;
+    out.push({ luma, ...(Number.isFinite(high) ? { high } : {}), ...(Number.isFinite(sat) ? { sat } : {}) });
+  }
+  return out;
 }

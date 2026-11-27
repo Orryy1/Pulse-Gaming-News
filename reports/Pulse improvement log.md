@@ -2,6 +2,31 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 27 Nov 2026, 11:00 UK: one GTA VI Short a day, enforced in code
+
+**Change:** a new setting, GAME_DAY_CAP, puts a hard daily limit on Shorts that name one game. It is set on the Mac to one GTA VI Short a day. Once GTA VI has its Short for the day, any further story naming GTA VI is held back. That covers news slot stories (filtered before the best twelve are taken), a big story that would fill a news slot, the Why lane's planned topic and editor list, and the search slot's pick. Two things are never held: breaking news, and the day's GTA File part. The File part counts as the day's GTA Short until it is made, so the numbered series keeps its parts, but only when its slot can really run. If every story in a slot names a capped game, the slot keeps them all rather than going empty. Older GTA (GTA V, San Andreas, Vice City history) is not affected. The editor's FOCUS_NOTE now says one a day to match. Branch `claude/engine-gamecap` (670bcafbc), merged as 06dbc3b8e and pushed. **The deploy waits** for the 12:00 slot window and the Cyberpunk documentary build (exit 3); the next run finishes it with `--deploy-only`.
+
+**Evidence:**
+
+- YouTube Data API, last 100 uploads: since launch (19-26 Nov) GTA VI Shorts drew a median of 99 views against 315 for other games' Shorts (19 and 15 Shorts). From 10 to 19 Nov it was 196 against 322. GTA VI "why" Shorts did worst: median about 40 against about 280 for other "why" Shorts. The newest three (Witcher 4 "like GTA's", GTA File #3, GTA 6 39M players) had 5 to 7 views after 7 to 10 hours.
+- The 19 Nov fix was a prompt line ("at most two a day"). The editor kept to about two a day, three on 20 Nov, and the GTA Shorts stayed at about a third of the views.
+- Replay over 19-26 Nov: the cap would have held 11 of 19 GTA VI Shorts (median 90 views). Replaced at the other-game median, that is about 1,900 more views over 8 days, or about 1,300 leaving out launch day.
+- Tests: 11 new, including an end-to-end news slot (cap off: the GTA story is made; GTA's day open: GTA made; GTA's day used: Starfield made), a summer-time day boundary, and the GTA File cases. Typecheck clean; merge gate 3,748 of 3,748 pass.
+- code-reviewer found 8 issues and all the real ones are fixed: the cap ran after the top-twelve cut, big stories and Why picks went uncapped, evergreen Shorts weren't counted, a File part that couldn't run still held GTA's place, and the event logged every tick. Kept on purpose: headlines that only mention GTA 6 ("CoD loses 42% of players after GTA 6", 28 views) are held too.
+- No change to what is on screen, so no frame review was needed.
+
+**Setting:** `GAME_DAY_CAP="GTA VI|GTA 6|Grand Theft Auto VI|Grand Theft Auto 6=1"` in the Mac `.env` (backup `.env.bak-20261127a`). Empty turns it off. `game_day_cap` events and "game day cap held stories back" log lines show what was held.
+
+**Judged:** 4 Dec. Pass mark: no more than 1 GTA VI Short a day apart from breaking news and the File; median views per Short for the week at least 15% above 19-26 Nov (all Shorts); and no news slot lost to the cap. If GTA VI Shorts start beating the channel median, raise the cap to 2.
+
+**Judged this run:**
+
+- SHORT_CLIP_EDGE_TEXT (due 27 Nov): **missed its pass mark, kept on.** 6 QA failures named cut-off source subtitles from 25 to 27 Nov, all on frame 1. One of them lost the Rockstar union big story (size 94). Footage gate holds did not rise (1 to 2 a day). It still drops or trims 14 to 44 clips a day, so it stays on. Queue item 61 already covers the fix, and another session has it open on claude/subtitle-wide.
+- DEMAND_STALE_DAYS (due 27 Nov): **missed its pass mark, kept on (harmless).** 33 of 39 picks from 20 to 27 Nov said "demand not checked". Old readings were used only twice, because new topics have no earlier reading. Queued as item 65.
+- Core numbers: no drop of more than 20% that traces to the last engine change (the CoD4 Short reached 1,003 views overnight). Nothing reverted.
+
+**Also looked at:** factory healthy (9 published in 24 h). The Cyberpunk documentary (ep_20261125_87abc5a2) is built and waits for a two-hour gap between Short windows. Meanwhile `long_running` holds deploys (215 min at 10:28); another session's doc-replan-loop fix covers this and waits in the same deploy. The PC vision relay dropped 6 times in a day (Master orchestrator's area). Thursday's ideas were checked first and were already taken: the take card (two running tests) and the moving opening (gap-untemplate, proof render queued). Claude week 82%.
+
 ## 27 Nov 2026, 07:00 UK: deploys wait while a long video is being built
 
 **Change:** the factory health check now says when the long-video lane is building something (`long_running`, `long_minutes`, read from its tick-long lease), and mac/deploy.sh (code deploys and `--restart`) and the merge gate wait for it like they wait for a render or an upload. Until now only a running render or upload counted as busy, so every deploy during a long video's preparation (Codex shot plans, 3D photos, Blender clips, picture passes) restarted the factory and threw that work away. A lease held past 240 minutes counts as stuck, not busy. A failed ssh in the busy check now stops the deploy instead of reading as quiet. Queue item 32 (open since 14 Nov). Branch `claude/engine-longdeploy` (2abebd459), stage 717c31b80, **deployed 06:53 UK**, factory healthy, /health shows the new fields.

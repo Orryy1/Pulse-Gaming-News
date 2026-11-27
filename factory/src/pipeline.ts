@@ -614,7 +614,7 @@ import {
   type LengthArm,
   type ShortLengths,
 } from "./shortlengths.ts";
-import { inboxFiles } from "./assets/library.ts";
+import { inboxFiles, ownClipVisible, sampledLumas } from "./assets/library.ts";
 import {
   fitDescription,
   recentShortTexts,
@@ -13496,6 +13496,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       ep.id,
       JSON.stringify(assets),
     ]);
+  }
+  // Murky own play gathered before the brightness floor (or kept by a re-render) is left out here too.
+  if (assets.clips?.length) {
+    const kept = [];
+    for (const c of assets.clips)
+      if (!/^Pulse's own gameplay capture/.test(c.provenance ?? "") || ownClipVisible(await sampledLumas(path.join(dir, c.file))))
+        kept.push(c);
+    if (kept.length < assets.clips.length) {
+      log("info", "own gameplay too dark, left out of the render", { episode: ep.id, clips: assets.clips.length - kept.length });
+      assets.clips = kept;
+      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
+    }
   }
   // Which long-video craft this format gets (src/longformat.ts), each behind its own setting.
   const craft = longCraft(script, s.cfg);

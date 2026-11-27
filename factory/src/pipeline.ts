@@ -876,9 +876,24 @@ import {
   playEvidence,
   readFactPack,
   type GtaGuideTopic,
+  VERSUS_KINDS,
 } from "./gtaguide.ts";
-import { guideLogo, loadGuideAsks, loadHudFacts, loadPlayRecordings, pickGuideFrame } from "./gtaguidestep.ts";
-import { GuideTooThinError, writeGtaGuide } from "./editorial/gtaguidewriter.ts";
+import { guideLogo, loadGuideAsks, loadHudFacts, loadPlayRecordings, pickGuideFrame, versusArt, versusLogo } from "./gtaguidestep.ts";
+import { GuideTooThinError, writeGtaGuide, writeVersus } from "./editorial/gtaguidewriter.ts";
+import {
+  oldMoment,
+  pickVersusKind,
+  qaGameTitle,
+  versusClipKept,
+  versusPlanProblems,
+  versusPins,
+  oldGameFile,
+  versusProblems,
+  versusQualityWarnings,
+  versusSlot,
+  versusThumb,
+  versusToScript,
+} from "./versus.ts";
 import { OPENING_WORDS_MAX as GUIDE_OPENING_MAX } from "./editorial/longcontract.ts";
 import { applyPlannedChapters, factsPath, plannedFactsText, plannedTitle } from "./plannedoc.ts";
 import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
@@ -6097,6 +6112,15 @@ export async function maybeSelectLongform(
   }
   // GTA_GUIDES (src/gtaguide.ts): a share of the long slots goes to a post-launch GTA 6 guide list, decided per slot.
   // Off (the default), gtaGuideSlot is false and nothing here runs. No guide topic left: the ranking takes the slot.
+  // VERSUS_LONG (src/versus.ts): a share of the long slots goes to a then-vs-now versus, decided per slot before the
+  // guide's share. Off (the default), versusSlot is false and nothing here runs. No pair left: the slot goes on.
+  if (versusSlot(cfg, due)) {
+    const id = await selectVersus(s, due).catch((err) => {
+      log("warn", "versus: selection failed, the slot goes on to the guide or the ranking", { error: errorMessage(err) });
+      return undefined;
+    });
+    if (id) return id;
+  }
   if (gtaGuideSlot(cfg, due)) {
     const id = await selectGtaGuide(s, due).catch((err) => {
       log("warn", "gta guide: selection failed, the ranking takes the slot", { error: errorMessage(err) });
@@ -6240,6 +6264,8 @@ export async function maybeSelectLongform(
   log("info", "long-form topic selected", { id, theme: topic.theme });
   // GTA_GUIDES' other arm: the rankings made while it is on, for the verdict (gtaGuideVerdict).
   if (cfg.gtaGuides) await logEvent(db, id, "gta_guide", { arm: "ranking", slot_at: due.toISOString() }).catch(() => undefined);
+  // VERSUS_LONG's other arm: the rankings made while it is on, for the verdict (src/versus.ts versusVerdict).
+  if (cfg.versusLong) await logEvent(db, id, "versus", { arm: "ranking", slot_at: due.toISOString() }).catch(() => undefined);
   quietReset("long ranking");
   return id;
 }
@@ -6272,6 +6298,76 @@ async function guideDemandReading(s: Services, now: Date): Promise<Map<string, n
     )
     .catch(() => undefined);
   return demand;
+}
+
+/**
+ * VERSUS_LONG: the versus for a long slot (src/versus.ts): the next pair not made in the last 30 days (nor failed in the
+ * last two, nor too thin in the last seven), as a longform episode whose factcheck carries a gta_guide topic with the
+ * versus kind, so the guide's writer step, render and release run it. Undefined when no pair is left or a GTA guide or
+ * versus already failed for this slot.
+ */
+async function selectVersus(s: Services, due: Date): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  const failedHere = await db.query(
+    `SELECT 1 FROM episodes WHERE lane = 'longform' AND slot_at = $1 AND status IN ('failed','rejected') AND factcheck_json->'gta_guide' IS NOT NULL LIMIT 1`,
+    [due],
+  );
+  if (failedHere.length) {
+    quietLog("versus", "a guide or versus already failed for this slot, so it goes on", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const made = await db.query<{ kind: string | null; at: string }>(
+    `SELECT factcheck_json->'gta_guide'->>'kind' AS kind, created_at AS at FROM episodes
+      WHERE lane = 'longform' AND factcheck_json->'gta_guide'->>'kind' IS NOT NULL
+        AND created_at > $1::timestamptz - interval '30 days'
+        AND (status NOT IN ('failed','rejected') OR created_at > $1::timestamptz - interval '2 days'
+             OR (COALESCE(last_error, '') LIKE '%too thin for this kind%' AND created_at > $1::timestamptz - interval '7 days'))`,
+    [now],
+  );
+  const kind = pickVersusKind(
+    made.filter((r) => r.kind).map((r) => ({ kind: r.kind!, at: r.at })),
+    now,
+  );
+  if (!kind?.versus) {
+    quietLog("versus", "every versus pair was made in the last 30 days", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const asks = await loadGuideAsks(cfg.dataDir).catch(() => []);
+  const mine = asks
+    .filter((a) => !a.spoiler && ["open", "proved", "disproved"].includes(a.status) && kind.askWords.test(`${a.question} ${a.claim ?? ""}`))
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || (b.mentionCount ?? 0) - (a.mentionCount ?? 0))
+    .slice(0, 8)
+    .map((a) => `${a.question}${a.rumour ? " (rests on a rumour)" : ""}`);
+  const topic: GtaGuideTopic = {
+    kind: kind.key,
+    why: [`versus slot (VERSUS_SHARE ${cfg.versusShare})`, `GTA 6 against ${kind.versus.old}`, `${mine.length} viewer questions on the stream asks list`],
+    asks: mine,
+    demandViews: 0,
+    slot_at: due.toISOString(),
+  };
+  const cluster: StoryCluster = {
+    hash: `versus:${dayKey(now, cfg.timezone)}:${kind.key}`,
+    headline: `${GTA_GAME}: ${kind.name}`,
+    items: [],
+    sources: ["Rockstar Games"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: GTA_GAME,
+  };
+  const id = shortId();
+  if (!(await createEpisode(db, id, cluster, { lane: "longform", priority: LANE_PRIORITY.longform, slotAt: due }))) return undefined;
+  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ gta_guide: topic })]);
+  await logEvent(db, id, "selected", { headline: cluster.headline, lane: "longform", theme: GTA_GAME, reason: topic.why.join("; "), slot_at: due.toISOString() });
+  // The record the verdict reads (src/versus.ts versusVerdict): with 6 published videos per arm, the versus's median
+  // 7-day views AND median CTR beat the long rankings' over the same weeks; under that VERSUS_SHARE goes back to 0.
+  await logEvent(db, id, "versus", { arm: "versus", kind: kind.key, old: kind.versus.old, asks: mine.length, slot_at: due.toISOString() });
+  log("info", "versus selected", { id, kind: kind.key });
+  quietReset("versus");
+  return id;
 }
 
 async function selectGtaGuide(s: Services, due: Date): Promise<string | undefined> {
@@ -8305,7 +8401,12 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
   let lastHard: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      draft = await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
+      // VERSUS_LONG: a versus kind has its own writer (then, now, what it means; a verdict and a question).
+      draft = kind.versus
+        ? await writeVersus(s.llm, brief, feedback, opts, (plan) =>
+            versusPlanProblems({ ...plan, items: plan.items.map((x) => ({ ...x, how: x.now, payoff: x.means })) }, kind, evidence),
+          )
+        : await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
     } catch (err) {
       if (attempt > 0 && err instanceof GuideTooThinError && draft && !lastFactual.length && !lastHard.length) {
         await logEvent(s.db, ep.id, "style_warnings", { problems: [err.message, ...feedback] });
@@ -8313,9 +8414,9 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
       }
       throw err;
     }
-    const script = guideToScript(draft, kind);
+    const script = kind.versus ? versusToScript(draft, kind) : guideToScript(draft, kind);
     const problems = [
-      ...guideProblems(draft, ctx),
+      ...(kind.versus ? versusProblems(draft, ctx) : guideProblems(draft, ctx)),
       ...scriptSpoilers(script, spoilerWindows(), s.now()).map(
         (x) => `Story spoiler (${x.where}): "${x.phrase}" gives away ${x.what}; GTA VI's story is held until December 18.`,
       ),
@@ -8332,9 +8433,9 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
     feedback = [...factual, ...problems];
   }
   if (!draft) throw new Error("GTA guide produced nothing");
-  const script = guideToScript(draft, kind);
+  const script = kind.versus ? versusToScript(draft, kind) : guideToScript(draft, kind);
   // Item quality: the plan check sent it back once and dropped what it could; what is left is noted, never a rewrite.
-  const thin = guideQualityWarnings(draft, kind);
+  const thin = kind.versus ? versusQualityWarnings(draft, kind) : guideQualityWarnings(draft, kind);
   if (thin.length) await logEvent(s.db, ep.id, "style_warnings", { problems: thin });
   const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
   if (longChecks.warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
@@ -12339,8 +12440,9 @@ export async function gatherLongEntryMedia(
   const scope = scopeOf(script);
   // LONG_ENTRY_CLIP_TARGETS: every sentence (up to the dial) asks the trailers for its own moment; the first six alone
   // did before, and the rest of a 21-sentence entry only ever got stills (Mass Effect ranking, 25 Nov 2026).
-  const targets: FootageTarget[] = moments
-    .slice(0, script.evergreen_format === "ranking" ? (s.cfg.longEntryClipTargets ?? 6) : 6)
+  let targets: FootageTarget[] = moments
+    // VERSUS_LONG: every line is asked for, so an "old" line late in a chapter still gets the old game's footage.
+    .slice(0, script.gta_guide?.versus ? moments.length : script.evergreen_format === "ranking" ? (s.cfg.longEntryClipTargets ?? 6) : 6)
     .map((m, k) => ({
     key: `beat:${beatIndex}#m${k}`,
     text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
@@ -12353,6 +12455,23 @@ export async function gatherLongEntryMedia(
       ...m.keywords.filter((k) => k !== m.person),
     ].slice(0, 4),
   }));
+  // VERSUS_LONG (src/versus.ts): a versus chapter's "old" lines show the old game. They are gathered from the old game's
+  // own footage below (its store trailers, then licensed gameplay through the signed ration), and every GTA 6 source
+  // (store, trailers, the owner's recordings, licensed gameplay) is asked only for the new game's lines.
+  const versus = script.gta_guide?.versus;
+  const oldKeys = new Set(
+    versus ? moments.flatMap((m, k) => (oldMoment(m) ? [`beat:${beatIndex}#m${k}`] : [])) : [],
+  );
+  const oldTargets: FootageTarget[] = versus
+    ? targets
+        .filter((t) => oldKeys.has(t.key))
+        .map((t) => ({
+          ...t,
+          text: `${t.text} [${versus.old} (${versus.oldYear}) footage only, never ${entry.game_title}]`,
+          keywords: [versus.old, ...t.keywords.slice(1)].slice(0, 4),
+        }))
+    : [];
+  if (versus) targets = targets.filter((t) => !oldKeys.has(t.key));
   const pushClip = (c: VisualAsset) =>
     clips.push({
       file: rel(c.file),
@@ -12429,6 +12548,59 @@ export async function gatherLongEntryMedia(
           game: entry.game_title,
           trailer: om.trailer.title,
         });
+    }
+    // VERSUS_LONG: the old game's lines, from the old game's footage (before the budget check: a chapter without its
+    // "then" picture breaks the format). Its store trailers first, then licensed gameplay; murky clips are left out.
+    if (versus && oldTargets.length && s.cfg.footage) {
+      const odir = path.join(edir, "old");
+      const got: VisualAsset[] = [];
+      const oapp = await steamAppForEntry(s, {
+        ...entry,
+        game_title: versus.old,
+        steam_search_term: versus.old,
+        // The store page's own year (GTA V reached Steam in 2015), so the page is not refused as another game.
+        year: versus.steamYear ?? versus.oldYear,
+      }).catch(() => undefined);
+      if (oapp)
+        got.push(
+          ...capFootage(
+            await s.fetchClips(oapp, odir, oldTargets, oldTargets.length, scope).catch(() => [] as VisualAsset[]),
+            Math.min(45, footageBudgetSeconds(oapp) * 2.25),
+            4.8,
+          ),
+        );
+      const covered = new Set(got.map((c) => c.moment).filter((m): m is number => m !== undefined));
+      const rest = oldTargets.filter((t) => !covered.has(Number(t.key.match(/#m(\d+)$/)?.[1])));
+      if (rest.length && !budget?.over())
+        got.push(
+          ...(await s
+            .gameplayClips(versus.old, versus.old, versus.oldYear, odir, rest, rest.length, scope)
+            .catch(() => [] as Array<VisualAsset & { credit: string }>)),
+        );
+      for (const c of got.filter(versusClipKept))
+        clips.push({
+          file: rel(path.join("old", c.file)),
+          sourceUrl: c.sourceUrl,
+          provenance: c.provenance,
+          durationSeconds: Math.min(c.durationSeconds ?? 4, 4.8),
+          beatIndex,
+          moment: c.moment,
+          role: undefined,
+          motion: c.motion,
+          luma: c.luma,
+          label: c.label,
+          reason: c.reason,
+          startSeconds: c.startSeconds,
+          audio: c.audio,
+          ...((c as { credit?: string }).credit ? { credit: (c as { credit?: string }).credit } : {}),
+        });
+      log("info", "versus: old game's footage", {
+        game: versus.old,
+        beat: beatIndex,
+        lines: oldTargets.length,
+        clips: got.length,
+        kept: got.filter(versusClipKept).length,
+      });
     }
     // Past the gather budget the entry keeps its art and stops here: no own recordings, no licensed gameplay.
     if (budget?.over()) throw new GatherOutOfTime();
@@ -13924,7 +14096,13 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         ? { heard: sounded.heard, skipped: sounded.skipped.slice(0, 12) }
         : {}),
     }).catch(() => undefined);
-  const clips = (sounded?.clips ?? assets.clips ?? []).map((c) => ({
+  // VERSUS_LONG: each line keeps only its own game's pin (the cutscene, stream, still and fill passes pin across every
+  // line), so an "old" line plays the old game and a GTA 6 line never plays it (src/versus.ts versusPins).
+  const pinned = <T extends { file: string; beatIndex?: number; moment?: number }>(xs: T[]): T[] =>
+    script.gta_guide?.versus ? versusPins(xs, moments) : xs;
+  if (script.gta_guide?.versus)
+    for (const [k, i] of versusPins(images, moments).entries()) images[k]!.moment = i.moment;
+  const clips = pinned(sounded?.clips ?? assets.clips ?? []).map((c) => ({
     file: c.file,
     durationSeconds: c.durationSeconds,
     beatIndex: c.beatIndex,
@@ -13969,7 +14147,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         cutsceneMatch: c.cutsceneMatch,
         span: c.span,
         stock: c.stock,
+        // VERSUS_LONG: which game the clip shows, so the fill never puts it on the other game's line.
+        ...(script.gta_guide?.versus ? { old: oldGameFile(c.file) } : {}),
       })),
+      // VERSUS_LONG: which lines are the old game's (src/versus.ts); a clip fills only its own game's lines.
+      ...(script.gta_guide?.versus ? { oldLines: moments.map((e) => e.map((m) => oldMoment(m))) } : {}),
       // Footage first: a chapter never replays a moment it has shown (FOOTAGE_FIRST).
       noRepeats: s.cfg.footageFirst,
       sameGame: sameGameGroups(script),
@@ -14560,7 +14742,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // the first is the thumbnail, the next two go to YouTube's Test & compare. The niche study ranked them:
   // a huge subject with a rim and a few words, a giant number, an old game's nostalgia, a hard versus, a
   // circle on the thing that matters; the older designs stay as fallbacks.
-  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : script.gta_guide ? "GUIDE" : "RANKED";
+  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : script.gta_guide?.versus ? "VS" : script.gta_guide ? "GUIDE" : "RANKED";
   const text = thumbTitle(script);
   const entryInfo = (b: number | undefined) => {
     if (b === undefined) return undefined;
@@ -14763,8 +14945,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const designs: Candidate[] = strand ? pinStrandLayout(designsAll, strand) : designsAll;
   // GTA_GUIDES: the guide's own thumbnail (src/render/ThumbStudio.tsx GuideThumb) leads, so Test & compare runs it
   // against the current style's two best designs. Without a frame of the owner's footage the designs stay as they are.
+  // VERSUS_LONG: the versus's own text-free split screen (src/render/ThumbStudio.tsx VersusSplitThumb) leads instead.
   const guideDesign =
-    script.gta_guide && isGtaGuide(ep.factcheck_json)
+    script.gta_guide?.versus && isGtaGuide(ep.factcheck_json)
+      ? await versusDesign(s, dir, script.gta_guide.versus).catch((err) => {
+          log("warn", "versus: thumbnail design failed, the current designs stand", { episode: ep.id, error: errorMessage(err) });
+          return undefined;
+        })
+      : script.gta_guide && isGtaGuide(ep.factcheck_json)
       ? await gtaGuideDesign(s, dir, sounded?.clips ?? assets.clips ?? [], script.gta_guide).catch((err) => {
           log("warn", "gta guide: thumbnail design failed, the current designs stand", { episode: ep.id, error: errorMessage(err) });
           return undefined;
@@ -15258,7 +15446,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const frames = await s.extractFrames(final, path.join(dir, "qa"), times);
     vision = await s.visionQa(frames, {
       headline: script.headline,
-      gameTitle: script.game_title,
+      // VERSUS_LONG: a versus shows both games on purpose, so the old game's footage is never "the wrong game".
+      gameTitle: qaGameTitle(script),
       format: "long",
     });
   }
@@ -15388,7 +15577,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         thumbs.map((f) => path.join(dir, f)),
         {
           headline: script.headline,
-          gameTitle: script.game_title,
+          gameTitle: qaGameTitle(script),
           format: "thumbs",
             heroRule: s.cfg.thumbHeroRule,
         },
@@ -18471,6 +18660,28 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
  * clips in this video (a permitted streamer's when he has none), its subject lifted with APPLE_SUBJECT_LIFT when the
  * Mac can, the 2-3 words the script carries and the official GTA VI logo. Undefined without a usable frame.
  */
+/**
+ * VERSUS_LONG: the versus thumbnail's design (src/render/ThumbStudio.tsx VersusSplitThumb): the old game's official key
+ * art on the left (graded dusty and desaturated in the design), GTA VI's on the right (vivid), both official logos, a
+ * diagonal divider and no words. The pictures come from the game library (official key art first, a clean bright one);
+ * undefined without a picture for both sides, and the current designs stand.
+ */
+async function versusDesign(
+  s: Services,
+  dir: string,
+  v: { old: string; oldShort: string; oldYear: number; steamYear?: number },
+): Promise<{ layout: "vsplit"; frame: "key art"; thumb: ReturnType<typeof versusThumb> } | undefined> {
+  const oldFile = await versusArt(s.cfg.dataDir, dir, v.old, "old");
+  const newFile = await versusArt(s.cfg.dataDir, dir, GTA_GAME, "new");
+  if (!oldFile || !newFile) return undefined;
+  const kind = VERSUS_KINDS.find((k) => k.versus?.old === v.old);
+  const oldLogo = kind?.versus
+    ? await versusLogo(s.cfg.dataDir, dir, kind.versus.oldLogoUrl, kind.key.replace(/^vs-/, ""))
+    : undefined;
+  const newLogo = await guideLogo(s.cfg.dataDir, dir);
+  return { layout: "vsplit", frame: "key art", thumb: versusThumb({ oldFile, newFile, oldLogo, newLogo }) };
+}
+
 async function gtaGuideDesign(
   s: Services,
   dir: string,

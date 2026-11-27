@@ -392,6 +392,8 @@ export function layoutProblem(
   // GTA_GUIDES (src/gtaguide.ts): one frame of the owner's footage, its subject lifted by Apple Vision (not by depth),
   // the words and the official logo in a corner.
   if (layout === "guide") return undefined;
+  // VERSUS_LONG (src/versus.ts): the text-free split screen, two pictures and the two official logos, no words.
+  if (layout === "vsplit") return undefined;
   if (layout === "motif" && approvedGrid(motifId)) return undefined;
   if (layout === "mystery") return "the mystery design has an arrow and a circle";
   if (layout === "hero" || layout === "depth")
@@ -441,7 +443,8 @@ export function designProblems(
   const out: string[] = [];
   const lp = layoutProblem(layout, motifId);
   if (lp) out.push(lp);
-  out.push(...thumbWordsForTitleProblems(headline, script));
+  // The text-free split screen (VERSUS_LONG) has no words to measure; any other design's words are held to the rule.
+  if (!(layout === "vsplit" && !headline.trim())) out.push(...thumbWordsForTitleProblems(headline, script));
   const panels = panelCount(thumb);
   if (panels > MAX_PANELS)
     out.push(`${panels} pictures; the rule is at most ${MAX_PANELS}`);

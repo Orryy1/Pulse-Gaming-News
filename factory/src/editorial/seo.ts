@@ -280,6 +280,8 @@ export function evergreenTitle(script: Script): string | undefined {
 
 /** The short line on a ranking's thumbnail: "Every X Game Ranked" or "N X Games Ranked". */
 export function thumbTitle(script: Script): string {
+  // VERSUS_LONG: the lead design carries no words; the Test & compare designs carry the format's own, never the title's.
+  if (script.gta_guide?.versus) return "THEN VS NOW";
   // GTA_GUIDES: the guide's big words on every design, so Test & compare measures the design, not the words.
   if (script.gta_guide?.thumb.big) return script.gta_guide.thumb.big;
   // The writer's own hook words (1-4, never the title restated) win: the strongest long-video
@@ -497,6 +499,11 @@ export function keywordLead(script: Script): string {
   if (script.cutdown) {
     const theme = script.cutdown.theme || script.game_title;
     return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
+  }
+  // VERSUS_LONG (src/versus.ts): a versus is found by "GTA 6 vs GTA 5" and its kin.
+  if (script.gta_guide?.versus) {
+    const old = script.gta_guide.versus.oldShort;
+    return `${script.youtube.title.replace(/\.$/, "")}: every system compared, with no story spoilers. GTA 6 vs ${old}, GTA 6 differences, GTA 6 new features, ${old} vs GTA 6, GTA VI, by Pulse Gaming News.`;
   }
   if (script.gta_guide)
     return `${script.youtube.title.replace(/\.$/, "")}: a practical GTA 6 guide with no story spoilers. GTA 6 guide, GTA 6 tips, GTA 6 beginner guide, GTA VI, by Pulse Gaming News.`;

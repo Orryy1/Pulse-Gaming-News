@@ -29,6 +29,8 @@ export const REUSE_CLEAR = ["short.mp4", "render_raw.mp4", "thumb.jpg", "thumb_b
 export function gtaGuideProofEnv(o: {
   data: string;
   backup: string;
+  /** --versus: the slot goes to a versus (VERSUS_LONG, src/versus.ts) instead of a guide. */
+  versus?: boolean;
 }): Record<string, string> {
   return {
     DATA_DIR: o.data,
@@ -44,5 +46,6 @@ export function gtaGuideProofEnv(o: {
     AUTO_PUBLISH: "false",
     CAPTURE_CHECKLIST: "false",
     BACKUP_DIR: o.backup,
+    ...(o.versus ? { VERSUS_LONG: "true", VERSUS_SHARE: "1" } : {}),
   };
 }

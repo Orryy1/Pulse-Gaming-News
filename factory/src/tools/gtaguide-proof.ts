@@ -51,7 +51,8 @@ for (const d of ["vodindex", "sceneindex", "gamelib", "presskits", "storetrailer
 }
 // The sandbox's settings (src/tools/gtaguide-proofenv.ts): no database, no uploads, and no wait for the owner's footage.
 const { gtaGuideProofEnv, proofDone, REUSE_CLEAR } = await import("./gtaguide-proofenv.ts");
-Object.assign(process.env, gtaGuideProofEnv({ data, backup: path.join(out, "backup") }));
+// --versus: a then-vs-now versus (VERSUS_LONG, src/versus.ts) takes the slot instead of a guide.
+Object.assign(process.env, gtaGuideProofEnv({ data, backup: path.join(out, "backup"), versus: args.includes("--versus") }));
 
 const { loadConfig } = await import("../config.ts");
 const { openDb, migrate } = await import("../db.ts");
@@ -160,6 +161,12 @@ const report: Record<string, unknown> = {
   hook: ep!.script_json?.hook,
   thumb: ep!.script_json?.gta_guide?.thumb,
   evidence_lines: (ep!.factcheck_json?.evidence ?? []).length,
+  // VERSUS_LONG: the old game, the pinned question, and per chapter which lines show the old game and what was gathered.
+  versus: ep!.script_json?.gta_guide?.versus,
+  question: ep!.script_json?.gta_guide?.question,
+  old_lines: (ep!.script_json?.entries ?? []).map((e: any) => (e.moments ?? []).filter((m: any) => m.game === "old").length),
+  old_clips: (ep!.assets_json?.clips ?? []).filter((c: any) => /[\\/]old[\\/]/.test(c.file ?? "")).length,
+  description: ep!.script_json?.youtube?.description,
 };
 for (const f of [
   "thumb.jpg",
@@ -167,6 +174,8 @@ for (const f of [
   "thumb_c.jpg",
   "poster.jpg",
   "assets/guide_frame.jpg",
+  "assets/versus_old.jpg",
+  "assets/versus_new.jpg",
 ])
   await fs
     .copyFile(path.join(dir, f), path.join(out, path.basename(f)))

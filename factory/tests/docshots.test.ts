@@ -654,3 +654,44 @@ test("a game the launch calendar says is out is not upcoming any more (GTA VI af
   assert.equal(upcomingGame(2026, new Date("2026-11-20T12:00:00Z"), "Grand Theft Auto VI", launches), false);
   assert.equal(upcomingGame(2026, new Date("2026-11-20T12:00:00Z"), "Some Other 2026 Game", launches), true);
 });
+
+test("VERSUS_LONG: a clip fills only its own game's lines, pinned, loose or replayed", () => {
+  const s = docToScript(draftWithMoments());
+  const entries = [...s.entries!].sort((a, b) => b.rank - a.rank);
+  const words = timed(s);
+  const segments = buildSegments(segmentInputs(s), words, words.at(-1)!.end + 6);
+  const counts = entries.map((entry) => entry.moments!.length);
+  const windows = momentWindows(segments, words, counts);
+  // Chapter 0's first three lines are the old game's, the rest the new game's.
+  const oldLines = counts.map((n, e) => Array.from({ length: n }, (_, m) => e === 0 && m < 3));
+  const clips = [
+    { durationSeconds: 2, beatIndex: 0, moment: 0, old: true },
+    { durationSeconds: 3, beatIndex: 0, old: true },
+    { durationSeconds: 3, beatIndex: 0 },
+    { durationSeconds: 3, beatIndex: 0 },
+    { durationSeconds: 3, beatIndex: 0, moment: 5 },
+  ];
+  for (const noRepeats of [false, true]) {
+    const plan = buildLongPlan({
+      segments,
+      words,
+      durationSeconds: words.at(-1)!.end + 6,
+      images: [],
+      clips,
+      variant: 0,
+      momentCounts: counts,
+      movingFirst: true,
+      noRepeats,
+      oldLines,
+    });
+    let checked = 0;
+    for (const x of plan.shots) {
+      if (x.media.type !== "clip") continue;
+      const w = windows.find((v) => v.entry === 0 && x.start >= Math.round(v.start * 30) && x.start < Math.round(v.end * 30));
+      if (!w) continue;
+      checked++;
+      assert.equal(!!clips[x.media.index]!.old, w.moment < 3, `clip ${x.media.index} on line ${w.moment}`);
+    }
+    assert.ok(checked >= 3, `only ${checked} clip shots in chapter 0`);
+  }
+});

@@ -102,6 +102,44 @@ SPOILER RULE (owner's "Early story free" policy to 3 Dec 2026): nothing in this 
 - [confirmed] Radio on foot: radio and podcasts play on foot through the phone, once you own headphones or earbuds. Rockstar Newswire: https://www.rockstargames.com/newswire/article/o3982oa93a23k4/the-music-of-grand-theft-auto-vi-in-game-radio-stations ; Insider Gaming 25 Nov : https://insider-gaming.com/30-things-you-might-have-missed-in-gta-6/
 - [confirmed] A morality system: the five-tier Criminal Profile (Professional to Irredeemable) tracks how you commit crimes, RDR2's Honor idea in GTA form. Insider Gaming criminal profiles; GamesRadar criminal profiles; PC Gamer guide hub : https://insider-gaming.com/all-criminal-profiles-explained-gta-6/ ; https://www.pcgamer.com/games/grand-theft-auto/gta-6-guide/ ; https://www.gamesradar.com/games/grand-theft-auto/gta-6-criminal-profiles/
 
+### GTA 5 baseline, the old game's side of a versus (vs-gta5)
+
+How GTA 5 (Rockstar Games, released 17 September 2013) works, for the "then" half of a GTA 6 versus chapter. Source for each line: GTA 5 itself (Rockstar Games, 2013) unless another is named. Story mode only; never GTA Online.
+
+- [confirmed] Wanted level: five stars at most. Police show on the radar as dots with sight cones; you escape by leaving the flashing search area and staying out of sight until the stars fade.
+- [confirmed] Three playable leads, Michael, Franklin and Trevor, all men. Switching between them pulls the camera up into the sky and back down on the other one.
+- [confirmed] Weapons: the weapon wheel holds every gun you own at once, pistols to a minigun and rocket launcher, with no carrying limit.
+- [confirmed] Cars never run out of fuel and have no fuel gauge.
+- [confirmed] Stealing a car: pull the driver out or smash the window of a parked car and drive off; some cars have alarms, and there are no trackers, lock picks or key cloners.
+- [confirmed] Each lead has a special ability on a meter: Michael slows time in gunfights, Franklin slows time while driving, Trevor takes less damage and deals more.
+- [confirmed] Seven skills (stamina, shooting, strength, stealth, flying, driving, lung capacity) rise with use; the characters' bodies never change shape, whatever they eat or do.
+- [confirmed] Wasted sends you to hospital and Busted to the police station, each with a fee taken from your money.
+- [confirmed] Store robberies: point a gun at the clerk, take the cash that is handed over and run; the money is yours at once.
+- [confirmed] Money buys properties, cars, guns and stocks on two in-game stock markets (LCN and BAWSAQ).
+- [confirmed] Cars you park in your own garage are kept. Your own car left behind can be collected from the impound lot.
+- [confirmed] The map is Los Santos and Blaine County: one city and its countryside, desert and mountains.
+- [confirmed] Activities include tennis, golf, darts, yoga and triathlons. There is no romance or relationship system between the leads.
+- [confirmed] The phone's Snapmatic app takes photos and selfies you can post.
+- [confirmed] A car on its roof can be rocked back onto its wheels by steering left and right.
+- [confirmed] Barbers and tattoo parlours change your look; the police never look for an outfit or a description, only the stars.
+- [confirmed] First-person mode arrived with the PlayStation 4 and Xbox One version in November 2014; the 2013 original was third person only. Rockstar Newswire, 2014.
+- [confirmed] Cheats work from the start, by button codes or by calling numbers on the in-game phone.
+
+### Red Dead Redemption 2 baseline, the old game's side of a versus (vs-rdr2)
+
+How Red Dead Redemption 2 (Rockstar Games, released 26 October 2018) works, for the "then" half of a GTA 6 versus chapter. Source for each line: Red Dead Redemption 2 itself (Rockstar Games, 2018). Story mode only; never Red Dead Online.
+
+- [confirmed] Honor: a meter that moves with good and bad deeds (helping strangers, robbing, killing), changing some dialogue, shop discounts and the tone of the story's ending.
+- [confirmed] Dead Eye slows time and lets you mark several targets before firing; later levels show enemies' weak and critical spots.
+- [confirmed] Arthur carries two sidearms and two long guns on his person; the rest of his guns ride on his horse.
+- [confirmed] Hair and beards grow over time and are cut at barbers or trimmed in camp.
+- [confirmed] Arthur gains or loses weight with how much he eats, which changes his health, stamina and how he takes damage.
+- [confirmed] Health, stamina and Dead Eye each have a core that drains over time and refills with food, sleep, coffee and tonics.
+- [confirmed] Witnesses can run to report a crime; stopping them first stops the report. Bounties are kept per state and wearing a bandana mask hides who you are.
+- [confirmed] Hunting: animals have quality ratings, there are legendary animals, and a compendium records every species you study.
+- [confirmed] Your horse needs feeding, brushing and bonding; a closer bond unlocks better handling and tricks.
+- [confirmed] Camp: the gang's camp is a base where you donate money and supplies and upgrade it.
+
 ## Reported (say "reportedly" and who reported it; never as fact)
 
 ### Hidden features (hidden-features)

@@ -1738,6 +1738,16 @@ export interface Config {
   gtaGuides: boolean;
   gtaGuideShare: number;
   gtaGuideFacts: string[];
+  /**
+   * VERSUS_LONG (src/versus.ts; off by default): a then-vs-now long video (GTA 6 against GTA 5 or Red Dead 2, one system
+   * a chapter) takes a share of the long slots, VERSUS_SHARE (default 0.5, decided per slot, before the guide's share),
+   * each recorded in the "versus" arm against the long rankings. A pair made in the last 30 days is not made again, so
+   * with every pair made the slot goes on to the guide or the ranking. Off, the long lane is exactly as before.
+   * Pace: two pairs, each once in 30 days, so the 6-a-side verdict (src/tools/versus-results.ts) takes about three
+   * months; more pairs (a kind in VERSUS_KINDS and its baseline facts) make it faster.
+   */
+  versusLong: boolean;
+  versusShare: number;
   /** GUIDE_OWN_FIRST: a weekly guide's chapters ask the owner's recordings for every footage target, not half. */
   guideOwnFirst: boolean;
   /**
@@ -2875,6 +2885,8 @@ export function loadConfig(): Config {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    versusLong: bool("VERSUS_LONG", false),
+    versusShare: Math.min(1, Math.max(0, Number(str("VERSUS_SHARE", "0.5")) || 0)),
     guideOwnFirst: bool("GUIDE_OWN_FIRST", true),
     retroEnabled: bool("RETRO_ENABLED", false),
     retroFile: str("RETRO_FILE", ""),

@@ -153,6 +153,8 @@ export const MomentSchema = z.object({
 export type Moment = z.infer<typeof MomentSchema>;
 /** A documentary's shot list adds a full-screen quote, a timeline and real-world B-roll (src/editorial/documentary.ts). */
 export type AnyMoment = Omit<Moment, "graphic"> & {
+  /** VERSUS_LONG (src/versus.ts): which game this line's picture shows; "old" lines are gathered from the old game. */
+  game?: "old" | "new";
   graphic: Omit<Moment["graphic"], "kind"> & {
     kind:
       | Moment["graphic"]["kind"]

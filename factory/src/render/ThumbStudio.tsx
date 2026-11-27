@@ -273,6 +273,109 @@ export const GuideThumb: React.FC<StudioThumbProps & { subline?: string }> = ({ 
   );
 };
 
+/**
+ * VERSUS_LONG (src/versus.ts): the then-vs-now split screen, text-free (GTAbites' two hits, 27 Nov 2026 study). The old
+ * game's picture on the left graded dusty and desaturated, GTA VI's on the right vivid, a glowing diagonal divider, the
+ * two official logos low in each half (`logoSrc` old, `logo2Src` new) and the Pulse mark small in the top corner. No
+ * words of ours: the logos say which game is which.
+ */
+export const VersusSplitThumb: React.FC<StudioThumbProps & { logoSrc?: string | null; logo2Src?: string | null }> = ({
+  imageSrc,
+  image2Src,
+  logoSrc,
+  logo2Src,
+  accent,
+}) => {
+  // The divider runs from 58% across at the top to 42% at the bottom; each picture fills its own side past the line.
+  const top = 0.58;
+  const bottom = 0.42;
+  const box = 0.62;
+  const old = "grayscale(0.55) sepia(0.45) saturate(0.75) contrast(0.92) brightness(0.88)";
+  const vivid = "saturate(1.55) contrast(1.12) brightness(1.06)";
+  return (
+    <AbsoluteFill style={{ background: "#08080b", overflow: "hidden" }}>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          clipPath: `polygon(0 0, ${top * 100}% 0, ${bottom * 100}% 100%, 0 100%)`,
+        }}
+      >
+        {imageSrc ? (
+          <Img
+            src={imageSrc}
+            style={{ position: "absolute", left: 0, top: 0, width: W * box, height: H, objectFit: "cover", filter: old }}
+          />
+        ) : null}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "linear-gradient(160deg, rgba(150,118,72,0.22) 0%, rgba(60,45,30,0.30) 100%)",
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          clipPath: `polygon(${top * 100}% 0, 100% 0, 100% 100%, ${bottom * 100}% 100%)`,
+        }}
+      >
+        {image2Src ? (
+          <Img
+            src={image2Src}
+            style={{
+              position: "absolute",
+              left: W * (1 - box),
+              top: 0,
+              width: W * box,
+              height: H,
+              objectFit: "cover",
+              filter: vivid,
+            }}
+          />
+        ) : null}
+      </div>
+      <AbsoluteFill
+        style={{ background: "linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 34%)" }}
+      />
+      <svg width={W} height={H} style={{ position: "absolute", inset: 0 }}>
+        <line x1={W * top} y1={-10} x2={W * bottom} y2={H + 10} stroke={accent} strokeWidth={26} opacity={0.55} />
+        <line x1={W * top} y1={-10} x2={W * bottom} y2={H + 10} stroke="#ffffff" strokeWidth={12} />
+      </svg>
+      {logoSrc ? (
+        <Img
+          src={logoSrc}
+          style={{
+            position: "absolute",
+            left: 8,
+            bottom: 4,
+            width: 390,
+            filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.85))",
+          }}
+        />
+      ) : null}
+      {logo2Src ? (
+        <Img
+          src={logo2Src}
+          style={{
+            position: "absolute",
+            right: 34,
+            bottom: 30,
+            width: 250,
+            filter: "drop-shadow(0 6px 12px rgba(0,0,0,0.85))",
+          }}
+        />
+      ) : null}
+      <Img
+        src={staticFile("logo.png")}
+        style={{ position: "absolute", top: 22, left: 24, width: 56, height: 56, borderRadius: 12, boxShadow: "0 6px 16px rgba(0,0,0,0.6)" }}
+      />
+    </AbsoluteFill>
+  );
+};
+
 /** One huge subject cut out with a glowing rim, the words on the other side. */
 export const HeroThumb: React.FC<StudioThumbProps> = ({
   headline,

@@ -12,6 +12,7 @@ import { voiceFor } from "./voice.ts";
 import { REHOOK_RULE } from "./rehooks.ts";
 import { MomentSchema, sentencesOf, type Moment } from "./longform.ts";
 import { OPENING_WORDS_MAX } from "./longcontract.ts";
+import { FatalError } from "../lib/util.ts";
 import {
   GTA_GAME,
   GUIDE_INTRO_WORDS,
@@ -19,6 +20,7 @@ import {
   GUIDE_OUTRO_WORDS,
   GUIDE_WORDS,
   dropThinItems,
+  itemQualityProblems,
   scrubAll,
   type GuideDraft,
   type GuideItem,
@@ -103,6 +105,12 @@ const ItemBodySchema = z.object({
     .describe("Exactly one per sentence of this item's narration, in order"),
 });
 const BatchSchema = z.object({ items: z.array(ItemBodySchema) });
+
+/**
+ * Too few planned items meet the bar: the sources can't carry this kind of guide. The pipeline fails the episode on the
+ * first attempt (and keeps the kind out for a week); on a rewrite it keeps the first draft when that one was sound.
+ */
+export class GuideTooThinError extends FatalError {}
 
 export interface GuideBrief {
   kind: GuideKind;
@@ -254,6 +262,14 @@ export async function writeGtaGuide(
   // Items still under the bar after the send-back are dropped (never below the kind's minimum): the count, and with it
   // the title and the intro's "these N", follow what is left.
   plan = dropThinItems(plan, brief.kind).plan;
+  // Too few items meet the bar: the sources can't carry this kind of guide. Stop before any item is paid for (the
+  // 27 Nov proof's sources were pre-launch marketing; the writer planned almost nothing and still paid for a rewrite).
+  // A failed guide hands its slot to the ranking.
+  const good = plan.items.filter((x) => !itemQualityProblems(x, brief.kind).length).length;
+  if (good < brief.kind.items[0])
+    throw new GuideTooThinError(
+      `GTA guide "${brief.kind.key}": only ${good} planned item${good === 1 ? "" : "s"} meet the bar (${brief.kind.items[0]} needed); the fact pack and play evidence are too thin for this kind`,
+    );
   const items = plan.items.map((x, i) => ({ ...x, number: i + 1 }));
   // The whole video's floor holds with fewer items: each runs longer (7 items is about 190 words each).
   const introOutro =

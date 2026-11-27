@@ -732,6 +732,16 @@ export function spokenItemNumber(sentence: string): number | undefined {
 export const RANKING_TALK =
   /\b(i'?m ranking|ranked|my ranking|this ranking|ranking (them|these|it|everyday|by)|hardest call|least (sure|certain) (about|of)|i'?d put [^.]{0,60}?\b(ahead of|above|below|at the top)|top of (this|my) list|number one spot)\b/i;
 
+/** The writer talking about its sources instead of the game (27 Nov proof: "The recordings provide no reproducible escape methods"). */
+export const META_TALK =
+  /\b(fact pack|play evidence|my recordings|the (sources?|material) (provides?|do not|don'?t|does not|doesn'?t|lacks?|shows? no|holds? no|gives? no)|(the )?sources (are|is) (thin|incomplete))/i;
+/**
+ * Source talk that also reads as game talk ("the evidence doesn't lead back to you", "the recording doesn't save"):
+ * checked only in the intro and the description, where the game's own evidence and recordings never come up.
+ */
+export const META_FRAMING =
+  /\b(the (recordings?|brief|evidence) (provides?|do not|don'?t|does not|doesn'?t|lacks?|shows? no|holds? no|gives? no)|recordings (are|is) (thin|incomplete)|no (usable|reproducible) (escape|methods?|instructions?|details?|items?|information))\b/i;
+
 /** Em dashes and spaced en dashes, said as the pause they are: a comma, so a sentence count never changes (pure). */
 export function scrubDashes(t: string): string {
   if (!/—|\s–\s/.test(t)) return t;
@@ -943,6 +953,11 @@ export function guideProblems(
     p.push(
       `"${ranked[0]}" is ranking talk; a guide is a list in the order spoken, never a ranking.`,
     );
+  const meta =
+    guideNarration(d).concat(" ", d.description).match(META_TALK) ??
+    `${d.intro.narration} ${d.description}`.match(META_FRAMING);
+  if (meta)
+    p.push(`"${meta[0]}" talks about the sources; the viewer hears only the game.`);
   if (/\u2014/.test(JSON.stringify(d)))
     p.push("An em dash is in the text; the channel never uses them.");
   if (FIRST_HAND.test(d.intro.narration) && !ctx.evidence.length)
@@ -1170,6 +1185,7 @@ export function gtaGuideVerdict(
 export function guidePlanProblems(
   plan: {
     intro: { narration: string };
+    description?: string;
     items: Array<{
       title: string;
       basis: string;
@@ -1201,6 +1217,10 @@ export function guidePlanProblems(
   for (const c of countsSaid(plan.intro.narration))
     if (c !== plan.items.length)
       p.push(`The intro says ${c} items; the plan has ${plan.items.length}.`);
+  const framing = `${plan.intro.narration} ${plan.description ?? ""}`;
+  const meta = framing.match(META_TALK) ?? framing.match(META_FRAMING);
+  if (meta)
+    p.push(`"${meta[0]}" talks about the sources; the viewer hears only the game. Leave thin parts out.`);
   const ranked = plan.intro.narration.match(RANKING_TALK);
   if (ranked)
     p.push(

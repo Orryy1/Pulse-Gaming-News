@@ -873,7 +873,7 @@ import {
   type GtaGuideTopic,
 } from "./gtaguide.ts";
 import { guideLogo, loadGuideAsks, loadHudFacts, loadPlayRecordings, pickGuideFrame } from "./gtaguidestep.ts";
-import { writeGtaGuide } from "./editorial/gtaguidewriter.ts";
+import { GuideTooThinError, writeGtaGuide } from "./editorial/gtaguidewriter.ts";
 import { OPENING_WORDS_MAX as GUIDE_OPENING_MAX } from "./editorial/longcontract.ts";
 import { applyPlannedChapters, factsPath, plannedFactsText, plannedTitle } from "./plannedoc.ts";
 import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
@@ -6193,7 +6193,8 @@ async function selectGtaGuide(s: Services, due: Date): Promise<string | undefine
     `SELECT factcheck_json->'gta_guide'->>'kind' AS kind, created_at AS at, status FROM episodes
       WHERE lane = 'longform' AND factcheck_json->'gta_guide'->>'kind' IS NOT NULL
         AND created_at > $1::timestamptz - interval '30 days'
-        AND (status NOT IN ('failed','rejected') OR created_at > $1::timestamptz - interval '2 days')`,
+        AND (status NOT IN ('failed','rejected') OR created_at > $1::timestamptz - interval '2 days'
+             OR (COALESCE(last_error, '') LIKE '%too thin for this kind%' AND created_at > $1::timestamptz - interval '7 days'))`,
     [now],
   );
   // The demand lookups (the Data API): one search a kind, the reading kept a week in settings so a slot never pays
@@ -8201,8 +8202,20 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
   ];
   let draft: import("./gtaguide.ts").GuideDraft | undefined;
   let feedback: string[] = [];
+  // The last draft's checks: a rewrite whose plan comes back too thin keeps that draft only when nothing factual or
+  // hard was wrong with it (the first plan may have been fine; the rewrite must never kill it).
+  let lastFactual: string[] = [];
+  let lastHard: string[] = [];
   for (let attempt = 0; attempt < 2; attempt++) {
-    draft = await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
+    try {
+      draft = await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
+    } catch (err) {
+      if (attempt > 0 && err instanceof GuideTooThinError && draft && !lastFactual.length && !lastHard.length) {
+        await logEvent(s.db, ep.id, "style_warnings", { problems: [err.message, ...feedback] });
+        break;
+      }
+      throw err;
+    }
     const script = guideToScript(draft, kind);
     const problems = [
       ...guideProblems(draft, ctx),
@@ -8211,9 +8224,11 @@ async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic
       ),
     ];
     const factual = await adjudicateRanking(s, ep, script, [], attempt, extra);
+    lastFactual = factual;
+    lastHard = problems.filter((p) => /^Story spoiler|speaks first-hand|no play evidence/.test(p));
     if (!problems.length && !factual.length) break;
     if (attempt === 1 && problems.length) {
-      const hard = problems.filter((p) => /^Story spoiler|speaks first-hand|no play evidence/.test(p));
+      const hard = lastHard;
       if (hard.length) throw new FatalError(`GTA guide still breaks a hard rule after the rewrite: ${hard[0]!.slice(0, 300)}`);
       await logEvent(s.db, ep.id, "style_warnings", { problems });
     }

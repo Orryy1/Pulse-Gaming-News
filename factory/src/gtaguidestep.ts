@@ -196,11 +196,21 @@ export function clipOwner(
 }
 
 /**
+ * A clip a thumbnail may take a frame from (pure): live console play always carries the GTA VI HUD (radar, cash,
+ * weapon, prompts), so only footage marked HUD-free qualifies (photo mode, a clean feed, HUD switched off). The 27 Nov
+ * proof's thumbnail was a dark stream frame full of HUD text; with no clean frame the official key art is used.
+ */
+export function hudFreeClip(c: Pick<FrameClip, "provenance">): boolean {
+  return /\b(hud off|hud-free|no hud|photo mode|clean feed)\b/i.test(c.provenance ?? "");
+}
+
+/**
  * How good a frame is for a thumbnail (pure): bright enough to read at 168x94, not blown out, and colourful (the style
  * is saturated). YAVG and SATAVG are ffmpeg signalstats' averages (0-255).
  */
 export function frameScore(yavg: number, satavg: number): number {
-  if (!(yavg >= 45 && yavg <= 215)) return -1;
+  // Bright and clear: a murky frame (the 27 Nov proof's was) never makes a thumbnail.
+  if (!(yavg >= 80 && yavg <= 205)) return -1;
   const light = 1 - Math.abs(yavg - 125) / 125;
   return light * 0.5 + Math.min(1, satavg / 90) * 0.5;
 }
@@ -247,9 +257,10 @@ export async function pickGuideFrame(
   | { file: string; fg?: string; x?: number; owner: "own" | "permitted" }
   | undefined
 > {
-  const own = clips.filter((c) => clipOwner(c) === "own");
+  const clean = clips.filter(hudFreeClip);
+  const own = clean.filter((c) => clipOwner(c) === "own");
   const pool = (
-    own.length ? own : clips.filter((c) => clipOwner(c) === "permitted")
+    own.length ? own : clean.filter((c) => clipOwner(c) === "permitted")
   ).slice(0, 8);
   if (!pool.length) return undefined;
   const owner = own.length ? "own" : "permitted";

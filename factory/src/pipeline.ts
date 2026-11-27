@@ -865,6 +865,8 @@ import {
   guideProblems,
   guideToScript,
   guideQualityWarnings,
+  cleanGuideMoments,
+  GUIDE_STILL_MAX_SHOWS,
   isGtaGuide,
   kindOf,
   pickGuideTopic,
@@ -13767,6 +13769,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   const moments = [...(script.entries ?? [])]
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
+  // A guide's cards are cleaned again here: later steps add graphics to bare sentences after the script is written.
+  if (script.gta_guide)
+    for (let e = 0; e < moments.length; e++)
+      moments[e] = cleanGuideMoments(script.beats[e]?.narration ?? "", moments[e] as Parameters<typeof cleanGuideMoments>[1]) as (typeof moments)[number];
   const hasMoments = moments.some((m) => m.length);
   // MAP_PINS (src/assets/gamemaps.ts): a sentence naming a place in its game, with nothing else on screen, shows the
   // game's own map in 3D with that place pinned. Only places the game's table has checked; never a guessed spot.
@@ -13903,11 +13909,11 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       // A clip cut short keeps its unseen rest for a later shot (LONG_CLIP_REMAINDERS).
       clipRemainders: s.cfg.longClipRemainders,
       // A retrospective is one game: its opening and closing may play footage from its chapters (LONG_MOVING_FIRST).
-      oneGame: isRetrospective(ep.factcheck_json),
+      oneGame: isRetrospective(ep.factcheck_json) || Boolean(script.gta_guide),
       // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast as the body (src/render/structure.ts).
       twoSpeed: s.cfg.longOpeningContract === "fix",
       // No picture on screen past LONG_STILL_MAX_SHOWS times, every copy counted as one (src/render/stillcap.ts).
-      stillMaxShows: s.cfg.longStillMaxShows ?? 0,
+      stillMaxShows: script.gta_guide ? GUIDE_STILL_MAX_SHOWS : (s.cfg.longStillMaxShows ?? 0),
       // A ranking chapter's footage before its stills (LONG_MIN_MOVING_SHARE): only a ranking's gather asks its
       // trailers for that share, so documentaries and the rest keep LONG_MOVING_FIRST's own say.
       minMovingShare: script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
@@ -14804,6 +14810,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         criterion: script.criterion ?? "",
         spoilers: scopeOf(script) === "campaign",
         recap: !!script.recap,
+        guide: !!script.gta_guide,
         theme: script.recap ? script.headline : script.game_title,
         footageCredit,
         endLine: script.recap
@@ -18306,6 +18313,8 @@ async function gtaGuideDesign(
     }
   | undefined
 > {
+  // The edition guide shows the official art (the editions' own artwork), never a gameplay frame.
+  if (meta.kind === "which-edition") return undefined;
   const frame = await pickGuideFrame(dir, clips, s.cfg.appleSubjectLift ? (f) => appleCut(dir, f) : undefined);
   if (!frame) return undefined;
   const logo = await guideLogo(s.cfg.dataDir, dir);

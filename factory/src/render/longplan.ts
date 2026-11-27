@@ -1582,6 +1582,10 @@ export function usefulGraphic<
   },
 >(g: G): boolean {
   if (g.kind === "none") return false;
+  // Pulse never cites Wikipedia on air (owner, 13 Nov 2026): a card crediting it is dropped (the 27 Nov guide proof
+  // showed "Wikipedia: Grand Theft Auto VI" three times). Its primary sources are credited where the writer has them.
+  const credit = (g as { evidence?: { credit?: string } }).evidence?.credit ?? "";
+  if (/\bwikipedia\b/i.test(`${g.primary} ${g.secondary} ${(g.items ?? []).join(" ")} ${credit}`)) return false;
   // Every row saying the same thing compares nothing (FFXIV 6:11: "optimized for offline games" twice).
   if (g.kind === "compare" && (g.items?.length ?? 0) >= 2) {
     const values = g.items!.map((x) =>

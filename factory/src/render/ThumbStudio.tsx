@@ -252,7 +252,7 @@ export const GuideThumb: React.FC<StudioThumbProps & { subline?: string }> = ({ 
             width: W,
             height: H,
             objectFit: "cover",
-            filter: `drop-shadow(5px 0 0 #fff) drop-shadow(-5px 0 0 #fff) drop-shadow(0 5px 0 #fff) drop-shadow(0 -5px 0 #fff) drop-shadow(0 0 22px rgba(0,0,0,0.7)) ${grade}`,
+            filter: `drop-shadow(0 0 2px rgba(255,255,255,0.45)) drop-shadow(0 10px 26px rgba(0,0,0,0.75)) ${grade}`,
           }}
         />
       ) : null}

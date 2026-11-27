@@ -811,16 +811,47 @@ export function guideGraphicKept(
   return true;
 }
 
-/** The moments with every graphic that carries nothing taken off (pure). */
+/** A card that only says what isn't known ("Not established", "Not announced", "No performance verdict"). */
+export const EMPTY_CARD =
+  /^(not (established|announced|confirmed|known|yet known|listed|stated)|unknown|unconfirmed|tbc|tba|to be (confirmed|announced)|no (\w+ )?(verdict|answer|word|details?|information))\b/i;
+
+/** Pulse never cites Wikipedia on air (owner, 13 Nov 2026): a card naming it is dropped, in every long video. */
+export const WIKIPEDIA_CARD = /\bwikipedia\b/i;
+
+/** A guide's still is shown once (no reused stills; the which-edition proof showed one car still three times in a minute). */
+export const GUIDE_STILL_MAX_SHOWS = 1;
+
+const plain = (t: string | undefined) => (t ?? "").toLowerCase().replace(/[^a-z0-9$£€%]+/g, " ").trim();
+// A card's title is its key; an untitled card keys on its second line and rows, so two different untitled compares both stay.
+const cardKey = (g: { kind: string; primary?: string; secondary?: string; items?: string[] }) =>
+  plain(g.primary) ? `${g.kind}|${plain(g.primary)}` : `${g.kind}||${plain(g.secondary)}|${cardItems(g)}`;
+const cardItems = (g: { items?: string[] }) =>
+  (g.items ?? []).map((x) => x.toLowerCase().replace(/[^a-z0-9$£€%]+/g, " ").trim()).sort().join("|");
+
+/**
+ * The moments with every graphic that carries nothing taken off (pure): the item's own number, a footage credit, a
+ * date that isn't the point, a card that only says what isn't known, a Wikipedia credit, and a card the item already
+ * showed (same kind and title, or the same rows).
+ */
 export function cleanGuideMoments(narration: string, moments: AnyMoment[]): AnyMoment[] {
   const s = sentencesOf(narration);
+  const seen = new Set<string>();
+  const none = { kind: "none", primary: "", secondary: "", items: [] };
   return moments.map((m, i) => {
-    const g = (m as { graphic?: { kind: string } }).graphic;
-    if (!g || g.kind === "none" || guideGraphicKept(g, s[i] ?? "")) return m;
-    return {
-      ...m,
-      graphic: { kind: "none", primary: "", secondary: "", items: [] },
-    } as AnyMoment;
+    const g = (m as { graphic?: { kind: string; primary?: string; secondary?: string; items?: string[]; evidence?: { credit?: string } } }).graphic;
+    if (!g || g.kind === "none") return m;
+    const text = `${g.primary ?? ""} ${g.secondary ?? ""} ${(g.items ?? []).join(" ")} ${g.evidence?.credit ?? ""}`;
+    const rows = cardItems(g);
+    const dup = seen.has(cardKey(g)) || (rows.length > 0 && seen.has(`rows|${rows}`));
+    const keep =
+      guideGraphicKept(g, s[i] ?? "") &&
+      !EMPTY_CARD.test((g.primary ?? "").trim()) &&
+      !WIKIPEDIA_CARD.test(text) &&
+      !dup;
+    if (!keep) return { ...m, graphic: none } as AnyMoment;
+    seen.add(cardKey(g));
+    if (rows) seen.add(`rows|${rows}`);
+    return m;
   });
 }
 

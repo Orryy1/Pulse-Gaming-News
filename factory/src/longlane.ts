@@ -41,6 +41,31 @@ export function longBusyForDeploy(p: {
   return { busy: p.enabled && minutes < p.maxMinutes, minutes };
 }
 
+/** The planning around a long build (shot plans, thumbnails, graphics pre-pass, normalising and checks), in minutes. */
+export const LONG_PLAN_MINUTES = 45;
+
+/**
+ * When a long tick counts as stuck for DEPLOY_WAIT_LONG, in minutes (pure): DEPLOY_WAIT_LONG_MAX_MINUTES, or longer
+ * when a healthy build takes longer: its planning, the wait for its 3D clips (BLENDER_WAIT_MINUTES, when 3D is on)
+ * and the render. On 27 Nov the Cyberpunk documentary waited 150 minutes for its 3D clips before a two-hour render,
+ * so a 240-minute mark would have let a deploy restart it again between the wait and the render. Never past the
+ * lease (an expired lease is not busy anyway). The lane watchdog's LONG_TICK_STALL_MINUTES is raised the same way,
+ * since the 3D wait does not count as a render. The lease covers the whole long pass, which can take in other
+ * episodes first, so this is a floor for one build, not a measure of it.
+ */
+export function longStuckMinutes(p: {
+  maxMinutes: number;
+  blenderOn: boolean;
+  blenderWaitMinutes: number;
+  renderMinutes: number;
+}): number {
+  const build =
+    LONG_PLAN_MINUTES +
+    (p.blenderOn ? Math.max(0, p.blenderWaitMinutes || 0) : 0) +
+    Math.max(0, p.renderMinutes || 0);
+  return Math.max(p.maxMinutes, Math.min(LONG_LEASE_TTL_S / 60, Math.round(build)));
+}
+
 /** The statuses before anything is made: an episode here still needs the whole lane. */
 const UNMADE = new Set(["selected", "scripted"]);
 /** The statuses before the render. */

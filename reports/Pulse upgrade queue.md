@@ -308,6 +308,10 @@ Owner: massive retrospectives with full game histories, the making of, innovatio
 
 ## 32. Deploys must never cut off a long render (found 14 Nov)
 
+**Status (27 Nov 07:00, improvement engine): built** as `DEPLOY_WAIT_LONG` (on by default, `DEPLOY_WAIT_LONG_MAX_MINUTES` 240) on `claude/engine-longdeploy`. /health reports `long_running` from the tick-long lease; mac/deploy.sh (and `--restart`) and the merge gate wait for it; `DEPLOY_IGNORE_LONG=1` skips it on the PC. Evidence: 42 of 77 boots on 20 and 25-27 Nov cut a long tick, three of them the Cyberpunk documentary overnight. Judged 4 Dec (see the improvement log).
+
+**Left (code-reviewer, 27 Nov):** (a) mac/post-receive is only installed by migrate.sh, so the Mac hook still checks render and upload only; a long tick that starts between deploy.sh's check and the push is still cut. Fix: deploy.sh installs the hook, passes overrides with push options, and detects a refused push (exit 2, not "may have rolled back"). (b) canary.ts quiet() and rollback.sh ignore the long lane (recovery paths). (c) A deploy that waits writes pending-deploy.json but nothing retries it on a schedule except the next engine run.
+
 The "Fairgames Is Finished. Haven Isn't." documentary started its render at about 13:50, 14:10 and 14:30 on 14 Nov. The deploys at 14:03 and 14:25 (and the restart at 15:30) almost certainly restarted the factory mid-render. mac/deploy.sh waits for a quiet moment, but it went ahead while a long render was running. Build: deploy.sh and `--restart` refuse while any long render or upload is in progress, read from /health or the leases table, unless DEPLOY_FORCE=1. Add a flight-simulator invariant for it. Check that the documentary finished and got its slot.
 
 ## 33. Shorts yield: 6 of 30 published on 13 to 14 Nov (being fixed on claude/qayield)

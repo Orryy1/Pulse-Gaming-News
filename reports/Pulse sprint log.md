@@ -50,3 +50,10 @@ Daily record of the 30-day growth sprint (21 Nov to 20 Dec 2026), written by the
 - OWNER (Reporting API, PC Brave): not opened today; carried to the weekly review, since the plan says only if Google asks.
 - OWNER inbox 36: double-click install-routine-files-pull.cmd on the PC (the session could not recreate the task).
 - Also shipped (fault fix, not a sprint item): LONG_RESLOT 24748f3e5, so the late Cyberpunk documentary goes out at 19:00 tonight instead of in the night.
+
+## Fri 27 Nov (day 7, daily review, run at about 09:35-11:30 UK)
+
+- Weekly report with the GTA against non-GTA split and subscribers per 1,000 for the strand: DONE. reports\Pulse weekly report 27 Nov 2026.md. Shorts published 20-24 Nov: GTA 139 views a Short (58% viewed, 0 subscribers) against 333 for other games (50%, 0.43 per 1,000); the strand had one Short with data (23 views), too few to judge; the one long video earned as many subscribers as all the week's Shorts.
+- Carried from 26 Nov, Test and compare on old long videos: NOT CHECKED this run (the 11:32 abtest report from 26 Nov was not re-read). Carried to 28 Nov.
+- Carried, 22-25 Nov Me items unaudited: the weekly review is on Mondays, not Fridays, so this audit is carried to the Mon 30 Nov weekly review.
+- Fault work this run: two broken live titles retitled (YouTube API confirms); opening-caption fragments on footage-opening Shorts fixed on claude/opencaption (see the fault ledger); long-video lane traced (deploy restarts and a 2 h 40 min preparation ate the render gap; no further change while the 00:15 and 07:00 fixes are judged).

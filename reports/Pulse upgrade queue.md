@@ -2,6 +2,10 @@
 
 Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item first. Each entry says why, what to build and how we'll know it worked.
 
+## Done 27 Nov (engine): titles keep part numbers and last words (TITLE_KEEP_WHOLE)
+
+Shipped 8186cf0d7. Left over: the live GTA File #3 Short (zsMUOYm9d2A) still reads "GTA VI File : GTA 6 Radio Now Keeps Playing When You're on"; a session allowed to edit published titles should set it to "GTA VI File #3: GTA 6 Radio Now Keeps Playing When You're on Foot". Also check older live titles for the same cut (a sweep over the channel's titles ending on a small word).
+
 ## Weekly ranking, 26 Nov (weekly cycle)
 
 Ranked by expected effect on subscribers and watch hours, evidence and size. Nothing started this week (drop guardrail; see Pulse experiments.md).

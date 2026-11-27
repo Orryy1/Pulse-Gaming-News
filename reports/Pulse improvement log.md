@@ -2,6 +2,24 @@
 
 One entry per improvement-engine run (scheduled task pulse-improvement-engine, every 4 hours). Newest first. Each entry says what changed, the evidence, the setting, and how and when it will be judged. Verdicts are added under the entry when they are made.
 
+## 27 Nov 2026, 03:00 UK: titles keep their part number and their last word
+
+**Change:** the YouTube title cleaner no longer mangles titles. A part number ("#3") is no longer treated as a hashtag, a GTA VI File or The Why title gets its prefix's length on top of the 60-character budget and is never rebuilt from the headline (it is still cleaned of clickbait words and punctuation), a cut title never ends on a dangling small word ("on", "of", "you") or a one- or two-word broken clause, and the word after "?" or "!" is capitalised. Hashtags in any alphabet ("#Pokémon") come out whole. Branch `claude/engine-titlekeep` (38eeab549, 6b5076bc8), stage 8186cf0d7, **deployed 03:00 UK**, factory healthy. Also finished the waiting deploy of the torn depth still fix (d6c819401) at the start of the run.
+
+**Evidence:**
+
+- Live now: "GTA VI File #3: GTA 6 radio now keeps playing when you're on foot" went out as "GTA VI File : GTA 6 Radio Now Keeps Playing When You're on" (zsMUOYm9d2A), and "Police Cars? The honest answer" as "Police Cars? the Honest Answer" (veiZ0SXyvXU). GTA File parts 4 to 7 run to 30 Nov and would all lose their number.
+- Replay of the last 30 writer titles from the factory: 4 change, all for the better ("#3 ... on Foot", "Cars? The Honest Answer", "Got a Remaster, Not a" becomes "Got a Remaster", "PlayStation Store, and" becomes "PlayStation Store"); the other 26 are identical (D:\pulse-data\scratch\titlekeep-replay.txt). With the setting off the test reproduces the exact broken live title.
+- 11 new tests; typecheck clean; merge gate 3,722 of 3,722 pass.
+- code-reviewer: blocked the first version (the series rule was too loose and let clickbait through on a series title). Fixed: only the factory's own series count, series titles are still cleaned, "not" is never stripped on its own, more dangling words, non-ASCII hashtags. Website links of the few changed past titles change too, but old links still resolve by the id at the end.
+- No change to video frames (title text only), so no frame review was needed.
+
+**Setting:** `TITLE_KEEP_WHOLE` (on unless "false").
+
+**Judged:** by 4 Dec. Pass mark: GTA File parts 4 to 7 go live with their "#n" and a whole claim; no title in the RSS feed ends on a small word or a " :"; no clickbait word or "?!" in any series title. The live #3 title still reads "GTA VI File : ..."; this task may not edit a published video, so it is left for a session that may.
+
+**Also looked at, not changed:** factory healthy (9 published in 24 h). "Bread and Fred is free to keep on Epic" 318 views and "Why Bungie Kept Making Halo" 181 lead today. PC vision relay dropped 6 times in a day (Master orchestrator's area). Output audit still the weak spot (why 8 of 21 public in 7 days), owned by earlier entries. No older engine change due for judging (next 28 and 29 Nov). Claude week 76%.
+
 ## 26 Nov 2026, 23:00 UK: the torn depth still fix is merged (deploy after the 23:30 slot)
 
 **Change:** none new. This run finished shipping the 19:00 change (`QA_FLATTEN_DEPTH`, a faulted layered still renders flat on the Short's retry), rather than starting a second change to the same pictures. The merge gate passed on the third try: merged onto claude/stage 53bccb639 as 0cd0d59e6, typecheck clean, 3,694 tests pass, no backspace bytes, pushed, C:\PulseFactory fast-forwarded. Exit 3: the deploy waits because the 23:30 slot is within 50 minutes; the next run deploys it with `--deploy-only`.

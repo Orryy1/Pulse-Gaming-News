@@ -13,8 +13,12 @@
 //   scene arrives; never the same sequence as any of the newest 30 Shorts where a choice exists; one music dip of
 //   0.7 to 1.5 s before the verdict line when the voice already leaves that gap (the audio is never re-timed).
 // - SHORT_LAYOUTS=on (SHORT_LAYOUTS_SHARE): three openings (today's headline card, full-frame picture with captions
-//   only, a one-line lower third that leaves after the hook) and two closings (today's return to the headline card,
-//   holding on the payoff), chosen so no opening takes more than 40% of the newest 30; the first shot lasts 1.5 s.
+//   only, a one-line lower third from the spoken hook that leaves after the hook) and two closings (today's return to
+//   the headline card, holding on the payoff), chosen so no opening takes more than 40% of the newest 30 Shorts whose
+//   shape the test chose (the Shorts off the test all open on the card, so the channel as a whole stays card-heavy at
+//   any share under 1). The cover and the custom thumbnail always show today's card opening (src/render/render.ts).
+// A third, separate test: SHORT_FIRST_SHOT_MIN_S (SHORT_FIRST_SHOT_SHARE) holds the first shot to a minimum length,
+// split by its own salt and recorded as assets.shortFirstShot, so it never rides on the layout arm.
 //
 // Everything here is pure: no clock, no randomness, no database. The step that reads the channel's memory and
 // records the arms is src/untemplatestep.ts.
@@ -28,6 +32,7 @@ import {
 } from "./cleanframe.ts";
 import type { RenderPlan, Shot, SfxCue } from "./plan.ts";
 import type { Segment } from "./timeline.ts";
+import { CONTENT_WIDTH } from "./layout.ts";
 
 // ---- Arms ---------------------------------------------------------------------------------------
 
@@ -56,6 +61,7 @@ export function inShare(id: string, share: number, salt: string): boolean {
 
 export type SoundArm = "sparse" | "v3";
 export type LayoutArm = "on" | "off";
+export type FirstShotArm = "held" | "off";
 
 /** The sound test's arm: "sparse" only while SHORT_SOUND_PLAN=sparse and the id falls inside the share. */
 export const soundArm = (
@@ -71,6 +77,14 @@ export const layoutArm = (
   layouts: boolean,
   share: number,
 ): LayoutArm => (layouts && inShare(id, share, "short-layout") ? "on" : "off");
+
+/** The first-shot test's arm: "held" only while SHORT_FIRST_SHOT_MIN_S is above 0 and the id falls inside the share. */
+export const firstShotArm = (
+  id: string,
+  minSeconds: number,
+  share: number,
+): FirstShotArm =>
+  minSeconds > 0 && inShare(id, share, "short-first-shot") ? "held" : "off";
 
 // ---- Sound -------------------------------------------------------------------------------------
 
@@ -308,6 +322,11 @@ export function planSparseSfx(input: {
    * where it shows from its own first frame, arrives like a card. Absent, no collage card.
    */
   sting?: false | { from: number; frames: number };
+  /**
+   * The sequence an earlier render of this same episode chose (assets.shortSoundSequence): played again when these
+   * arrivals can still play it, so a retry or a regather does not change the sound because newer Shorts were made.
+   */
+  keep?: string;
 }): SparseResult {
   const { plan, id } = input;
   const fps = plan.fps;
@@ -322,7 +341,8 @@ export function planSparseSfx(input: {
   const arrivals = arrivalsOf({ ...input, words: input.words }).filter(
     (a) => !inSilence(a.frame),
   );
-  const recent = new Set(input.recent.filter(Boolean));
+  // The episode's own earlier choice is never a "recent" sequence to avoid.
+  const recent = new Set(input.recent.filter((s) => s && s !== input.keep));
   const seed = idHash(id, "short-sound-pick");
   // The arrivals worth a sound, best first.
   const ranked = [...arrivals].sort((a, b) => RANK[a.kind] - RANK[b.kind] || a.frame - b.frame);
@@ -343,8 +363,11 @@ export function planSparseSfx(input: {
     if (silence && frame >= silence.from - 3 && frame < silence.to) frame = silence.to;
     return { file: sfxFile(o.name), frame, volume: o.volume };
   };
-  /** The first combination of sounds for these arrivals whose sequence no recent Short played, if any. */
-  const fresh = (events: Arrival[]): SfxCue[] | undefined => {
+  /** The first combination of sounds for these arrivals that `ok` accepts, if any. */
+  const search = (
+    events: Arrival[],
+    ok: (cues: SfxCue[]) => boolean,
+  ): SfxCue[] | undefined => {
     const opts = events.map((e, i) => {
       const list = optionsFor(e, input.stampSound);
       const r = (seed + i * 7) % list.length;
@@ -358,10 +381,31 @@ export function planSparseSfx(input: {
         rest = Math.floor(rest / o.length);
         return cueOf(pick);
       });
-      if (!recent.has(sequenceOf(cues))) return cues;
+      if (ok(cues)) return cues;
     }
     return undefined;
   };
+  /** The first combination of sounds for these arrivals whose sequence no recent Short played, if any. */
+  const fresh = (events: Arrival[]): SfxCue[] | undefined =>
+    search(events, (cues) => !recent.has(sequenceOf(cues)));
+  // An earlier render's own choice first, when these arrivals can still play it exactly.
+  if (input.keep !== undefined) {
+    const keptSeq = sequenceOf(kept);
+    if (input.keep === keptSeq) {
+      const sfx = [...kept].sort((a, b) => a.frame - b.frame);
+      return { sfx, sequence: sequenceOf(sfx), silence, wanted, arrivals: arrivals.length };
+    }
+    const n = input.keep.split(">").length - (keptSeq ? keptSeq.split(">").length : 0);
+    const events = n >= 1 && n <= budget ? pickEvents(n) : [];
+    const cues =
+      events.length === n
+        ? search(events, (c) => sequenceOf([...kept, ...c]) === input.keep)
+        : undefined;
+    if (cues) {
+      const sfx = [...kept, ...cues].sort((a, b) => a.frame - b.frame);
+      return { sfx, sequence: sequenceOf(sfx), silence, wanted, arrivals: arrivals.length };
+    }
+  }
   // The count the id asked for first; when every combination of it is a recent sequence, one more effect (within the
   // budget), then fewer. Zero only when the id asked for none or nothing fresh exists at all.
   const counts = wanted
@@ -413,7 +457,8 @@ export function silenceDipAt(
 
 /**
  * How a Short opens: "card" today's headline card (or poster) over the hook; "footage" the picture full frame with
- * captions only and the small Pulse mark; "lower" the headline as one lower-third line that leaves after the hook.
+ * captions only and the small Pulse mark; "lower" three or four words of the spoken hook as one lower-third line
+ * (the headline only when the hook gives none) that leaves after the hook.
  */
 export type ShortOpen = "card" | "footage" | "lower";
 /** How a Short closes: "card" today's return to the headline card; "hold" the last shot stays with the last caption. */
@@ -431,8 +476,11 @@ export const LAYOUT_CAP = 0.4;
 /** The window the cap is measured over. */
 export const LAYOUT_WINDOW = 30;
 
-/** The lower third's width (the content box less its padding) and its smallest readable size. */
-const LOWER_WIDTH = 900;
+/**
+ * The lower third's text width: the content box (SAFE.left to SAFE.right, src/render/layout.ts) less the accent bar
+ * (10 px), the panel's padding (22 px a side) and a margin for the letter spacing (Short.tsx LowerLine): 880 px.
+ */
+export const LOWER_WIDTH = CONTENT_WIDTH - 72;
 const LOWER_MIN_SIZE = 52;
 const LOWER_MAX_SIZE = 76;
 /** Anton capitals average about 0.52 em; 0.56 keeps a margin for W and M (src/render/layout.ts). */
@@ -449,14 +497,78 @@ export function lowerLineSize(text: string): number | undefined {
   return size >= LOWER_MIN_SIZE ? size : undefined;
 }
 
+/** Most words the lower third takes from the spoken hook. */
+export const HOOK_LINE_MAX_WORDS = 4;
+/** Words a short line never ends on: it would read as a cut-off fragment ("THE ONE THING THAT"). */
+const WEAK_END = new Set(
+  (
+    "a an the and or but so of to in on at for from by with as into onto than that this these those which who whose " +
+    "what when where why how is are was were be been being has have had do does did will would can could should may " +
+    "might must just not no its it's your you're you my our their his her if then about over after before " +
+    "never still longer only even ever also almost nearly barely hardly really very"
+  ).split(" "),
+);
+/** A word after a figure that belongs to it ("2.4 million", "40 percent"): the line is never cut between them. */
+const UNIT_WORD = /^(million|billion|thousand|hundred|trillion|percent|per|%|k|m|bn|dollars|pounds|euros|hours|minutes|days|weeks|months|years|players|copies|times|fps|gb|tb)\b/i;
+/** A word that starts an attribution ("Xbox is dead, says nobody"): the clause before it is not the hook's claim. */
+const ATTRIBUTION = /^(says|said|claims|claimed|according|reportedly|insists|insisted|reports|reported|apparently)\b/i;
+/** A token that is or holds a figure or a price. */
+const FIGURE = /[0-9$\u00a3\u20ac%]/;
+/** A word that closes a clause. */
+const CLAUSE_END = /[.,!?;:\u2013\u2014]$/;
+
 /**
- * The lower third's text (pure): the headline when it fits one readable line, else the thumbnail's words when they
- * do, else none (and the Short does not open on a lower third). Words are never cut: a cut headline can mislead.
+ * Three to four words from the spoken hook for the lower third (pure): the hook's first clause when it is two to four
+ * words, else its first four words (or three when four do not fit the width), never ending on a weak word, every
+ * word whole. Undefined when no such piece of the hook fits one readable line (the hook is unusable).
+ */
+export function hookLine(hook?: string): string | undefined {
+  const flat = (hook ?? "")
+    .replace(/[\u201c\u201d"]/g, "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!flat) return undefined;
+  const words = flat.split(" ");
+  // The first clause, when it ends inside the first four words ("GTA 6 slipped again. Here's why" gives "GTA 6 slipped again").
+  const clauseEnd = words.findIndex((w) => CLAUSE_END.test(w));
+  const firstClause = clauseEnd >= 1 && clauseEnd < HOOK_LINE_MAX_WORDS ? clauseEnd + 1 : 0;
+  // A clause the next words attribute to someone is not a claim to put on screen alone: the headline instead.
+  if (firstClause && ATTRIBUTION.test(words[firstClause] ?? "")) return undefined;
+  const tidy = (ws: string[]): string | undefined => {
+    const out = ws.map((w) => w.replace(/[.,!?;:\u2013\u2014]+$/, "")).filter(Boolean);
+    while (out.length && WEAK_END.has(out.at(-1)!.toLowerCase().replace(/[^a-z']/g, ""))) out.pop();
+    if (out.length < 2) return undefined;
+    // Cut short of the whole hook: never right after a figure ("SOLD 2.4") or between a figure and its unit.
+    if (out.length < words.length) {
+      if (FIGURE.test(out.at(-1)!)) return undefined;
+      // Nor just before one ("SWITCH 2 COSTS" with the price cut off).
+      const next = words[out.length] ?? "";
+      if (UNIT_WORD.test(next) || FIGURE.test(next)) return undefined;
+    }
+    const t = out.join(" ");
+    return lowerLineSize(t) ? t : undefined;
+  };
+  const tries = firstClause ? [firstClause] : [HOOK_LINE_MAX_WORDS, HOOK_LINE_MAX_WORDS - 1];
+  for (const n of tries) {
+    const t = tidy(words.slice(0, n));
+    if (t) return t;
+  }
+  return undefined;
+}
+
+/**
+ * The lower third's text (pure): three to four words of the spoken hook (hookLine); only when the hook gives none,
+ * the headline when it fits one readable line, else the thumbnail's words when they do, else none (and the Short does
+ * not open on a lower third). A headline or thumbnail line is never cut: a cut headline can mislead.
  */
 export function lowerLine(
   headline: string,
   thumbText?: string,
+  hook?: string,
 ): string | undefined {
+  const fromHook = hookLine(hook);
+  if (fromHook) return fromHook;
   for (const t of [headline, thumbText ?? ""]) {
     const clean = t.replace(/\s+/g, " ").trim();
     if (clean && lowerLineSize(clean)) return clean;
@@ -468,10 +580,12 @@ export function lowerLine(
  * A Short's opening and closing (pure): among the openings it may use, the one the newest Shorts used least, so no
  * opening takes more than LAYOUT_CAP of the window while three can be chosen; a tie goes to the id. The same for the
  * closing. A rumour never opens on the lower third, which drops the honesty label (the rumour flag must show).
+ * `recent` is the newest Shorts whose shape the test chose (src/untemplatestep.ts readShortMemory): Shorts off the
+ * test all open on the card, and counting them would leave the test's own side never choosing the card at all.
  */
 export function pickShape(o: {
   id: string;
-  /** The newest Shorts' shapes, newest first; today's Shorts are { open: "card", close: "card" }. */
+  /** The newest chosen shapes, newest first (the Shorts on the test's side; none off it). */
   recent: ReadonlyArray<Pick<ShortShape, "open" | "close">>;
   rumour: boolean;
   /** The lower third's text (lowerLine); none, no lower third. */
@@ -509,7 +623,7 @@ export function pickShape(o: {
   return open === "lower" ? { open, close, line: o.line } : { open, close };
 }
 
-/** The first shot of a Short in the new layouts lasts at least this long (1.5 s at 30 fps). */
+/** The first shot's default minimum when held (1.5 s at 30 fps, SHORT_FIRST_SHOT_MIN_S=1.5). */
 export const FIRST_SHOT_MIN = 45;
 /** The second shot keeps at least this much when the first borrows from it. */
 const SECOND_SHOT_KEEP = 30;

@@ -53,11 +53,23 @@ import { masterEncoder, type RenderSpeed } from "./renderspeed.ts";
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
 
 /**
- * The cover still's props (pure, SHORT_FULL_COVER): the Short's own props with the whole headline back in place of the
- * opening words and the caption left out, so frame 0 reads as a complete title on a profile grid.
+ * A still's props with today's card opening (pure, SHORT_LAYOUTS): the chosen shape left out, so frame 0 carries the
+ * headline card. A "footage" opening has no headline at frame 0 and a "lower" one fades in from nothing, so a still
+ * of either would upload a title-less custom thumbnail. Props with no shape are returned as they are.
  */
-export function coverStillProps<P extends { openingWords?: string; coverStill?: boolean }>(props: P): P {
-  const { openingWords: _w, ...rest } = props;
+export function cardStillProps<P extends { shape?: unknown }>(props: P): P {
+  if (props.shape === undefined) return props;
+  const { shape: _s, ...rest } = props;
+  return rest as P;
+}
+
+/**
+ * The cover still's props (pure, SHORT_FULL_COVER): the Short's own props with the whole headline back in place of the
+ * opening words, the caption left out and today's card opening whatever the layout test chose (cardStillProps), so
+ * frame 0 reads as a complete title on a profile grid.
+ */
+export function coverStillProps<P extends { openingWords?: string; coverStill?: boolean; shape?: unknown }>(props: P): P {
+  const { openingWords: _w, ...rest } = cardStillProps(props);
   return { ...rest, coverStill: true } as P;
 }
 
@@ -1411,18 +1423,21 @@ export async function renderShort(input: RenderInput): Promise<void> {
       });
     if (input.thumbFile && input.coverFile && input.thumbFile !== input.coverFile)
       await fsp.copyFile(input.coverFile, input.thumbFile);
-    else if (input.thumbFile && !input.coverFile)
+    else if (input.thumbFile && !input.coverFile) {
+      // The frame-0 thumbnail shows today's card opening whatever the layout test chose (cardStillProps).
+      const thumbProps = cardStillProps(props);
       await renderStill({
-        composition,
+        composition: thumbProps === props ? composition : { ...composition, props: thumbProps },
         serveUrl,
         output: input.thumbFile,
-        inputProps: props,
+        inputProps: thumbProps,
         frame: 0,
         imageFormat: "jpeg",
         jpegQuality: 90,
         browserExecutable,
         chromiumOptions: { gl: input.gl ?? "swangle" },
       });
+    }
     await renderStill({
       composition,
       serveUrl,

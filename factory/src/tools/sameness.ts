@@ -18,6 +18,7 @@ import {
 } from "../qa/sameness.ts";
 import {
   FIRST_SHOT_MIN,
+  firstShotArm,
   holdFirstShot,
   layoutArm,
   lowerLine,
@@ -70,6 +71,8 @@ async function simulate(
     firstShortAfter: 0,
     failed: 0,
   };
+  // The shapes the simulated test chose, newest first: the opening cap counts only these (src/untemplatestep.ts).
+  const chosen: Array<Pick<ShortShape, "open" | "close">> = [];
   for (let k = Math.min(N, all.length) - 1; k >= 0; k--) {
     const row = all[k]!;
     const memory = history.slice(k + 1, k + 1 + 30);
@@ -83,19 +86,22 @@ async function simulate(
     if (layoutArm(row.id, true, share) === "on") {
       shape = pickShape({
         id: row.id,
-        recent: memory.map((m) => ({
-          open: m.open as ShortShape["open"],
-          close: m.close as ShortShape["close"],
-        })),
+        recent: chosen.slice(0, 30),
         rumour: Boolean(row.script?.is_rumour),
         line: lowerLine(
           row.script?.headline ?? "",
           row.script?.youtube?.thumb_text,
+          row.script?.hook,
         ),
       });
+      chosen.unshift({ open: shape.open, close: shape.close });
       rec.open = shape.open;
       rec.close = shape.close;
       notes.layouts++;
+    }
+    // SHORT_FIRST_SHOT_MIN_S=1.5 is its own split (its own salt; simulated here at the same share), never tied to the
+    // layout arm.
+    if (firstShotArm(row.id, FIRST_SHOT_MIN / 30, share) === "held") {
       const held = holdFirstShot(plan?.shots ?? []);
       if (held[0] && held[0].end - held[0].start < FIRST_SHOT_MIN)
         notes.firstShortAfter++;

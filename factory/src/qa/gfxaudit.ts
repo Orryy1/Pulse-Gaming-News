@@ -387,8 +387,8 @@ export function figureSupported(
     return true;
   // "343" is also said "three four three" when it starts the studio's name (speakable.ts DIGIT_STUDIOS).
   for (const want of [tok(speakable(fig)), ...studioFigureSaid(fig).map((s) => s.flatMap(tok))])
-  for (let k = 0; want.length && k + want.length <= spoken.length; k++)
-    if (want.every((w, j) => spoken[k + j] === w)) return true;
+    for (let k = 0; want.length && k + want.length <= spoken.length; k++)
+      if (want.every((w, j) => spoken[k + j] === w)) return true;
   // A rounded or scaled figure ("$942M" for "942 million") is the same number: the digits are what matter.
   const digits = n.replace(/\D/g, "");
   return (

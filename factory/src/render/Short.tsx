@@ -143,7 +143,8 @@ const ThenYear: React.FC<{ year: string; accent: string }> = ({ year, accent }) 
 };
 
 /**
- * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts): the headline as one line above the captions, in from
+ * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts lowerLine): a few words of the hook (else the headline)
+ * as one line above the captions, in from
  * the left over 8 frames and gone by the hook's end, the picture full frame behind it.
  */
 const LowerLine: React.FC<{ text: string; accent: string; frames: number }> = ({ text, accent, frames }) => {
@@ -642,14 +643,15 @@ export const Short: React.FC<ShortProps> = (props) => {
       ? undefined
       : sceneOwnsCard(i) ? afterScene(i) : placed(`card${i}`, graphicWindow(i).from, graphicWindow(i).len);
   // The flair, rule and source line: the opening 3 s (fading over its last 10 frames) and the loop's return to frame 0.
-  // SHORT_LAYOUTS: the lower third is the opening's one line of text, so the label sits out; a held close never
-  // returns to frame 0, so the label does not come back for it.
+  // SHORT_LAYOUTS: the lower third is the opening's one line of text, so the label sits out (a rumour never opens on
+  // it); a held close never returns to frame 0, so the label does not come back for it, except on a rumour, whose
+  // label comes back on every close as on the card's (the rumour flag must show).
   const openShape = props.shape?.open ?? "card";
   const closeShape = props.shape?.close ?? "card";
   const labelOpacity = !clean
     ? 1
     : frame >= layout.loopFrom
-      ? closeShape === "hold" ? 0 : 1
+      ? closeShape === "hold" && !props.isRumour ? 0 : 1
       : openShape === "lower"
         ? 0
       : interpolate(frame, [OPENING_LABEL_FRAMES - 10, OPENING_LABEL_FRAMES], [1, 0], {

@@ -1515,10 +1515,12 @@ export interface Config {
   shortSoundSparseShare: number;
   /**
    * More than one Short layout (src/render/untemplate.ts): three openings (today's headline card, the picture full
-   * frame with captions only, the headline as one lower-third line that leaves after the hook) and two closings
-   * (today's return to the headline card, holding on the payoff), chosen so no opening takes more than 40% of the
-   * newest 30; the first shot lasts at least 1.5 s. Clean-frame Shorts only (one overlay at a time). Applies to the
-   * share in SHORT_LAYOUTS_SHARE, recorded as assets.shortShape: SHORT_LAYOUTS (on|off), default off.
+   * frame with captions only, three or four words of the spoken hook as one lower-third line that leaves after the
+   * hook) and two closings (today's return to the headline card, holding on the payoff), chosen so no opening takes
+   * more than 40% of the newest 30 Shorts whose shape the test chose (Shorts off the test all open on the card, so the
+   * channel as a whole stays mostly card at any share under 1). The cover and custom thumbnail keep today's card. A
+   * retry keeps the shape first chosen. Clean-frame Shorts only (one overlay at a time). Applies to the share in
+   * SHORT_LAYOUTS_SHARE, recorded as assets.shortShape: SHORT_LAYOUTS (on|off), default off.
    */
   shortLayouts: boolean;
   /** Share of Shorts given a chosen layout while SHORT_LAYOUTS=on; 1 all: SHORT_LAYOUTS_SHARE, default 0.5. */
@@ -1526,10 +1528,13 @@ export interface Config {
   /**
    * Every Short's first shot lasts at least this many seconds, its frames taken from the second shot so the length
    * and the voice do not move. Today a Short opening on a still cuts after 0.4 s (the 12-frame brand sting over the
-   * hero still, src/render/plan.ts STING_FRAMES), a flicker on 30% of Shorts. 1.5 is the recommended value:
-   * SHORT_FIRST_SHOT_MIN_S, default 0 (off).
+   * hero still, src/render/plan.ts STING_FRAMES), a flicker on 30% of Shorts. 1.5 is the recommended value. Its own
+   * test, independent of SHORT_LAYOUTS: applies to the share in SHORT_FIRST_SHOT_SHARE, recorded as
+   * assets.shortFirstShot: SHORT_FIRST_SHOT_MIN_S, default 0 (off).
    */
   shortFirstShotMinSeconds: number;
+  /** Share of Shorts whose first shot is held while SHORT_FIRST_SHOT_MIN_S is above 0; 1 all: SHORT_FIRST_SHOT_SHARE, default 0.5. */
+  shortFirstShotShare: number;
   /** The documentary evidence board style (src/evidencestyle.ts; owner, 26 Nov 2026): date cards, typed case cards, red
    * stamps and, for mystery and lore episodes, the stills pinned to a board joined by red string. EVIDENCE_STYLE, default off. */
   evidenceStyle: boolean;
@@ -2775,6 +2780,7 @@ export function loadConfig(): Config {
     shortLayouts: ["on", "true", "1", "yes"].includes(str("SHORT_LAYOUTS", "off").trim().toLowerCase()),
     shortLayoutsShare: shareOf(str("SHORT_LAYOUTS_SHARE", "0.5"), 0.5),
     shortFirstShotMinSeconds: Math.min(4, Math.max(0, Number(str("SHORT_FIRST_SHOT_MIN_S", "0")) || 0)),
+    shortFirstShotShare: shareOf(str("SHORT_FIRST_SHOT_SHARE", "0.5"), 0.5),
     evidenceStyle: bool("EVIDENCE_STYLE", false),
     evidenceStyleShare: Math.min(1, Math.max(0, Number(str("EVIDENCE_STYLE_SHARE", "0.5")) || 0)),
     depthOrbit: bool("DEPTH_ORBIT", false),

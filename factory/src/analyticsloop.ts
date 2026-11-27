@@ -76,6 +76,7 @@ import {
   type SplitRow,
 } from "./loopsplits.ts";
 import { retentionModelLessons } from "./retentionstep.ts";
+import { untemplateLinesForReport, type UntemplateResultRow } from "./untemplatestep.ts";
 
 const DAY = 86_400_000;
 const H = 3_600_000;
@@ -257,6 +258,8 @@ export interface EpisodeInfo {
   plan_panel?: ReturnType<typeof panelSummary>;
   /** FRAME_FOCUS's arm and, for the check arm, the mean focus score and weak-line share (src/qa/framefocus.ts). */
   frame_focus?: ReturnType<typeof focusReportRow>;
+  /** SHORT_SOUND_PLAN, SHORT_LAYOUTS and SHORT_FIRST_SHOT_MIN_S: the arms recorded on the episode (src/untemplatestep.ts). */
+  untemplate?: Pick<UntemplateResultRow, "sound" | "layout" | "open" | "skipped" | "firstShot">;
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1585,12 +1588,19 @@ export async function runAnalyticsLoop(
     plan_panel: unknown;
     frame_focus: unknown;
     voice: unknown;
+    short_sound_arm: string | null;
+    short_layout_arm: string | null;
+    short_open: string | null;
+    short_skipped: boolean | null;
+    short_first_shot_arm: string | null;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
             e.assets_json->'durationSeconds' AS duration, e.assets_json->'plan'->'shots'->0->'media'->>'type' AS opening, e.qa_json->'rubric'->'metrics' AS rubric,
             e.story_json->>'series' AS story_series, (e.story_json->'why') IS NOT NULL AS has_why, (e.story_json->>'run') = 'true' AS has_run,
             e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus,
-            e.assets_json->'voice' AS voice
+            e.assets_json->'voice' AS voice,
+            e.assets_json->>'shortSoundArm' AS short_sound_arm, e.assets_json->'shortShape'->>'arm' AS short_layout_arm,
+            e.assets_json->'shortShape'->>'open' AS short_open, (e.assets_json->'shortShape' ? 'skipped') AS short_skipped, e.assets_json->'shortFirstShot'->>'arm' AS short_first_shot_arm
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1677,6 +1687,19 @@ export async function runAnalyticsLoop(
           (typeof r.frame_focus === "string" ? JSON.parse(r.frame_focus) : r.frame_focus) as FrameFocusRecord | undefined,
         ),
       ),
+      ...((u: NonNullable<EpisodeInfo["untemplate"]>) => (Object.keys(u).length ? { untemplate: u } : {}))({
+        ...(r.short_sound_arm === "sparse" || r.short_sound_arm === "v3" ? { sound: r.short_sound_arm } : {}),
+        ...(r.short_layout_arm === "on" || r.short_layout_arm === "off"
+          ? {
+              layout: r.short_layout_arm,
+              ...(r.short_open ? { open: r.short_open } : {}),
+              ...(r.short_skipped ? { skipped: true } : {}),
+            }
+          : {}),
+        ...(r.short_first_shot_arm === "held" || r.short_first_shot_arm === "off"
+          ? { firstShot: r.short_first_shot_arm }
+          : {}),
+      }),
       ...(sc?.room
         ? {
             room: {
@@ -2323,6 +2346,19 @@ export async function runAnalyticsLoop(
         .filter((e) => !e.long && e.live_at >= periodStart && e.frame_focus)
         .map((e) => ({ ...e.frame_focus!, viewed_pct: yt.get(e.id)?.viewed_pct })),
       spearman,
+    ),
+  );
+  // SHORT_SOUND_PLAN, SHORT_LAYOUTS and SHORT_FIRST_SHOT_MIN_S: per arm, the middle 7-day views (the stored 7d
+  // reading) and average viewed, with no verdict before 20 Shorts a side.
+  signalLines.push(
+    ...untemplateLinesForReport(
+      [...eps.values()]
+        .filter((e) => !e.long && e.live_at >= periodStart && e.untemplate)
+        .map((e) => ({
+          ...e.untemplate!,
+          views7d: snaps.get(e.id)?.get("7d")?.views,
+          viewed_pct: yt.get(e.id)?.viewed_pct,
+        })),
     ),
   );
   const signal = (

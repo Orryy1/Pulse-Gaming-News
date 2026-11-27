@@ -1,6 +1,6 @@
 // The render step's side of breaking the template (src/render/untemplate.ts): the channel's memory of its newest
-// Shorts, the arms recorded on the episode, and the plan changed in place. Off by default: SHORT_SOUND_PLAN=v3,
-// SHORT_LAYOUTS=off and SHORT_FIRST_SHOT_MIN_S=0 leave every Short exactly as it was.
+// Shorts, the arms recorded on the episode, the plan changed in place and the weekly report's lines per arm. Off by
+// default: SHORT_SOUND_PLAN=v3, SHORT_LAYOUTS=off and SHORT_FIRST_SHOT_MIN_S=0 leave every Short exactly as it was.
 
 import type { Db } from "./db.ts";
 import type { Config } from "./config.ts";
@@ -8,7 +8,7 @@ import { log } from "./lib/util.ts";
 import type { RenderPlan, SfxCue } from "./render/plan.ts";
 import type { Segment } from "./render/timeline.ts";
 import {
-  FIRST_SHOT_MIN,
+  firstShotArm,
   holdFirstShot,
   layoutArm,
   LAYOUT_WINDOW,
@@ -17,21 +17,39 @@ import {
   planSparseSfx,
   sequenceOf,
   soundArm,
+  type FirstShotArm,
   type ShortShape,
 } from "./render/untemplate.ts";
 
-/** The newest Shorts' effect sequences and shapes, newest first (today's Shorts read { card, card }). */
+/**
+ * The newest Shorts' effect sequences (every Short, newest first) and the newest shapes the layout test chose (only
+ * Shorts on its side with a chosen shape, newest first): the 40% opening cap is measured over the test's own Shorts,
+ * since every Short off the test opens on the card.
+ */
 export interface ShortMemory {
   sequences: string[];
   shapes: Array<Pick<ShortShape, "open" | "close">>;
 }
 
+/** A stored shape the layout test chose (pure): arm "on", not skipped, with a known opening and closing. */
+function chosenShape(v: unknown): Pick<ShortShape, "open" | "close" | "line"> | undefined {
+  const sh = (v ?? {}) as Partial<ShortShape> & { arm?: string; skipped?: string };
+  if (sh.arm !== "on" || sh.skipped) return undefined;
+  if (sh.open !== "card" && sh.open !== "footage" && sh.open !== "lower") return undefined;
+  if (sh.close !== "card" && sh.close !== "hold") return undefined;
+  return { open: sh.open, close: sh.close, ...(typeof sh.line === "string" ? { line: sh.line } : {}) };
+}
+
 /** Lanes that are not Shorts (or not Shorts this factory plans). */
 const NOT_SHORTS = ["longform", "twin", "cutdown", "gameplay"];
 
-/** The memory from stored plans and shapes (pure), rows newest first. */
+/**
+ * The memory from stored plans and shapes (pure), rows newest first: every row's effect sequence, and the shapes of
+ * the rows (`shapeRows`, by default the same rows) whose shape the layout test chose; the rest are not counted.
+ */
 export function memoryOf(
   rows: Array<{ sfx?: unknown; shape?: unknown }>,
+  shapeRows: Array<{ shape?: unknown }> = rows,
 ): ShortMemory {
   const sequences: string[] = [];
   const shapes: ShortMemory["shapes"] = [];
@@ -40,11 +58,10 @@ export function memoryOf(
       ? (r.sfx as SfxCue[]).filter((c) => c && typeof c.file === "string")
       : [];
     sequences.push(sequenceOf(sfx));
-    const sh = (r.shape ?? {}) as Partial<ShortShape>;
-    shapes.push({
-      open: sh.open === "footage" || sh.open === "lower" ? sh.open : "card",
-      close: sh.close === "hold" ? "hold" : "card",
-    });
+  }
+  for (const r of shapeRows) {
+    const sh = chosenShape(r.shape);
+    if (sh) shapes.push({ open: sh.open, close: sh.close });
   }
   return { sequences, shapes };
 }
@@ -55,25 +72,60 @@ export async function readShortMemory(
   excludeId: string,
   n = LAYOUT_WINDOW,
 ): Promise<ShortMemory> {
-  const res = await db.query<{ sfx: unknown; shape: unknown }>(
-    `SELECT assets_json->'plan'->'sfx' AS sfx, assets_json->'shortShape' AS shape FROM episodes
+  const res = await db.query<{ sfx: unknown }>(
+    `SELECT assets_json->'plan'->'sfx' AS sfx FROM episodes
       WHERE assets_json ? 'plan' AND lane <> ALL($3::text[]) AND status NOT IN ('failed','rejected') AND id <> $1
       ORDER BY created_at DESC LIMIT $2`,
     [excludeId, n, NOT_SHORTS],
   );
-  return memoryOf(res);
+  // The shapes the test chose: its own newest `n`, however many Shorts off the test came between.
+  const shapes = await db.query<{ shape: unknown }>(
+    `SELECT assets_json->'shortShape' AS shape FROM episodes
+      WHERE assets_json->'shortShape'->>'arm' = 'on' AND NOT (assets_json->'shortShape' ? 'skipped')
+        AND lane <> ALL($3::text[]) AND status NOT IN ('failed','rejected') AND id <> $1
+      ORDER BY created_at DESC LIMIT $2`,
+    [excludeId, n, NOT_SHORTS],
+  );
+  return memoryOf(res, shapes);
+}
+
+/** What the first-shot test records on the episode (assets.shortFirstShot). */
+export type FirstShotRecord = {
+  arm: FirstShotArm;
+  /** The minimum held to, seconds (SHORT_FIRST_SHOT_MIN_S); 0 on the "off" side. */
+  seconds: number;
+  /** Whether the hold changed the plan (a first shot already long enough, or one next to a code scene, is left). */
+  changed: boolean;
+};
+
+/**
+ * The stored shape when it still applies (pure): an earlier render of this episode chose it on the test's side, and
+ * the opening is still allowed (a lower third needs a line and never goes on a rumour). Its line is the one worked out
+ * now, from the same hook.
+ */
+function storedShape(
+  prev: unknown,
+  o: { rumour: boolean; line?: string },
+): ShortShape | undefined {
+  const sh = chosenShape(prev);
+  if (!sh) return undefined;
+  if (sh.open === "lower")
+    return o.line && !o.rumour ? { open: "lower", close: sh.close, line: o.line } : undefined;
+  return { open: sh.open, close: sh.close };
 }
 
 /**
  * SHORT_LAYOUTS and SHORT_FIRST_SHOT_MIN_S, before the graphics gate (it measures what the shape draws). Returns the
- * shape to draw (undefined: today's) and changes `plan.shots` when the first shot is held. Records the arm on
- * `assets.shortShape` while the test runs. Only a clean-frame Short gets a chosen shape: the clean frame is what keeps
- * one overlay at a time beside the captions.
+ * shape to draw (undefined: today's) and changes `plan.shots` when the first shot is held. Records the layout arm on
+ * `assets.shortShape` and the first-shot arm on `assets.shortFirstShot` while each test runs. Only a clean-frame Short
+ * gets a chosen shape: the clean frame is what keeps one overlay at a time beside the captions. A shape an earlier
+ * render chose is kept (a retry or regather never changes it because newer Shorts were made). The two tests are split
+ * by their own salts: a chosen layout never holds the first shot by itself.
  */
 export function shapeShort(o: {
   cfg: Pick<
     Config,
-    "shortLayouts" | "shortLayoutsShare" | "shortFirstShotMinSeconds"
+    "shortLayouts" | "shortLayoutsShare" | "shortFirstShotMinSeconds" | "shortFirstShotShare"
   >;
   id: string;
   plan: Pick<RenderPlan, "shots" | "fps">;
@@ -81,8 +133,10 @@ export function shapeShort(o: {
   rumour: boolean;
   headline: string;
   thumbText?: string;
+  /** The spoken hook (the first line): the lower third's three or four words come from it. */
+  hook?: string;
   memory: ShortMemory | undefined;
-  assets: { shortShape?: unknown };
+  assets: { shortShape?: unknown; shortFirstShot?: FirstShotRecord };
 }): ShortShape | undefined {
   const arm = layoutArm(o.id, o.cfg.shortLayouts, o.cfg.shortLayoutsShare);
   let shape: ShortShape | undefined;
@@ -90,12 +144,15 @@ export function shapeShort(o: {
   if (!o.cfg.shortLayouts) delete o.assets.shortShape;
   if (o.cfg.shortLayouts) {
     if (arm === "on" && o.clean) {
-      shape = pickShape({
-        id: o.id,
-        recent: o.memory?.shapes ?? [],
-        rumour: o.rumour,
-        line: lowerLine(o.headline, o.thumbText),
-      });
+      const line = lowerLine(o.headline, o.thumbText, o.hook);
+      shape =
+        storedShape(o.assets.shortShape, { rumour: o.rumour, line }) ??
+        pickShape({
+          id: o.id,
+          recent: o.memory?.shapes ?? [],
+          rumour: o.rumour,
+          line,
+        });
       o.assets.shortShape = { arm, ...shape };
     } else
       o.assets.shortShape = {
@@ -105,11 +162,17 @@ export function shapeShort(o: {
         ...(arm === "on" ? { skipped: "not a clean-frame Short" } : {}),
       };
   }
-  const minSeconds = Math.max(
-    o.cfg.shortFirstShotMinSeconds,
-    shape ? FIRST_SHOT_MIN / 30 : 0,
-  );
-  if (minSeconds > 0) {
+  const minSeconds = o.cfg.shortFirstShotMinSeconds;
+  const was = o.assets.shortFirstShot;
+  // A stored plan an earlier render held stays held (the hold is not undone on a re-render): the record keeps saying so.
+  const heldBefore = was?.arm === "held" && was.changed === true;
+  if (minSeconds <= 0) {
+    if (!heldBefore) delete o.assets.shortFirstShot;
+    return shape;
+  }
+  const shotArm = firstShotArm(o.id, minSeconds, o.cfg.shortFirstShotShare);
+  let changed = false;
+  if (shotArm === "held") {
     const before = o.plan.shots[0]
       ? o.plan.shots[0].end - o.plan.shots[0].start
       : 0;
@@ -120,13 +183,18 @@ export function shapeShort(o: {
     const after = o.plan.shots[0]
       ? o.plan.shots[0].end - o.plan.shots[0].start
       : 0;
-    if (after !== before)
+    changed = after !== before;
+    if (changed)
       log("info", "short first shot held", {
         episode: o.id,
         fromFrames: before,
         toFrames: after,
       });
   }
+  o.assets.shortFirstShot =
+    !changed && heldBefore
+      ? was!
+      : { arm: shotArm, seconds: shotArm === "held" ? minSeconds : 0, changed };
   return shape;
 }
 
@@ -152,17 +220,27 @@ export function soundShort(o: {
   /** The game collage card where the render step placed it (pipeline.ts stingAt); absent, none. */
   sting?: Parameters<typeof planSparseSfx>[0]["sting"];
   memory: ShortMemory | undefined;
-  assets: { shortSoundArm?: "sparse" | "v3" };
+  assets: { shortSoundArm?: "sparse" | "v3"; shortSoundSequence?: string };
   v3: () => SfxCue[];
 }): {
   arm: "sparse" | "v3";
   sequence: string;
   silence?: { from: number; to: number };
+  /** The sparse plan played the sequence an earlier render chose. */
+  kept?: boolean;
 } {
   const arm = soundArm(o.id, o.cfg.shortSoundPlan, o.cfg.shortSoundSparseShare);
+  // An earlier sparse render's own sequence, read before the arm is written again.
+  const keep =
+    arm === "sparse" &&
+    o.assets.shortSoundArm === "sparse" &&
+    typeof o.assets.shortSoundSequence === "string"
+      ? o.assets.shortSoundSequence
+      : undefined;
   if (o.cfg.shortSoundPlan === "sparse") o.assets.shortSoundArm = arm;
   else delete o.assets.shortSoundArm;
   if (arm !== "sparse") {
+    delete o.assets.shortSoundSequence;
     if (o.plan.soundPlan === "sparse") {
       o.plan.sfx = o.v3();
       delete o.plan.soundPlan;
@@ -184,12 +262,19 @@ export function soundShort(o: {
     tracklist: o.tracklist,
     mentions: o.mentions,
     sting: o.sting,
+    keep,
   });
   o.plan.sfx = r.sfx;
   o.plan.soundPlan = "sparse";
   if (r.silence) o.plan.silences = [r.silence];
   else delete o.plan.silences;
-  return { arm, sequence: r.sequence, silence: r.silence };
+  o.assets.shortSoundSequence = r.sequence;
+  return {
+    arm,
+    sequence: r.sequence,
+    silence: r.silence,
+    ...(keep !== undefined ? { kept: keep === r.sequence } : {}),
+  };
 }
 
 /** Whether the render step runs the sound step at all (pure): only with SHORT_SOUND_PLAN=sparse or a stored sparse plan. */
@@ -210,7 +295,7 @@ export function restoreV3Sound(o: {
   cfg: Pick<Config, "shortSoundPlan" | "shortSoundSparseShare">;
   id: string;
   plan: RenderPlan;
-  assets: { shortSoundArm?: "sparse" | "v3" };
+  assets: { shortSoundArm?: "sparse" | "v3"; shortSoundSequence?: string };
   v3: () => SfxCue[];
 }): boolean {
   if (o.plan.soundPlan !== "sparse") return false;
@@ -219,7 +304,89 @@ export function restoreV3Sound(o: {
   o.plan.sfx = o.v3();
   delete o.plan.soundPlan;
   delete o.plan.silences;
+  delete o.assets.shortSoundSequence;
   if (o.cfg.shortSoundPlan === "sparse") o.assets.shortSoundArm = arm;
   else delete o.assets.shortSoundArm;
   return true;
+}
+
+// ---- The weekly report ------------------------------------------------------------------------
+
+/** No verdict on an arm pair before this many Shorts a side with a 7-day reading. */
+export const UNTEMPLATE_VERDICT_MIN = 20;
+
+/** One published Short's arms and results, as the weekly report reads them (src/analyticsloop.ts). */
+export interface UntemplateResultRow {
+  sound?: "sparse" | "v3";
+  layout?: "on" | "off";
+  /** The opening drawn on the layout test's side (card, footage or lower). */
+  open?: string;
+  /** On the layout test's side but not a clean-frame Short, so drawn with today's card (no shape chosen). */
+  skipped?: boolean;
+  firstShot?: FirstShotArm;
+  /** YouTube views at the 7-day reading; absent until it is taken. */
+  views7d?: number;
+  /** YouTube average percentage viewed. */
+  viewed_pct?: number;
+}
+
+const middle = (xs: number[]): number => {
+  const s = [...xs].sort((a, b) => a - b);
+  if (!s.length) return 0;
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+};
+const whole = (n: number) => Math.round(n).toLocaleString("en-US");
+
+/**
+ * The weekly report's lines for the three tests (pure), in the style of the writers' room's: per arm, how many Shorts,
+ * the middle 7-day views and the average viewed; a verdict line only once both arms have UNTEMPLATE_VERDICT_MIN Shorts
+ * with a 7-day reading. A test with no Short on either arm gives no lines.
+ */
+export function untemplateLinesForReport(rows: UntemplateResultRow[]): string[] {
+  const out: string[] = [];
+  const sideText = (xs: UntemplateResultRow[], label: string) => {
+    const views = xs.map((r) => r.views7d).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    const viewed = xs
+      .map((r) => r.viewed_pct)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    const avg = viewed.reduce((a, v) => a + v, 0) / (viewed.length || 1);
+    return {
+      views,
+      viewed,
+      avg,
+      text: `${label} ${xs.length} Shorts, middle 7-day views ${views.length ? whole(middle(views)) : "n/a"} (${views.length} read), average viewed ${viewed.length ? `${avg.toFixed(1)}%` : "n/a"}`,
+    };
+  };
+  const test = <A extends string>(
+    name: string,
+    key: "sound" | "layout" | "firstShot",
+    arms: [A, string, A, string],
+    extra?: string,
+  ) => {
+    const [a, aLabel, b, bLabel] = arms;
+    const sa = rows.filter((r) => r[key] === a);
+    const sb = rows.filter((r) => r[key] === b);
+    if (!sa.length && !sb.length) return;
+    const x = sideText(sa, aLabel);
+    const y = sideText(sb, bLabel);
+    out.push(`${name}: ${x.text}; ${y.text}${extra ? `; ${extra}` : ""}.`);
+    out.push(
+      x.views.length >= UNTEMPLATE_VERDICT_MIN && y.views.length >= UNTEMPLATE_VERDICT_MIN
+        ? `${name} verdict: middle 7-day views ${whole(middle(x.views))} against ${whole(middle(y.views))} (${(middle(x.views) / Math.max(1, middle(y.views))).toFixed(2)}x), average viewed ${x.avg.toFixed(1)}% against ${y.avg.toFixed(1)}%, ${x.views.length} against ${y.views.length} Shorts.`
+        : `${name} verdict: ${x.views.length} and ${y.views.length} Shorts with a 7-day reading; no verdict before ${UNTEMPLATE_VERDICT_MIN} a side.`,
+    );
+  };
+  test("Short sound test (SHORT_SOUND_PLAN)", "sound", ["sparse", "sparse", "v3", "v3"]);
+  const on = rows.filter((r) => r.layout === "on");
+  const skipped = on.filter((r) => r.skipped).length;
+  const opens = ["card", "footage", "lower"]
+    .map((k) => [k, on.filter((r) => !r.skipped && r.open === k).length] as const)
+    .filter(([, n]) => n > 0)
+    .map(([k, n]) => `${k} ${n}`)
+    .concat(skipped ? [`not clean-frame (today's card, no shape chosen) ${skipped}`] : [])
+    .join(", ");
+  test("Short layout test (SHORT_LAYOUTS)", "layout", ["on", "chosen layouts", "off", "today's card"], opens ? `openings on the test's side: ${opens}` : undefined);
+  test("Short first-shot test (SHORT_FIRST_SHOT_MIN_S)", "firstShot", ["held", "held", "off", "not held"]);
+  return out;
 }

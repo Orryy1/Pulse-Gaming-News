@@ -4718,8 +4718,8 @@ async function stepScriptDocumentaryBody(
   // LONG_OPENING_CONTRACT=fix and a "claims" entry under LONG_ARGUES add their rules (src/longcontractstep.ts).
   const rules = contractRules(
     {
-    ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
-    ...(retro ? { retro: true } : {}),
+      ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
+      ...(retro ? { retro: true } : {}),
     },
     { contract: s.cfg.longOpeningContract, argues: s.cfg.longArgues, format: topic.format },
   );
@@ -7803,10 +7803,10 @@ async function stepScriptRecap(
         unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
       } else
         unsupported = await checkChapter(
-        s.llm,
-        chapter,
-        story.source,
-      ).catch(() => [] as string[]);
+          s.llm,
+          chapter,
+          story.source,
+        ).catch(() => [] as string[]);
       const others = validateRecapChapter(chapter, chapters);
       feedback = [
         ...others,
@@ -16276,8 +16276,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   // SHORT_LAYOUTS / SHORT_SOUND_PLAN (src/untemplatestep.ts): the newest Shorts' shapes and effect sequences, read once.
   const untemplateMemory =
     s.cfg.shortLayouts || s.cfg.shortSoundPlan === "sparse" ? await readShortMemory(s.db, ep.id).catch(() => undefined) : undefined;
-  // SHORT_LAYOUTS: the opening and closing (before the graphics gate, which measures them); SHORT_FIRST_SHOT_MIN_S and
-  // the chosen layouts hold the first shot (today 0.4 s on a still opening: plan.ts STING_FRAMES).
+  // SHORT_LAYOUTS: the opening and closing (before the graphics gate, which measures them); SHORT_FIRST_SHOT_MIN_S, its
+  // own test, holds the first shot (today 0.4 s on a still opening: plan.ts STING_FRAMES).
   const shape = shapeShort({
     cfg: s.cfg,
     id: ep.id,
@@ -16286,10 +16286,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     rumour: Boolean(script.is_rumour),
     headline: script.headline,
     thumbText: script.youtube?.thumb_text,
+    // The written hook: the hook segment's text is respelt for the voice (numbers in words, RESPELL).
+    hook: script.hook,
     memory: untemplateMemory,
     assets,
   });
   if (assets.shortShape) await logEvent(s.db, ep.id, "short_shape", assets.shortShape);
+  if (assets.shortFirstShot) await logEvent(s.db, ep.id, "short_first_shot", assets.shortFirstShot);
   // MENTION_*: the mention insets on their words, scheduled once here so the audit and the render agree.
   const mentions = mentionPlacement(s.cfg, assets.mentions, words, plan, "short", [
     { from: 0, to: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames).hookEnd },
@@ -16395,7 +16398,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     });
     await logEvent(s.db, ep.id, "short_sound", sound);
   }
-  if (assets.shortShape || assets.shortSoundArm || plan.soundPlan)
+  if (assets.shortShape || assets.shortSoundArm || assets.shortFirstShot || plan.soundPlan)
     await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.

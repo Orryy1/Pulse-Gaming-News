@@ -4,7 +4,10 @@ import fs from "node:fs";
 import {
   arrivalsOf,
   FIRST_SHOT_MIN,
+  firstShotArm,
   holdFirstShot,
+  hookLine,
+  LOWER_WIDTH,
   idHash,
   inShare,
   layoutArm,
@@ -25,7 +28,18 @@ import {
 import { planSfx, type RenderPlan, type Shot } from "../src/render/plan.ts";
 import { arbitrate, overlaySpans, shortLayout } from "../src/render/cleanframe.ts";
 import type { Segment } from "../src/render/timeline.ts";
-import { memoryOf, restoreV3Sound, shapeShort, soundShort, soundStepDue } from "../src/untemplatestep.ts";
+import {
+  memoryOf,
+  restoreV3Sound,
+  shapeShort,
+  soundShort,
+  soundStepDue,
+  UNTEMPLATE_VERDICT_MIN,
+  untemplateLinesForReport,
+  type FirstShotRecord,
+} from "../src/untemplatestep.ts";
+import { cardStillProps, coverStillProps } from "../src/render/render.ts";
+import { SAFE } from "../src/render/layout.ts";
 import { recordOf, samenessScore, samenessTable } from "../src/qa/sameness.ts";
 import { loadConfig } from "../src/config.ts";
 import { LEVEL } from "../src/render/soundscape.ts";
@@ -141,6 +155,7 @@ test("the settings are off by default and parsed in the house style", () => {
     "SHORT_LAYOUTS",
     "SHORT_LAYOUTS_SHARE",
     "SHORT_FIRST_SHOT_MIN_S",
+    "SHORT_FIRST_SHOT_SHARE",
   ];
   const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   for (const k of keys) delete process.env[k];
@@ -151,12 +166,14 @@ test("the settings are off by default and parsed in the house style", () => {
     assert.equal(c.shortLayouts, false);
     assert.equal(c.shortLayoutsShare, 0.5);
     assert.equal(c.shortFirstShotMinSeconds, 0);
+    assert.equal(c.shortFirstShotShare, 0.5);
     Object.assign(process.env, {
       SHORT_SOUND_PLAN: "sparse",
       SHORT_SOUND_SPARSE_SHARE: "7",
       SHORT_LAYOUTS: "on",
       SHORT_LAYOUTS_SHARE: "0",
       SHORT_FIRST_SHOT_MIN_S: "1.5",
+      SHORT_FIRST_SHOT_SHARE: "1",
     });
     c = loadConfig();
     assert.equal(c.shortSoundPlan, "sparse");
@@ -164,6 +181,7 @@ test("the settings are off by default and parsed in the house style", () => {
     assert.equal(c.shortLayouts, true);
     assert.equal(c.shortLayoutsShare, 0);
     assert.equal(c.shortFirstShotMinSeconds, 1.5);
+    assert.equal(c.shortFirstShotShare, 1);
   } finally {
     for (const k of keys)
       if (prev[k] === undefined) delete process.env[k];
@@ -341,6 +359,48 @@ test("the lower third takes a headline only when it fits one readable line", () 
   );
 });
 
+test("the lower third takes three or four words of the spoken hook, the headline only when the hook gives none", () => {
+  assert.equal(hookLine("Is this the biggest delay of the year so far"), "Is this the biggest");
+  // A clause that ends inside four words is taken whole.
+  assert.equal(hookLine("GTA 6 slipped again. Here is why it matters"), "GTA 6 slipped again");
+  // Never a weak last word: "Nintendo just killed the" reads "Nintendo just killed".
+  assert.equal(hookLine("Nintendo just killed the Switch price cut"), "Nintendo just killed");
+  // Never more than four words, every word whole, and always inside the width.
+  for (const h of [
+    "Is this the biggest delay of the year so far",
+    "Rockstar finally confirmed what everyone suspected",
+    "Supercalifragilistic extraordinarily overwhelmingly unbelievable",
+  ]) {
+    const t = hookLine(h);
+    if (t === undefined) continue;
+    assert.ok(t.split(" ").length >= 2 && t.split(" ").length <= 4, t);
+    assert.ok(h.replace(/[.,!?]/g, "").startsWith(t), t);
+    assert.ok(lowerLineSize(t), t);
+  }
+  // Never cut after a figure, before a figure or between a figure and its unit; never on a negation; never an
+  // attributed clause: each falls back to the headline.
+  assert.equal(hookLine("PS5 Pro sold 2.4 million in a week"), undefined);
+  assert.equal(hookLine("Switch 2 costs $449 now, and that is the cheap one"), undefined);
+  assert.equal(hookLine("Xbox is dead, says nobody at Microsoft"), undefined);
+  assert.notEqual(hookLine("This game was never cancelled at all"), "This game was never");
+  assert.equal(hookLine("Here is why you\u2019re wrong"), undefined, "a curly apostrophe still reads as a weak word");
+  assert.equal(hookLine("GTA 6 slips again today"), "GTA 6 slips again");
+  // The render step passes the written hook, not the voice's respelt one: a figure stays a figure on screen.
+  assert.equal(lowerLine("Switch 2 price rises", undefined, "Switch 2 costs $449 now, and that is the cheap one"), "Switch 2 price rises");
+  const pipelineSrc = fs.readFileSync(new URL("../src/pipeline.ts", import.meta.url), "utf8");
+  assert.ok(/shapeShort\(\{[\s\S]{0,400}hook: script\.hook,/.test(pipelineSrc), "shapeShort gets script.hook");
+  // Unusable hooks: empty, one word, or nothing that fits.
+  assert.equal(hookLine(""), undefined);
+  assert.equal(hookLine("Wow."), undefined);
+  assert.equal(hookLine("Supercalifragilisticexpialidocious extraordinarilyoverwhelming"), undefined);
+  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar just moved it again"), "Rockstar just moved it");
+  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Wow."), "GTA 6 slips to November");
+  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED"), "GTA 6 slips to November");
+  // The lower third stays inside the safe area: its text width is the content box less the bar, padding and spacing.
+  assert.equal(LOWER_WIDTH, SAFE.right - SAFE.left - 72);
+  assert.ok(64 + 10 + 44 + LOWER_WIDTH + 18 <= SAFE.right);
+});
+
 test("shapes rotate so no opening takes more than 40% of the newest 30", () => {
   const recent: Array<Pick<ShortShape, "open" | "close">> = Array.from(
     { length: 30 },
@@ -454,7 +514,7 @@ test("the first shot of a stored plan that opens on 0.4 s is held to 1.5 s, the 
   assert.equal(holdFirstShot(tiny), tiny);
 });
 
-test("SHORT_FIRST_SHOT_MIN_S holds every Short's first shot, whatever the layout test", () => {
+test("SHORT_FIRST_SHOT_MIN_S is its own test: split by its own share, recorded, and never held by a layout", () => {
   const fx = JSON.parse(
     fs.readFileSync(
       new URL("./fixtures/plan_open_04s.json", import.meta.url),
@@ -466,14 +526,16 @@ test("SHORT_FIRST_SHOT_MIN_S holds every Short's first shot, whatever the layout
       shortLayouts: boolean;
       shortLayoutsShare: number;
       shortFirstShotMinSeconds: number;
+      shortFirstShotShare?: number;
     },
     clean = false,
+    id = "ep_f",
   ) => {
     const plan = { fps: FPS, shots: fx.shots.map((s) => ({ ...s })) };
-    const assets: { shortShape?: unknown } = {};
+    const assets: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {};
     const shape = shapeShort({
-      cfg,
-      id: "ep_f",
+      cfg: { shortFirstShotShare: 1, ...cfg },
+      id,
       plan,
       clean,
       rumour: false,
@@ -491,12 +553,25 @@ test("SHORT_FIRST_SHOT_MIN_S holds every Short's first shot, whatever the layout
   assert.equal(off.plan.shots[0]!.end, 12, "default: today's behaviour");
   assert.equal(off.shape, undefined);
   assert.equal(off.assets.shortShape, undefined);
+  assert.equal(off.assets.shortFirstShot, undefined, "nothing recorded while the test is off");
   const on = run({
     shortLayouts: false,
     shortLayoutsShare: 0.5,
     shortFirstShotMinSeconds: 1.5,
   });
   assert.equal(on.plan.shots[0]!.end, 45);
+  assert.deepEqual(on.assets.shortFirstShot, { arm: "held", seconds: 1.5, changed: true });
+  // The other side of the split: recorded, not held.
+  const notHeld = run({ shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 1.5, shortFirstShotShare: 0 });
+  assert.equal(notHeld.plan.shots[0]!.end, 12);
+  assert.deepEqual(notHeld.assets.shortFirstShot, { arm: "off", seconds: 0, changed: false });
+  // Its own salt: at share 0.5 the first-shot split is not the layout split.
+  let differ = 0;
+  for (let n = 0; n < 400; n++) {
+    const id = `ep_20261127_${n.toString(16).padStart(8, "0")}`;
+    if ((firstShotArm(id, 1.5, 0.5) === "held") !== (layoutArm(id, true, 0.5) === "on")) differ++;
+  }
+  assert.ok(differ > 120 && differ < 280, `independent splits: ${differ} of 400 differ`);
   const layouts = run(
     { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0 },
     true,
@@ -504,9 +579,22 @@ test("SHORT_FIRST_SHOT_MIN_S holds every Short's first shot, whatever the layout
   assert.ok(layouts.shape);
   assert.equal(
     layouts.plan.shots[0]!.end,
-    45,
-    "the chosen layouts hold it too",
+    12,
+    "a chosen layout never holds the first shot by itself",
   );
+  assert.equal(layouts.assets.shortFirstShot, undefined);
+  // A plan an earlier render held stays held on a re-render (the hold is never undone), so its record stays too.
+  for (const cfg of [
+    { shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 0, shortFirstShotShare: 1 },
+    { shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 1.5, shortFirstShotShare: 0 },
+  ]) {
+    const stored = { fps: FPS, shots: holdFirstShot(fx.shots.map((s) => ({ ...s }))) };
+    const a: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {
+      shortFirstShot: { arm: "held", seconds: 1.5, changed: true },
+    };
+    shapeShort({ cfg, id: "ep_f", plan: stored, clean: false, rumour: false, headline: "X", memory: undefined, assets: a });
+    assert.deepEqual(a.shortFirstShot, { arm: "held", seconds: 1.5, changed: true });
+  }
   const notClean = run(
     { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0 },
     false,
@@ -614,7 +702,7 @@ test("the sameness score and its table", () => {
   assert.ok(samenessTable(s, s).split("\n")[0]!.includes("After"));
 });
 
-test("the memory reads stored plans and shapes, today's Shorts as the card", () => {
+test("the memory reads every Short's sequence and only the shapes the layout test chose", () => {
   const m = memoryOf([
     {
       sfx: [
@@ -623,13 +711,168 @@ test("the memory reads stored plans and shapes, today's Shorts as the card", () 
       ],
       shape: null,
     },
-    { sfx: null, shape: { open: "lower", close: "hold" } },
+    { sfx: null, shape: { arm: "on", open: "lower", close: "hold", line: "X Y" } },
+    { sfx: null, shape: { arm: "off", open: "card", close: "card" } },
+    { sfx: null, shape: { arm: "on", open: "card", close: "card", skipped: "not a clean-frame Short" } },
+    { sfx: null, shape: { arm: "on", open: "footage", close: "card" } },
   ]);
-  assert.deepEqual(m.sequences, ["sting>air-1", ""]);
+  assert.deepEqual(m.sequences, ["sting>air-1", "", "", "", ""]);
   assert.deepEqual(m.shapes, [
-    { open: "card", close: "card" },
     { open: "lower", close: "hold" },
+    { open: "footage", close: "card" },
   ]);
+});
+
+test("the opening cap holds on the test's side at share 0.5, with the Shorts off it all on the card", () => {
+  // A rolling channel: half the Shorts on the test (by id), the rest today's card; the memory as readShortMemory builds it.
+  const rows: Array<{ shape: unknown }> = [];
+  for (let n = 0; n < 120; n++) {
+    const id = `ep_20261127_${n.toString(16).padStart(8, "0")}`;
+    const mem = memoryOf([], rows.filter((r) => (r.shape as { arm?: string }).arm === "on").slice(0, 30));
+    if (layoutArm(id, true, 0.5) === "on") {
+      const sh = pickShape({ id, recent: mem.shapes, rumour: false, line: "GTA 6 slips" });
+      rows.unshift({ shape: { arm: "on", ...sh } });
+    } else rows.unshift({ shape: { arm: "off", open: "card", close: "card" } });
+  }
+  const chosen = memoryOf([], rows).shapes.slice(0, 30);
+  assert.equal(chosen.length, 30);
+  for (const open of ["card", "footage", "lower"] as const)
+    assert.ok(chosen.filter((s) => s.open === open).length / 30 <= LAYOUT_CAP, open);
+  assert.ok(chosen.some((s) => s.open === "card"), "the test's side still uses today's card in its turn");
+});
+
+test("a retry keeps the shape and the sparse sequence an earlier render chose, whatever newer Shorts did", () => {
+  const fx = JSON.parse(
+    fs.readFileSync(new URL("./fixtures/plan_open_04s.json", import.meta.url), "utf8"),
+  ) as { shots: Shot[] };
+  const cfg = { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0, shortFirstShotShare: 0.5 };
+  const assets: { shortShape?: unknown } = {};
+  const shapeOf = (recent: Array<Pick<ShortShape, "open" | "close">>, rumour = false) =>
+    shapeShort({
+      cfg,
+      id: "ep_retry",
+      plan: { fps: FPS, shots: fx.shots.map((x) => ({ ...x })) },
+      clean: true,
+      rumour,
+      headline: "GTA 6 slips",
+      hook: "Rockstar just moved it again",
+      memory: { sequences: [], shapes: recent },
+      assets,
+    });
+  const first = shapeOf([]);
+  assert.ok(first);
+  // Newer Shorts all used the first render's opening and closing: a fresh pick would now avoid them.
+  const crowd = Array.from({ length: 29 }, () => ({ open: first!.open, close: first!.close }));
+  assert.notDeepEqual(
+    pickShape({ id: "ep_retry", recent: crowd, rumour: false, line: "Rockstar just moved it" }),
+    first,
+    "the memory alone would change the pick",
+  );
+  assert.deepEqual(shapeOf(crowd), first, "the retry keeps the stored shape");
+  assert.deepEqual(assets.shortShape, { arm: "on", ...first });
+  // A stored lower third that a rumour can no longer use is chosen again.
+  assets.shortShape = { arm: "on", open: "lower", close: "card", line: "Rockstar just moved" };
+  assert.notEqual(shapeOf([], true)!.open, "lower");
+
+  const { segments, words, plan } = short();
+  const v3 = plan.sfx;
+  const sound: { shortSoundArm?: "sparse" | "v3"; shortSoundSequence?: string } = {};
+  const play = (recent: string[]) => {
+    const p: RenderPlan = { ...plan, sfx: [...v3] };
+    const r = soundShort({
+      cfg: { shortSoundPlan: "sparse", shortSoundSparseShare: 1 },
+      id: "ep_retry_sound",
+      plan: p,
+      segments,
+      words,
+      stamps: [],
+      clean: true,
+      stampSound,
+      memory: { sequences: recent, shapes: [] },
+      assets: sound,
+      v3: () => v3,
+    });
+    return { r, p };
+  };
+  // An id whose sparse plan plays effects (about one in five plays none).
+  const a = play([]);
+  assert.equal(sound.shortSoundSequence, a.r.sequence, "the sequence is recorded on the episode");
+  assert.ok(a.r.sequence, "the test id plays at least one effect");
+  // A newer Short played exactly that sequence: a fresh plan would avoid it, the retry keeps it.
+  const fresh = planSparseSfx({ id: "ep_retry_sound", plan: { ...plan, sfx: [...v3] }, segments, words, stamps: [], clean: true, stampSound, recent: [a.r.sequence] });
+  assert.notEqual(fresh.sequence, a.r.sequence, "the memory alone would change the sound");
+  const b = play([a.r.sequence]);
+  assert.equal(b.r.sequence, a.r.sequence);
+  assert.equal(b.r.kept, true);
+  assert.deepEqual(b.p.sfx, a.p.sfx);
+  // On the v3 side the stored sequence goes with the arm.
+  soundShort({
+    cfg: { shortSoundPlan: "sparse", shortSoundSparseShare: 0 },
+    id: "ep_retry_sound",
+    plan: { ...plan, sfx: [...v3] },
+    segments,
+    words,
+    stamps: [],
+    clean: true,
+    stampSound,
+    memory: undefined,
+    assets: sound,
+    v3: () => v3,
+  });
+  assert.equal(sound.shortSoundArm, "v3");
+  assert.equal(sound.shortSoundSequence, undefined);
+});
+
+test("the cover and the frame-0 thumbnail always carry today's card opening", () => {
+  type P = { headline: string; openingWords?: string; coverStill?: boolean; shape?: unknown };
+  const props: P = {
+    headline: "GTA 6 slips to November",
+    openingWords: "GTA 6",
+    shape: { open: "footage" as const, close: "hold" as const },
+  };
+  const cover = coverStillProps(props);
+  assert.equal("shape" in cover, false, "the cover has no chosen shape");
+  assert.equal(cover.openingWords, undefined);
+  assert.equal(cover.coverStill, true);
+  const lower = cardStillProps({ ...props, shape: { open: "lower" as const, close: "card" as const, line: "GTA 6 slips" } });
+  assert.equal("shape" in lower, false, "the thumbnail has no chosen shape");
+  assert.equal(lower.openingWords, "GTA 6", "the thumbnail keeps its own opening words, as today");
+  // With the test off nothing changes: the same props object, and the cover exactly as before.
+  const off: P = { headline: "GTA 6 slips to November", openingWords: "GTA 6" };
+  assert.equal(cardStillProps(off), off);
+  assert.deepEqual(coverStillProps(off), { headline: "GTA 6 slips to November", coverStill: true });
+});
+
+test("the weekly report reads each test by arm, with no verdict before 20 a side", () => {
+  assert.deepEqual(untemplateLinesForReport([]), []);
+  const few = untemplateLinesForReport([
+    { sound: "sparse", views7d: 1000, viewed_pct: 70 },
+    { sound: "sparse", views7d: 3000, viewed_pct: 80 },
+    { sound: "v3", views7d: 500 },
+    { sound: "v3" },
+  ]);
+  assert.equal(few.length, 2, "only the sound test has Shorts");
+  assert.equal(
+    few[0],
+    "Short sound test (SHORT_SOUND_PLAN): sparse 2 Shorts, middle 7-day views 2,000 (2 read), average viewed 75.0%; v3 2 Shorts, middle 7-day views 500 (1 read), average viewed n/a.",
+  );
+  assert.ok(few[1]!.includes(`no verdict before ${UNTEMPLATE_VERDICT_MIN} a side`));
+  const many = untemplateLinesForReport([
+    ...Array.from({ length: 20 }, (_, i) => ({ layout: "on" as const, open: i % 2 ? "footage" : "card", views7d: 2000, viewed_pct: 60 })),
+    ...Array.from({ length: 20 }, () => ({ layout: "off" as const, open: "card", views7d: 1000, viewed_pct: 55 })),
+    { layout: "on" as const, open: "card", skipped: true },
+    { firstShot: "held" as const, views7d: 10 },
+  ]);
+  assert.ok(
+    many[0]!.includes("openings on the test's side: card 10, footage 10, not clean-frame (today's card, no shape chosen) 1"),
+    String(many[0]),
+  );
+  assert.equal(
+    many[1],
+    "Short layout test (SHORT_LAYOUTS) verdict: middle 7-day views 2,000 against 1,000 (2.00x), average viewed 60.0% against 55.0%, 20 against 20 Shorts.",
+  );
+  assert.ok(many[2]!.startsWith("Short first-shot test (SHORT_FIRST_SHOT_MIN_S): held 1 Shorts"));
+  assert.ok(many[3]!.includes("no verdict before"));
 });
 
 test("people and mention insets count as the one overlay in every opening and closing, and arrive with a sound", async () => {
@@ -697,7 +940,12 @@ test("with every setting off, a stored Short's plan, effects and overlays are ex
   const plan = JSON.parse(JSON.stringify(fx.plan)) as RenderPlan;
   const before = JSON.stringify(plan);
   // The render step's order (src/pipeline.ts): the shape, the overlays, then the sound step.
-  const assets: { shortShape?: unknown; shortSoundArm?: "sparse" | "v3" } = {};
+  const assets: {
+    shortShape?: unknown;
+    shortSoundArm?: "sparse" | "v3";
+    shortSoundSequence?: string;
+    shortFirstShot?: FirstShotRecord;
+  } = {};
   const shape = shapeShort({
     cfg,
     id: "ep_20261105_3658bb74",
@@ -705,6 +953,7 @@ test("with every setting off, a stored Short's plan, effects and overlays are ex
     clean: true,
     rumour: false,
     headline: "Nintendo Rules Out Another Switch 2 Hike, For Now",
+    hook: fx.segments.find((g) => g.kind === "hook")?.text,
     memory: undefined,
     assets,
   });
@@ -810,7 +1059,7 @@ test("an arm recorded by an earlier render goes when its test is off", () => {
     shortSoundArm: "sparse",
   };
   shapeShort({
-    cfg: { shortLayouts: false, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0 },
+    cfg: { shortLayouts: false, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0, shortFirstShotShare: 1 },
     id: "ep_stale",
     plan: { fps: FPS, shots: fx.shots.map((x) => ({ ...x })) },
     clean: true,

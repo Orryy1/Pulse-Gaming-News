@@ -676,6 +676,7 @@ export function testConfig(
     shortLayouts: false,
     shortLayoutsShare: 0.5,
     shortFirstShotMinSeconds: 0,
+    shortFirstShotShare: 0.5,
     evidenceStyle: false,
     evidenceStyleShare: 0.5,
     // The depth and upscaling craft (src/depthstep.ts): off in tests unless a test turns it on with fakes.

@@ -2,6 +2,10 @@
 
 Ranked list the weekly improvement task (Thursdays 11:00) works from. Top item first. Each entry says why, what to build and how we'll know it worked.
 
+## Done 27 Nov 11:00 (engine): one GTA VI Short a day, enforced in code (GAME_DAY_CAP)
+
+GTA VI Shorts drew a median of 99 views against 315 for other games since launch (19-26 Nov); the old limit was only a prompt line. GAME_DAY_CAP holds news stories, big stories in a news slot, Why picks and search picks naming a game whose day is used up; breaking news and the GTA File part are never held. Judge 4 Dec (see the improvement log). If GTA VI Shorts start beating the channel median, raise the cap to 2.
+
 ## Done 27 Nov (engine): titles keep part numbers and last words (TITLE_KEEP_WHOLE)
 
 Shipped 8186cf0d7. Left over: the live GTA File #3 Short (zsMUOYm9d2A) still reads "GTA VI File : GTA 6 Radio Now Keeps Playing When You're on"; a session allowed to edit published titles should set it to "GTA VI File #3: GTA 6 Radio Now Keeps Playing When You're on Foot". Also check older live titles for the same cut (a sweep over the channel's titles ending on a small word).
@@ -627,3 +631,5 @@ Their art is AI-made illustration.
 63. TikTok captions hook-first test: open each TikTok caption with the stake or the "why" line (the Short's hook) instead of the title. Orryy's data (27 Nov, command centre): hook-first captions median 2,178 views vs 1,335. Split 50/50 by episode, record the arm, judge after about 20 each on 48 h views.
 
 64. Blender 3D time estimates: the planner assumes 1.5-2 min per clip but the Mac takes 11-21, so documentaries ask for far more 3D than fits the 150-min wait and the Blender queue runs about 3 h deep, which starves Shorts of 3D. Measure real per-clip times and plan against them (27 Nov, doc-replan-loop diagnosis).
+
+65. "Demand not checked" on most picks: 33 of 39 topic picks from 20 to 27 Nov (18 of 21 long rankings, 15 of 18 Why Shorts) went without a demand reading ("search unavailable or over the lookup limit"). DEMAND_STALE_DAYS only helps topics measured before, so it fired twice. Find why the search bucket is spent (who else calls search.list) or add a free demand signal for picks (top-video views from the public RSS of known channels, or the cached weekly vidIQ pull). Engine verdict 27 Nov.

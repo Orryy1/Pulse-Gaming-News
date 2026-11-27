@@ -8178,7 +8178,7 @@ async function repairRanking(
 async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic): Promise<void> {
   const kind = kindOf(topic.kind);
   if (!kind) throw new FatalError(`unknown GTA guide kind "${topic.kind}"`);
-  const pack = readFactPack(s.cfg.gtaGuideFacts.length ? s.cfg.gtaGuideFacts : DEFAULT_GUIDE_FACTS);
+  const pack = readFactPack(s.cfg.gtaGuideFacts.length ? s.cfg.gtaGuideFacts : DEFAULT_GUIDE_FACTS, kind.key);
   if (!pack.confirmed) throw new FatalError("GTA guide: the fact pack is empty or unreadable");
   const recordings = await loadPlayRecordings(s.cfg.dataDir).catch(() => []);
   const dates = new Map(recordings.map((r) => [r.vodId, r.recordedOn ?? ""] as [string, string]));

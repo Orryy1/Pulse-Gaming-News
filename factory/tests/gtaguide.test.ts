@@ -9,6 +9,7 @@ import {
   GUIDE_KINDS,
   GUIDE_QUERIES,
   factPackText,
+  kindSections,
   gtaGuideSlot,
   gtaGuideVerdict,
   guideDemand,
@@ -276,6 +277,32 @@ test("the fact pack keeps confirmed and reported apart, and the shipped pack has
   const real = readFactPack(DEFAULT_GUIDE_FACTS);
   assert.ok(real.confirmed.length > 500);
   assert.deepEqual(real.missed, []);
+});
+
+test("the post-launch mechanics file is read, each guide only its own kind's sections, inside a prompt budget", () => {
+  assert.ok(DEFAULT_GUIDE_FACTS.some((f) => f.endsWith("guide_facts_gta6_mechanics.md")));
+  const hidden = readFactPack(DEFAULT_GUIDE_FACTS, "hidden-features");
+  // A hidden-features line is in; a mistakes line and an early-money line are not; its reported money loop is reported.
+  assert.match(hidden.confirmed, /Leave a car with the engine running/);
+  assert.doesNotMatch(hidden.confirmed, /### Mistakes to avoid/);
+  assert.doesNotMatch(hidden.reported, /### Early money/);
+  const money = readFactPack(DEFAULT_GUIDE_FACTS, "early-money");
+  assert.match(money.reported, /warehouse/i);
+  assert.doesNotMatch(money.confirmed, /### Hidden features/);
+  // The pre-launch files are kept whole for every kind (they have no kind sections).
+  assert.match(money.confirmed, /\$79\.99/);
+  // The owner's footage notes are never facts: his play comes in only as play evidence.
+  assert.doesNotMatch(hidden.reported, /Owner's play|2 stars lost in 17 seconds/);
+  assert.match(hidden.reported, /Never use/);
+  for (const k of GUIDE_KINDS) {
+    const p = readFactPack(DEFAULT_GUIDE_FACTS, k.key);
+    const size = p.confirmed.length + p.reported.length;
+    assert.ok(size < 40_000, `${k.key}: ${size} characters of facts in every call`);
+  }
+  assert.equal(
+    kindSections("## Confirmed\n### A (mistakes)\n- m\n### B (early-money)\n- e\n## Reported\n- r", "early-money"),
+    "## Confirmed\n### B (early-money)\n- e\n## Reported\n- r",
+  );
 });
 
 test("play evidence is only the owner's own recordings, never story or menus, sure HUD facts and settled checks", () => {

@@ -300,3 +300,29 @@ test("the fault list in a prompt is bounded however many faults there are", () =
   assert.ok(p.length < 30_000, String(p.length));
   assert.match(p, /188 more/);
 });
+
+test("saveState retries a locked rename (EPERM/EBUSY), copies as a last resort and rethrows other errors", async () => {
+  const { saveState, renameWithRetry } = await import("../src/handsoff/gate.ts");
+  const os = await import("node:os");
+  const fsm = await import("node:fs");
+  const pth = await import("node:path");
+  const dir = fsm.mkdtempSync(pth.join(os.tmpdir(), "gate-rename-"));
+  const file = pth.join(dir, "state.json");
+  let calls = 0;
+  const flaky = (a: string, b: string) => {
+    calls++;
+    if (calls < 3) throw Object.assign(new Error("locked"), { code: "EPERM" });
+    fsm.renameSync(a, b);
+  };
+  saveState(file, { version: 1, faults: {} } as never, flaky);
+  assert.equal(calls, 3);
+  assert.ok(fsm.existsSync(file) && !fsm.existsSync(file + ".tmp"));
+  // Still locked after every try: the state is copied over instead, and the run does not fail.
+  fsm.writeFileSync(file + ".tmp", "{\"v\":2}");
+  renameWithRetry(file + ".tmp", file, () => { throw Object.assign(new Error("locked"), { code: "EBUSY" }); }, 2, 1);
+  assert.equal(fsm.readFileSync(file, "utf8"), "{\"v\":2}");
+  assert.ok(!fsm.existsSync(file + ".tmp"));
+  // Any other error still throws.
+  assert.throws(() => renameWithRetry(file, file + "x", () => { throw Object.assign(new Error("gone"), { code: "ENOENT" }); }));
+  fsm.rmSync(dir, { recursive: true, force: true });
+});

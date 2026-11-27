@@ -1411,7 +1411,19 @@ test("a pop-out title is fitted beside the subject, never under it or clipped; n
 });
 
 test("the owner's murky play is left out; bright play is kept", async () => {
-  const { ownClipVisible, OWN_CLIP_MIN_LUMA } = await import("../src/assets/library.ts");
+  const { ownClipVisible, OWN_CLIP_MIN_LUMA, lightFrames } = await import("../src/assets/library.ts");
+  // The run8 warehouse clips as measured on the Mac (YAVG, YHIGH): murky, though their averages pass 45.
+  const warehouse = [[75, 95, 14], [66, 85, 10], [53, 64, 3], [52, 77, 4], [48, 78, 5], [47, 79, 6]].map(([luma, high, sat]) => ({ luma: luma!, high, sat }));
+  assert.equal(ownClipVisible(warehouse), false);
+  // Night play: dark on average but lit (headlights, neon).
+  const night = [[48, 210], [52, 235], [44, 190], [55, 220]].map(([luma, high]) => ({ luma: luma!, high }));
+  assert.equal(ownClipVisible(night), true);
+  // A night road lit by a few small lamps: the bright end stays low, but the colour is there.
+  assert.equal(ownClipVisible([50, 46, 52, 48].map((luma) => ({ luma, high: 100, sat: 28 }))), true);
+  assert.deepEqual(
+    lightFrames("frame:0 pts:0\nlavfi.signalstats.YAVG=52.5\nlavfi.signalstats.YHIGH=77\nlavfi.signalstats.SATAVG=4.1\nframe:1 pts:1\nlavfi.signalstats.YAVG=90\n"),
+    [{ luma: 52.5, high: 77, sat: 4.1 }, { luma: 90 }],
+  );
   // The proof's warehouse: 30-58 mean brightness.
   assert.equal(ownClipVisible([38, 46, 43, 39, 30, 32, 39, 37, 40]), false);
   assert.equal(ownClipVisible([81, 81, 90, 104]), true);

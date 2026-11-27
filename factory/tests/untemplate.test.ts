@@ -368,22 +368,20 @@ test("the lower third never comes from the spoken hook or the thumbnail words: t
   assert.ok(64 + 10 + 44 + LOWER_WIDTH + 18 <= SAFE.right);
 });
 
-test("a headline too long for the lower third opens on the card, recorded as a fallback and never counted as chosen", () => {
+test("a headline too long for the lower third is never offered it: card or footage, with a plain note", () => {
   const fx = JSON.parse(
     fs.readFileSync(new URL("./fixtures/plan_open_04s.json", import.meta.url), "utf8"),
   ) as { shots: Shot[] };
   const LONG = "A headline far too long to sit on one readable line of the frame";
   const THUMB = "DELAYED AGAIN";
-  // An id the picker gives the lower third with an empty memory (searched, so the test does not hang on one id).
+  // Without a line the picker never offers the lower third, for any id.
+  for (let n = 0; n < 200; n++)
+    assert.notEqual(pickShape({ id: `ep_fb${n}`, recent: [], rumour: false }).open, "lower");
+  // An id the picker gives the lower third when the headline fits (searched, so no single id is assumed).
   const id = Array.from({ length: 200 }, (_, n) => `ep_fb${n}`).find(
     (x) => pickShape({ id: x, recent: [], rumour: false, line: "GTA 6 slips" }).open === "lower",
   )!;
   assert.ok(id);
-  assert.deepEqual(pickShape({ id, recent: [], rumour: false }), {
-    open: "card",
-    close: pickShape({ id, recent: [], rumour: false, line: "GTA 6 slips" }).close,
-    fallback: "headline-too-long",
-  });
   const cfg = { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0, shortFirstShotShare: 0.5 };
   const run = (headline: string, assets: { shortShape?: unknown } = {}) => {
     const shape = shapeShort({
@@ -398,39 +396,36 @@ test("a headline too long for the lower third opens on the card, recorded as a f
     });
     return { shape, assets };
   };
-  // A headline that fits: the lower line is the headline itself.
+  // A headline that fits: the lower third can be chosen, and its line is the headline itself; no note.
   const fits = run("GTA 6 slips to November");
   assert.equal(fits.shape!.open, "lower");
   assert.equal(fits.shape!.line, "GTA 6 slips to November");
-  // One that does not: today's card opening, the fallback and its reason recorded, the thumbnail words nowhere.
+  assert.equal("lowerUnavailable" in (fits.assets.shortShape as object), false);
+  // Too long: a real choice between card and footage, the note recorded, the thumbnail words nowhere.
   const long = run(LONG);
-  assert.deepEqual(long.shape, { open: "card", close: fits.shape!.close });
+  assert.ok(long.shape!.open === "card" || long.shape!.open === "footage", long.shape!.open);
   assert.deepEqual(long.assets.shortShape, {
     arm: "on",
-    open: "card",
-    close: fits.shape!.close,
-    fallback: "headline-too-long",
-    wanted: "lower",
+    open: long.shape!.open,
+    close: long.shape!.close,
+    lowerUnavailable: "headline-too-long",
   });
   assert.ok(!JSON.stringify(long).includes(THUMB));
-  // A retry keeps the fallback, and gives the lower third if the headline now fits.
+  // A retry keeps the stored shape while its opening is still allowed; a stored lower third with no line now is not.
   assert.deepEqual(run(LONG, { shortShape: long.assets.shortShape }).shape, long.shape);
-  assert.equal(run("GTA 6 slips to November", { shortShape: long.assets.shortShape }).shape!.open, "lower");
-  // The 40% cap's memory never counts a fallback as a chosen card.
-  const m = memoryOf([], [
-    { shape: long.assets.shortShape },
-    { shape: { arm: "on", open: "card", close: "card" } },
-  ]);
-  assert.deepEqual(m.shapes, [{ open: "card", close: "card" }]);
-  // The weekly report counts fallbacks on their own, not as card openings.
+  assert.notEqual(run(LONG, { shortShape: fits.assets.shortShape }).shape!.open, "lower");
+  // The opening it got counts in the 40% cap's memory like any other.
+  const m = memoryOf([], [{ shape: long.assets.shortShape }]);
+  assert.deepEqual(m.shapes, [{ open: long.shape!.open, close: long.shape!.close }]);
+  // The weekly report counts the openings as chosen and adds how many had no lower third on offer.
   const lines = untemplateLinesForReport([
-    { layout: "on", open: "card", fallback: true },
+    { layout: "on", open: "card", lowerUnavailable: true },
     { layout: "on", open: "card" },
     { layout: "on", open: "lower" },
     { layout: "off", open: "card" },
   ]);
   assert.ok(
-    lines[0]!.includes("openings on the test's side: card 1, lower 1, lower third chosen, headline too long (today's card instead) 1"),
+    lines[0]!.includes("openings on the test's side: card 2, lower 1, lower third unavailable (headline too long) 1"),
     String(lines[0]),
   );
 });

@@ -259,7 +259,7 @@ export interface EpisodeInfo {
   /** FRAME_FOCUS's arm and, for the check arm, the mean focus score and weak-line share (src/qa/framefocus.ts). */
   frame_focus?: ReturnType<typeof focusReportRow>;
   /** SHORT_SOUND_PLAN, SHORT_LAYOUTS and SHORT_FIRST_SHOT_MIN_S: the arms recorded on the episode (src/untemplatestep.ts). */
-  untemplate?: Pick<UntemplateResultRow, "sound" | "layout" | "open" | "skipped" | "fallback" | "firstShot">;
+  untemplate?: Pick<UntemplateResultRow, "sound" | "layout" | "open" | "skipped" | "lowerUnavailable" | "firstShot">;
   /** The series tag (format redesign plan, src/series.ts); absent for Shorts in no series. */
   series?: string;
   /** The next-part line test's arm (SERIES_NEXT_LINE). */
@@ -1592,7 +1592,7 @@ export async function runAnalyticsLoop(
     short_layout_arm: string | null;
     short_open: string | null;
     short_skipped: boolean | null;
-    short_fallback: boolean | null;
+    short_lower_unavailable: boolean | null;
     short_first_shot_arm: string | null;
   }>(
     `SELECT e.id, e.lane, e.story_hash, e.youtube_video_id, e.script_json, e.story_json->>'headline' AS headline, ${LIVE_AT("e")} AS live_at,
@@ -1601,7 +1601,7 @@ export async function runAnalyticsLoop(
             e.assets_json->'plan_panel' AS plan_panel, e.assets_json->'frame_focus' AS frame_focus,
             e.assets_json->'voice' AS voice,
             e.assets_json->>'shortSoundArm' AS short_sound_arm, e.assets_json->'shortShape'->>'arm' AS short_layout_arm,
-            e.assets_json->'shortShape'->>'open' AS short_open, (e.assets_json->'shortShape' ? 'skipped') AS short_skipped, (e.assets_json->'shortShape' ? 'fallback') AS short_fallback, e.assets_json->'shortFirstShot'->>'arm' AS short_first_shot_arm
+            e.assets_json->'shortShape'->>'open' AS short_open, (e.assets_json->'shortShape' ? 'skipped') AS short_skipped, (e.assets_json->'shortShape' ? 'lowerUnavailable') AS short_lower_unavailable, e.assets_json->'shortFirstShot'->>'arm' AS short_first_shot_arm
        FROM episodes e
       WHERE e.status = 'published' AND e.youtube_video_id IS NOT NULL AND e.lane <> 'twin'
         AND ${LIVE_AT("e")} > $1::timestamptz - interval '36 days'`,
@@ -1695,7 +1695,7 @@ export async function runAnalyticsLoop(
               layout: r.short_layout_arm,
               ...(r.short_open ? { open: r.short_open } : {}),
               ...(r.short_skipped ? { skipped: true } : {}),
-              ...(r.short_fallback ? { fallback: true } : {}),
+              ...(r.short_lower_unavailable ? { lowerUnavailable: true } : {}),
             }
           : {}),
         ...(r.short_first_shot_arm === "held" || r.short_first_shot_arm === "off"

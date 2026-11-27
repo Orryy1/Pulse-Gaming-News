@@ -13,8 +13,8 @@
 //   scene arrives; never the same sequence as any of the newest 30 Shorts where a choice exists; one music dip of
 //   0.7 to 1.5 s before the verdict line when the voice already leaves that gap (the audio is never re-timed).
 // - SHORT_LAYOUTS=on (SHORT_LAYOUTS_SHARE): three openings (today's headline card, full-frame picture with captions
-//   only, the headline as one uncut lower-third line that leaves after the hook; a headline too long for one line
-//   opens on the card instead, recorded as a fallback) and two closings (today's return to
+//   only, the headline as one uncut lower-third line that leaves after the hook, offered only when the headline fits
+//   one line; otherwise the Short picks between the other two and notes lowerUnavailable) and two closings (today's return to
 //   the headline card, holding on the payoff), chosen so no opening takes more than 40% of the newest 30 Shorts whose
 //   shape the test chose (the Shorts off the test all open on the card, so the channel as a whole stays card-heavy at
 //   any share under 1). The cover and the custom thumbnail always show today's card opening (src/render/render.ts).
@@ -470,11 +470,6 @@ export interface ShortShape {
   close: ShortClose;
   /** The lower third's text, when open is "lower". */
   line?: string;
-  /**
-   * The picker chose the lower third but the uncut headline does not fit one line: the Short opens on today's card
-   * and the record says why. Never a teaser in its place (no thumbnail words, no cut headline).
-   */
-  fallback?: "headline-too-long";
 }
 
 /** The share of the newest Shorts any one opening may take. */
@@ -504,8 +499,8 @@ export function lowerLineSize(text: string): number | undefined {
 }
 
 /**
- * The lower third's text (pure): the headline when it fits one readable line, else none (and a Short the picker gave
- * the lower third opens on the card instead, recorded as a fallback). Never the thumbnail's teaser words, never cut
+ * The lower third's text (pure): the headline when it fits one readable line, else none (and the picker does not
+ * offer the lower third: the record notes lowerUnavailable). Never the thumbnail's teaser words, never cut
  * and never taken from the spoken hook: three
  * reviews on 27 Nov 2026 found every way of shortening a hook could put a false claim on screen (a cut negation, a
  * dropped qualifier, a question shown as a statement, scare quotes removed), and hooks are written at 5 to 10 words,
@@ -519,9 +514,8 @@ export function lowerLine(headline: string): string | undefined {
 /**
  * A Short's opening and closing (pure): among the openings it may use, the one the newest Shorts used least, so no
  * opening takes more than LAYOUT_CAP of the window while three can be chosen; a tie goes to the id. The same for the
- * closing. A rumour never opens on the lower third, which drops the honesty label (the rumour flag must show). When
- * the lower third wins but there is no line (the headline is too long for one), the Short opens on the card with
- * fallback "headline-too-long": the pick is kept honest, and the fallback is not counted as a chosen card.
+ * closing. A rumour never opens on the lower third, which drops the honesty label (the rumour flag must show), and
+ * nor does a Short with no line (the headline too long for one): it chooses between the card and the footage.
  * `recent` is the newest Shorts whose shape the test chose (src/untemplatestep.ts readShortMemory): Shorts off the
  * test all open on the card, and counting them would leave the test's own side never choosing the card at all.
  */
@@ -530,7 +524,7 @@ export function pickShape(o: {
   /** The newest chosen shapes, newest first (the Shorts on the test's side; none off it). */
   recent: ReadonlyArray<Pick<ShortShape, "open" | "close">>;
   rumour: boolean;
-  /** The lower third's text (lowerLine); none, the lower third falls back to the card. */
+  /** The lower third's text (lowerLine); none, no lower third offered. */
   line?: string;
   window?: number;
 }): ShortShape {
@@ -539,7 +533,7 @@ export function pickShape(o: {
   const opens: ShortOpen[] = [
     "card",
     "footage",
-    ...(!o.rumour ? (["lower"] as const) : []),
+    ...(o.line && !o.rumour ? (["lower"] as const) : []),
   ];
   const closes: ShortClose[] = ["card", "hold"];
   const least = <T extends string>(
@@ -562,8 +556,7 @@ export function pickShape(o: {
     recent.map((r) => r.close),
     "short-close",
   );
-  if (open !== "lower") return { open, close };
-  return o.line ? { open, close, line: o.line } : { open: "card", close, fallback: "headline-too-long" };
+  return open === "lower" ? { open, close, line: o.line } : { open, close };
 }
 
 /** The first shot's default minimum when held (1.5 s at 30 fps, SHORT_FIRST_SHOT_MIN_S=1.5). */

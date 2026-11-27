@@ -143,8 +143,8 @@ const ThenYear: React.FC<{ year: string; accent: string }> = ({ year, accent }) 
 };
 
 /**
- * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts lowerLine): the uncut headline (a headline too long
- * for one line opens on the card instead) as one line above the captions, in from
+ * SHORT_LAYOUTS' lower-third opening (src/render/untemplate.ts lowerLine): the uncut headline (offered only when it
+ * fits one line) as one line above the captions, in from
  * the left over 8 frames and gone by the hook's end, the picture full frame behind it.
  */
 const LowerLine: React.FC<{ text: string; accent: string; frames: number }> = ({ text, accent, frames }) => {

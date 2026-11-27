@@ -32,13 +32,12 @@ export interface ShortMemory {
 }
 
 /**
- * A stored shape the layout test chose (pure): arm "on", not skipped, not a fallback, with a known opening and closing.
- * A fallback (the lower third chosen, the headline too long) drew today's card without choosing it, so it is never
- * counted as a chosen card.
+ * A stored shape the layout test chose (pure): arm "on", not skipped, with a known opening and closing. A Short whose
+ * lower third was unavailable still chose its opening between the other two, so it counts like any other.
  */
 function chosenShape(v: unknown): Pick<ShortShape, "open" | "close" | "line"> | undefined {
   const sh = (v ?? {}) as Partial<ShortShape> & { arm?: string; skipped?: string };
-  if (sh.arm !== "on" || sh.skipped || sh.fallback) return undefined;
+  if (sh.arm !== "on" || sh.skipped) return undefined;
   if (sh.open !== "card" && sh.open !== "footage" && sh.open !== "lower") return undefined;
   if (sh.close !== "card" && sh.close !== "hold") return undefined;
   return { open: sh.open, close: sh.close, ...(typeof sh.line === "string" ? { line: sh.line } : {}) };
@@ -86,7 +85,6 @@ export async function readShortMemory(
   const shapes = await db.query<{ shape: unknown }>(
     `SELECT assets_json->'shortShape' AS shape FROM episodes
       WHERE assets_json->'shortShape'->>'arm' = 'on' AND NOT (assets_json->'shortShape' ? 'skipped')
-        AND NOT (assets_json->'shortShape' ? 'fallback')
         AND lane <> ALL($3::text[]) AND status NOT IN ('failed','rejected') AND id <> $1
       ORDER BY created_at DESC LIMIT $2`,
     [excludeId, n, NOT_SHORTS],
@@ -105,24 +103,17 @@ export type FirstShotRecord = {
 
 /**
  * The stored shape when it still applies (pure): an earlier render of this episode chose it on the test's side, and
- * the opening is still allowed (a lower third never goes on a rumour). Its line is the one worked out now, from the
- * same headline; a stored lower third (or a stored fallback from one) with no line now is the card fallback.
+ * the opening is still allowed (a lower third needs a line and never goes on a rumour). Its line is the one worked out
+ * now, from the same headline.
  */
 function storedShape(
   prev: unknown,
   o: { rumour: boolean; line?: string },
 ): ShortShape | undefined {
-  const fb = (prev ?? {}) as { arm?: string; skipped?: string; fallback?: string; close?: string };
-  const wasFallback =
-    fb.arm === "on" && !fb.skipped && fb.fallback === "headline-too-long" && (fb.close === "card" || fb.close === "hold");
-  const sh = wasFallback ? { open: "lower" as const, close: fb.close as ShortShape["close"] } : chosenShape(prev);
+  const sh = chosenShape(prev);
   if (!sh) return undefined;
-  if (sh.open === "lower") {
-    if (o.rumour) return undefined;
-    return o.line
-      ? { open: "lower", close: sh.close, line: o.line }
-      : { open: "card", close: sh.close, fallback: "headline-too-long" };
-  }
+  if (sh.open === "lower")
+    return o.line && !o.rumour ? { open: "lower", close: sh.close, line: o.line } : undefined;
   return { open: sh.open, close: sh.close };
 }
 
@@ -154,7 +145,7 @@ export function shapeShort(o: {
   if (o.cfg.shortLayouts) {
     if (arm === "on" && o.clean) {
       const line = lowerLine(o.headline);
-      const picked =
+      shape =
         storedShape(o.assets.shortShape, { rumour: o.rumour, line }) ??
         pickShape({
           id: o.id,
@@ -162,9 +153,9 @@ export function shapeShort(o: {
           rumour: o.rumour,
           line,
         });
-      // A fallback is recorded with its reason and what was wanted; the render gets today's card, nothing more.
-      o.assets.shortShape = picked.fallback ? { arm, ...picked, wanted: "lower" } : { arm, ...picked };
-      shape = picked.fallback ? { open: "card", close: picked.close } : picked;
+      // A headline too long for one line was never offered the lower third: a plain note, so the report can say how
+      // often; the opening it got was a real choice and counts in the cap's memory as any other.
+      o.assets.shortShape = { arm, ...shape, ...(line ? {} : { lowerUnavailable: "headline-too-long" }) };
     } else
       o.assets.shortShape = {
         arm,
@@ -338,8 +329,8 @@ export interface UntemplateResultRow {
   open?: string;
   /** On the layout test's side but not a clean-frame Short, so drawn with today's card (no shape chosen). */
   skipped?: boolean;
-  /** On the layout test's side, given the lower third, but the headline was too long: drawn with today's card. */
-  fallback?: boolean;
+  /** On the layout test's side with the lower third never offered (the headline too long for one line). */
+  lowerUnavailable?: boolean;
   firstShot?: FirstShotArm;
   /** YouTube views at the 7-day reading; absent until it is taken. */
   views7d?: number;
@@ -397,12 +388,12 @@ export function untemplateLinesForReport(rows: UntemplateResultRow[]): string[] 
   test("Short sound test (SHORT_SOUND_PLAN)", "sound", ["sparse", "sparse", "v3", "v3"]);
   const on = rows.filter((r) => r.layout === "on");
   const skipped = on.filter((r) => r.skipped).length;
-  const fellBack = on.filter((r) => !r.skipped && r.fallback).length;
+  const unavailable = on.filter((r) => !r.skipped && r.lowerUnavailable).length;
   const opens = ["card", "footage", "lower"]
-    .map((k) => [k, on.filter((r) => !r.skipped && !r.fallback && r.open === k).length] as const)
+    .map((k) => [k, on.filter((r) => !r.skipped && r.open === k).length] as const)
     .filter(([, n]) => n > 0)
     .map(([k, n]) => `${k} ${n}`)
-    .concat(fellBack ? [`lower third chosen, headline too long (today's card instead) ${fellBack}`] : [])
+    .concat(unavailable ? [`lower third unavailable (headline too long) ${unavailable}`] : [])
     .concat(skipped ? [`not clean-frame (today's card, no shape chosen) ${skipped}`] : [])
     .join(", ");
   test("Short layout test (SHORT_LAYOUTS)", "layout", ["on", "chosen layouts", "off", "today's card"], opens ? `openings on the test's side: ${opens}` : undefined);

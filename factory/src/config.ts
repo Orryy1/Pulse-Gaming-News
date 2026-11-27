@@ -1519,9 +1519,9 @@ export interface Config {
   shortSoundSparseShare: number;
   /**
    * More than one Short layout (src/render/untemplate.ts): three openings (today's headline card, the picture full
-   * frame with captions only, the headline as one uncut lower-third line that leaves after the hook; a headline too
-   * long for one line opens on the card instead, recorded as fallback "headline-too-long" and never counted as a
-   * chosen card) and two closings (today's return to the headline card, holding on the payoff), chosen so no opening takes
+   * frame with captions only, the headline as one uncut lower-third line that leaves after the hook, offered only
+   * when the headline fits one line; otherwise the choice is between the other two and assets.shortShape notes
+   * lowerUnavailable "headline-too-long") and two closings (today's return to the headline card, holding on the payoff), chosen so no opening takes
    * more than 40% of the newest 30 Shorts whose shape the test chose (Shorts off the test all open on the card, so the
    * channel as a whole stays mostly card at any share under 1). The cover and custom thumbnail keep today's card. A
    * retry keeps the shape first chosen. Clean-frame Shorts only (one overlay at a time). Applies to the share in

@@ -8,13 +8,17 @@
 // Setting: GAME_DAY_CAP, ";"-separated games, each "alias|alias|...=N". Empty (the default) is off.
 //   GAME_DAY_CAP="GTA VI|GTA 6|Grand Theft Auto VI|Grand Theft Auto 6=1"
 // A Short counts for a game when its headline, game or YouTube title names one of the aliases as whole words, so
-// "GTA V" and San Andreas history stay free while "The Witcher 4 Targets a Leap Like GTA's" counts as GTA VI only if
-// it names GTA VI. Counted: every Short lane made today (news, breaking, Why, free, cutdowns), plus the day's planned
-// GTA File part while it is not yet made, so the numbered series keeps its part and the news gives way to it.
-// Applied: the news slot's candidates and the search slot's pick. Breaking news is never held (it has its own one-a-day
-// rule and franchise cooldown) and the GTA File part is never held (it is the day's planned GTA Short); long videos
-// are not Shorts and are neither counted nor held. When every candidate of a news slot is capped, the slot keeps them
-// all: a lost slot costs more than one more GTA Short.
+// "GTA V" and San Andreas history stay free. A headline that names GTA VI in passing ("Call of Duty Loses 42% of
+// Players After GTA 6", 28 views) counts and is held too, on purpose: those did as badly as GTA VI's own Shorts.
+// Counted: every Short lane made today (news, breaking, Why, search, free, evergreen, cutdowns), plus the day's
+// planned GTA File part while it is not yet made and its slot can still run (a Why day, a Why slot, nobody else in
+// it), so the numbered series keeps its part and the rest gives way to it.
+// Applied: the news slot's stories (before the best twelve are taken), a big story that would fill a news slot, the
+// Why lane's planned topic and editor list, and the search slot's pick. Never held: breaking news (its own one-a-day
+// rule and franchise cooldown, and a big story with no slot due is made as breaking) and the GTA File part. Long
+// videos are not Shorts and are neither counted nor held. When every story of a news slot (or every Why candidate) is
+// capped, all are kept: a lost slot costs more than one more GTA Short. A search slot whose every query is capped stays
+// empty for that harvest (search Shorts are extra, outside the day's target).
 
 import type { Db } from "./db.ts";
 
@@ -97,7 +101,7 @@ export function filterCapped<T>(
 }
 
 /** Lanes whose episodes are Shorts and count towards a game's day. */
-export const CAP_LANES = ["news", "news_breaking", "free", "cutdown"];
+export const CAP_LANES = ["news", "news_breaking", "free", "evergreen", "cutdown"];
 
 /**
  * Today's Shorts per capped game (local day in timeZone, a pre-made or spare Short on its slot's day as countToday

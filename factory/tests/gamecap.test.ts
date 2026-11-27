@@ -219,6 +219,7 @@ test("the day's planned GTA File part holds GTA VI's place until it is made or i
     gameDayCap: caps,
     timezone: "Europe/London",
     whyEnabled: true,
+    whyDays: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
     whySlots: ["12:00", "18:30"],
     seriesGtaFileEnabled: true,
     seriesGtaFileSlot: "18:30",
@@ -258,5 +259,60 @@ test("the day's planned GTA File part holds GTA VI's place until it is made or i
     0,
   );
   assert.deepEqual([...reserveFor(caps, "Halo 3 File #1").entries()], []);
+  await db.close();
+});
+
+test("evergreen Shorts count, and the day follows London in summer time too", async () => {
+  const db = await testDb();
+  await addEpisode(db, "ev", "GTA 6: buy, wait or skip?", "2026-07-01T10:00:00Z", { lane: "evergreen" });
+  // 23:30Z on 1 July is 00:30 on 2 July in London: tomorrow's.
+  await addEpisode(db, "late", "GTA 6 midnight patch", "2026-07-01T23:30:00Z");
+  const noon1 = await gameCountsToday(db, caps, "Europe/London", new Date("2026-07-01T11:00:00Z"));
+  assert.equal(noon1.get("GTA VI"), 1);
+  const noon2 = await gameCountsToday(db, caps, "Europe/London", new Date("2026-07-02T11:00:00Z"));
+  assert.equal(noon2.get("GTA VI"), 1);
+  await db.close();
+});
+
+test("a GTA File part whose slot cannot run holds no place: another Short in the slot, or not a Why day", async () => {
+  const db = await testDb();
+  const dir = await tmpDir();
+  const runFile = path.join(dir, "gta_file_run.json");
+  await fs.writeFile(
+    runFile,
+    JSON.stringify([
+      {
+        kind: "file",
+        part: 5,
+        date: "2026-11-28",
+        title: "GTA 6 Has Seasons",
+        question: "q",
+        angle: "a",
+        recap: "r",
+        facts: ["f"],
+        sources: [{ url: "https://www.rockstargames.com/y", source: "Rockstar", official: true }],
+      },
+    ]),
+  );
+  const base = {
+    gameDayCap: caps,
+    timezone: "Europe/London",
+    whyEnabled: true,
+    whySlots: ["12:00", "18:30"],
+    seriesGtaFileEnabled: true,
+    seriesGtaFileSlot: "18:30",
+    seriesGtaFileRunFile: runFile,
+  };
+  const at = (cfg: ReturnType<typeof testConfig>) => ({ db, cfg, now: () => new Date("2026-11-28T10:00:00Z") }) as unknown as Services;
+  assert.equal((await gameCapCounts(at(testConfig(dir, { ...base, whyDays: ["sat"] })))).get("GTA VI"), 1);
+  // 28 Nov 2026 is a Saturday: with Why Shorts only on weekdays the part cannot run.
+  assert.equal((await gameCapCounts(at(testConfig(dir, { ...base, whyDays: ["mon", "tue"] })))).get("GTA VI"), 0);
+  // Another Short already holds the 18:30 slot.
+  await db.query(
+    `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, slot_at, created_at)
+     VALUES ('other', 'why:halo', 'scripted', $1, 'news', 50, '2026-11-28T18:30:00Z', '2026-11-27T20:00:00Z')`,
+    [JSON.stringify({ headline: "Why Halo 3 ended it" })],
+  );
+  assert.equal((await gameCapCounts(at(testConfig(dir, { ...base, whyDays: ["sat"] })))).get("GTA VI"), 0);
   await db.close();
 });

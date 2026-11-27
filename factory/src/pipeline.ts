@@ -559,7 +559,7 @@ import {
   openOnOwnClip,
   type GtaFile,
 } from "./gtafile.ts";
-import { filterCapped, gameCountsToday, reserveFor } from "./gamecap.ts";
+import { filterCapped, fullCap, gameCountsToday, reserveFor } from "./gamecap.ts";
 import {
   askFirst,
   claimDay,
@@ -1979,6 +1979,16 @@ async function maybeSelectBig(
       make.reason = wait;
     }
   }
+  // GAME_DAY_CAP (src/gamecap.ts): a big story that would fill a news slot is a news Short, so a game whose Shorts for
+  // the day are used up holds it; with no slot due it is made as breaking news, which the cap never holds.
+  if (make && make.action === "make" && cfg.gameDayCap.length && (await bigSlot(s, now))) {
+    const counts = await gameCapCounts(s).catch(() => undefined);
+    const full = counts && fullCap(cfg.gameDayCap, counts, `${make.story.headline} ${make.story.name}`);
+    if (full) {
+      make.action = "held";
+      make.reason = `${full.name} already has its ${full.perDay} Short${full.perDay === 1 ? "" : "s"} today (GAME_DAY_CAP)`;
+    }
+  }
   await recordVerdicts(db, cfg, verdicts, now);
   if (!make || make.action !== "make") return undefined;
   return createBig(s, make);
@@ -2114,12 +2124,26 @@ export async function gameCapCounts(s: Services): Promise<Map<string, number>> {
     const today = dayKey(now, cfg.timezone);
     const part = readRun(file.runFile).find((e): e is RunFile => e.kind === "file" && e.date === today);
     const slot = part ? localTime(part.date, part.slot ?? file.slot, cfg.timezone) : undefined;
-    if (part && slot && slot.getTime() > now.getTime() - 2 * 3_600_000) {
+    // Only a part whose slot can still run holds a place: a Why day, a Why slot, and no other Short already in it.
+    const canRun =
+      !!part &&
+      !!slot &&
+      slot.getTime() > now.getTime() - 2 * 3_600_000 &&
+      cfg.whyEnabled &&
+      cfg.whySlots.includes(part.slot ?? file.slot) &&
+      cfg.whyDays.includes(weekday(slot, cfg.timezone));
+    if (part && slot && canRun) {
       const [made] = await db.query(
         `SELECT 1 AS made FROM episodes WHERE story_hash = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
         [`gtafile:${part.part}`],
       );
-      if (!made)
+      const [taken] = made
+        ? [undefined]
+        : await db.query(
+            `SELECT 1 AS taken FROM episodes WHERE slot_at = $1 AND status NOT IN ('failed','rejected') LIMIT 1`,
+            [slot],
+          );
+      if (!made && !taken)
         reserved = reserveFor(cfg.gameDayCap, `${gtaFileTitle(part.part, part.title)} ${part.game ?? GTA_FILE_GAME}`);
     }
   }
@@ -2404,13 +2428,30 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
       )
     );
   };
-  const candidates = (
+  const ranked = (
     Object.keys(weights).length
       ? [...eligible].sort((a, b) => weighted(b) - weighted(a))
       : eligible
-  )
-    .map((x) => x.cluster)
-    .slice(0, 12);
+  ).map((x) => x.cluster);
+  // GAME_DAY_CAP (src/gamecap.ts): a story naming a game whose Shorts for the day are used up leaves the slot's list
+  // before the best twelve are taken; when every story names one, the slot keeps them all (an empty slot costs more).
+  const capCut = capCounts
+    ? filterCapped(ranked, (c) => `${c.headline} ${c.gameHint ?? ""}`, cfg.gameDayCap, capCounts)
+    : undefined;
+  const candidates = (capCut?.kept ?? ranked).slice(0, 12);
+  if ((capCut?.dropped.length || capCut?.allCapped) && !(await weeklyTried(db, `gamecap:${slot.toISOString()}`))) {
+    log("info", "game day cap held stories back", {
+      slot: slot.toISOString(),
+      dropped: capCut.dropped.slice(0, 12).map((d) => `${d.game}: ${d.item.headline}`),
+      allCapped: capCut.allCapped,
+    });
+    await logEvent(db, null, "game_day_cap", {
+      slot: slot.toISOString(),
+      dropped: capCut.dropped.slice(0, 12).map((d) => ({ game: d.game, headline: d.item.headline })),
+      allCapped: capCut.allCapped,
+      counts: Object.fromEntries(capCounts ?? []),
+    }).catch(() => undefined);
+  }
   if (candidates.length === 0) {
     log("info", "no eligible stories for the slot", {
       slot: slot.toISOString(),
@@ -2425,29 +2466,10 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     cfg.storyPremiseGateShare > 0
       ? premiseArmFor(unitHash(`premise:${slot.toISOString()}`), cfg.storyPremiseGateShare)
       : undefined;
-  // GAME_DAY_CAP (src/gamecap.ts): a story naming a game whose Shorts for the day are used up leaves the slot's list;
-  // when every candidate names one, the slot keeps them all (an empty slot costs more than one more Short on it).
-  const capCut = capCounts
-    ? filterCapped(candidates, (c) => `${c.headline} ${c.gameHint ?? ""}`, cfg.gameDayCap, capCounts)
-    : undefined;
-  if (capCut?.dropped.length || capCut?.allCapped) {
-    log("info", "game day cap held stories back", {
-      slot: slot.toISOString(),
-      dropped: capCut.dropped.map((d) => `${d.game}: ${d.item.headline}`),
-      allCapped: capCut.allCapped,
-    });
-    await logEvent(db, null, "game_day_cap", {
-      slot: slot.toISOString(),
-      dropped: capCut.dropped.map((d) => ({ game: d.game, headline: d.item.headline })),
-      allCapped: capCut.allCapped,
-      counts: Object.fromEntries(capCounts ?? []),
-    }).catch(() => undefined);
-  }
-  const slotCandidates = capCut?.kept ?? candidates;
-  const gated = premiseArm ? gateCandidates(slotCandidates, premiseArm) : undefined;
+  const gated = premiseArm ? gateCandidates(candidates, premiseArm) : undefined;
   const id = await createFromChoice(
     s,
-    gated?.kept ?? slotCandidates,
+    gated?.kept ?? candidates,
     { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
     `news slot ${slot.toISOString()}`,
   );
@@ -3392,8 +3414,21 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
       })
       .catch(() => undefined);
   }
+  // GAME_DAY_CAP (src/gamecap.ts): past the GTA File (never held), a Why on a game whose Shorts for the day are used up
+  // is not made: a planned topic gives way to the editor, and the editor's list leaves that game out.
+  const whyCaps = cfg.gameDayCap.length
+    ? await gameCapCounts(s).catch((err) => {
+        log("warn", "game day cap count failed", { error: errorMessage(err) });
+        return undefined;
+      })
+    : undefined;
+  const whyFull = (text: string) => !!whyCaps && !!fullCap(cfg.gameDayCap, whyCaps, text);
   // A topic planned for this slot (the launch run, src/shortrun.ts) goes first; with none usable the editor picks.
   let planned = whyRunEntry(readRun(cfg.shortRunFile), due, cfg.timezone);
+  if (planned && whyFull(`${planned.title} ${planned.game}`)) {
+    log("info", "planned Why held by the game day cap", { topic: planned.title, game: planned.game });
+    planned = undefined;
+  }
   // The news got there first: a big Short already said it, so the slot goes to the editor's pick.
   const beaten =
     planned && cfg.bigStoryMode === "make"
@@ -3448,9 +3483,11 @@ export async function maybeSelectWhy(s: Services): Promise<string | undefined> {
         )
       : [];
   const home = homeList.length > 0;
-  const base = (
+  const fresher = (
     home ? homeList : whyCandidates(await s.discoverEvergreen(), today)
   ).filter((c) => !recent.games.some((g) => sameGame(g, c.name)));
+  const uncapped = fresher.filter((c) => !whyFull(c.name));
+  const base = uncapped.length ? uncapped : fresher;
   const { candidates, demand, skipped } = await demandRanked(s, base);
   if (!candidates.length) return undefined;
   const demandText = await topicDemand(s, "why");

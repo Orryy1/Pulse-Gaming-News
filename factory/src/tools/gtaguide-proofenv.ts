@@ -45,6 +45,8 @@ export function gtaGuideProofEnv(o: {
     GTA_GUIDE_SHARE: "1",
     AUTO_PUBLISH: "false",
     CAPTURE_CHECKLIST: "false",
+    // The sandbox's render never waits for the live Shorts' slots (run10 waited out all twelve passes at 15:29).
+    LONG_RENDER_IGNORE_SHORT_WINDOWS: "true",
     BACKUP_DIR: o.backup,
     ...(o.versus ? { VERSUS_LONG: "true", VERSUS_SHARE: "1" } : {}),
   };

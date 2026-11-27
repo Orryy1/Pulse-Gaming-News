@@ -13591,6 +13591,8 @@ async function longRenderGap(
   s: Services,
   ep: Episode,
 ): Promise<number | undefined> {
+  // A proof's sandbox has no Shorts of its own: it never waits for the live schedule's windows.
+  if (s.cfg.longRenderIgnoreShortWindows) return 180;
   const minutes = longRenderMinutes();
   const now = s.now().getTime();
   const ahead = await shortWindows(

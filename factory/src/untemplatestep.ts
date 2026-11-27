@@ -128,7 +128,7 @@ export function shapeShort(o: {
     "shortLayouts" | "shortLayoutsShare" | "shortFirstShotMinSeconds" | "shortFirstShotShare"
   >;
   id: string;
-  plan: Pick<RenderPlan, "shots" | "fps">;
+  plan: Pick<RenderPlan, "shots" | "fps" | "firstShotHeld">;
   clean: boolean;
   rumour: boolean;
   headline: string;
@@ -163,11 +163,13 @@ export function shapeShort(o: {
       };
   }
   const minSeconds = o.cfg.shortFirstShotMinSeconds;
-  const was = o.assets.shortFirstShot;
-  // A stored plan an earlier render held stays held (the hold is not undone on a re-render): the record keeps saying so.
-  const heldBefore = was?.arm === "held" && was.changed === true;
+  // A stored plan an earlier render held stays held (the hold is not undone on a re-render), and says so on the plan
+  // itself: a plan rebuilt after a regather carries no mark, so an old record never outlives the plan it described.
+  const heldBefore = o.plan.firstShotHeld;
+  const stillHeld = (): FirstShotRecord => ({ arm: "held", seconds: heldBefore!, changed: true });
   if (minSeconds <= 0) {
-    if (!heldBefore) delete o.assets.shortFirstShot;
+    if (heldBefore) o.assets.shortFirstShot = stillHeld();
+    else delete o.assets.shortFirstShot;
     return shape;
   }
   const shotArm = firstShotArm(o.id, minSeconds, o.cfg.shortFirstShotShare);
@@ -191,10 +193,12 @@ export function shapeShort(o: {
         toFrames: after,
       });
   }
-  o.assets.shortFirstShot =
-    !changed && heldBefore
-      ? was!
-      : { arm: shotArm, seconds: shotArm === "held" ? minSeconds : 0, changed };
+  if (changed) o.plan.firstShotHeld = minSeconds;
+  o.assets.shortFirstShot = changed
+    ? { arm: "held", seconds: minSeconds, changed: true }
+    : heldBefore
+      ? stillHeld()
+      : { arm: shotArm, seconds: shotArm === "held" ? minSeconds : 0, changed: false };
   return shape;
 }
 

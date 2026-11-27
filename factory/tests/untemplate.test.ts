@@ -360,11 +360,25 @@ test("the lower third takes a headline only when it fits one readable line", () 
 });
 
 test("the lower third takes three or four words of the spoken hook, the headline only when the hook gives none", () => {
-  assert.equal(hookLine("Is this the biggest delay of the year so far"), "Is this the biggest");
+  // Never a bare first-words cut: a long hook with no short first clause gives no line.
+  assert.equal(hookLine("Is this the biggest delay of the year so far"), undefined);
+  // Cutting what limits a negation or a verb makes a false claim: every one of these falls back to the headline.
+  for (const h of [
+    "GTA 6 won't launch on PC at first.",
+    "Starfield isn't coming to PS5 this year.",
+    "Fable isn't coming in 2026 after all.",
+    "Sony is not shutting down Bungie.",
+    "Nintendo just cancelled the Switch 2 Lite.",
+  ]) {
+    assert.equal(hookLine(h), undefined, h);
+    assert.equal(lowerLine("Headline", undefined, h), "Headline", h);
+  }
+  // A whole short hook, or a whole short first clause, is taken as said.
+  assert.equal(hookLine("GTA 6 slipped again."), "GTA 6 slipped again");
   // A clause that ends inside four words is taken whole.
   assert.equal(hookLine("GTA 6 slipped again. Here is why it matters"), "GTA 6 slipped again");
   // Never a weak last word: "Nintendo just killed the" reads "Nintendo just killed".
-  assert.equal(hookLine("Nintendo just killed the Switch price cut"), "Nintendo just killed");
+  assert.equal(hookLine("Nintendo just killed the Switch price cut"), undefined);
   // Never more than four words, every word whole, and always inside the width.
   for (const h of [
     "Is this the biggest delay of the year so far",
@@ -383,8 +397,9 @@ test("the lower third takes three or four words of the spoken hook, the headline
   assert.equal(hookLine("Switch 2 costs $449 now, and that is the cheap one"), undefined);
   assert.equal(hookLine("Xbox is dead, says nobody at Microsoft"), undefined);
   assert.notEqual(hookLine("This game was never cancelled at all"), "This game was never");
-  assert.equal(hookLine("Here is why you\u2019re wrong"), undefined, "a curly apostrophe still reads as a weak word");
-  assert.equal(hookLine("GTA 6 slips again today"), "GTA 6 slips again");
+  assert.equal(hookLine("That is what you\u2019re"), undefined, "a curly apostrophe still reads as a weak word");
+  assert.equal(hookLine("GTA 6 slips again today"), undefined);
+  assert.equal(hookLine("GTA 6 slips again"), "GTA 6 slips again");
   // The render step passes the written hook, not the voice's respelt one: a figure stays a figure on screen.
   assert.equal(lowerLine("Switch 2 price rises", undefined, "Switch 2 costs $449 now, and that is the cheap one"), "Switch 2 price rises");
   const pipelineSrc = fs.readFileSync(new URL("../src/pipeline.ts", import.meta.url), "utf8");
@@ -393,7 +408,8 @@ test("the lower third takes three or four words of the spoken hook, the headline
   assert.equal(hookLine(""), undefined);
   assert.equal(hookLine("Wow."), undefined);
   assert.equal(hookLine("Supercalifragilisticexpialidocious extraordinarilyoverwhelming"), undefined);
-  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar just moved it again"), "Rockstar just moved it");
+  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar moved it again"), "Rockstar moved it again");
+  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Rockstar just moved it again"), "GTA 6 slips to November");
   assert.equal(lowerLine("GTA 6 slips to November", "DELAYED", "Wow."), "GTA 6 slips to November");
   assert.equal(lowerLine("GTA 6 slips to November", "DELAYED"), "GTA 6 slips to November");
   // The lower third stays inside the safe area: its text width is the content box less the bar, padding and spacing.
@@ -531,7 +547,7 @@ test("SHORT_FIRST_SHOT_MIN_S is its own test: split by its own share, recorded, 
     clean = false,
     id = "ep_f",
   ) => {
-    const plan = { fps: FPS, shots: fx.shots.map((s) => ({ ...s })) };
+    const plan: { fps: number; shots: Shot[]; firstShotHeld?: number } = { fps: FPS, shots: fx.shots.map((s) => ({ ...s })) };
     const assets: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {};
     const shape = shapeShort({
       cfg: { shortFirstShotShare: 1, ...cfg },
@@ -583,15 +599,29 @@ test("SHORT_FIRST_SHOT_MIN_S is its own test: split by its own share, recorded, 
     "a chosen layout never holds the first shot by itself",
   );
   assert.equal(layouts.assets.shortFirstShot, undefined);
+  // The hold marks the plan, and only a held plan's record says "held".
+  assert.equal(on.plan.firstShotHeld, 1.5);
+  assert.equal(notHeld.plan.firstShotHeld, undefined);
+  // A plan rebuilt after a regather (no mark) never inherits an old "held" record.
+  for (const [cfg, want] of [
+    [{ shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 0, shortFirstShotShare: 1 }, undefined],
+    [{ shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 1.5, shortFirstShotShare: 0 }, { arm: "off", seconds: 0, changed: false }],
+  ] as const) {
+    const fresh = { fps: FPS, shots: fx.shots.map((s) => ({ ...s })) };
+    const a: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {
+      shortFirstShot: { arm: "held", seconds: 1.5, changed: true },
+    };
+    shapeShort({ cfg, id: "ep_f", plan: fresh, clean: false, rumour: false, headline: "X", memory: undefined, assets: a });
+    assert.deepEqual(a.shortFirstShot, want);
+    assert.equal(fresh.shots[0]!.end, 12);
+  }
   // A plan an earlier render held stays held on a re-render (the hold is never undone), so its record stays too.
   for (const cfg of [
     { shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 0, shortFirstShotShare: 1 },
     { shortLayouts: false, shortLayoutsShare: 0.5, shortFirstShotMinSeconds: 1.5, shortFirstShotShare: 0 },
   ]) {
-    const stored = { fps: FPS, shots: holdFirstShot(fx.shots.map((s) => ({ ...s }))) };
-    const a: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {
-      shortFirstShot: { arm: "held", seconds: 1.5, changed: true },
-    };
+    const stored = { fps: FPS, shots: holdFirstShot(fx.shots.map((s) => ({ ...s }))), firstShotHeld: 1.5 };
+    const a: { shortShape?: unknown; shortFirstShot?: FirstShotRecord } = {};
     shapeShort({ cfg, id: "ep_f", plan: stored, clean: false, rumour: false, headline: "X", memory: undefined, assets: a });
     assert.deepEqual(a.shortFirstShot, { arm: "held", seconds: 1.5, changed: true });
   }
@@ -755,7 +785,7 @@ test("a retry keeps the shape and the sparse sequence an earlier render chose, w
       clean: true,
       rumour,
       headline: "GTA 6 slips",
-      hook: "Rockstar just moved it again",
+      hook: "Rockstar moved it again",
       memory: { sequences: [], shapes: recent },
       assets,
     });
@@ -764,7 +794,7 @@ test("a retry keeps the shape and the sparse sequence an earlier render chose, w
   // Newer Shorts all used the first render's opening and closing: a fresh pick would now avoid them.
   const crowd = Array.from({ length: 29 }, () => ({ open: first!.open, close: first!.close }));
   assert.notDeepEqual(
-    pickShape({ id: "ep_retry", recent: crowd, rumour: false, line: "Rockstar just moved it" }),
+    pickShape({ id: "ep_retry", recent: crowd, rumour: false, line: "Rockstar moved it again" }),
     first,
     "the memory alone would change the pick",
   );
@@ -841,6 +871,27 @@ test("the cover and the frame-0 thumbnail always carry today's card opening", ()
   const off: P = { headline: "GTA 6 slips to November", openingWords: "GTA 6" };
   assert.equal(cardStillProps(off), off);
   assert.deepEqual(coverStillProps(off), { headline: "GTA 6 slips to November", coverStill: true });
+});
+
+test("a footage opening's cover still shows only the headline card at frame 0, whatever the gate put in the hook", async () => {
+  const { stingPlacement } = await import("../src/render/cleanframe.ts");
+  const { segments, words, plan } = short();
+  // A footage opening has no headline over the hook, so the graphics gate may move a card onto frame 0.
+  segments[1] = { ...segments[1]!, visual: { ...segments[1]!.visual!, span: [0, 2.5] } };
+  const layout = shortLayout(segments, FPS, plan.totalFrames, plan.tailFrames);
+  const people = [{ name: "Ann Example", src: "a.jpg", credit: "", at: 0 }];
+  const keptAt0 = (shape?: { open: ShortShape["open"]; close: ShortShape["close"] }) =>
+    arbitrate(overlaySpans({ segments, words, plan, layout, stamps: [], sting: false, people, shape }))
+      .filter((s) => s.kind !== "shelf" && s.from <= 0 && s.to > 0)
+      .map((s) => s.kind);
+  const footage = keptAt0({ open: "footage", close: "card" });
+  assert.ok(footage.length > 0 && !footage.includes("hook"), `the video's frame 0 shows the gate's overlay: ${footage}`);
+  // The cover draws the Short with no shape (cardStillProps): the headline card wins frame 0 and nothing else shows.
+  const props = cardStillProps({ shape: { open: "footage" as const, close: "card" as const } });
+  assert.deepEqual(keptAt0((props as { shape?: ShortShape }).shape), ["hook"]);
+  // The game collage card is never placed inside the hook, whatever the shape.
+  const at = stingPlacement({ segments, words, fps: FPS, totalFrames: plan.totalFrames, names: () => true, pictures: 3 });
+  assert.ok(!at || at.from >= layout.hookEnd);
 });
 
 test("the weekly report reads each test by arm, with no verdict before 20 a side", () => {

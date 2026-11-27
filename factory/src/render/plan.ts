@@ -172,6 +172,11 @@ export interface RenderPlan {
   soundPlan?: "sparse";
   /** The sparse plan's silence beat before the verdict (frames): the music dips, no effect plays. */
   silences?: Array<{ from: number; to: number }>;
+  /**
+   * SHORT_FIRST_SHOT_MIN_S (src/untemplatestep.ts): the minimum (s) a render held this plan's first shot to; absent,
+   * never held. On the plan, not the episode, so a plan rebuilt after a regather starts unheld.
+   */
+  firstShotHeld?: number;
 }
 
 export const QUIET_KINDS = new Set([

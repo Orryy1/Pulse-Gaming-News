@@ -499,7 +499,7 @@ export function lowerLineSize(text: string): number | undefined {
 
 /** Most words the lower third takes from the spoken hook. */
 export const HOOK_LINE_MAX_WORDS = 4;
-/** Words a short line never ends on: it would read as a cut-off fragment ("THE ONE THING THAT"). */
+/** Words a line never ends on: it would read as a cut-off fragment ("THE ONE THING THAT"). */
 const WEAK_END = new Set(
   (
     "a an the and or but so of to in on at for from by with as into onto than that this these those which who whose " +
@@ -508,19 +508,17 @@ const WEAK_END = new Set(
     "never still longer only even ever also almost nearly barely hardly really very"
   ).split(" "),
 );
-/** A word after a figure that belongs to it ("2.4 million", "40 percent"): the line is never cut between them. */
-const UNIT_WORD = /^(million|billion|thousand|hundred|trillion|percent|per|%|k|m|bn|dollars|pounds|euros|hours|minutes|days|weeks|months|years|players|copies|times|fps|gb|tb)\b/i;
 /** A word that starts an attribution ("Xbox is dead, says nobody"): the clause before it is not the hook's claim. */
 const ATTRIBUTION = /^(says|said|claims|claimed|according|reportedly|insists|insisted|reports|reported|apparently)\b/i;
-/** A token that is or holds a figure or a price. */
-const FIGURE = /[0-9$\u00a3\u20ac%]/;
 /** A word that closes a clause. */
 const CLAUSE_END = /[.,!?;:\u2013\u2014]$/;
 
 /**
- * Three to four words from the spoken hook for the lower third (pure): the hook's first clause when it is two to four
- * words, else its first four words (or three when four do not fit the width), never ending on a weak word, every
- * word whole. Undefined when no such piece of the hook fits one readable line (the hook is unusable).
+ * Two to four words from the spoken hook for the lower third (pure): the hook's whole first clause, or the whole hook
+ * when it is one clause, and only when that is four words or fewer. Never a cut inside a clause: "GTA 6 won't launch on
+ * PC at first" cut to "GTA 6 WON'T LAUNCH" is a false claim on screen, and the channel never shows an unverified
+ * claim as fact. Also undefined when the clause ends on a weak word, is attributed to someone ("..., says nobody"),
+ * or does not fit one readable line: the lower third then takes the headline.
  */
 export function hookLine(hook?: string): string | undefined {
   const flat = (hook ?? "")
@@ -530,35 +528,22 @@ export function hookLine(hook?: string): string | undefined {
     .trim();
   if (!flat) return undefined;
   const words = flat.split(" ");
-  // The first clause, when it ends inside the first four words ("GTA 6 slipped again. Here's why" gives "GTA 6 slipped again").
   const clauseEnd = words.findIndex((w) => CLAUSE_END.test(w));
-  const firstClause = clauseEnd >= 1 && clauseEnd < HOOK_LINE_MAX_WORDS ? clauseEnd + 1 : 0;
-  // A clause the next words attribute to someone is not a claim to put on screen alone: the headline instead.
-  if (firstClause && ATTRIBUTION.test(words[firstClause] ?? "")) return undefined;
-  const tidy = (ws: string[]): string | undefined => {
-    const out = ws.map((w) => w.replace(/[.,!?;:\u2013\u2014]+$/, "")).filter(Boolean);
-    while (out.length && WEAK_END.has(out.at(-1)!.toLowerCase().replace(/[^a-z']/g, ""))) out.pop();
-    if (out.length < 2) return undefined;
-    // Cut short of the whole hook: never right after a figure ("SOLD 2.4") or between a figure and its unit.
-    if (out.length < words.length) {
-      if (FIGURE.test(out.at(-1)!)) return undefined;
-      // Nor just before one ("SWITCH 2 COSTS" with the price cut off).
-      const next = words[out.length] ?? "";
-      if (UNIT_WORD.test(next) || FIGURE.test(next)) return undefined;
-    }
-    const t = out.join(" ");
-    return lowerLineSize(t) ? t : undefined;
-  };
-  const tries = firstClause ? [firstClause] : [HOOK_LINE_MAX_WORDS, HOOK_LINE_MAX_WORDS - 1];
-  for (const n of tries) {
-    const t = tidy(words.slice(0, n));
-    if (t) return t;
-  }
-  return undefined;
+  // The whole first clause, or the whole hook when no clause ends before its last word.
+  const n = clauseEnd >= 0 ? clauseEnd + 1 : words.length;
+  if (n > HOOK_LINE_MAX_WORDS) return undefined;
+  // A clause the next words attribute to someone is not a claim to put on screen alone.
+  if (n < words.length && ATTRIBUTION.test(words[n] ?? "")) return undefined;
+  const out = words.slice(0, n).map((w) => w.replace(/[.,!?;:\u2013\u2014]+$/, "")).filter(Boolean);
+  if (out.length < 2) return undefined;
+  if (WEAK_END.has(out.at(-1)!.toLowerCase().replace(/[^a-z']/g, ""))) return undefined;
+  const t = out.join(" ");
+  return lowerLineSize(t) ? t : undefined;
 }
 
 /**
- * The lower third's text (pure): three to four words of the spoken hook (hookLine); only when the hook gives none,
+ * The lower third's text (pure): the spoken hook's whole first clause of two to four words (hookLine); only when the
+ * hook gives none,
  * the headline when it fits one readable line, else the thumbnail's words when they do, else none (and the Short does
  * not open on a lower third). A headline or thumbnail line is never cut: a cut headline can mislead.
  */

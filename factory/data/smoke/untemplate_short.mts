@@ -6,6 +6,8 @@
 //     sparse sound plan (share 1) on it, with the copy's newest 30 Shorts as the memory. Both arms carry the collage
 //     card where stage's render step places it (motifSting), and the sparse plan hears it. Writes the graphics audit of
 //     what will be drawn beside the props (<out json>.gfx.json).
+//     FORCE_OPEN=footage|lower (proof only) replaces the picked opening after the pick, keeping the picked closing;
+//     refused when that opening is not allowed (a lower third needs a headline that fits one line and no rumour).
 //   render <props json> <episode copy dir> <out mp4>
 //     renders those props with the real PulseShort composition, then the factory's loudness pass.
 // On the PC run the render through the orchestrator at test priority with ORCH_CLIENT pointing nowhere, since
@@ -26,6 +28,8 @@ if (mode === "render") {
     episodeDir: dir!,
     outFile: raw,
     posterFile: `${out}.poster.jpg`,
+    // The cover still (SHORT_FULL_COVER), drawn with today's card opening whatever the shape (render.ts cardStillProps).
+    coverFile: `${out!.replace(/\.mp4$/, "")}.cover.jpg`,
     concurrency: Number(process.env.PROOF_CONCURRENCY ?? 4),
     props,
   } as never);
@@ -44,6 +48,7 @@ if (mode === "props") {
   const { wordSoundCue } = await import("../../src/render/wordlook.ts");
   const { planSfx } = await import("../../src/render/plan.ts");
   const { readShortMemory, shapeShort, soundShort } = await import("../../src/untemplatestep.ts");
+  const { lowerLine } = await import("../../src/render/untemplate.ts");
   const { auditShortGraphics } = await import("../../src/qa/gfxaudit.ts");
   const { gfxInputOf } = await import("../../src/qa/gfxgate.ts");
   const { stingPlacement } = await import("../../src/render/cleanframe.ts");
@@ -78,8 +83,25 @@ if (mode === "props") {
   let sound: any;
   if (arm === "new") {
     const memory = await readShortMemory(db, id!);
-    const cfg = { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 1.5, shortSoundPlan: "sparse" as const, shortSoundSparseShare: 1 };
-    shape = shapeShort({ cfg, id: id!, plan, clean, rumour: Boolean(script.is_rumour), headline: script.headline, thumbText: script.youtube?.thumb_text, memory, assets });
+    const cfg = {
+      shortLayouts: true,
+      shortLayoutsShare: 1,
+      shortFirstShotMinSeconds: 1.5,
+      shortFirstShotShare: 1,
+      shortSoundPlan: "sparse" as const,
+      shortSoundSparseShare: 1,
+    };
+    shape = shapeShort({ cfg, id: id!, plan, clean, rumour: Boolean(script.is_rumour), headline: script.headline, memory, assets });
+    const force = process.env.FORCE_OPEN;
+    if (force && shape && shape.open !== force) {
+      const line = lowerLine(script.headline);
+      if (force === "lower" && (!line || script.is_rumour)) throw new Error(`FORCE_OPEN=lower refused: ${script.is_rumour ? "a rumour" : "the headline does not fit one line"}`);
+      if (force !== "lower" && force !== "footage") throw new Error(`FORCE_OPEN=${force}: only footage or lower`);
+      console.log(`proof override: picked ${shape.open}, forced ${force}`);
+      shape = force === "lower" ? { open: "lower", close: shape.close, line } : { open: "footage", close: shape.close };
+      assets.shortShape = { ...(assets.shortShape ?? {}), ...shape, forcedForProof: true };
+      if (force !== "lower") delete assets.shortShape.line;
+    }
     const stampSound = wordSoundCue(plan.wordLook);
     sound = soundShort({
       cfg, id: id!, plan, segments, words, stamps, clean, stampSound, shape, memory, assets, sting: stingAt ?? false,

@@ -96,7 +96,9 @@ export function visionGuardView(
     return undefined;
   }
   const at = typeof j.at === "number" ? j.at : 0;
-  const stale = !(at > 0 && nowSec - at <= 150);
+  // A reading from the future (the clock stepped back) is not trusted either.
+  const age = nowSec - at;
+  const stale = !(at > 0 && age <= 150 && age >= -5);
   return { guard: !stale && j.guard === true, why: typeof j.why === "string" ? j.why : "", at, stale };
 }
 

@@ -509,6 +509,7 @@ test("the PC's /vision-guard view says guard on only for a fresh reading", async
   assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.guard, false);
   assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.stale, true);
   assert.equal(visionGuardView(JSON.stringify({ guard: false, why: "", at: now }), now)?.guard, false);
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now + 600 }), now)?.guard, false);
   assert.equal(visionGuardView(undefined, now), undefined);
   assert.equal(visionGuardView("not json", now), undefined);
 });

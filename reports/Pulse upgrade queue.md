@@ -621,3 +621,5 @@ Their art is AI-made illustration.
 61. Merge gate: when the live fast-forward is blocked by untracked files identical to incoming tracked files, remove the duplicates and retry; different files still refuse. Test both cases. (27 Nov: a helper got round this by hand.)
 
 62. Merge gate: use its own private worktree (e.g. D:\pulse-data\handsoff\merge-gate\stage) instead of the shared scratchpad stage that fix sessions check other branches out in. On 26 and 27 Nov the gate refused because stage was on another branch with uncommitted edits (claude/subtitle-wide).
+
+63. TikTok captions hook-first test: open each TikTok caption with the stake or the "why" line (the Short's hook) instead of the title. Orryy's data (27 Nov, command centre): hook-first captions median 2,178 views vs 1,335. Split 50/50 by episode, record the arm, judge after about 20 each on 48 h views.

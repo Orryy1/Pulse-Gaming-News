@@ -346,31 +346,93 @@ test("the lower third takes a headline only when it fits one readable line", () 
   assert.equal(
     lowerLine(
       "A headline far too long to sit on one readable line of the frame",
-      "DELAYED AGAIN",
-    ),
-    "DELAYED AGAIN",
-  );
-  assert.equal(
-    lowerLine(
-      "A headline far too long to sit on one readable line of the frame",
     ),
     undefined,
   );
 });
 
-test("the lower third never comes from the spoken hook: the headline, else the thumbnail words, never cut", () => {
+test("the lower third never comes from the spoken hook or the thumbnail words: the uncut headline only", () => {
   // Every shortened hook found on 27 Nov could mislead: a cut negation, a dropped qualifier, a question shown as a
   // statement, scare quotes removed. The lower third reads only the packaging text, which is never cut.
-  assert.equal(lowerLine.length, 2, "lowerLine takes the headline and thumbnail text only");
-  assert.equal(lowerLine("Headline", undefined), "Headline");
+  assert.equal(lowerLine.length, 1, "lowerLine takes the headline only");
+  assert.equal(lowerLine("Headline"), "Headline");
   const src = fs.readFileSync(new URL("../src/render/untemplate.ts", import.meta.url), "utf8");
   assert.ok(!/export function hookLine/.test(src), "no hook-to-line cut exists");
   const pipelineSrc = fs.readFileSync(new URL("../src/pipeline.ts", import.meta.url), "utf8");
   assert.ok(!/shapeShort\(\{[\s\S]{0,400}hook: script\.hook,/.test(pipelineSrc), "shapeShort is not given the hook");
-  assert.equal(lowerLine("GTA 6 slips to November", "DELAYED"), "GTA 6 slips to November");
+  assert.equal(lowerLine("GTA 6 slips to November"), "GTA 6 slips to November");
+  const stepSrc = fs.readFileSync(new URL("../src/untemplatestep.ts", import.meta.url), "utf8");
+  assert.ok(!/thumbText|thumb_text/.test(stepSrc), "the layout step never reads the thumbnail words");
   // The lower third stays inside the safe area: its text width is the content box less the bar, padding and spacing.
   assert.equal(LOWER_WIDTH, SAFE.right - SAFE.left - 72);
   assert.ok(64 + 10 + 44 + LOWER_WIDTH + 18 <= SAFE.right);
+});
+
+test("a headline too long for the lower third opens on the card, recorded as a fallback and never counted as chosen", () => {
+  const fx = JSON.parse(
+    fs.readFileSync(new URL("./fixtures/plan_open_04s.json", import.meta.url), "utf8"),
+  ) as { shots: Shot[] };
+  const LONG = "A headline far too long to sit on one readable line of the frame";
+  const THUMB = "DELAYED AGAIN";
+  // An id the picker gives the lower third with an empty memory (searched, so the test does not hang on one id).
+  const id = Array.from({ length: 200 }, (_, n) => `ep_fb${n}`).find(
+    (x) => pickShape({ id: x, recent: [], rumour: false, line: "GTA 6 slips" }).open === "lower",
+  )!;
+  assert.ok(id);
+  assert.deepEqual(pickShape({ id, recent: [], rumour: false }), {
+    open: "card",
+    close: pickShape({ id, recent: [], rumour: false, line: "GTA 6 slips" }).close,
+    fallback: "headline-too-long",
+  });
+  const cfg = { shortLayouts: true, shortLayoutsShare: 1, shortFirstShotMinSeconds: 0, shortFirstShotShare: 0.5 };
+  const run = (headline: string, assets: { shortShape?: unknown } = {}) => {
+    const shape = shapeShort({
+      cfg,
+      id,
+      plan: { fps: FPS, shots: fx.shots.map((x) => ({ ...x })) },
+      clean: true,
+      rumour: false,
+      headline,
+      memory: { sequences: [], shapes: [] },
+      assets,
+    });
+    return { shape, assets };
+  };
+  // A headline that fits: the lower line is the headline itself.
+  const fits = run("GTA 6 slips to November");
+  assert.equal(fits.shape!.open, "lower");
+  assert.equal(fits.shape!.line, "GTA 6 slips to November");
+  // One that does not: today's card opening, the fallback and its reason recorded, the thumbnail words nowhere.
+  const long = run(LONG);
+  assert.deepEqual(long.shape, { open: "card", close: fits.shape!.close });
+  assert.deepEqual(long.assets.shortShape, {
+    arm: "on",
+    open: "card",
+    close: fits.shape!.close,
+    fallback: "headline-too-long",
+    wanted: "lower",
+  });
+  assert.ok(!JSON.stringify(long).includes(THUMB));
+  // A retry keeps the fallback, and gives the lower third if the headline now fits.
+  assert.deepEqual(run(LONG, { shortShape: long.assets.shortShape }).shape, long.shape);
+  assert.equal(run("GTA 6 slips to November", { shortShape: long.assets.shortShape }).shape!.open, "lower");
+  // The 40% cap's memory never counts a fallback as a chosen card.
+  const m = memoryOf([], [
+    { shape: long.assets.shortShape },
+    { shape: { arm: "on", open: "card", close: "card" } },
+  ]);
+  assert.deepEqual(m.shapes, [{ open: "card", close: "card" }]);
+  // The weekly report counts fallbacks on their own, not as card openings.
+  const lines = untemplateLinesForReport([
+    { layout: "on", open: "card", fallback: true },
+    { layout: "on", open: "card" },
+    { layout: "on", open: "lower" },
+    { layout: "off", open: "card" },
+  ]);
+  assert.ok(
+    lines[0]!.includes("openings on the test's side: card 1, lower 1, lower third chosen, headline too long (today's card instead) 1"),
+    String(lines[0]),
+  );
 });
 
 test("shapes rotate so no opening takes more than 40% of the newest 30", () => {

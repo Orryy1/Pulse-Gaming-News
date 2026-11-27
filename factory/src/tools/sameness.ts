@@ -88,7 +88,7 @@ async function simulate(
         id: row.id,
         recent: chosen.slice(0, 30),
         rumour: Boolean(row.script?.is_rumour),
-        line: lowerLine(row.script?.headline ?? "", row.script?.youtube?.thumb_text),
+        line: lowerLine(row.script?.headline ?? ""),
       });
       chosen.unshift({ open: shape.open, close: shape.close });
       rec.open = shape.open;

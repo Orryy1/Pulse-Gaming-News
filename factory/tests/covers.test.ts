@@ -15,6 +15,7 @@ import {
   coverOf,
   socialCut,
   socialCutArgs,
+  COVER_FADE_FRAMES,
 } from "../src/social/cover.ts";
 import {
   coverParams,
@@ -105,6 +106,25 @@ test("social copy: the cover holds, cuts to the opening, and the cover moment si
     args[args.indexOf("-t") + 1],
     String(COVER_HOLD_SECONDS),
   );
+  // A card opening, and every Short with the layout test off: exactly the hard cut's arguments, byte for byte.
+  assert.deepEqual(socialCutArgs("in.mp4", "cover.jpg", "out.mp4", false), args);
+  assert.equal(
+    graph,
+    "[1:v][0:v]scale2ref[c][base];[base][c]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[v]",
+  );
+  // A footage or lower-third opening: the same hold, then a 6-frame fade of the cover into the video.
+  const fadeArgs = socialCutArgs("in.mp4", "cover.jpg", "out.mp4", true);
+  const fadeGraph = fadeArgs[fadeArgs.indexOf("-filter_complex") + 1]!;
+  assert.equal(COVER_FADE_FRAMES >= 6 && COVER_FADE_FRAMES <= 8, true);
+  assert.equal(
+    fadeGraph,
+    "[1:v][0:v]scale2ref[c0][base];[c0]format=rgba,fade=t=out:st=0.4:d=0.2:alpha=1[c];[base][c]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[v]",
+  );
+  assert.equal(fadeArgs[fadeArgs.indexOf("-t") + 1], "0.6333", "the hold, the fade and one fully faded frame");
+  assert.ok(COVER_OFFSET_MS / 1000 < COVER_HOLD_SECONDS, "the cover moment is in the full hold, before the fade");
+  // Everything else is the cut's.
+  const strip = (a: string[]) => a.filter((x, i) => i !== a.indexOf("-t") + 1 && i !== a.indexOf("-filter_complex") + 1);
+  assert.deepEqual(strip(fadeArgs), strip(args));
 });
 
 test("social copy: made only with the switch on and a cover, once, and remade when the Short is newer", async () => {
@@ -353,4 +373,25 @@ test("premade restore: the made video gets its own cover back, and copies made f
   assert.equal(await putMadeFilesBack(dir), true);
   assert.equal(await fs.readFile(path.join(dir, COVER_FILE), "utf8"), "made cover");
   await assert.rejects(fs.stat(path.join(dir, SOCIAL_FILE)), "the remake's social copy is gone");
+});
+
+test("social copy: a footage or lower-third opening fades the cover out; a card opening and no shape cut as before", async () => {
+  for (const [open, fades] of [
+    ["footage", true],
+    ["lower", true],
+    ["card", false],
+    [undefined, false],
+  ] as const) {
+    const dir = await tmpDir();
+    const video = path.join(dir, "short.mp4");
+    await fs.writeFile(video, "v");
+    await fs.writeFile(path.join(dir, COVER_FILE), "jpg");
+    const runs: string[][] = [];
+    await socialCut(true, video, async (args) => {
+      runs.push(args);
+      await fs.writeFile(args.at(-1)!, "social");
+    }, open);
+    const graph = runs[0]![runs[0]!.indexOf("-filter_complex") + 1]!;
+    assert.equal(/fade=t=out/.test(graph), fades, String(open));
+  }
 });

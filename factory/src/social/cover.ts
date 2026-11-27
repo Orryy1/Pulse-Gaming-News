@@ -9,6 +9,9 @@
 // it gets a social copy whose first 0.4 s show the cover over the opening, then cut to the Short as it is, and the
 // offset points inside that hold. A cut, not a fade: the picture beneath is the same opening, and a fade ghosted the
 // headline over the opening words for six frames (proof, 25 Nov 2026). The YouTube Short itself is never touched: its hook keeps its pace.
+// SHORT_LAYOUTS (src/render/untemplate.ts): a Short that opens on the footage or the lower third has no headline card
+// beneath the cover, so a hard cut jumps from the card to a different picture; there the cover holds as long, then
+// fades out over COVER_FADE_FRAMES into the video. A card-opening Short (and every Short with the test off) keeps the cut.
 import fs from "node:fs";
 import path from "node:path";
 
@@ -18,16 +21,30 @@ export const COVER_FILE = "cover.jpg";
 export const SOCIAL_FILE = "social.mp4";
 /** How long the cover holds at the start of the social copy before it cuts to the opening. */
 export const COVER_HOLD_SECONDS = 0.4;
+/** Frames the cover takes to fade into a footage or lower-third opening, after the full hold (6 frames, 0.2 s). */
+export const COVER_FADE_FRAMES = 6;
 /** The cover moment the platforms are told to use: well inside the hold, clear of the first frame and the cut. */
 export const COVER_OFFSET_MS = 200;
 
-/** The ffmpeg arguments for the social copy (pure): picture re-encoded with the cover on top, sound copied. */
+/**
+ * The ffmpeg arguments for the social copy (pure): picture re-encoded with the cover on top, sound copied. With
+ * `crossfade` (a footage or lower-third opening) the cover holds as long, then fades out over COVER_FADE_FRAMES;
+ * without it the arguments are exactly the hard cut's.
+ */
 export function socialCutArgs(
   video: string,
   cover: string,
   out: string,
+  crossfade = false,
 ): string[] {
-  const hold = COVER_HOLD_SECONDS;
+  const fadeS = COVER_FADE_FRAMES / 30;
+  // The still lasts through the fade and one frame more, whose alpha is 0, so it leaves fully faded.
+  const hold = crossfade
+    ? Number(((Math.round(COVER_HOLD_SECONDS * 30) + COVER_FADE_FRAMES + 1) / 30).toFixed(4))
+    : COVER_HOLD_SECONDS;
+  const layer = crossfade
+    ? `[1:v][0:v]scale2ref[c0][base];[c0]format=rgba,fade=t=out:st=${COVER_HOLD_SECONDS}:d=${Number(fadeS.toFixed(4))}:alpha=1[c];`
+    : `[1:v][0:v]scale2ref[c][base];`;
   return [
     "-y",
     "-v",
@@ -45,7 +62,7 @@ export function socialCutArgs(
     "-filter_complex",
     // The still as a layer the size of the video for the hold, then gone; the video plays on beneath from frame 0, so
     // the sound and every later frame keep their timing.
-    `[1:v][0:v]scale2ref[c][base];[base][c]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[v]`,
+    `${layer}[base][c]overlay=0:0:eof_action=pass:format=auto,format=yuv420p[v]`,
     "-map",
     "[v]",
     "-map",
@@ -85,12 +102,14 @@ export function coverOf(
 
 /**
  * The social copy for a Short with a cover (made once, remade when the Short or the cover is newer); the cover moment
- * goes with it. Undefined when there is no cover: the platform gets the Short as before.
+ * goes with it. Undefined when there is no cover: the platform gets the Short as before. `open` is the Short's
+ * opening (assets.shortShape.open): footage or lower fades the cover out, anything else cuts as before.
  */
 export async function socialCut(
   enabled: boolean,
   video: string,
   run: (args: string[]) => Promise<void> = ffmpeg,
+  open?: string,
 ): Promise<{ file: string; offsetMs: number } | undefined> {
   const dir = path.dirname(video);
   const cover = coverOf(enabled, dir);
@@ -98,7 +117,7 @@ export async function socialCut(
   const out = path.join(dir, SOCIAL_FILE);
   if (!freshFrom(out, [video, cover])) {
     const tmp = path.join(dir, `social.part.mp4`);
-    await run(socialCutArgs(video, cover, tmp));
+    await run(socialCutArgs(video, cover, tmp, open === "footage" || open === "lower"));
     await fs.promises.rename(tmp, out);
   }
   return { file: out, offsetMs: COVER_OFFSET_MS };

@@ -809,7 +809,17 @@ export async function crosspostTick(
           : undefined;
       const cut =
         platform === "tiktok" && d.socialUrl && coverOf(d.cfg.shortFullCover, d.episodeDir(ep.id))
-          ? await (d.socialCut ?? socialCut)(d.cfg.shortFullCover, file).catch((err) => {
+          ? await (d.socialCut ?? socialCut)(
+              d.cfg.shortFullCover,
+              file,
+              undefined,
+              // SHORT_LAYOUTS: a footage or lower-third opening fades the cover out instead of cutting.
+              (
+                await d.db
+                  .query<{ open: string | null }>(`SELECT assets_json->'shortShape'->>'open' AS open FROM episodes WHERE id = $1`, [ep.id])
+                  .catch(() => [])
+              )[0]?.open ?? undefined,
+            ).catch((err) => {
               log("warn", "social cover copy failed; posting the Short as it is", {
                 episode: ep.id,
                 error: errorMessage(err),

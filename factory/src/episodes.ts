@@ -117,7 +117,7 @@ export interface EpisodeAssets {
   /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" or "v3" while the sound test runs. */
   shortSoundArm?: "sparse" | "v3";
   /** SHORT_LAYOUTS (src/render/untemplate.ts): the arm and the opening and closing drawn, while the layout test runs. */
-  shortShape?: { arm: "on" | "off"; open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string; skipped?: string };
+  shortShape?: { arm: "on" | "off"; open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string; skipped?: string; fallback?: "headline-too-long"; wanted?: "lower" };
   /** SHORT_SOUND_PLAN: the effect sequence the sparse plan chose, kept by a retry or regather while the arm holds. */
   shortSoundSequence?: string;
   /** SHORT_FIRST_SHOT_MIN_S (src/untemplatestep.ts): the arm, the minimum held to and whether it changed the plan. */

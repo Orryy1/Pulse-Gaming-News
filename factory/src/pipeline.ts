@@ -16390,7 +16390,6 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     clean: shortClean,
     rumour: Boolean(script.is_rumour),
     headline: script.headline,
-    thumbText: script.youtube?.thumb_text,
     memory: untemplateMemory,
     assets,
   });

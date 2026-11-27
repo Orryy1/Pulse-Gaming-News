@@ -601,3 +601,11 @@ Their art is AI-made illustration.
 **Build:** in src/handsoff/mergegate.ts, refuse from 30 minutes before a slot until that slot's upload has finished (read uploads_active and the episode status from /health), not a flat 50 minutes after. Test it on the 26 Nov evening slot plan.
 
 **Measure:** deploys merged in the evening go out in the first gap after an upload finishes.
+
+## 61. GTA 6 library clips with burned-in subtitles keep failing Shorts QA (fix session 27 Nov)
+
+**Why:** on 26 Nov two GTA 6 Shorts (ep_20261126_2f82809f, the 18:30 slot, and ep_20261126_a2f47909) failed QA three times each: trailer subtitles ("Okay, okay") cut off at the frame edge, then the footage gate found no moving footage left once the faulted clips were dropped. The QA is right; the library clips carry subtitles.
+
+**Build:** when a library clip is tagged, run the subtitle-band check (OCR on the lower fifth across a few frames) and mark clips with burned-in text; the Short planner either crops above the band or skips the clip. Re-check the GTA 6 library once.
+
+**Measure:** no "subtitles cut off" QA failures on GTA Shorts for a week.

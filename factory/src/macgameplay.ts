@@ -113,14 +113,24 @@ export async function localGameplayPass(
   };
   const opts = { env, timeout: 6 * 3_600_000, maxBuffer: 16 * 1024 * 1024 };
   const scripts = path.dirname(FINDER);
+  // The finder goes first: the VOD download waits in the main lane (up to 120 min) and, run before it, kept the
+  // finder waiting too (27 Nov 2026). A VOD it brings in is scored on the next hourly pass.
+  const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
+  // A finder that fails still lets the download run (VODs leave Twitch); its error is raised first, at the end.
+  let finderError: unknown;
+  await run(c, a, { ...opts, env: finderEnv(env) }).catch((err: unknown) => {
+    finderError = err;
+  });
+  let vodError: unknown;
   if (vods) {
-    const [c, a] = behindRenders("pulse-vods", "bash", [
+    const [vc, va] = behindRenders("pulse-vods", "bash", [
       path.join(scripts, "download-vods.sh"),
     ]);
-    await run(c, a, opts);
+    // A download that gets no turn still lets the disk rule below run; the error is raised after it.
+    await run(vc, va, opts).catch((err: unknown) => {
+      vodError = err;
+    });
   }
-  const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
-  await run(c, a, { ...opts, env: finderEnv(env) });
   const done = (() => {
     try {
       return Object.keys(
@@ -150,6 +160,8 @@ export async function localGameplayPass(
     }))
       fs.rmSync(path.join(dir, name), { force: true });
   }
+  if (finderError !== undefined) throw finderError;
+  if (vodError !== undefined) throw vodError;
 }
 
 /** One check of the timetable: at most one pass at a time, its state kept in data/admin/mac_gameplay.json. */

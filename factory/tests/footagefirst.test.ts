@@ -225,7 +225,7 @@ test("a game not out yet gets no uploaded gameplay at all, in the gather and in 
       return "x";
     },
     ytdlp: "never-run",
-    game: "Grand Theft Auto VI",
+    game: "Grand Theft Auto VII", // unreleased this year (GTA VI is out since 19 Nov 2026)
     franchise: GTA,
     year: new Date().getFullYear(),
     episodeDir: os.tmpdir(),
@@ -661,7 +661,7 @@ test("a game not out yet, or a chapter already on enough footage, is skipped wit
   const out: FootageClip[] = [];
   const vi = {
     entry: 7,
-    game: "Grand Theft Auto VI",
+    game: "Grand Theft Auto VII", // unreleased this year (GTA VI is out since 19 Nov 2026)
     franchise: GTA,
     year: new Date().getFullYear(),
     moments: [{ show: "Lucia" }],

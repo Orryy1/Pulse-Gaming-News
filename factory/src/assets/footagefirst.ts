@@ -1016,7 +1016,7 @@ export async function prefetchChapter(
     report.skipped.push({ entry: ch.entry, game: ch.game, why });
     log("info", "footage-first: chapter skipped", { game: ch.game, why });
   };
-  if (notOutYet(ch.year)) {
+  if (notOutYet(ch.year, undefined, ch.game)) {
     skip("the game is not out: uploaded gameplay of it can only be fake");
     return undefined;
   }
@@ -1488,7 +1488,7 @@ export async function gatherFootageFirst(
     const k0 = out.length;
     // Every released chapter gets its share of the time left: the first ones took 10-12 minutes each and the
     // limit ran out with three chapters untouched (31 Oct 2026 proof).
-    const own = fairDeadline(now(), deadline, chapters.slice(k).filter((c) => !notOutYet(c.year)).length);
+    const own = fairDeadline(now(), deadline, chapters.slice(k).filter((c) => !notOutYet(c.year, undefined, c.game)).length);
     if (pre) await finishChapter(deps, ch, clips, rel, path.join(episodeDir, rel), o, report, out, own, pre, keepFrames);
     if (!report.skipped.some((x) => x.entry === ch.entry))
       (report.perChapter ??= []).push({

@@ -106,7 +106,19 @@ export function junkTitleReason(
   return undefined;
 }
 
-/** A game from this calendar year on: its uploaded "gameplay" can only be fake or someone else's trailer. */
-export function notOutYet(year: number | undefined, now = new Date()): boolean {
-  return !!year && year >= now.getFullYear();
+/**
+ * Release days known for this year's games. A year alone can't say a game is out, so before 27 Nov 2026 every GTA VI
+ * chapter (out 19 Nov) skipped footage-first and licensed gameplay as "not out", and the guide proofs ran on a few
+ * stills shown over and over. Keyed by the title in lower case.
+ */
+export const RELEASED_ON: Readonly<Record<string, string>> = {
+  "grand theft auto vi": "2026-11-19",
+};
+
+/** A game from this calendar year on, unless its release day is known and past: its uploaded "gameplay" can only be fake. */
+export function notOutYet(year: number | undefined, now = new Date(), game?: string): boolean {
+  if (!year || year < now.getFullYear()) return false;
+  const day = game ? RELEASED_ON[game.toLowerCase().replace(/\s+/g, " ").trim()] : undefined;
+  if (day && Date.parse(`${day}T00:00:00Z`) <= now.getTime()) return false;
+  return true;
 }

@@ -1,0 +1,581 @@
+// Codex in place of Claude for the steps that run well ahead of a slot. The owner's ChatGPT plan carries a
+// weekly Codex allowance that is lost if unused, so routine text work (documentary chapters, evergreen
+// scripts, long-video titles) can go there at no API cost. The PC orchestrator's codex_runner.py does the
+// calling; this module turns one structured() call into a prompt plus a JSON Schema file, runs the Python
+// helper, validates the answer with the same Zod schema, and falls back to Claude on any failure, so a
+// Codex outage can never stop a video. Nothing is routed unless CODEX_LLM is on and the step's site is in
+// CODEX_CALLS; the news lane's Short writing stays on Claude because it sits on a slot's critical path and
+// Codex takes seconds to minutes.
+
+import { AsyncLocalStorage } from "node:async_hooks";
+import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { z } from "zod";
+import { log } from "../lib/util.ts";
+import {
+  isGrammarTooLarge,
+  jobOf,
+  recordUsage,
+  type Llm,
+  type LlmContent,
+  type StructuredOptions,
+  type Tier,
+} from "./llm.ts";
+
+export type CodexKind = "quick" | "bulk" | "code" | "review" | "frontier";
+
+const routeHint = new AsyncLocalStorage<"claude" | "codex">();
+const runCap = new AsyncLocalStorage<number>();
+
+/**
+ * CODEX_SHORT_TIMEOUT_MINUTES: each Codex run made inside fn is killed after at most capMs, whatever its site's own
+ * timeout (src/pipeline.ts advance wraps each slot-bound Short's step in it). The cap is per run, not per step: a step
+ * with several calls, or a schema retry, can still add up to more. On 25 Nov 2026 a hung search.write ran the full
+ * 20 minutes twice and the 15:00 Short missed. Undefined or 0: no cap.
+ */
+export function withCodexCap<T>(
+  capMs: number | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return capMs && capMs > 0 ? runCap.run(capMs, fn) : fn();
+}
+
+/** The CODEX_SHORT_TIMEOUT_MINUTES cap of the step running now, if any (src/editorial/maxplan.ts bounds its runs by it too). */
+export function codexCapNow(): number | undefined {
+  return runCap.getStore();
+}
+
+/** The WRITER_SPLIT route hint of the call running now, if any (src/editorial/maxplan.ts leaves a "codex" hint to Codex). */
+export function routeHintNow(): "claude" | "codex" | undefined {
+  return routeHint.getStore();
+}
+
+/**
+ * How long one Codex run may take (pure): a listed site gets the full CODEX_TIMEOUT_MINUTES, a call moved to Codex
+ * only by Claude's limit or a route hint gets at most LIMIT_TIMEOUT_MS, and a Short's cap (withCodexCap) bounds both.
+ */
+export function codexRunTimeout(
+  timeoutMs: number,
+  listed: boolean,
+  capMs?: number,
+): number {
+  const base = listed ? timeoutMs : Math.min(timeoutMs, LIMIT_TIMEOUT_MS);
+  return capMs && capMs > 0 ? Math.min(base, capMs) : base;
+}
+
+/**
+ * WRITER_SPLIT: every call fn makes goes to this provider whatever CODEX_CALLS says (Claude's limit still sends a call
+ * to Codex, and a Codex failure still falls back to Claude). Undefined: the usual routing. Ignored with Codex off.
+ */
+export function withRoute<T>(
+  route: "claude" | "codex" | undefined,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return route ? routeHint.run(route, fn) : fn();
+}
+
+/** What one Codex run is asked to do; the runner (real or a test double) answers with the raw text. */
+export interface CodexRequest {
+  prompt: string;
+  kind: CodexKind;
+  /** Path of a JSON Schema file the answer must match. */
+  schema?: string;
+  /** Image files to attach (vision checks). */
+  images?: string[];
+  timeoutMs: number;
+}
+
+export interface CodexOptions {
+  /** CODEX_LLM: nothing is routed while false. */
+  enabled: boolean;
+  /** CODEX_CALLS: the sites routed, exact ("doc.chapter"), by family ("doc") or everything ("*"). */
+  sites: string[];
+  /** CODEX_VISION: calls carrying images are routed too (each check wants its own side-by-side first). */
+  vision?: boolean;
+  /**
+   * True while the PC vision relay is down (src/assets/visionrelay.ts). A picture call then goes to Codex even from a
+   * step not on CODEX_CALLS, when `vision` allows images at all: Codex, not the paid API, covers the outage.
+   */
+  outage?: () => Promise<boolean>;
+  /** CODEX_TIMEOUT_MINUTES: the run is killed after this (default 20 minutes). */
+  timeoutMs?: number;
+  /** CODEX_PYTHON: the Python that can import codex_runner (default "python"). */
+  python?: string;
+  /** CODEX_RUNNER_DIR: where codex_runner.py lives. */
+  runnerDir?: string;
+  /** Where schema and image files are written; a temp folder by default. */
+  tmpDir?: string;
+  /** The runner; tests substitute a fake so no process is spawned. */
+  run?: (req: CodexRequest) => Promise<string>;
+  /** A step Claude normally answers went to Codex because Claude is out of allowance: flag it for the owner. */
+  onLimitRouted?: (site: string) => void;
+  /**
+   * CODEX_GRAMMAR_FALLBACK: a call Claude rejects because its answer format is too big to compile ("The compiled
+   * grammar is too large") goes to Codex, which has no such limit, instead of failing the step. Off: the error stands.
+   */
+  grammarFallback?: boolean;
+  /** A call went to Codex because its format was too big for Claude: say which step, for fixing its schema. */
+  onGrammarRouted?: (site: string) => void;
+}
+
+/**
+ * How long calls stay off Claude after its usage limit. The 30 Oct blind test tied overall but Claude's hooks
+ * were livelier and Codex took 6-9 minutes a script, so unlisted steps (the news Shorts) move to Codex only
+ * when Claude actually refuses, not on the shared switch at 90% of the week.
+ */
+export const LIMIT_HOLD_MS = 60 * 60 * 1000;
+/** A call moved to Codex only by the limit: long enough for a script, short enough for a slot. */
+export const LIMIT_TIMEOUT_MS = 12 * 60 * 1000;
+
+/** Claude's own refusal for being out of allowance, not a passing overload. */
+export function isUsageLimit(err: unknown): boolean {
+  return /usage limit|credit balance|exceeded your .*(limit|quota)/i.test(
+    (err as Error)?.message ?? String(err),
+  );
+}
+
+/**
+ * Claude's refusal of an answer format too big for its constrained decoding (a 400, never billed): the same call
+ * will fail every time, so retrying it on Claude is pointless. Seen 19 Nov 2026 on the writers' room layout.
+ */
+export { isGrammarTooLarge };
+
+export const DEFAULT_RUNNER_DIR = "C:\\Claude\\orchestrator";
+
+/** True when the Codex helper is installed in `runnerDir` on this machine (the PC orchestrator's folder; absent on the Mac). */
+export function codexRunnerPresent(
+  runnerDir: string,
+  exists: (p: string) => boolean = fs.existsSync,
+): boolean {
+  return Boolean(runnerDir) && exists(path.join(runnerDir, "codex_runner.py"));
+}
+export const DEFAULT_TIMEOUT_MS = 20 * 60 * 1000;
+
+/** Which Codex model class answers a tier: top writing gets the frontier model, mid the workhorse, low the fast one. */
+export function kindFor(tier: Tier = "top"): CodexKind {
+  return tier === "top" ? "frontier" : tier === "mid" ? "bulk" : "quick";
+}
+
+/**
+ * The site a call belongs to: the explicit tag, else the file name of the first module above this one and
+ * llm.ts in the stack ("documentary", "evergreen", "vision").
+ */
+export function siteOf(
+  explicit?: string,
+  stack = new Error().stack ?? "",
+): string {
+  if (explicit) return explicit;
+  for (const line of stack.split("\n")) {
+    const m = line.match(/([\w.-]+)\.(?:ts|mts|js|mjs|tsx):\d+:\d+/);
+    if (!m) continue;
+    const name = m[1]!;
+    // maxplan sits between a caller and this router when CLAUDE_VIA_MAX is on: the caller is the site, not it.
+    if (name === "codex" || name === "llm" || name === "codex.test" || name === "maxplan") continue;
+    return name;
+  }
+  return "unknown";
+}
+
+/** Whether a site is on the list: exact, by family (the part before the first dot) or "*". */
+export function siteListed(site: string, sites: string[]): boolean {
+  const family = site.split(".")[0]!;
+  return sites.some((s) => {
+    const t = s.trim().toLowerCase();
+    return t === "*" || t === site.toLowerCase() || t === family.toLowerCase();
+  });
+}
+
+/** The routing decision for one call. */
+export function routeToCodex(
+  opts: Pick<CodexOptions, "enabled" | "sites" | "vision">,
+  site: string,
+  hasImages: boolean,
+  claudeOut = false,
+): boolean {
+  if (!opts.enabled) return false;
+  if (hasImages && !opts.vision) return false;
+  return claudeOut || siteListed(site, opts.sites);
+}
+
+/**
+ * OpenAI's structured outputs want a strict schema: every property required, no extra properties, and no
+ * keywords it does not know. Zod's optional fields become nullable-and-required; the answer's nulls are
+ * dropped before Zod sees it (the factory's schemas use optional, never nullable).
+ */
+export function strictJsonSchema(schema: unknown): unknown {
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (!node || typeof node !== "object") return node;
+    const n = { ...(node as Record<string, unknown>) };
+    delete n.$schema;
+    delete n.default;
+    delete n.minLength;
+    delete n.maxLength;
+    delete n.minItems;
+    delete n.maxItems;
+    delete n.minimum;
+    delete n.maximum;
+    delete n.exclusiveMinimum;
+    delete n.exclusiveMaximum;
+    delete n.pattern;
+    delete n.format;
+    if (
+      n.type === "object" &&
+      n.properties &&
+      typeof n.properties === "object"
+    ) {
+      const props = n.properties as Record<string, unknown>;
+      const required = new Set((n.required as string[] | undefined) ?? []);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(props)) {
+        const w = walk(v);
+        out[k] = required.has(k) ? w : { anyOf: [w, { type: "null" }] };
+      }
+      n.properties = out;
+      n.required = Object.keys(props);
+      n.additionalProperties = false;
+    }
+    for (const key of ["items", "anyOf", "oneOf", "allOf", "not"] as const)
+      if (key in n) n[key] = walk(n[key]);
+    return n;
+  };
+  return walk(schema);
+}
+
+/** Nulls stand for absent optional fields in a strict-schema answer. */
+export function dropNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>))
+    if (v !== null) out[k] = dropNulls(v);
+  return out;
+}
+
+/** The answer's JSON, with any code fence or prose around it removed. */
+export function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const body = (fenced ? fenced[1]! : text).trim();
+  const start = body.search(/[[{]/);
+  if (start < 0) return body;
+  const end = Math.max(body.lastIndexOf("}"), body.lastIndexOf("]"));
+  return end > start ? body.slice(start, end + 1) : body.slice(start);
+}
+
+/** Codex has no system role: the instructions and the input are marked, and the JSON-only rule comes last. */
+export function buildPrompt(system: string, text: string): string {
+  return `<instructions>\n${system}\n</instructions>\n\n<input>\n${text}\n</input>\n\nReply with one JSON object only, matching the output schema exactly. No prose, no code fence.`;
+}
+
+/** The text of a call's content, with image parts left out (they travel as files). */
+export function textOf(content: string | LlmContent): string {
+  if (typeof content === "string") return content;
+  return content
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** The base64 image parts of a call's content. */
+export function imagesOf(
+  content: string | LlmContent,
+): Array<{ data: string; mediaType: string }> {
+  if (typeof content === "string") return [];
+  const out: Array<{ data: string; mediaType: string }> = [];
+  for (const part of content)
+    if (part.type === "image" && part.source.type === "base64")
+      out.push({ data: part.source.data, mediaType: part.source.media_type });
+  return out;
+}
+
+/** The Python the runner spawns: reads the request file, asks Codex, writes the answer file. */
+export const PYTHON_SNIPPET = [
+  "import json, sys",
+  "sys.path.insert(0, sys.argv[1])",
+  "import codex_runner",
+  "req = json.load(open(sys.argv[2], encoding='utf-8'))",
+  "out = codex_runner.ask(req['prompt'], kind=req['kind'], schema=req.get('schema'), timeout=req['timeout'], images=req.get('images') or None)",
+  "open(req['out'], 'w', encoding='utf-8').write(out)",
+].join("\n");
+
+/** The command line for one request: python -c <snippet> <runner dir> <request file>. */
+export function buildCommand(
+  python: string,
+  runnerDir: string,
+  requestFile: string,
+): { cmd: string; args: string[] } {
+  return { cmd: python, args: ["-c", PYTHON_SNIPPET, runnerDir, requestFile] };
+}
+
+/** Runs codex_runner.ask in a child Python, killed (with its tree) if it outlives the timeout. */
+export async function runCodex(
+  req: CodexRequest,
+  opts: { python: string; runnerDir: string; tmpDir: string },
+): Promise<string> {
+  const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const requestFile = path.join(opts.tmpDir, `req_${stamp}.json`);
+  const outFile = path.join(opts.tmpDir, `out_${stamp}.txt`);
+  fs.writeFileSync(
+    requestFile,
+    JSON.stringify({
+      prompt: req.prompt,
+      kind: req.kind,
+      schema: req.schema,
+      images: req.images,
+      // Codex is told to stop a little before Node gives up, so the runner's own kill comes first.
+      timeout: Math.max(30, Math.floor(req.timeoutMs / 1000) - 15),
+      out: outFile,
+    }),
+  );
+  const { cmd, args } = buildCommand(opts.python, opts.runnerDir, requestFile);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(cmd, args, {
+        stdio: ["ignore", "ignore", "pipe"],
+        windowsHide: true,
+      });
+      let stderr = "";
+      child.stderr?.on("data", (d) => (stderr += String(d)));
+      const timer = setTimeout(() => {
+        if (process.platform === "win32" && child.pid)
+          spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+            stdio: "ignore",
+            windowsHide: true,
+          });
+        else child.kill("SIGKILL");
+        reject(
+          new Error(
+            `codex timed out after ${Math.round(req.timeoutMs / 60000)} min`,
+          ),
+        );
+      }, req.timeoutMs);
+      child.on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        if (code === 0) resolve();
+        else
+          reject(
+            new Error(
+              `codex runner exit ${code}: ${stderr.trim().split("\n").at(-1) ?? ""}`.trim(),
+            ),
+          );
+      });
+    });
+    return fs.readFileSync(outFile, "utf8");
+  } finally {
+    fs.rmSync(requestFile, { force: true });
+    fs.rmSync(outFile, { force: true });
+  }
+}
+
+/**
+ * An Llm that answers listed sites through Codex and everything else (and every failure) through Claude.
+ * Each answer is parsed with the call's Zod schema; an answer that does not fit is asked for once more with
+ * the validation error, then the call goes to Claude.
+ */
+export function createCodexLlm(fallback: Llm, opts: CodexOptions): Llm {
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const python = opts.python ?? "python";
+  const runnerDir = opts.runnerDir ?? DEFAULT_RUNNER_DIR;
+  let tmpDir = opts.tmpDir;
+  const tmp = () => {
+    if (!tmpDir)
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pulse-codex-"));
+    fs.mkdirSync(tmpDir, { recursive: true });
+    return tmpDir;
+  };
+  const run =
+    opts.run ??
+    ((req: CodexRequest) =>
+      runCodex(req, { python, runnerDir, tmpDir: tmp() }));
+  let limitUntil = 0;
+  const claudeOut = () => Date.now() < limitUntil;
+  // Claude first; a text call goes to Codex when Claude refuses on its limit. This is the API key's own limit,
+  // not the subscription's weekly one, so it is not recorded in the orchestrator's claude_budget for others.
+  const claude = async <S extends z.ZodType>(
+    o: StructuredOptions<S>,
+    site: string,
+    hasImages: boolean,
+    afterCodex = false,
+  ): Promise<z.infer<S>> => {
+    try {
+      return await fallback.structured(o);
+    } catch (err) {
+      // A format too big for Claude: Codex takes the call (never back here again after Codex itself failed).
+      if (opts.grammarFallback && !afterCodex && isGrammarTooLarge(err) && (!hasImages || opts.vision)) {
+        log("warn", "answer format too big for Claude, Codex answers", { site });
+        opts.onGrammarRouted?.(site);
+        return viaCodex(o, site, imagesOf(o.content), true);
+      }
+      if (!isUsageLimit(err)) throw err;
+      limitUntil = Date.now() + LIMIT_HOLD_MS;
+      // Codex already failed this call: asking it again would only repeat the wait, so the step fails and retries.
+      // A picture call with CODEX_VISION off has nowhere to go either.
+      const stuck = afterCodex
+        ? "Codex already failed this call, so the step fails"
+        : hasImages && !opts.vision
+          ? "a picture call with CODEX_VISION off, so the step fails"
+          : undefined;
+      log("warn", stuck ? "Claude refused on its usage limit, no Codex retry" : "Claude refused on its usage limit; Codex answers until the hold ends", {
+        site,
+        until: new Date(limitUntil).toISOString(),
+        error: (err as Error)?.message?.slice(0, 300) ?? String(err),
+        ...(stuck ? { why: stuck } : {}),
+      });
+      if (stuck) throw err;
+      if (!siteListed(site, opts.sites)) opts.onLimitRouted?.(site);
+      return viaCodex(o, site, imagesOf(o.content));
+    }
+  };
+
+  const viaCodex = async <S extends z.ZodType>(
+    o: StructuredOptions<S>,
+    site: string,
+    images: ReturnType<typeof imagesOf>,
+    fromClaude = false,
+  ): Promise<z.infer<S>> => {
+      const callTimeout = codexRunTimeout(
+        timeoutMs,
+        siteListed(site, opts.sites),
+        runCap.getStore(),
+      );
+      const kind = kindFor(o.tier);
+      const started = Date.now();
+      const stamp = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const files: string[] = [];
+      try {
+        const schemaFile = path.join(tmp(), `schema_${stamp}.json`);
+        fs.writeFileSync(
+          schemaFile,
+          JSON.stringify(
+            strictJsonSchema(
+              z.toJSONSchema(o.schema, { unrepresentable: "any" }),
+            ),
+          ),
+        );
+        files.push(schemaFile);
+        const imageFiles = images.map((img, i) => {
+          const ext = img.mediaType === "image/png" ? "png" : "jpg";
+          const f = path.join(tmp(), `img_${stamp}_${i}.${ext}`);
+          fs.writeFileSync(f, Buffer.from(img.data, "base64"));
+          files.push(f);
+          return f;
+        });
+        let prompt = buildPrompt(o.system, textOf(o.content));
+        let lastError = "";
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const answer = await run({
+            prompt: attempt
+              ? `${prompt}\n\nYour previous reply was not valid: ${lastError}\nReply again with one JSON object matching the schema.`
+              : prompt,
+            kind,
+            schema: schemaFile,
+            images: imageFiles.length ? imageFiles : undefined,
+            timeoutMs: callTimeout,
+          });
+          let parsed: unknown;
+          try {
+            parsed = dropNulls(JSON.parse(extractJson(answer)));
+          } catch (err) {
+            lastError = `not JSON (${(err as Error).message.slice(0, 120)})`;
+            continue;
+          }
+          const r = o.schema.safeParse(parsed);
+          if (r.success) {
+            const ms = Date.now() - started;
+            recordUsage({
+              t: new Date().toISOString(),
+              model: `codex:${kind}`,
+              job: jobOf(o.system),
+              in: 0,
+              out: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              provider: "codex",
+              site,
+              ms,
+            }, o.system);
+            log("info", "codex answered", {
+              site,
+              kind,
+              ms,
+              attempt,
+              images: imageFiles.length,
+            });
+            return r.data as z.infer<S>;
+          }
+          lastError = r.error.issues
+            .slice(0, 6)
+            .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+            .join("; ");
+        }
+        throw new Error(`answer did not match the schema: ${lastError}`);
+      } catch (err) {
+        // Claude is out of allowance too: fail the step so it retries, rather than asking it again. Claude already
+        // turned this call down as too big: nothing more to ask it. Either way the log says why Claude was skipped.
+        const skip = claudeOut()
+          ? `Claude is out of allowance until ${new Date(limitUntil).toISOString()}`
+          : fromClaude
+            ? "Claude already refused this call's answer format as too big"
+            : undefined;
+        log("warn", skip ? "codex failed, no Claude fallback" : "codex failed, Claude answers", {
+          site,
+          kind,
+          ms: Date.now() - started,
+          timeoutMs: callTimeout,
+          error: (err as Error).message.slice(0, 300),
+          ...(skip ? { skipped: skip } : {}),
+        });
+        if (skip) throw err;
+        let result: z.infer<S>;
+        try {
+          result = await claude(o, site, images.length > 0, true);
+        } catch (claudeErr) {
+          // Claude refused on its limit just now: the step's failure keeps Codex's reason, which is the one to fix.
+          if (isUsageLimit(claudeErr))
+            throw new Error(
+              `${(err as Error).message} (Claude fallback refused: usage limit)`,
+              { cause: claudeErr },
+            );
+          throw claudeErr;
+        }
+        log("info", "claude answered after codex", {
+          site,
+          ms: Date.now() - started,
+        });
+        return result;
+      } finally {
+        for (const f of files) fs.rmSync(f, { force: true });
+      }
+  };
+
+  return {
+    async structured<S extends z.ZodType>(
+      o: StructuredOptions<S>,
+    ): Promise<z.infer<S>> {
+      const images = imagesOf(o.content);
+      const site = siteOf(o.site);
+      const hint = opts.enabled ? routeHint.getStore() : undefined;
+      if (hint === "claude" && !claudeOut())
+        return claude(o, site, images.length > 0);
+      if (hint === "codex" && (images.length === 0 || opts.vision))
+        return viaCodex(o, site, images);
+      const routed = routeToCodex(opts, site, images.length > 0, claudeOut());
+      const outageRoute =
+        !routed &&
+        opts.enabled &&
+        opts.vision === true &&
+        images.length > 0 &&
+        Boolean(await opts.outage?.().catch(() => false));
+      if (!routed && !outageRoute) return claude(o, site, images.length > 0);
+      if (claudeOut() && !siteListed(site, opts.sites))
+        opts.onLimitRouted?.(site);
+      return viaCodex(o, site, images);
+    },
+  };
+}

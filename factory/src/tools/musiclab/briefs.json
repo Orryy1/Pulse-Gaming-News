@@ -1,0 +1,132 @@
+{
+  "note": "Series-signature music briefs for ACE-Step 1.5 (acegen.py). Each series has one identity (instrumentation and character, kept identical across its pieces so the sting and the bed sound like one family) in D or E major, the two keys the soundscape's tuned sounds come in. A sting is generated long and cut to its strongest opening by picksig.py; a bed is cut into a seamless beat-aligned loop. No named artists, songs, games or composers in any prompt: the music must not imitate anyone.",
+  "house": "Instrumental only, no vocals, no choir, no spoken words. Clean modern mix, warm low end that still carries on a phone speaker, no harsh highs.",
+  "series": {
+    "gta_daily": {
+      "name": "GTA 6 Day N",
+      "key": "E",
+      "bpm": 100,
+      "identity": "Sun-drenched retro-modern synth funk: warm analogue synth bass, gated electronic drums, bright chorus guitar chops and a lush pad, the feeling of a hot coastal evening drive.",
+      "pieces": {
+        "sting": {
+          "caption": "A confident four-second signature intro: one bold rising synth phrase that lands on a big warm final chord and rings out, like a show's title card.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 1100
+        },
+        "bed": {
+          "caption": "Steady background groove for narration: consistent energy start to finish, no lead melody, no build-ups or drops, the midrange left clear for a voice.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 1200
+        }
+      }
+    },
+    "why": {
+      "name": "The Why",
+      "key": "D",
+      "bpm": 96,
+      "identity": "Curious, playful investigation: plucked pizzicato strings, soft marimba, a round muted synth bass and light brushed percussion, thoughtful and a little mischievous.",
+      "pieces": {
+        "sting": {
+          "caption": "A short curious signature motif: three plucked notes that ask a question and a soft resolving chord answer, clean and memorable.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 2100
+        },
+        "bed": {
+          "caption": "Light steady background bed for narration: even energy throughout, no lead melody, no breaks, gentle and unobtrusive.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 2200
+        }
+      }
+    },
+    "gta_file": {
+      "name": "The GTA File",
+      "key": "D",
+      "bpm": 92,
+      "identity": "Neo-noir case file: low pulsing analogue synths, a ticking hi-hat, a deep sub bass and distant dark pads, serious and investigative with a warm undertone.",
+      "pieces": {
+        "sting": {
+          "caption": "A tense signature opener: a low pulse that swells into one heavy dark chord with a short tail, like a case file slamming shut.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 3100
+        },
+        "bed": {
+          "caption": "Steady investigative background bed for narration: even pulse throughout, no lead melody, no builds or drops, the midrange left clear.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 3200
+        }
+      }
+    },
+    "pulse_lab": {
+      "name": "Pulse Lab",
+      "key": "E",
+      "bpm": 110,
+      "identity": "Bright experimental electronica: bubbling arpeggiated synths, soft glitch percussion, clean digital bleeps and a bouncy bass, playful and precise like a lab test.",
+      "pieces": {
+        "sting": {
+          "caption": "A quick signature jingle: a sparkling ascending arpeggio that resolves on a bright clean chord, crisp and upbeat.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 4100
+        },
+        "bed": {
+          "caption": "Steady background bed for narration: consistent energy, no lead melody, no drops or breakdowns, the midrange left clear for a voice.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 4200
+        }
+      }
+    },
+    "receipts": {
+      "name": "Receipts",
+      "key": "D",
+      "bpm": 94,
+      "identity": "Confident laid-back boom bap: a punchy dusty drum break, a warm electric piano, a round bass line and the odd vinyl crackle, cool and self-assured.",
+      "pieces": {
+        "sting": {
+          "caption": "A punchy signature stamp: a drum fill into two hard stabs and a warm electric piano chord, short and decisive, like a verdict.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 5100
+        },
+        "bed": {
+          "caption": "Steady head-nod background groove for narration: even energy, no lead melody, no breaks or drops, the midrange left clear.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 5200
+        }
+      }
+    },
+    "docs": {
+      "name": "Documentaries",
+      "key": "D",
+      "bpm": 90,
+      "identity": "Warm cinematic documentary score: soft felt piano, sustained strings, a gentle low synth pulse and subtle timpani, reflective and grand without being loud.",
+      "pieces": {
+        "sting": {
+          "caption": "A short cinematic signature: a soft swell of strings into one warm resolved piano and string chord that rings out, like a documentary title.",
+          "seconds": 10,
+          "takes": 6,
+          "seed": 6100
+        },
+        "bed": {
+          "caption": "Steady documentary underscore for narration: even energy throughout, no lead melody, no crescendos, the midrange left clear for a voice.",
+          "seconds": 90,
+          "takes": 4,
+          "seed": 6200
+        },
+        "rise": {
+          "caption": "A sixteen-second cue that builds steadily with strings and pulse and lands on one strong downbeat hit, then a short warm tail, to open a new chapter.",
+          "seconds": 20,
+          "takes": 6,
+          "seed": 6300
+        }
+      }
+    }
+  }
+}

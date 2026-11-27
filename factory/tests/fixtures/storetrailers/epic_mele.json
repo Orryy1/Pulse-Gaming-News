@@ -1,0 +1,188 @@
+{
+ "productName": "Mass Effect Legendary Edition",
+ "namespace": "2a535f0e7c754dbe9157bf96adc62d56",
+ "_slug": "mass-effect-legendary-edition",
+ "pages": [
+  {
+   "type": "productHome",
+   "data": {
+    "about": {
+     "title": "Mass Effect™ Legendary Edition",
+     "publisherAttribution": "Electronic Arts",
+     "developerAttribution": "BioWare"
+    },
+    "carousel": {
+     "_type": "Diesel Carousel",
+     "items": [
+      {
+       "image": {
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "recipes": "{\n  \"en-US\": [\n    {\n      \"recipe\": \"video-hls\",\n      \"outputs\": [\n        {\n          \"contentType\": \"application/x-mpegURL\",\n          \"key\": \"manifest\",\n          \"url\": \"https://media-cdn.epicgames.com/0ac736b9793642a6b7c70596027d9cab/0ac736b9793642a6b7c70596027d9cab.m3u8\"\n        },\n        {\n          \"contentType\": \"image/png\",\n          \"key\": \"thumbnail\",\n          \"url\": \"https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1c-00-1920x1080-af81a24e209a.jpg\"\n        }\n      ],\n      \"mediaRefId\": \"4c7ed02e5a2044d3a9c6fb92c2a7a620\"\n    },\n    {\n      \"recipe\": \"video-webm\",\n      \"outputs\": [\n        {\n          \"contentType\": \"application/dash+xml\",\n          \"key\": \"manifest\",\n          \"url\": \"https://media-cdn.epicgames.com/189b1b64d9c041b4979fdeef01edbe84/189b1b64d9c041b4979fdeef01edbe84.mpd\"\n        },\n        {\n          \"contentType\": \"image/png\",\n          \"key\": \"thumbnail\",\n          \"url\": \"https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1c-00-1920x1080-af81a24e209a.jpg\"\n        }\n      ],\n      \"mediaRefId\": \"8060a98da5f6402fb59160772aac90dc\"\n    },\n    {\n      \"recipe\": \"video-fmp4\",\n      \"outputs\": [\n        {\n          \"contentType\": \"application/dash+xml\",\n          \"key\": \"manifest\",\n          \"url\": \"https://media-cdn.epicgames.com/9f6a543e567848f5a29a5e38e94f589d/9f6a543e567848f5a29a5e38e94f589d.mpd\"\n        },\n        {\n          \"contentType\": \"image/png\",\n          \"key\": \"thumbnail\",\n          \"url\": \"https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1c-00-1920x1080-af81a24e209a.jpg\"\n        }\n      ],\n      \"mediaRefId\": \"7644bb138ec141a4bd31bc4ba4033950\"\n    }\n  ]\n}",
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": true,
+        "hasControls": true,
+        "type": "epicHosted",
+        "muted": true,
+        "autoplay": true
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-01-1920x1080-1721e92d92f2.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-02-1920x1080-3f320e4c8004.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-03-1920x1080-97eeb8f6e718.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-04-1920x1080-92fc61d19b95.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-05-1920x1080-232652eba2f3.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-06-1920x1080-af142d7520a0.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-07-1920x1080-659befd138b2.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-08-1920x1080-c8f89d268d4e.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-09-1920x1080-120aefb68212.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      },
+      {
+       "image": {
+        "src": "https://cdn2.unrealengine.com/egs-masseffectlegendaryedition-bioware-g1a-10-1920x1080-b44baeed20ec.jpg",
+        "_type": "Diesel Image"
+       },
+       "_type": "Diesel Carousel Item - Image OR Video",
+       "video": {
+        "loop": false,
+        "_type": "Diesel Video",
+        "hasFullScreen": false,
+        "hasControls": false,
+        "muted": false,
+        "autoplay": false
+       }
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

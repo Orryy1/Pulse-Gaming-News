@@ -1,0 +1,41 @@
+{
+  "schema": "pulse-cutscene-scenes-proof-v1",
+  "date": "2026-11-08",
+  "scope": "Local code and tests in the scratchpad factory",
+  "checks": [
+    {
+      "command": "npx tsc --noEmit -p .",
+      "result": "pass",
+      "exitCode": 0
+    },
+    {
+      "command": "node --import tsx --test tests/*.test.ts",
+      "result": "pass",
+      "exitCode": 0,
+      "tests": 1414,
+      "passed": 1414,
+      "failed": 0,
+      "skipped": 0,
+      "temporaryFiles": "Confined to a factory test directory"
+    }
+  ],
+  "sceneFootage": {
+    "status": "implemented with limitations",
+    "methods": ["chapter", "caption", "scene upload", "spread"],
+    "limits": [
+      "Text matches and scene-upload titles do not prove that a specific action is visible.",
+      "No live source retrieval or proof render was performed.",
+      "Precise alignment on every spoken word is not guaranteed."
+    ]
+  },
+  "characterQuotes": {
+    "extractionAndWriterInterfaces": "implemented",
+    "productionWriterIntegration": "deferred",
+    "playbackAndAudioException": "deferred",
+    "plan": "docs/cutscene-quotes-plan.md",
+    "defaultEnabled": false
+  },
+  "externalPublishing": false,
+  "productionDatabaseMutation": false,
+  "tokenMutation": false
+}

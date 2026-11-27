@@ -1,0 +1,68 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "sfx": [
+    {
+      "file": "v2/air-1.mp3",
+      "sha256": "7f81f17d1df75ff56e2428168264a95169bdf0f632062d916c3cf6ff6478149f",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/air-2.mp3",
+      "sha256": "fa0e3c045ed72f503e4f8176408131f3516cd2df2466a8f95418f7ab549ce981",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/swell-1.mp3",
+      "sha256": "2596f04b5b8cf9db006164453ff2f6c1704f867b5a275f8118b907f90e2555a3",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/sting.mp3",
+      "sha256": "653ef965e3c7166f45572f810c3a0373dda8fd6f83a623bf832241f752c80f10",
+      "origin": "ElevenLabs sound effects, generated 2026-10-21",
+      "licence": "ElevenLabs paid-plan commercial use",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/air-3.mp3",
+      "sha256": "8465658f86a767460ee65aded3b0e907edd0425a2fce2561c8dac7b562801352",
+      "origin": "Adobe Audition Production Elements: Title Transition Whoosh Fly By 01",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/land-1.mp3",
+      "sha256": "5cf39b7ac7be128ca63a1117f9a06e4ac7f4793c49b170b2015ea273605463a4",
+      "origin": "Adobe Audition Production Elements: Title Transition Hit Impact Short 17",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/land-2.mp3",
+      "sha256": "6440be8ec71f31f409eecbba27c6070a41a1c767675f9d3e2d00daa1cbbfb13c",
+      "origin": "Adobe Audition Production Elements: Title Transition Thump 03",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/glint-1.mp3",
+      "sha256": "1e2638a13203d803651188fab7860d2dda90983a4ecca47a98381b9db6394aad",
+      "origin": "Adobe Audition Production Elements: Title Transition Crystal Glow 14",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    },
+    {
+      "file": "v2/glint-2.mp3",
+      "sha256": "485e3ced8316d3ffb7a436caa1c49d8c4a6bd940b95d990d07462da9f9922c38",
+      "origin": "Adobe Audition Production Elements: Title Transition Bell Element 06",
+      "licence": "Adobe Audition content terms: use in productions allowed, no stand-alone redistribution",
+      "finishing": "trimmed, 38 Hz high-pass, low-pass, 6 ms fade in, long fade out, peaks at -4 dBFS (src/tools/build-sfx.ts)"
+    }
+  ]
+}

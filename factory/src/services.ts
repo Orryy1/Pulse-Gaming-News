@@ -1,0 +1,851 @@
+// Production wiring for the pipeline's service seam.
+
+import { libraryRoot, libraryTrailers, readLibrary } from "./assets/gamelib.ts";
+import { sourceOf, storeSettings } from "./assets/gamelibstore.ts";
+import { readText, textBox } from "./assets/ocr.ts";
+import { indexNamesFor, loadSceneIndex, sceneIndexDir } from "./sceneindex/schema.ts";
+import { footageAllowed, spoilerWindows, windowFor } from "./sceneindex/spoilers.ts";
+import { ReachClient } from "./reach.ts";
+import { logEvent } from "./episodes.ts";
+import fs from "node:fs/promises";
+import type { Config } from "./config.ts";
+import type { Db } from "./db.ts";
+import type { Services } from "./pipeline.ts";
+import { createClaude, withVoiceTags } from "./editorial/llm.ts";
+import { codexRunnerPresent, createCodexLlm } from "./editorial/codex.ts";
+import { createMaxLlm, weekReader } from "./editorial/maxplan.ts";
+import { codexSubjectLook, setSubjectFallback } from "./assets/scenecheck.ts";
+import { codexSegmentLook, setSegmentLookFallback } from "./assets/localvision.ts";
+import { localVisionDown, onVisionRelayAlert } from "./assets/localvision.ts";
+import { withVisionGuard } from "./assets/visionrelay.ts";
+import { FEEDS } from "./discovery/feeds.ts";
+import { fetchFeeds } from "./discovery/rss.ts";
+import { clusterItems } from "./discovery/cluster.ts";
+import { fetchArticle } from "./discovery/article.ts";
+import { selectClips } from "./assets/clipscore.ts";
+import { evergreenCandidates } from "./discovery/evergreen.ts";
+import { dayKey } from "./lanes.ts";
+import { episodeIdOf, narrate } from "./voice/index.ts";
+import {
+  creditPlan,
+  elevenLabsSubscription,
+  type CreditPlan,
+} from "./voice/credits.ts";
+import { decodedSeconds, stitch, GAP_SECONDS } from "./voice/local.ts";
+import type { Narration } from "./voice/elevenlabs.ts";
+import { fetchSteamArt, findSteamApp, steamFacts } from "./assets/steam.ts";
+import {
+  renderShort,
+  renderLong,
+  renderLongStills,
+  renderLongThumbs,
+  renderShortThumb,
+  renderEraFrame,
+  countAsRender,
+  renderCutdown,
+  renderGameplayShort,
+} from "./render/render.ts";
+import {
+  extractFrames,
+  imageAspect,
+  normaliseLoudness,
+  technicalQa,
+} from "./qa/media.ts";
+import { visionQa } from "./qa/vision.ts";
+import { checkNarration, transcribeWords } from "./qa/narration.ts";
+import { YouTubeClient } from "./youtube/upload.ts";
+import { accessToken, storedRefreshToken } from "./youtube/oauth.ts";
+import { trailerFrames, officialMedia, franchisePublisher } from "./assets/officialTrailer.ts";
+import { cutsceneMedia } from "./assets/cutscenes.ts";
+import { indexFirstCutscenes, indexedSceneStills } from "./sceneindex/footage.ts";
+import {
+  archiveLibrary,
+  libraryStockClips,
+  pexelsLibrary,
+  pixabayLibrary,
+  type StockLibrary,
+} from "./assets/stock.ts";
+import {
+  searchLicensedPhotos,
+  searchOpenverse,
+  searchPixabayImages,
+} from "./assets/libraries.ts";
+import { searchPress } from "./assets/press.ts";
+import { pressKitRoot, pressWithKits } from "./sources/presskits.ts";
+import { ensurePressIndex } from "./sources/refresh.ts";
+import { steamAchievements } from "./sources/achievementart.ts";
+import { breaker } from "./lib/breaker.ts";
+import { rankStills } from "./assets/stillscore.ts";
+import path from "node:path";
+import { fetchRockstarNewswire } from "./discovery/newsrooms.ts";
+import { releaseRadar, freeGames } from "./discovery/weekly.ts";
+import { fetchAchievements } from "./discovery/achievements.ts";
+import { researchGame } from "./discovery/wikipedia.ts";
+import { steamClimbers } from "./discovery/charts.ts";
+import { steamDeals } from "./discovery/deals.ts";
+import { verdictCandidates } from "./discovery/verdicts.ts";
+import { libraryClips } from "./assets/library.ts";
+import { trendingVideos } from "./discovery/demand.ts";
+import { demandApiSearch, type DemandGet } from "./discovery/demandapi.ts";
+import { runCapped } from "./lib/child.ts";
+import { anonClosedWindow, guardActive, guardSettings, onYtGuardAlert, ytGuard } from "./lib/ytguard.ts";
+import { FFMPEG, FFPROBE, YTDLP_TEXT } from "./lib/bin.ts";
+import { searchCommons, downloadCommons } from "./assets/commons.ts";
+import { personPortrait } from "./assets/people.ts";
+import { findMentions } from "./assets/mentions.ts";
+import { siteFor } from "./assets/publishersite.ts";
+import { ffmpegFinish, storeTrailerSource, type StoreId } from "./assets/storetrailers.ts";
+import { readBoxes } from "./assets/applevision.ts";
+import { findIgdbGame, fetchIgdbArt, fetchIgdbCharacter, findIgdbSeries } from "./assets/igdb.ts";
+import { gameplayClips, judgeGameplay } from "./assets/gameplay.ts";
+import { footageFirstDeps } from "./assets/footagedeps.ts";
+import { macFootageDeps } from "./assets/footagemac.ts";
+import { macOrLocal, macSettings, macTranscribeWords } from "./macworker.ts";
+import {
+  macRenderShort,
+  macRenderThumbs,
+} from "./render/macrender.ts";
+import {
+  QUOTA,
+  QUOTA_RESERVE_FOR_UPLOAD,
+  quotaAdd,
+  quotaCall,
+  quotaCalls,
+  quotaUsed,
+} from "./lanes.ts";
+import { postDiscord } from "./approval/discord.ts";
+import { startAlertLedger } from "./alertlog.ts";
+import { fetchWithTimeout, log } from "./lib/util.ts";
+import { fetchPublic } from "./lib/publicurl.ts";
+
+export function oauthConfig(cfg: Config) {
+  return {
+    clientId: cfg.googleClientId,
+    clientSecret: cfg.googleClientSecret,
+    redirectUri: cfg.oauthRedirectUri || `${cfg.publicUrl}/oauth/callback`,
+    appSecret: cfg.appSecret,
+    envRefreshToken: cfg.youtubeRefreshToken,
+  };
+}
+
+let creditCache: { at: number; plan: CreditPlan | undefined } | undefined;
+
+// The outside picture libraries answer slowly or not at all some days (Openverse and the Internet Archive both
+// timed out on 1 Nov 2026): after two failures in a row a library is skipped for ten minutes.
+const openverseBreaker = breaker("openverse");
+const pixabayBreaker = breaker("pixabay");
+const archiveBreaker = breaker("internet archive");
+
+/** The stock libraries a line's B-roll search asks, Pexels first (each behind its setting and key). */
+/**
+ * The demand check's searches on the YouTube Data API (src/discovery/demandapi.ts), never yt-dlp: YOUTUBE_API_KEY when
+ * set, else the factory's own login. Each search.list counts in the search bucket and keeps the uploads' reserve, as
+ * the trailer searches do; the videos.list units go on the shared ledger. The key is never logged.
+ */
+export function demandSearcher(db: Db, cfg: Config) {
+  return async (queries: string[]) => {
+    if (process.env.NODE_TEST_CONTEXT) throw new Error("no YouTube Data API calls in tests");
+    const key = String(process.env.YOUTUBE_API_KEY ?? "").trim();
+    const get: DemandGet = async (p) => {
+      const base = `https://www.googleapis.com/youtube/v3/${p}`;
+      try {
+        if (key) return await fetchWithTimeout(`${base}&key=${encodeURIComponent(key)}`);
+        const token = await accessToken(db, oauthConfig(cfg));
+        return await fetchWithTimeout(base, { headers: { authorization: `Bearer ${token}` } });
+      } catch (err) {
+        // Only the method and the error's kind: the request (and its key) is never repeated.
+        throw new Error(`YouTube Data API ${p.split("?")[0]} request failed (${(err as Error)?.name ?? "error"})`);
+      }
+    };
+    return demandApiSearch(queries, {
+      get,
+      now: new Date(),
+      allowSearch: async () => {
+        const now = new Date();
+        if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay) return false;
+        if ((await quotaUsed(db, now)) + 1 + QUOTA_RESERVE_FOR_UPLOAD > cfg.quotaUnitsPerDay) return false;
+        await quotaCall(db, now, "search");
+        return true;
+      },
+      charge: (units) => quotaAdd(db, new Date(), units),
+    });
+  };
+}
+
+export function stockLibraries(
+  cfg: Pick<Config, "pexelsApiKey" | "libraryPixabay" | "pixabayApiKey" | "libraryArchive">,
+): StockLibrary[] {
+  const out: StockLibrary[] = [];
+  if (cfg.pexelsApiKey) out.push(pexelsLibrary(cfg.pexelsApiKey));
+  if (cfg.libraryPixabay && cfg.pixabayApiKey) {
+    const p = pixabayLibrary(cfg.pixabayApiKey);
+    out.push({ name: p.name, search: (q) => pixabayBreaker.call(() => p.search(q), []) });
+  }
+  if (cfg.libraryArchive) {
+    const a = archiveLibrary();
+    out.push({ name: a.name, search: (q) => archiveBreaker.call(() => a.search(q), []) });
+  }
+  return out;
+}
+
+export function createServices(db: Db, cfg: Config): Services {
+  // The Mac mini's jobs (src/macworker.ts): each setting off means the old local path, untouched.
+  const mac = macSettings(cfg);
+  if (cfg.alertLedger)
+    startAlertLedger(
+      path.join(cfg.dataDir, "logs", "alerts.jsonl"),
+      cfg.discordWebhookUrl,
+    );
+  const tellMac = (content: string) =>
+    postDiscord(cfg.discordWebhookUrl, { content }).catch(() => undefined);
+  const speechWords = (file: string) =>
+    cfg.macAsr
+      ? macOrLocal(
+          "the speech timing",
+          (f: string) => macTranscribeWords(mac, f),
+          (f: string) =>
+            cfg.whisperPython
+              ? transcribeWords(f, cfg.whisperPython)
+              : Promise.resolve([]),
+          tellMac,
+        )(file)
+      : transcribeWords(file, cfg.whisperPython);
+  // The PC vision relay's down and back alerts, once each per outage, to the owner's alerts channel.
+  onVisionRelayAlert((text) => {
+    tellMac(`⚠️ ${text}`);
+    logEvent(db, null, "note", { text }).catch(() => undefined);
+  });
+  // The YouTube guard's two lines: when a bot check pauses YouTube fetching and when it lifts (src/lib/ytguard.ts).
+  // A block met by a scene-index or archive child is queued in the shared state file and sent from here.
+  onYtGuardAlert((text) => {
+    tellMac(text);
+    logEvent(db, null, "note", { text }).catch(() => undefined);
+  });
+  // No picture goes to the paid API while the relay is down (VISION_PAID_FALLBACK off, the default): the guard sits
+  // under Codex's router too, so a Codex failure on a picture call can never fall through to Claude.
+  const claude = withVisionGuard(
+    createClaude({
+      top: cfg.anthropicModel,
+      mid: cfg.claudeModelMid,
+      low: cfg.claudeModelLow,
+    }),
+    { paidFallback: cfg.visionPaidFallback, relayDown: localVisionDown },
+  );
+  // Codex answers the listed off-slot steps; anything else, and any Codex failure, is Claude as before.
+  // Its helper lives in the PC orchestrator's folder: on a machine without it (the Mac mini) every routed
+  // call would fail and then go to Claude, so routing is off there, said once, rather than failing each time.
+  const codexWanted = cfg.codexLlm && cfg.codexCalls.length > 0;
+  const codexHere = codexWanted && codexRunnerPresent(cfg.codexRunnerDir);
+  if (codexWanted && !codexHere) {
+    log("warn", "Codex routing off: codex_runner.py not on this machine", {
+      dir: cfg.codexRunnerDir,
+    });
+    logEvent(db, null, "note", {
+      text: `Codex is switched on (CODEX_LLM) but its helper codex_runner.py is not in ${cfg.codexRunnerDir} on this machine, so these steps use Claude: ${cfg.codexCalls.join(", ")}. Setting: CODEX_RUNNER_DIR.`,
+    }).catch(() => undefined);
+  }
+  const routed = codexHere
+      ? createCodexLlm(claude, {
+          enabled: true,
+          sites: cfg.codexCalls,
+          vision: cfg.codexVision,
+          // While the relay is down a picture call goes to Codex even from a step not on CODEX_CALLS.
+          outage: localVisionDown,
+          timeoutMs: cfg.codexTimeoutMinutes * 60_000,
+          python: cfg.codexPython,
+          runnerDir: cfg.codexRunnerDir,
+          tmpDir: path.join(cfg.dataDir, "tmp", "codex"),
+          // Claude is out of allowance: say which normally-Claude steps went to Codex, once each, for checking.
+          onLimitRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `Claude hit its usage limit, so ${site} is being written by Codex for now. Worth checking those videos.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
+          // CODEX_GRAMMAR_FALLBACK: a format too big for Claude goes to Codex instead of failing the step; noted once a step.
+          grammarFallback: cfg.codexGrammarFallback,
+          onGrammarRouted: ((seen) => (site: string) => {
+            if (seen.has(site)) return;
+            seen.add(site);
+            logEvent(db, null, "note", {
+              text: `${site}'s answer format is too big for Claude, so Codex answered it instead of the step failing. Its schema wants slimming.`,
+            }).catch(() => undefined);
+          })(new Set<string>()),
+        })
+      : claude;
+  // SCENE_MATCH_CODEX: while the local vision model is down, Codex makes the named-moment picture check. Its client
+  // has a fallback that refuses, so a look Codex fails is left unjudged: never a call to Claude or a paid API.
+  const codexOnly = (site: string) =>
+    createCodexLlm(
+      {
+        structured: async () => {
+          throw new Error(`${site}: Codex only, no fallback`);
+        },
+      },
+      {
+        enabled: true,
+        sites: [site],
+        vision: true,
+        timeoutMs: Math.min(cfg.codexTimeoutMinutes, 5) * 60_000,
+        python: cfg.codexPython,
+        runnerDir: cfg.codexRunnerDir,
+        tmpDir: path.join(cfg.dataDir, "tmp", "codex"),
+      },
+    );
+  setSubjectFallback(
+    cfg.sceneMatch && cfg.sceneMatchCodex && cfg.codexVision && codexHere
+      ? codexSubjectLook(codexOnly("scenematch"), cfg.sceneMatchCodexMax)
+      : undefined,
+  );
+  // FOOTAGE_LOOK_CODEX: the same for footage first's segment looks.
+  setSegmentLookFallback(
+    cfg.footageLookCodex && cfg.codexVision && codexHere
+      ? codexSegmentLook(codexOnly("footagelook"), cfg.footageLookCodexMax)
+      : undefined,
+  );
+  // CLAUDE_VIA_MAX: Claude Code on the owner's Max plan answers first, then Codex's router (Codex, then the API key).
+  // Off: `routed` itself, untouched. Paused at MAX_WEEK_CAP_PERCENT of Claude's week (the PC orchestrator's reading).
+  const maxed = createMaxLlm(routed, {
+    enabled: cfg.claudeViaMax,
+    models: { top: cfg.anthropicModel, mid: cfg.claudeModelMid, low: cfg.claudeModelLow },
+    capPercent: cfg.maxWeekCapPercent,
+    timeoutMs: cfg.maxTimeoutMinutes * 60_000,
+    concurrency: cfg.maxConcurrency,
+    week: cfg.maxUsageUrl ? weekReader(cfg.maxUsageUrl) : undefined,
+    viaCodex: routed !== claude,
+    // CODEX_CALLS steps stay on Codex unless MAX_FOR_CODEX_SITES.
+    codexSites: cfg.codexCalls,
+    forCodexSites: cfg.maxForCodexSites,
+    bin: cfg.claudeBin,
+    tmpRoot: path.join(cfg.dataDir, "tmp", "max"),
+    onState: (text) => {
+      log("info", text);
+      logEvent(db, null, "note", { text }).catch(() => undefined);
+    },
+  });
+  if (cfg.claudeViaMax)
+    logEvent(db, null, "note", {
+      text: `Claude now answers through the Max plan first (CLAUDE_VIA_MAX), paused at ${cfg.maxWeekCapPercent}% of the week; then ${routed !== claude ? "Codex, then " : ""}the API key.`,
+    }).catch(() => undefined);
+  // Codex's answers get the same treatment as Claude's: delivery tags out of every field, kept for the voice only.
+  const llm = withVoiceTags(maxed);
+  if (routed !== claude)
+    logEvent(db, null, "note", {
+      text: `Codex (the ChatGPT plan) now answers these steps instead of Claude, with Claude as the fallback: ${cfg.codexCalls.join(", ")}${cfg.codexVision ? " (vision checks included)" : ""}.`,
+    }).catch(() => undefined);
+  return {
+    db,
+    cfg,
+    llm,
+    discover: async () => {
+      const [rss, rockstar] = await Promise.all([
+        fetchFeeds(FEEDS),
+        fetchRockstarNewswire(
+          process.env.ROCKSTAR_NEWSWIRE_LIST_HASH || undefined,
+        ),
+      ]);
+      // TREND_FEED: the download account's subscriptions, read every 3 hours and kept as labelled leads (no call here).
+      const leads = cfg.trendFeed
+        ? (await import("./discovery/trendfeed.ts")).readTrendItems(cfg.dataDir, new Date())
+        : [];
+      return clusterItems(
+        [...rss, ...rockstar, ...leads],
+        new Date(),
+        // After a day or two down, a big story is still in the feeds: keep it long enough to be made late.
+        cfg.bigStoryMode === "off"
+          ? cfg.maxStoryAgeHours
+          : Math.max(cfg.maxStoryAgeHours, cfg.bigStoryMaxAgeHours),
+      );
+    },
+    discoverEvergreen: () =>
+      evergreenCandidates(dayKey(new Date(), cfg.timezone)),
+    fetchArticle,
+    synthesise: (text, out, voice, opts) =>
+      narrate(
+        {
+          ...cfg,
+          ...(opts?.provider ? { voiceProvider: opts.provider } : {}),
+          ...(opts?.speed ? { speedFactor: opts.speed } : {}),
+          // LONG_MIN_WPM: a test dial, passed for rankings only; it only ever raises the floor.
+          ...(opts?.minWpm
+            ? {
+                minWordsPerMinute: Math.max(
+                  cfg.minWordsPerMinute,
+                  opts.minWpm,
+                ),
+              }
+            : {}),
+        },
+        text,
+        out,
+        voice,
+        // The long narrator's take check lands in the episode's log (data/episodes/<id>/voice.mp3).
+        {
+          hookTakes: opts?.hookTakes,
+          onEvent: (kind, detail) => {
+            const id = episodeIdOf(cfg.dataDir, out);
+            return id
+              ? logEvent(db, id, kind, detail).catch(() => undefined)
+              : undefined;
+          },
+        },
+      ),
+    findGame: findSteamApp,
+    gameFacts: steamFacts,
+    fetchArt: (app, dir, maxScreens) => fetchSteamArt(app, dir, maxScreens),
+    // Commons, then Openverse (Flickr and other archives) and Pixabay photos when switched on, interleaved; a slow
+    // or failing library is left alone for ten minutes (src/lib/breaker.ts) so the gather never waits on it.
+    searchPhotos: (q) =>
+      searchLicensedPhotos(
+        {
+          commons: (x) => searchCommons(x),
+          openverse: cfg.libraryOpenverse
+            ? (x) => openverseBreaker.call(() => searchOpenverse(x), [])
+            : undefined,
+          pixabay:
+            cfg.libraryPixabay && cfg.pixabayApiKey
+              ? (x) => pixabayBreaker.call(() => searchPixabayImages(cfg.pixabayApiKey, x), [])
+              : undefined,
+        },
+        q,
+      ),
+    // PRESS_KITS: the game's indexed press kit pictures first, then the live press feeds (LIBRARY_PRESS).
+    searchPress: (game) =>
+      (cfg.pressKits ? ensurePressIndex(pressKitRoot(cfg.dataDir), game).catch(() => false) : Promise.resolve(false)).then(() =>
+      pressWithKits({
+        root: pressKitRoot(cfg.dataDir),
+        game,
+        kits: cfg.pressKits,
+        ...(cfg.libraryPress ? { live: () => searchPress(game) } : {}),
+      })),
+    // PEOPLE_INSETS: a named person's own Wikidata photo, under a clear free licence, cut square on the face (Apple
+    // Vision's face finder on the Mac mini).
+    personPortrait: (c, dir, slot) =>
+      personPortrait(c, dir, slot, { faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [] }),
+    // SHORT_FOOTAGE_WAIT: the anonymous YouTube lane's bot-check pause, as the guard's state file has it; while the lane
+    // is retired (YT_ANON_LANE), the retirement, too long for any Short to wait for.
+    youtubePause: async () => {
+      if (!guardActive()) return undefined;
+      const st = await ytGuard.state();
+      return anonClosedWindow(st, Date.now(), guardSettings());
+    },
+    // MENTION_*: the pictures behind the mention insets (src/assets/mentions.ts): Steam capsules, Commons logos and
+    // place photos under free licences, the publisher site's named gallery pictures, and the story's own sources.
+    // Outlet logos and in-world pictures are cached between videos under <data>/mentioncache; in-world pictures come
+    // from our scene index frames (spoiler rule) and game library first, then official stills, then a game wiki.
+    findMentions: (input) =>
+      findMentions(input, {
+        findSteamApp,
+        siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
+        faces: async (f) => (await readBoxes([f])).get(f)?.faces ?? [],
+        cacheDir: path.join(cfg.dataDir, "mentioncache"),
+        inworld: {
+          siteStills: async (game) => (await siteFor(game)?.list(game)) ?? [],
+          // The cutscene index and the gameplay index, each with its local proxy (never a YouTube pull here).
+          sceneIndex: async (game) => {
+            const out: Array<{ index: import("./sceneindex/schema.ts").SceneIndex; proxy?: string }> = [];
+            for (const name of indexNamesFor(cfg.dataDir, game)) {
+              const index = await loadSceneIndex(cfg.dataDir, name).catch(() => undefined);
+              if (!index) continue;
+              const proxy = path.join(sceneIndexDir(cfg.dataDir, name), index.proxy?.file || "proxy.mp4");
+              out.push({ index, proxy: (await fs.stat(proxy).catch(() => undefined)) ? proxy : undefined });
+            }
+            return out;
+          },
+          frameAllowed: (index, at) =>
+            footageAllowed(windowFor(spoilerWindows(), index.game, new Date()), index, at, "short", new Date()).ok,
+          library: async (game) => {
+            const root = libraryRoot(cfg.dataDir);
+            const lib = await readLibrary(root, game);
+            if (!lib) return undefined;
+            const st = storeSettings();
+            return {
+              items: lib.items,
+              file: async (item) => {
+                const src = await sourceOf(root, game, item.file, st);
+                return src?.local ?? src?.url;
+              },
+            };
+          },
+          textBox: async (file, phrase) => {
+            const page = (await readText([file])).get(file);
+            return page ? textBox(page, phrase) : undefined;
+          },
+        },
+      }),
+    gameplayClips: async (
+      game,
+      franchise,
+      year,
+      dir,
+      targets,
+      maxClips,
+      scope,
+    ) => {
+      if (!cfg.officialTrailers || !cfg.footage) return [];
+      return gameplayClips({
+        token: () => accessToken(db, oauthConfig(cfg)),
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        ytdlp: cfg.ytdlpPath,
+        game,
+        franchise,
+        year,
+        episodeDir: dir,
+        targets,
+        maxClips,
+        scope,
+        quotaOk: async () => {
+          const now = new Date();
+          if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)
+            return false;
+          if (
+            (await quotaUsed(db, now)) +
+              QUOTA.search +
+              QUOTA_RESERVE_FOR_UPLOAD >
+            cfg.quotaUnitsPerDay
+          )
+            return false;
+          await quotaCall(db, now, "search");
+          await quotaAdd(db, now, QUOTA.search);
+          return true;
+        },
+      });
+    },
+    judgeFootage: async (game, year, title, scope) => {
+      if (cfg.clipRanking !== "llm") return true;
+      const keep = await judgeGameplay(
+        llm,
+        game,
+        year,
+        [{ title, description: "", channelTitle: "" }],
+        scope,
+      ).catch(() => [0]);
+      return keep.includes(0);
+    },
+    igdbArt: async (title, year, dir, max, skip) => {
+      const game = await findIgdbGame(
+        { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
+        title,
+        year,
+      ).catch(() => undefined);
+      return game ? fetchIgdbArt(game, dir, max, fetch, skip) : [];
+    },
+    characterArt: (name, gameTitles, dir) =>
+      fetchIgdbCharacter(
+        { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
+        name,
+        gameTitles,
+        dir,
+      ).catch(() => undefined),
+    igdbSeries: (series) =>
+      findIgdbSeries(
+        { clientId: cfg.twitchClientId, secret: cfg.twitchClientSecret },
+        series,
+      ),
+    downloadPhoto: (img, dest) => downloadCommons(img, dest),
+    fetchClips: (app, dir, targets, maxClips, scope, fill) =>
+      selectClips({
+        app,
+        episodeDir: dir,
+        targets,
+        maxClips,
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        scope,
+        fillSeconds: fill?.seconds,
+        textCheck: fill?.textCheck,
+      }),
+    trailerFrames: (trailer, dir, gameTitle, count, textCheck) =>
+      trailerFrames({ episodeDir: dir, gameTitle, ytdlp: cfg.ytdlpPath }, trailer, count, textCheck),
+    releaseRadar: (from) => releaseRadar(from),
+    freeGames: (now) => freeGames(now),
+    // ACHIEVEMENT_ART with STEAM_API_KEY: Steam's official Web API schema; otherwise the public community page.
+    achievements: (appId) =>
+      cfg.achievementArt && cfg.steamApiKey
+        ? steamAchievements(appId, { apiKey: cfg.steamApiKey }).then((r) => r.list)
+        : fetchAchievements(appId),
+    steamClimbers: (now) => steamClimbers(now),
+    steamDeals: (exclude) => steamDeals(exclude),
+    verdictCandidates: (exclude) => verdictCandidates(exclude),
+    footageFirstDeps: () => {
+      const local = footageFirstDeps({
+        ytdlp: cfg.ytdlpPath,
+        // The title check is the existing low-tier judge, one call per chapter, only where clips are ranked by Claude.
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        // Old games' small sources keep a native-size copy for the upscaling pass (src/assets/upscale.ts).
+        sdMaxHeight:
+          cfg.upscale && cfg.upscaleModelDir ? cfg.upscaleMaxHeight : 0,
+      });
+      return cfg.macFootageGather ? macFootageDeps(mac, local, tellMac) : local;
+    },
+    ownClips: (game, franchise, dir, targets, maxClips) =>
+      cfg.footage && (cfg.footageLibrary || cfg.gameplayRoot || cfg.streamAsks.vodDir)
+        ? libraryClips({
+            root: cfg.footageLibrary,
+            inbox: cfg.gameplayRoot,
+            vods: cfg.streamAsks.vodDir,
+            game,
+            franchise,
+            episodeDir: dir,
+            targets,
+            maxClips,
+            llm: cfg.clipRanking === "llm" ? llm : undefined,
+          })
+        : Promise.resolve([]),
+    // The demand check's searches: the Data API, 20 videos a topic, never yt-dlp (its anonymous lane is retired).
+    searchDemandMany: demandSearcher(db, cfg),
+    searchDemand: async (url) => {
+      const q = (new URL(url).searchParams.get("search_query") ?? "").trim();
+      const r = (await demandSearcher(db, cfg)([q])).get(q);
+      if (r instanceof Error) throw r;
+      return r ?? [];
+    },
+    trending: () =>
+      trendingVideos(
+        () => accessToken(db, oauthConfig(cfg)),
+        (units) => quotaAdd(db, new Date(), units),
+      ),
+    // PRIMARY_SOURCES: each sentence keeps its references and the most-cited originals are read (src/discovery/wikirefs.ts).
+    research: (title, fallbackQuery, maxChars, focus) =>
+      researchGame(
+        title,
+        fallbackQuery,
+        maxChars,
+        undefined,
+        focus,
+        cfg.primarySources
+          ? {
+              cited: true,
+              read: (url) => fetchArticle(url),
+              primaries: cfg.primarySourcesMax,
+            }
+          : undefined,
+      ),
+    fetchStock: (dir, targets, gameWords, maxClips, avoidUrls) =>
+      stockLibraries(cfg).length
+        ? libraryStockClips(
+            stockLibraries(cfg),
+            dir,
+            targets,
+            gameWords,
+            maxClips,
+            async (t, previews) => {
+              // The picture editor sees each result's preview beside the line and keeps one only when it fits.
+              const r = await rankStills(
+                llm,
+                [{ key: "m0", show: t.keywords.join(", "), sentence: t.text }],
+                previews.map((file) => ({ file })),
+                path.join(dir, "stock", "pick"),
+                undefined,
+                "stock",
+              );
+              return r.picks[0]?.image;
+            },
+            avoidUrls,
+          )
+        : Promise.resolve([]),
+    // SCENE_INDEX: a game with a scene index gives each line its exact shot first (src/sceneindex/footage.ts);
+    // the cutscene search below then covers only the lines the index was not sure of. Off: the search alone.
+    // SCENE_MATCH stills for a stills-only publisher's game (Nintendo); off, or SCENE_INDEX off: nothing.
+    fetchSceneStills: (options) => indexedSceneStills(cfg, options),
+    fetchCutscenes: (options) =>
+      indexFirstCutscenes(cfg, options, (o) =>
+        cutsceneMedia({
+          ...o,
+          enabled: cfg.cutsceneFootage,
+          scenes: cfg.cutsceneScenes,
+          sceneCheck: cfg.sceneMatch,
+          quotes: cfg.cutsceneQuotes,
+          ytdlp: cfg.ytdlpPath,
+      soundTags: cfg.appleSoundTags,
+          // LONG_WATERMARK_CROP: a long video's section with one small corner mark is cropped clear of it.
+          ...(o.long && cfg.longWatermarkCrop ? { watermarkCropKeep: cfg.longWatermarkCropKeep } : {}),
+          // SHORT_CLIP_EDGE_TEXT is for the Short's zoomed crop; a long video shows the whole picture.
+          ...(o.long ? { edgeText: false } : {}),
+          llm: cfg.clipRanking === "llm" ? llm : undefined,
+        }),
+      ),
+    fetchOfficialMedia: async (
+      gameTitle,
+      dir,
+      targets,
+      maxClips,
+      hint,
+      story,
+      fill,
+    ) => {
+      if (!cfg.officialTrailers) return { clips: [], stills: [] };
+      return officialMedia({
+        token: () => accessToken(db, oauthConfig(cfg)),
+        gameTitle,
+        episodeDir: dir,
+        targets,
+        maxClips,
+        llm: cfg.clipRanking === "llm" ? llm : undefined,
+        ytdlp: cfg.ytdlpPath,
+        hint,
+        story,
+        fill,
+        stillFrames: cfg.officialStillFrames,
+        // The publisher's own trailer files from the game library (src/assets/gamelib.ts), before any YouTube call.
+        localTrailers: cfg.gameLibrary ? (g) => libraryTrailers(libraryRoot(cfg.dataDir), g) : undefined,
+        // STORE_TRAILERS: the stores' own trailer files (src/assets/storetrailers.ts), after the library, before YouTube.
+        storeTrailers: cfg.storeTrailers
+          ? storeTrailerSource({
+              cacheDir: path.join(cfg.dataDir, "storetrailers"),
+              stores: cfg.storeTrailersStores as StoreId[],
+              editions: cfg.steamEditions,
+              minFreeBytes: cfg.storeTrailersMinFreeGb * 1e9,
+              remux: ffmpegFinish(FFMPEG, FFPROBE),
+              owner: franchisePublisher,
+            })
+          : undefined,
+        quotaOk: async () => {
+          const now = new Date();
+          if ((await quotaCalls(db, now, "search")) >= cfg.searchCallsPerDay)
+            return false;
+          if (
+            (await quotaUsed(db, now)) +
+              QUOTA.search +
+              QUOTA_RESERVE_FOR_UPLOAD >
+            cfg.quotaUnitsPerDay
+          )
+            return false;
+          await quotaCall(db, now, "search");
+          await quotaAdd(db, now, QUOTA.search);
+          return true;
+        },
+      });
+    },
+    downloadImage: async (url, dest) => {
+      // A picture link comes from an article or a feed: a private address is a bad link, not a failed step.
+      const res = await fetchPublic(url, {}, 30_000).catch((err: unknown) => {
+        if (String(err).includes("refused link")) return undefined;
+        throw err;
+      });
+      if (
+        !res ||
+        !res.ok ||
+        !(res.headers.get("content-type") ?? "").startsWith("image/")
+      )
+        return false;
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 8_000) return false;
+      await fs.writeFile(dest, buf);
+      return true;
+    },
+    imageAspect,
+    render: cfg.macRenderShorts
+      ? macOrLocal(
+          "the Short render",
+          (input) => countAsRender(() => macRenderShort(mac, input)),
+          renderShort,
+          tellMac,
+        )
+      : renderShort,
+    renderLong: cfg.macStills
+      ? (input) =>
+          renderLong({
+            ...input,
+            thumbRenderer: macOrLocal(
+              "the thumbnails",
+              (t) => macRenderThumbs(mac, t),
+              renderLongThumbs,
+              tellMac,
+            ),
+          })
+      : renderLong,
+    reachClient: () => new ReachClient(() => accessToken(db, oauthConfig(cfg))),
+    renderLongStills,
+    renderShortThumb,
+    renderEraFrame,
+    renderCutdown,
+    renderGameplayShort,
+    normalise: normaliseLoudness,
+    technicalQa,
+    extractFrames,
+    visionQa: (frames, ctx) => visionQa(llm, frames, ctx),
+    // The picture checker's hold (VISION_HOLD): down when the relay is down and neither the paid API nor Codex may look.
+    visionDown: async () =>
+      !cfg.visionPaidFallback && !(codexHere && cfg.codexVision) && (await localVisionDown()),
+    stitchTakes: async (parts, outPath) => {
+      const words: Narration["words"] = [];
+      let offset = 0;
+      for (const p of parts) {
+        const seconds = await decodedSeconds(p.audioPath);
+        for (const w of p.words)
+          words.push({
+            text: w.text,
+            start: w.start + offset,
+            end: w.end + offset,
+          });
+        offset += seconds + GAP_SECONDS;
+      }
+      await stitch(
+        parts.map((p) => p.audioPath),
+        outPath,
+      );
+      return {
+        audioPath: outPath,
+        words,
+        durationSeconds: offset - GAP_SECONDS + 0.15,
+      };
+    },
+    creditPlan: async () => {
+      if (!cfg.elevenLabsApiKey) return undefined;
+      const now = Date.now();
+      if (creditCache && now - creditCache.at < 30 * 60_000)
+        return creditCache.plan;
+      const sub = await elevenLabsSubscription(cfg.elevenLabsApiKey);
+      const plan = sub
+        ? creditPlan(sub, cfg.elevenLabsMonthlyCredits, new Date(now))
+        : undefined;
+      creditCache = { at: now, plan };
+      return plan;
+    },
+    hearClip: async (file) =>
+      cfg.whisperPython || cfg.macAsr
+        ? (await speechWords(file)).map((w) => ({
+            text: w.text,
+            start: w.start,
+            end: w.end ?? w.start + 0.3,
+          }))
+        : [],
+    checkNarration: async (file, words) =>
+      cfg.whisperPython || cfg.macAsr
+        ? checkNarration(words, await speechWords(file), undefined, { names: cfg.letterWatchNames })
+        : undefined,
+    youtube: (account = "") =>
+      new YouTubeClient(() => accessToken(db, oauthConfig(cfg), account)),
+    youtubeConnected: async (account = "") =>
+      Boolean(await storedRefreshToken(db, oauthConfig(cfg), account)),
+    publicReachable: async () => {
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)/.test(cfg.publicUrl))
+        return true;
+      try {
+        const res = await fetchWithTimeout(
+          `${cfg.publicUrl}/health`,
+          {},
+          8_000,
+        );
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    // Background news waits for the evening summary; only what the owner should see now is sent.
+    notify: async (msg) => {
+      if (msg.level === "info") {
+        await logEvent(db, null, "note", {
+          text: (msg.content ?? String(msg.embeds?.[0]?.title ?? "")).slice(
+            0,
+            300,
+          ),
+        });
+        return true;
+      }
+      return postDiscord(cfg.discordWebhookUrl, msg);
+    },
+    now: () => new Date(),
+  };
+}

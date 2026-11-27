@@ -1,0 +1,20 @@
+// What the media services return for a game, without an episode. node --import tsx data/smoke/showpiece_media.mts <dir> <game>
+const [DIR, GAME] = process.argv.slice(2);
+process.loadEnvFile("C:/PulseFactory/factory/.env");
+Object.assign(process.env, { DATA_DIR: DIR, DRY_RUN: "true", CODEX_LLM: "false", ORCH_CLIENT: "file:///C:/nonexistent/orch.mjs", PORT: "0" });
+const fs = await import("node:fs/promises");
+const { loadConfig } = await import("../../src/config.ts");
+const { openDb, migrate } = await import("../../src/db.ts");
+const { createServices } = await import("../../src/services.ts");
+await fs.mkdir(DIR!, { recursive: true });
+const cfg = loadConfig();
+const db = await openDb(cfg.databaseUrl, cfg.dataDir);
+await migrate(db);
+const s = createServices(db, cfg);
+console.log("steam", (await s.findGame(GAME!).catch((e: any) => String(e)))?.name);
+const ig = await s.igdbArt(GAME!, undefined, DIR!, 8).catch((e: any) => String(e));
+console.log("igdb", JSON.stringify(ig).slice(0, 1500));
+const om = await s.fetchOfficialMedia(GAME!, DIR!, [{ key: "hook", text: GAME!, want: "gameplay", energy: "high", keywords: ["Link", "Hyrule Field"] }], 6, "", undefined).catch((e: any) => String(e));
+console.log("official", JSON.stringify(om).slice(0, 3000));
+await db.close();
+process.exit(0);

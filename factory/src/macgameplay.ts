@@ -1,0 +1,272 @@
+// The owner's gameplay recordings on the Mac (MAC_GAMEPLAY, Master orchestrator's request, 1 Nov 2026). Two PC
+// tasks did this: the hourly highlight finder (a full scan of each new recording) and the 04:30 TinoTV VOD
+// download. The factory now starts both on the Mac, on the same timetable, and brings the results home: the new
+// clips into the inbox its gameplay lane reads, each finished VOD into the owner's archive folder, after which
+// the Mac's copy goes. Short clips that only exist on this PC (Xbox captures, the "Drop clips here" folder)
+// are still found here, cheaply, each pass, never the VOD folder: a pulled VOD has been scored already. A Mac
+// that does not answer leaves the VODs for the next hour's try (Twitch keeps them for a week at least), with a
+// notice. The two PC tasks must be disabled before this setting goes on.
+//
+// With the factory itself on the Mac (4 Nov 2026, "as much as physically possible on the Mac") there is nothing to
+// bring home and nobody to ssh to: the same two scripts run right here, each behind ~/orch/macrun.sh so a render always
+// comes first, the clips land straight in the inbox the lane reads, and the VODs stay here until VOD_KEEP_DAYS or the
+// free-space floor clears them. The owner's archive of old VODs on the PC is not touched.
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { postDiscord } from "./approval/discord.ts";
+import type { Config } from "./config.ts";
+import { errorMessage, log } from "./lib/util.ts";
+import { gameplayDue } from "./macjobs.ts";
+import { macGameplayPass, macSettings, shouldTell } from "./macworker.ts";
+import { HOME_VOD_DIR, vodDirectories, vodDirectory } from "./voddir.ts";
+
+const run = promisify(execFile);
+const FINDER = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "mac",
+  "gameplay",
+  "find-highlights.mjs",
+);
+
+let running = false;
+
+/** The VODs to clear (pure): scored ones past their days, then oldest first while the disk is under the floor. */
+export function vodsToClear(
+  vods: Array<{ name: string; mtimeMs: number; bytes: number }>,
+  scored: Set<string>,
+  o: { now: number; keepDays: number; freeBytes: number; floorGb: number },
+): string[] {
+  const out: string[] = [];
+  let free = o.freeBytes;
+  for (const v of [...vods].sort((a, b) => a.mtimeMs - b.mtimeMs)) {
+    if (!scored.has(v.name)) continue;
+    if (o.now - v.mtimeMs > o.keepDays * 86_400_000 || free < o.floorGb * 1e9) {
+      out.push(v.name);
+      free += v.bytes;
+    }
+  }
+  return out;
+}
+
+/**
+ * The finder's run settings: the Mac turn-taker's short lane. The finder takes 0 min when nothing is new and at most
+ * about 20 min scoring a fresh stream (macrun.log, 12-27 Nov 2026), and it still waits while Pulse renders or memory
+ * is short. In the main lane it queued behind a 4-hour proof job and was skipped after 120 min (27 Nov 2026).
+ */
+export function finderEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // A fresh stream scored beside a main-lane job can pass the lane's 20 min overrun flag; 30 min keeps the log honest.
+  return { ...env, MACRUN_LANE: "short", MACRUN_SHORT_MAX_MIN: "30" };
+}
+
+/** A job behind the Mac's turn-taker, or at background priority where it is not installed. */
+function behindRenders(
+  name: string,
+  cmd: string,
+  args: string[],
+): [string, string[]] {
+  const macrun = path.join(os.homedir(), "orch", "macrun.sh");
+  return fs.existsSync(macrun)
+    ? ["/bin/bash", [macrun, name, cmd, ...args]]
+    : ["taskpolicy", ["-b", cmd, ...args]];
+}
+
+/** The pass with the factory on this Mac: the VOD download when due, the finder, then the disk rule for VODs. */
+export async function localGameplayPass(
+  cfg: Pick<Config, "gameplayRoot" | "macMinFreeGb">,
+  vods: boolean,
+): Promise<void> {
+  const home = os.homedir();
+  // The USB drive when it is mounted and writable, else the Mac's own disk (src/voddir.ts).
+  const vodDir = vodDirectory();
+  const onUsb = vodDir !== HOME_VOD_DIR;
+  fs.mkdirSync(path.join(cfg.gameplayRoot, "inbox"), { recursive: true });
+  fs.mkdirSync(vodDir, { recursive: true });
+  // No state file makes the finder's first run mark every recording as old footage, new ones included.
+  const state = path.join(cfg.gameplayRoot, "state.json");
+  if (!fs.existsSync(state)) fs.writeFileSync(state, '{"done":{}}');
+  // OneDrive on the Mac, once the owner has signed it in: its Xbox folder is watched as on the PC.
+  const oneDrive = path.join(
+    home,
+    "Library",
+    "CloudStorage",
+    "OneDrive-Personal",
+    "Videos",
+    "Xbox Game DVR",
+  );
+  const env = {
+    ...process.env,
+    PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
+    GAMEPLAY_ROOT: cfg.gameplayRoot,
+    GAMEPLAY_WATCH: [
+      ...vodDirectories(),
+      ...(fs.existsSync(oneDrive) ? [oneDrive] : []),
+    ].join(";"),
+    VOD_DIR: vodDir,
+    // A VOD needs room for itself above the floor: about 3 GB an hour at 1080p, so 8 GB covers a long stream.
+    // (+15 skipped every download from 14 Nov 2026 with 50 GB free.) The USB drive only needs that room.
+    VOD_FLOOR_GB: String(onUsb ? 10 : cfg.macMinFreeGb + 8),
+  };
+  const opts = { env, timeout: 6 * 3_600_000, maxBuffer: 16 * 1024 * 1024 };
+  const scripts = path.dirname(FINDER);
+  // The finder goes first: the VOD download waits in the main lane (up to 120 min) and, run before it, kept the
+  // finder waiting too (27 Nov 2026). A VOD it brings in is scored on the next hourly pass.
+  const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
+  // A finder that fails still lets the download run (VODs leave Twitch); its error is raised first, at the end.
+  let finderError: unknown;
+  await run(c, a, { ...opts, env: finderEnv(env) }).catch((err: unknown) => {
+    finderError = err;
+  });
+  let vodError: unknown;
+  if (vods) {
+    const [vc, va] = behindRenders("pulse-vods", "bash", [
+      path.join(scripts, "download-vods.sh"),
+    ]);
+    // A download that gets no turn still lets the disk rule below run; the error is raised after it.
+    await run(vc, va, opts).catch((err: unknown) => {
+      vodError = err;
+    });
+  }
+  const done = (() => {
+    try {
+      return Object.keys(
+        (JSON.parse(fs.readFileSync(state, "utf8")) as { done?: object })
+          .done ?? {},
+      ).map((k) => path.basename(k.split("|")[0]!));
+    } catch {
+      return [] as string[];
+    }
+  })();
+  for (const dir of vodDirectories()) {
+    const usb = dir !== HOME_VOD_DIR;
+    const files = fs.readdirSync(dir).flatMap((name) => {
+      const st = fs.statSync(path.join(dir, name));
+      return st.isFile() ? [{ name, mtimeMs: st.mtimeMs, bytes: st.size }] : [];
+    });
+    const free = fs.statfsSync(dir);
+    for (const name of vodsToClear(files, new Set(done), {
+      now: Date.now(),
+      // The USB drive keeps scored VODs a month (they feed the footage library); the Mac's disk a week.
+      keepDays: Number(
+        (usb ? process.env.VOD_KEEP_DAYS_USB : process.env.VOD_KEEP_DAYS) ||
+          (usb ? 30 : 7),
+      ),
+      freeBytes: free.bavail * free.bsize,
+      floorGb: usb ? 20 : cfg.macMinFreeGb + 15,
+    }))
+      fs.rmSync(path.join(dir, name), { force: true });
+  }
+  if (finderError !== undefined) throw finderError;
+  if (vodError !== undefined) throw vodError;
+}
+
+/** One check of the timetable: at most one pass at a time, its state kept in data/admin/mac_gameplay.json. */
+export async function macGameplayTick(cfg: Config): Promise<void> {
+  if (running) return;
+  const file = path.join(cfg.dataDir, "admin", "mac_gameplay.json");
+  const last = (() => {
+    try {
+      return JSON.parse(fs.readFileSync(file, "utf8")) as {
+        hour?: string;
+        day?: string;
+      };
+    } catch {
+      return {};
+    }
+  })();
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: cfg.timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+      .formatToParts(new Date())
+      .map((x) => [x.type, x.value]),
+  );
+  const day = `${parts.year}-${parts.month}-${parts.day}`;
+  const due = gameplayDue(last, {
+    day,
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+  });
+  if (!due.finder && !due.vods) return;
+  running = true;
+  let vodsDone = false;
+  const vodDir = path.join(os.homedir(), "Videos", "TinoTV VODs");
+  if (process.platform === "darwin") {
+    try {
+      await localGameplayPass(cfg, due.vods);
+      log("info", "gameplay pass done", { vods: due.vods });
+      if (due.vods) vodsDone = true;
+    } catch (err) {
+      const why = errorMessage(err);
+      log("warn", "gameplay pass failed; trying again next hour", { why });
+      if (shouldTell("gameplay", Date.now()))
+        await postDiscord(cfg.discordWebhookUrl, {
+          content: `Mac mini: the gameplay pass did not run (${why.slice(0, 200)}). Recordings wait on Twitch; I try again next hour.`,
+        }).catch(() => undefined);
+    } finally {
+      running = false;
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ hour: due.hourKey, day: vodsDone ? day : last.day }),
+      );
+    }
+    return;
+  }
+  try {
+    const done = await macGameplayPass(macSettings(cfg), {
+      vods: due.vods,
+      gameplayRoot: cfg.gameplayRoot,
+      vodDir,
+    });
+    log("info", "gameplay pass on the Mac", { ...done, vods: due.vods });
+    if (due.vods) vodsDone = true;
+  } catch (err) {
+    const why = errorMessage(err);
+    log("warn", "gameplay pass on the Mac failed; trying again next hour", {
+      why,
+    });
+    if (shouldTell("gameplay", Date.now()))
+      await postDiscord(cfg.discordWebhookUrl, {
+        content: `Mac mini: the gameplay pass did not run (${why.slice(0, 200)}). Recordings wait on Twitch; I try again next hour.`,
+      }).catch(() => undefined);
+  }
+  try {
+    await run(process.execPath, [FINDER], {
+      env: {
+        ...process.env,
+        GAMEPLAY_ROOT: cfg.gameplayRoot,
+        GAMEPLAY_WATCH: path.join(
+          os.homedir(),
+          "Videos",
+          "Captures",
+          "Xbox DVR",
+        ),
+      },
+      timeout: 3_600_000,
+      maxBuffer: 16 * 1024 * 1024,
+    });
+  } catch (e) {
+    log("warn", "gameplay finder failed", { error: errorMessage(e) });
+  } finally {
+    running = false;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        hour: due.hourKey,
+        day: vodsDone ? day : last.day,
+      }),
+    );
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "id": "botw",
+  "titles": [
+    "The Legend of Zelda: Breath of the Wild",
+    "Zelda: Breath of the Wild",
+    "Breath of the Wild",
+    "BotW"
+  ],
+  "name": "Hyrule",
+  "map": {
+    "file": "botw_hyrule.png",
+    "url": "https://cdn.wikimg.net/en/zeldawiki/images/f/fb/BotW_Map_Screen_100%25.png",
+    "width": 1280,
+    "height": 720,
+    "sha256": "656209f41b97b74099c45c33406857494a6609fd1876dcfc1c2eb140dc1d1fbd",
+    "crop": [
+      0.13,
+      0.09,
+      0.87,
+      0.9
+    ],
+    "credit": "MAP: NINTENDO (IN-GAME), VIA ZELDA WIKI",
+    "provenance": {
+      "kind": "wiki",
+      "page": "https://zeldawiki.wiki/wiki/File:BotW_Map_Screen_100%25.png",
+      "note": "Zelda Wiki file page: type Screenshot, game BotW, an original in-game capture of the map screen"
+    }
+  },
+  "places": [
+    {
+      "name": "Central Hyrule",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Hebra",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Akkala",
+      "x": 0.7654,
+      "y": 0.1247,
+      "kind": "region",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Akkala\""
+    },
+    {
+      "name": "Eldin",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    },
+    {
+      "name": "Lanayru",
+      "x": 0.7232,
+      "y": 0.5694,
+      "kind": "region",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Lanayru\""
+    },
+    {
+      "name": "Necluda",
+      "x": 0.6561,
+      "y": 0.7003,
+      "kind": "region",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Necluda\""
+    },
+    {
+      "name": "Faron",
+      "x": 0.5676,
+      "y": 0.8431,
+      "kind": "region",
+      "located": "vision",
+      "checked": true,
+      "check": "ocr crop 2026-11-20: re-read \"Faron\""
+    },
+    {
+      "name": "Gerudo",
+      "x": 0,
+      "y": 0,
+      "kind": "region",
+      "located": "vision",
+      "checked": false
+    }
+  ]
+}

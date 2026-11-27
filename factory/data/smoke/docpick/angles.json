@@ -1,0 +1,28 @@
+{
+  "_note": "Title angles for Pulse's public long videos (1 Nov 2026), drafted in the doc-breakout session against each video's own script and description and checked by src/backcatalogue.ts newAngles (the shape rule). The first two of each go to the test; the third waits for the next round.",
+  "2i7tdUD939s": [
+    { "title": "The GTA 6 Nobody Saw: Thirteen Years Inside Rockstar", "angle": "hidden", "thumb": "13 YEARS OF SILENCE" },
+    { "title": "How GTA Online's Money Kept GTA 6 Waiting", "angle": "how", "thumb": "THE ONLINE MONEY" },
+    { "title": "How Rockstar Came Back From the GTA 6 Leak", "angle": "comeback", "thumb": "AFTER THE LEAK" }
+  ],
+  "BemcTLS8mVI": [
+    { "title": "The Real Reason Rockstar Returned to Vice City", "angle": "hidden", "thumb": "FROM A DUNDEE RACER" },
+    { "title": "How a Buggy Scottish Racer Became GTA 6", "angle": "how", "thumb": "IT STARTED IN DUNDEE" },
+    { "title": "How Vice City Came Back for GTA 6", "angle": "comeback", "thumb": "BACK TO VICE" }
+  ],
+  "m62Cbr2WXcM": [
+    { "title": "San Andreas Isn't the Best GTA Anymore", "angle": "claim", "thumb": "NOT SAN ANDREAS" },
+    { "title": "Why GTA 5 Still Beats Every Other GTA", "angle": "why", "thumb": "STILL THE KING" },
+    { "title": "How Every GTA Holds Up When You Play It Today", "angle": "how", "thumb": "NO NOSTALGIA" }
+  ],
+  "7CelsHTQU3s": [
+    { "title": "Halo 3 Isn't the Best Halo Campaign", "angle": "claim", "thumb": "HALO 2 AT 5?" },
+    { "title": "Why the First Halo Still Beats Every Sequel", "angle": "why", "thumb": "STILL THE BEST" },
+    { "title": "How Every Halo Campaign Plays Today", "angle": "how", "thumb": "PLAYED TODAY" }
+  ],
+  "lW5Xy9JgPRk": [
+    { "title": "Infinite Warfare Is Better Than You Remember", "angle": "claim", "thumb": "DEFENDING IW" },
+    { "title": "Why Black Ops Is Still the Best Call of Duty Campaign", "angle": "why", "thumb": "STILL NUMBER ONE" },
+    { "title": "How Call of Duty's Campaigns Lost Their Way", "angle": "downfall", "thumb": "WHERE IT WENT WRONG" }
+  ]
+}

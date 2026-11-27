@@ -1,0 +1,68 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "beds": [
+    {
+      "file": "bed_1.flac",
+      "sha256": "0c2f1a6e81995e60e6c1881c9510547044b9d996e6a93b6c61c33251b4bc8ce0",
+      "origin": "music/bed_1.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "bed_2.flac",
+      "sha256": "2814266c8ef7d6e561b3d5a82194bc87af03dbd055dae34b0d88b4b5b2d383dc",
+      "origin": "music/bed_2.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "bed_3.flac",
+      "sha256": "f74aed77ee7f7aededd7db5b6529fd46c84e11c1a04d8313061acf2c24ff8084",
+      "origin": "music/bed_3.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "bed_4.flac",
+      "sha256": "535caa73f14d82c6cf59553016efdbeeaa4c6ae94e43378817be074c20c027f0",
+      "origin": "music/bed_4.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "mood_tense_1.flac",
+      "sha256": "d72a9fa1eafea5c0518b106468ed6ca56fbbcac4e03ab0906eb8844a9855b8f4",
+      "origin": "music/mood_tense_1.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "mood_tense_2.flac",
+      "sha256": "ca73ed8284f3f0e039cc68bd7ad8ccbd281782b464e3986e6a2ca90b33cafc43",
+      "origin": "music/mood_tense_2.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "mood_retro_1.flac",
+      "sha256": "4cd565b9086d5a0b0b8dc6ae80ac440cdbb9542365ff48294a083c06494eb43d",
+      "origin": "music/mood_retro_1.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "mood_triumph_1.flac",
+      "sha256": "6e8e327ad67f4895a7e21ffbb27ca2d03a9fbe32baedc92306f4537bd349b69e",
+      "origin": "music/mood_triumph_1.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    },
+    {
+      "file": "mood_reflective_1.flac",
+      "sha256": "6417ab1d96d798691c7733334be0d150bf8ce2762571083fea58f17794f8e9b7",
+      "origin": "music/mood_reflective_1.wav (see public/music/rights.json), filtered by data/smoke/pocketbeds.mts",
+      "licence": "as the bed it is made from",
+      "finishing": "ffmpeg equalizer=f=2700:t=o:w=1.5:g=-6, FLAC, same length and sample rate as the bed"
+    }
+  ]
+}

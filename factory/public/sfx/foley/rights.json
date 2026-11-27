@@ -1,0 +1,131 @@
+{
+  "schema": "pulse-audio-rights-v1",
+  "sfx": [
+    {
+      "file": "foley/tape.mp3",
+      "sha256": "7ed2f39ce407675f8ead7e4477477456973f14ced29da60f2ddfd0cb8d73234f",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (tape, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.175 s"
+    },
+    {
+      "file": "foley/pin.mp3",
+      "sha256": "54c43a561ea31d08dab4ece44b6b729af37078a9be4ac42a5b647c54d76daab9",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (pin, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.0 s"
+    },
+    {
+      "file": "foley/shutter.mp3",
+      "sha256": "1758334a1bd14fd54063293cf255e2d68ac92551335ba5156d484e02aad3b16e",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (shutter, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.0 s"
+    },
+    {
+      "file": "foley/paper.mp3",
+      "sha256": "dfe54069c75e5d6203fa250794f1e10acd3953c8a1d5e5d3280afeab659968ad",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (paper, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.045 s"
+    },
+    {
+      "file": "foley/page.mp3",
+      "sha256": "7f27580297a793bc6203253863aafe7241249c358a4b03d9872f47ace661d0d1",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (page, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.325 s"
+    },
+    {
+      "file": "foley/typewriter.mp3",
+      "sha256": "5cd602148734cba9340ce608b727ec6d3318e8eedbb6ee919fd3d321c71af454",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (typewriter, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.0 s"
+    },
+    {
+      "file": "foley/splitflap.mp3",
+      "sha256": "300e4e77f9c3f323520b4bf880157cc83af35613a0da571a117afc9daab2c18a",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (splitflap, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.155 s"
+    },
+    {
+      "file": "foley/crt.mp3",
+      "sha256": "7a75c35a09b5a44524dca008f566a19b4678e3454c43ed98ed9a227afab8cdcf",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (crt, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.025 s"
+    },
+    {
+      "file": "foley/click.mp3",
+      "sha256": "a682d23edaaf5dee72dec631f30c112dd52e66db1b0cf2cd7091d129a489534e",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (click, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.0 s"
+    },
+    {
+      "file": "foley/buzz-D.mp3",
+      "sha256": "f7789fdd17185720c3468638cbb8b1df1639937635f5b0908d14ce106dca5b99",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (buzz, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.095 s"
+    },
+    {
+      "file": "foley/buzz-E.mp3",
+      "sha256": "0672e94d6bb45e0d78e27a55d76af010831ea81d7f465a2db33812d0cae12071",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (buzz, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.085 s"
+    },
+    {
+      "file": "foley/tickroll.mp3",
+      "sha256": "3ead34fd8684d1c31cc7626a59de68c4b384975674769932423e2b80d849601d",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (tickroll, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.005 s"
+    },
+    {
+      "file": "foley/bars-D.mp3",
+      "sha256": "573ea9f4252dd740ae41d87a1d53f558a9f95082587370ddbc1f6d9f42215cf8",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (bars, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.035 s"
+    },
+    {
+      "file": "foley/bars-E.mp3",
+      "sha256": "70d9b078262d02088d1d2c957ac63ed18033fc15ac879459d3481f79b93ee0dd",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (bars, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2800 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.03 s"
+    },
+    {
+      "file": "foley/riser-D.mp3",
+      "sha256": "83ac4ae8e79ccf2961901d6ca4b62c1b4c84c44bcb46458c1225f7904ab2468a",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (riser, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 3500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 1.28 s"
+    },
+    {
+      "file": "foley/riser-E.mp3",
+      "sha256": "390fb302bd60454fb49aa30620883ec4be7ba2b094ec8e820441ecaa5a092758",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (riser, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 3500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 1.27 s"
+    },
+    {
+      "file": "foley/button-D.mp3",
+      "sha256": "4634beaa535691f192ff26772fe8112c374b2d2be8fd77167429af550a53e812",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (button, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.01 s"
+    },
+    {
+      "file": "foley/button-E.mp3",
+      "sha256": "de8f961ddb1ed73143bd594f2de21a821105678fea5a98c45fd04ebee8730108",
+      "origin": "synthesised by src/tools/sfxlab/foleylab.py (button, numpy noise and tones, fixed seeds); no third-party audio",
+      "licence": "Pulse's own; no claim possible",
+      "finishing": "lab.py finish(): trimmed, 38 Hz high-pass, 2500 Hz low-pass, fades, loudness-matched (-20.0 dB K-weighted 200 ms max); peak at 0.01 s"
+    }
+  ]
+}

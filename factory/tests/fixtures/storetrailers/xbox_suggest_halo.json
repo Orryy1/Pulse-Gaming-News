@@ -1,0 +1,37 @@
+{
+ "Results": [
+  {
+   "ProductFamilyName": "Games",
+   "Products": [
+    {
+     "BackgroundColor": "#FFFFFF",
+     "Height": 300,
+     "ImageType": "Logo",
+     "Width": 300,
+     "PlatformProperties": [],
+     "Icon": "//store-images.s-microsoft.com/image/apps.54721.13727851868390641.c9cc5f66-aff8-406c-af6b-440838730be0.a80b262c-005c-4958-bb83-77411ba3d3b4",
+     "ProductId": "9NP1P1WFS0LB",
+     "Type": "Game",
+     "Title": "Halo Infinite"
+    }
+   ]
+  },
+  {
+   "ProductFamilyName": "Games",
+   "Products": [
+    {
+     "BackgroundColor": "",
+     "Height": 300,
+     "ImageType": "Logo",
+     "Width": 300,
+     "PlatformProperties": [],
+     "Icon": "//store-images.s-microsoft.com/image/apps.52504.14330850369313893.a687698c-b891-44f6-9576-fe28978ce915.95e011f8-5d23-40a4-abde-4ae00a4bb6f7",
+     "ProductId": "9PP5G1F0C2B6",
+     "Type": "Game",
+     "Title": "Halo Infinite"
+    }
+   ]
+  }
+ ],
+ "TotalResultCount": 2
+}

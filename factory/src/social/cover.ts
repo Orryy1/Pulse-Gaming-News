@@ -19,7 +19,10 @@ import path from "node:path";
 export const COVER_FILE = "cover.jpg";
 /** The social copy (TikTok): the Short with the cover over its first moments. */
 export const SOCIAL_FILE = "social.mp4";
-/** How long the cover holds at the start of the social copy before it cuts to the opening. */
+/**
+ * How long the cover holds at the start of the social copy: then it cuts to a card opening, or fades out over
+ * COVER_FADE_FRAMES into a footage or lower-third opening.
+ */
 export const COVER_HOLD_SECONDS = 0.4;
 /** Frames the cover takes to fade into a footage or lower-third opening, after the full hold (6 frames, 0.2 s). */
 export const COVER_FADE_FRAMES = 6;

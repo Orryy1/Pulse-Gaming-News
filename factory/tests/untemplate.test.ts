@@ -411,6 +411,20 @@ test("a headline too long for the lower third is never offered it: card or foota
     lowerUnavailable: "headline-too-long",
   });
   assert.ok(!JSON.stringify(long).includes(THUMB));
+  // A rumour never gets the lower third whatever its headline: no note, so the count stays about headlines.
+  const rumourAssets: { shortShape?: unknown } = {};
+  shapeShort({
+    cfg,
+    id,
+    plan: { fps: FPS, shots: fx.shots.map((x) => ({ ...x })) },
+    clean: true,
+    rumour: true,
+    headline: LONG,
+    memory: { sequences: [], shapes: [] },
+    assets: rumourAssets,
+  });
+  assert.equal("lowerUnavailable" in (rumourAssets.shortShape as object), false);
+  assert.notEqual((rumourAssets.shortShape as { open: string }).open, "lower");
   // A retry keeps the stored shape while its opening is still allowed; a stored lower third with no line now is not.
   assert.deepEqual(run(LONG, { shortShape: long.assets.shortShape }).shape, long.shape);
   assert.notEqual(run(LONG, { shortShape: fits.assets.shortShape }).shape!.open, "lower");

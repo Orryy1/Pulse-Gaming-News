@@ -154,8 +154,9 @@ export function shapeShort(o: {
           line,
         });
       // A headline too long for one line was never offered the lower third: a plain note, so the report can say how
-      // often; the opening it got was a real choice and counts in the cap's memory as any other.
-      o.assets.shortShape = { arm, ...shape, ...(line ? {} : { lowerUnavailable: "headline-too-long" }) };
+      // often; the opening it got was a real choice and counts in the cap's memory as any other. A rumour never gets
+      // the lower third whatever its headline, so it carries no note (it would muddy the count).
+      o.assets.shortShape = { arm, ...shape, ...(line || o.rumour ? {} : { lowerUnavailable: "headline-too-long" }) };
     } else
       o.assets.shortShape = {
         arm,

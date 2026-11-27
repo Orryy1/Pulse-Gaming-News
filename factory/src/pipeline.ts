@@ -16426,7 +16426,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
             motifSting: stingAt ?? null,
           }
         : {}),
-      // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
+      // SHORT_OPEN_WORDS: an opening on the game's footage carries a short caption (hook words or the headline's subject), never the headline.
       ...(s.cfg.shortOpenWords > 0 && opening?.ok && plan.shots[0]?.media.type === "clip"
         ? {
             openingWords: openingCaption(

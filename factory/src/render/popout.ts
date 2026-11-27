@@ -7,6 +7,9 @@
 //
 // Pure: the same footprint always gives the same layout.
 
+import { ANTON, fitText, fitsAt } from "./components/motifs/franchises/shared.ts";
+import { displayText } from "./timeline.ts";
+
 export const GRID_W = 32;
 export const GRID_H = 18;
 /** The subject must cover between these shares of the picture: a speck does not pop, a wall hides everything. */
@@ -154,6 +157,92 @@ export function popAmount(f: number, at: number, len: number): number {
   return up * (1 - ease((f - fallAt) / POP_FALL));
 }
 
+/** The text block's band (shares of the frame height): the kicker, the title, the rule and the line under it. */
+export const POP_TEXT_Y: [number, number] = [0.18, 0.82];
+/** Frame pixels the kicker, the rule and the line under the title take from that band. */
+const POP_CHROME_PX = 130;
+/** The title is never set smaller than this; a title that needs less room than that gets no pop-out card. */
+export const POP_TITLE_MIN = 60;
+export const POP_TITLE_MAX = 128;
+
+export interface PopTitleFit {
+  /** The text block's horizontal room, shares of the frame width: its box, stopping short of the subject. */
+  x0: number;
+  x1: number;
+  size: number;
+  lines: string[];
+}
+
+/**
+ * Where the title may sit and at what size so no word is clipped or hidden under the subject (pure). The room is the
+ * placement's box narrowed to stop short of the subject's footprint (with margin for the step forward), and the title
+ * is fitted into it, at most four lines, between POP_TITLE_MIN and POP_TITLE_MAX px. Undefined when it can't fit:
+ * the card is then not used (27 Nov guide proof: "DON'T BUY THE WRONG GTA 6 EDITION: 7 DIFFERENCES (FULL GUIDE)" ran
+ * under the key art at a fixed 104 px).
+ */
+export function popTitleFit(
+  title: string,
+  align: PopAlign,
+  grid: string | undefined,
+  aspect: number,
+  frameAspect = 16 / 9,
+): PopTitleFit | undefined {
+  const text = displayText(title).toUpperCase().trim();
+  if (!text) return undefined;
+  const cells = parseGrid(grid);
+  const box = POP_BOXES[align];
+  const STEP = 1 / 64;
+  const MARGIN = 0.03;
+  const busy = (x: number) =>
+    Boolean(
+      cells &&
+        overlap(cells, frameToPicture({ x0: x, x1: x + STEP, y0: 0.26, y1: 0.74 }, aspect, frameAspect)) > 0.12,
+    );
+  let x0 = box.x0;
+  let x1 = box.x1;
+  if (align === "left") {
+    // A subject just past the box still needs the margin: it grows a little as it steps forward.
+    for (let x = box.x0; x < box.x1 + MARGIN; x += STEP)
+      if (busy(x)) {
+        x1 = Math.max(box.x0, Math.min(box.x1, x - MARGIN));
+        break;
+      }
+  } else if (align === "right") {
+    for (let x = box.x1 - STEP; x >= box.x0 - MARGIN - STEP; x -= STEP)
+      if (busy(x)) {
+        x0 = Math.min(box.x1, Math.max(box.x0, x + STEP + MARGIN));
+        break;
+      }
+  } else {
+    // Centred: the widest clear run inside the box.
+    let best: [number, number] = [box.x0, box.x0];
+    let start = box.x0;
+    for (let x = box.x0; x < box.x1; x += STEP)
+      if (busy(x)) {
+        const b = x - MARGIN;
+        if (b - start > best[1] - best[0]) best = [start, b];
+        start = x + STEP + MARGIN;
+      }
+    // The run still open at the box's right edge.
+    if (box.x1 - start > best[1] - best[0]) best = [start, box.x1];
+    [x0, x1] = best;
+  }
+  const o = {
+    width: Math.max(0, (x1 - x0) * 1920),
+    height: (POP_TEXT_Y[1] - POP_TEXT_Y[0]) * 1080 - POP_CHROME_PX,
+    lineHeight: 0.98,
+    maxLines: 4,
+    maxSize: POP_TITLE_MAX,
+    minSize: POP_TITLE_MIN,
+    padEm: 0.15,
+    // PopOut sets the title with 0.01em letter spacing.
+    tracking: 0.01,
+  };
+  if (o.width < 300 || !fitsAt(text, ANTON, o)) return undefined;
+  const fit = fitText(text, ANTON, o);
+  return { x0, x1, size: Math.floor(fit.size), lines: fit.lines };
+}
+
 export interface PopPicture {
   kind: string;
   aspect: number;
@@ -169,7 +258,9 @@ export function popPicture(
   images: readonly PopPicture[],
   beat: number | undefined,
   any = false,
-): { index: number; layout: PopLayout } | undefined {
+  /** The card's title: a picture whose subject leaves it no room to fit unclipped is passed over. */
+  title?: string,
+): { index: number; layout: PopLayout; fit?: PopTitleFit } | undefined {
   const kinds = ["hero", "header", "article", "screenshot"];
   const order = images
     .map((im, index) => ({ im, index }))
@@ -187,7 +278,11 @@ export function popPicture(
     );
   for (const { im, index } of order) {
     const layout = popLayout(im.layers!.mesh!.grid, im.aspect);
-    if (layout) return { index, layout };
+    if (!layout) continue;
+    // No title (or an empty one): nothing to clip, the old card.
+    if (title === undefined || !title.trim()) return { index, layout };
+    const fit = popTitleFit(title, layout.align, im.layers!.mesh!.grid, im.aspect);
+    if (fit) return { index, layout, fit };
   }
   return undefined;
 }

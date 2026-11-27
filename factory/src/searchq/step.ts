@@ -312,6 +312,8 @@ export interface SearchLaneDeps {
   now: () => Date;
   /** Whether the owner's gameplay inbox holds a clip of this game. */
   ownFootage?: (game: string) => Promise<boolean>;
+  /** GAME_DAY_CAP (src/gamecap.ts): true for a query ("query game") naming a game whose Shorts for the day are used up. */
+  skipText?: (text: string) => boolean;
   notify?: (m: { level?: "info"; content: string }) => Promise<unknown>;
 }
 
@@ -382,7 +384,7 @@ export async function maybeSelectSearch(
     d.cfg.searchShorts.minScore,
     made,
     recentIntents,
-  )[0];
+  ).find((q) => !d.skipText?.(`${q.query} ${q.game}`));
   if (!pick) {
     log("info", "search: nothing makeable for the slot", {
       slot: due.toISOString(),

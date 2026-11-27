@@ -53,6 +53,16 @@ export function vodsToClear(
   return out;
 }
 
+/**
+ * The finder's run settings: the Mac turn-taker's short lane. The finder takes 0 min when nothing is new and at most
+ * about 20 min scoring a fresh stream (macrun.log, 12-27 Nov 2026), and it still waits while Pulse renders or memory
+ * is short. In the main lane it queued behind a 4-hour proof job and was skipped after 120 min (27 Nov 2026).
+ */
+export function finderEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // A fresh stream scored beside a main-lane job can pass the lane's 20 min overrun flag; 30 min keeps the log honest.
+  return { ...env, MACRUN_LANE: "short", MACRUN_SHORT_MAX_MIN: "30" };
+}
+
 /** A job behind the Mac's turn-taker, or at background priority where it is not installed. */
 function behindRenders(
   name: string,
@@ -110,7 +120,7 @@ export async function localGameplayPass(
     await run(c, a, opts);
   }
   const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
-  await run(c, a, opts);
+  await run(c, a, { ...opts, env: finderEnv(env) });
   const done = (() => {
     try {
       return Object.keys(

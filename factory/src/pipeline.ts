@@ -614,6 +614,8 @@ import {
   type ShortLengths,
 } from "./shortlengths.ts";
 import { inboxFiles, ownClipVisible, sampledLumas } from "./assets/library.ts";
+import { lookHash } from "./assets/lookhash.ts";
+import { dedupeLookalikes, groupLooks, hamming, LOOK_DISTANCE } from "./render/lookalike.ts";
 import {
   fitDescription,
   recentShortTexts,
@@ -14027,6 +14029,55 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       await s.notify({
         content: `🖼️ "${script.headline}" is short of pictures for ${left.map((g) => ranked[g.entry]?.game_title ?? `entry ${g.entry}`).join(", ")} (${left.map((g) => (g.plateSeconds > 15 ? `${g.plateSeconds}s on the plain background` : `a shot shown ${g.maxRepeat} times`)).join("; ")}). It renders anyway.`,
       });
+  }
+  // A guide never shows a near-identical shot twice close together, nor twice in its opening (src/render/lookalike.ts).
+  if (freshPlan && script.gta_guide) {
+    const imageLook = groupLooks(
+      await (async () => {
+        const out: Array<string | undefined> = [];
+        for (const im of images) out.push(await lookHash(path.join(dir, im.file)));
+        return out;
+      })(),
+      (k) => pictureKey(images[k]!),
+    );
+    const clipLook = new Map<string, string | undefined>();
+    const clipHashes: Array<{ key: string; hash: string }> = [];
+    for (const sh of plan.shots) {
+      if (sh.media.type !== "clip") continue;
+      const key = `${sh.media.index}:${sh.media.from ?? 0}`;
+      if (clipLook.has(key)) continue;
+      const c = clips[sh.media.index];
+      const hash = c ? await lookHash(path.join(dir, c.file), (sh.media.from ?? 0) / LONG_FPS + 0.5) : undefined;
+      // A clip frame that looks like an earlier one (or like a picture) is that one's look.
+      const near = hash
+        ? (clipHashes.find((x) => hamming(x.hash, hash) <= LOOK_DISTANCE)?.key ??
+          imageLook.find((l) => l.startsWith("look:") && hamming(l.slice(5), hash) <= LOOK_DISTANCE))
+        : undefined;
+      const look = near ?? (hash ? `look:${hash}` : `clip:${key}`);
+      if (hash && !near) clipHashes.push({ key: look, hash });
+      clipLook.set(key, look);
+    }
+    const pickable = images
+      .map((im, k) => ({ im, k }))
+      .filter(({ im }) => !im.named && im.moment === undefined && (im.kind === "screenshot" || im.kind === "hero" || im.kind === "photo"));
+    const deduped = dedupeLookalikes(plan.shots, {
+      fps: LONG_FPS,
+      imageLook,
+      clipFrames: (k) => (clips[k]?.durationSeconds ? Math.floor(clips[k]!.durationSeconds! * LONG_FPS) : undefined),
+      maxStillFrames: s.cfg.longSamePictureMaxSeconds > 0 ? Math.round(s.cfg.longSamePictureMaxSeconds * LONG_FPS) : undefined,
+      lookOf: (sh) =>
+        sh.media.type === "image"
+          ? imageLook[sh.media.index]
+          : sh.media.type === "clip"
+            ? clipLook.get(`${sh.media.index}:${sh.media.from ?? 0}`)
+            : undefined,
+      spare: (sh) => [
+        ...pickable.filter(({ im }) => im.beatIndex === sh.media.entry).map(({ k }) => k),
+        ...pickable.filter(({ im }) => im.beatIndex !== sh.media.entry).map(({ k }) => k),
+      ],
+    });
+    plan = { ...plan, shots: deduped.shots };
+    await logEvent(s.db, ep.id, "look_dedupe", { swapped: deduped.swapped, held: deduped.held, left: deduped.left });
   }
   assets.longPlan = plan;
   // A video never renders on the empty slate: everything to fill it has been tried by here, so this one stops and says.

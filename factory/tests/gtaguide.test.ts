@@ -1436,3 +1436,87 @@ test("the owner's murky play is left out; bright play is kept", async () => {
   const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
   assert.match(pipe, /ownClipVisible\(await sampledLumas\(path\.join\(dir, c\.file\)\)\)/, "a re-render leaves murky own play out too");
 });
+
+// ---- The run8 repeats (27 Nov 2026) ---------------------------------------------------------------------------------
+
+test("near-identical shots: one look, never twice in the opening or within a minute; a fresh picture, else a longer hold", async () => {
+  const { dhash, hamming, groupLooks, dedupeLookalikes, LOOK_DISTANCE } = await import("../src/render/lookalike.ts");
+  const grad = (shift: number) => Array.from({ length: 72 }, (_, i) => ((i % 9) * 20 + shift + (i % 7 === 0 ? 3 : 0)) % 256);
+  const a = dhash(grad(0))!;
+  const b = dhash(grad(1))!; // the same skyline, a touch brighter (another IGDB id)
+  const c = dhash(Array.from({ length: 72 }, (_, i) => 250 - (i % 9) * 20))!; // a different picture: the light falls the other way
+  assert.ok(hamming(a, b) <= LOOK_DISTANCE);
+  assert.ok(hamming(a, c) > LOOK_DISTANCE);
+  const looks = groupLooks([a, b, c, undefined], (i) => `f:${i}`);
+  assert.equal(looks[0], looks[1], "two files, one look");
+  assert.notEqual(looks[0], looks[2]);
+  assert.equal(looks[3], "f:3");
+  // The run8 opening: car, skyline, night city, skyline again, car again (every shot 3 s at 30 fps).
+  const shot = (i: number, index: number) => ({
+    start: i * 90, end: (i + 1) * 90, segment: 0, move: "push" as never,
+    media: { type: "image" as const, index, entry: 0 },
+  });
+  const imageLook = ["car", "sky", "night", "sky2", "car", "beach", "bridge"].map((x) => (x === "sky2" ? "sky" : x));
+  const shots = [shot(0, 0), shot(1, 1), shot(2, 2), shot(3, 3), shot(4, 4)];
+  const r = dedupeLookalikes(shots as never, {
+    fps: 30,
+    imageLook,
+    lookOf: (s) => imageLook[s.media.index],
+    spare: () => [5, 6],
+  });
+  const seen = r.shots.map((s) => imageLook[s.media.index]);
+  assert.deepEqual(seen, ["car", "sky", "night", "beach", "bridge"]);
+  assert.equal(r.swapped, 2);
+  // Nothing fresh left: the shot before holds longer instead of a repeat.
+  const held = dedupeLookalikes(shots as never, { fps: 30, imageLook, lookOf: (s) => imageLook[s.media.index], spare: () => [] });
+  assert.equal(held.shots.length, 3);
+  assert.equal(held.shots[2]!.end, 5 * 90);
+  assert.equal(held.held, 2);
+  // One clip running on across a cut is never its own repeat; a clip repeated from elsewhere holds the shot before
+  // (inside its sentence and its clip's length) before any still replaces it.
+  const clip = (i: number, index: number, from: number, segment = 0) => ({
+    start: i * 90, end: (i + 1) * 90, segment, move: "push" as never, media: { type: "clip" as const, index, entry: 0, from },
+  });
+  const cl = ["run", "run", "run"];
+  const cont = dedupeLookalikes([clip(0, 0, 0), clip(1, 0, 90)] as never, {
+    fps: 30, imageLook, lookOf: () => "run", spare: () => [5], clipFrames: () => 600,
+  });
+  assert.equal(cont.shots.length, 2);
+  assert.equal(cont.swapped + cont.held, 0);
+  const other = dedupeLookalikes([clip(0, 0, 0), clip(1, 1, 0)] as never, {
+    fps: 30, imageLook, lookOf: (s) => cl[s.media.index], spare: () => [5], clipFrames: () => 600,
+  });
+  assert.equal(other.held, 1, "the clip before holds on");
+  assert.equal(other.shots[0]!.end, 180);
+  // A hold never crosses into the next sentence, nor past the clip's end.
+  const cross = dedupeLookalikes([clip(0, 0, 0), clip(1, 1, 0, 1)] as never, {
+    fps: 30, imageLook, lookOf: (s) => cl[s.media.index], spare: () => [], clipFrames: () => 600,
+  });
+  assert.equal(cross.held, 0);
+  assert.equal(cross.left, 1);
+  const short = dedupeLookalikes([clip(0, 0, 0), clip(1, 1, 0)] as never, {
+    fps: 30, imageLook, lookOf: (s) => cl[s.media.index], spare: () => [], clipFrames: () => 120,
+  });
+  assert.equal(short.held, 0, "a 4 s clip can't hold for 6 s");
+  // Past the opening, a look may come back after a minute, not before.
+  const late = [shot(0, 2), { ...shot(30, 0) }, { ...shot(31, 5) }, { ...shot(50, 0) }];
+  const lr = dedupeLookalikes(late as never, { fps: 30, imageLook, lookOf: (s) => imageLook[s.media.index], spare: () => [] });
+  assert.deepEqual(lr.shots.map((s) => imageLook[s.media.index]), ["night", "car", "beach", "car"]);
+  const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipe, /if \(freshPlan && script\.gta_guide\) \{\s+const imageLook = groupLooks\(/);
+});
+
+test("GTA VI is out: its chapters gather footage again; other games of this year still wait", async () => {
+  const { notOutYet } = await import("../src/assets/junk.ts");
+  const now = new Date("2026-11-27T12:00:00Z");
+  assert.equal(notOutYet(2026, now, "Grand Theft Auto VI"), false);
+  assert.equal(notOutYet(2026, new Date("2026-11-10T12:00:00Z"), "Grand Theft Auto VI"), true, "before launch day");
+  assert.equal(notOutYet(2026, now, "Some Other Game"), true);
+  assert.equal(notOutYet(2026, now), true);
+  assert.equal(notOutYet(2024, now, "Old Game"), false);
+  assert.equal(notOutYet(undefined, now), false);
+  for (const f of ["footagefirst.ts", "gameplay.ts"]) {
+    const src = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "assets", f), "utf8");
+    assert.doesNotMatch(src, /notOutYet\([a-z]+\.year\)/, `${f} passes the game's name`);
+  }
+});

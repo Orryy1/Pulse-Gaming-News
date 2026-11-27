@@ -1145,7 +1145,7 @@ export async function gameplayClips(
   // A game not out yet has no real gameplay to upload: anything titled so is a mod or a re-cut trailer
   // (GTA V kids' mods reached the Vice City documentary's GTA VI chapter on 27 Oct; the documentary gather got
   // its own guard on 30 Oct, a ranking's entry gather had none until this one, which covers every caller).
-  if (notOutYet(o.year)) {
+  if (notOutYet(o.year, undefined, o.game)) {
     log("info", "licensed gameplay skipped: the game is not out", {
       game: o.game,
       year: o.year,

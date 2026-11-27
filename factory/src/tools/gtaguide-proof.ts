@@ -30,6 +30,10 @@ if (!envFile || !liveData) {
   process.exit(2);
 }
 const data = path.join(out, "data");
+// --reuse=<earlier proof's out dir>: its sandbox (script, voice, gathered media) is copied and only the render runs.
+const reuse = flag("reuse");
+if (reuse && !(await fs.stat(data).catch(() => undefined)))
+  await fs.cp(path.join(path.resolve(reuse), "data"), data, { recursive: true, verbatimSymlinks: true });
 await fs.mkdir(data, { recursive: true });
 process.loadEnvFile(envFile);
 // The live data folder's read-only parts, linked into the sandbox (never the database, logs or episodes).
@@ -46,7 +50,7 @@ for (const d of ["vodindex", "sceneindex", "gamelib", "presskits", "storetrailer
   if (await fs.stat(path.join(liveData, d)).catch(() => undefined)) await fs.symlink(path.join(liveData, d), link);
 }
 // The sandbox's settings (src/tools/gtaguide-proofenv.ts): no database, no uploads, and no wait for the owner's footage.
-const { gtaGuideProofEnv } = await import("./gtaguide-proofenv.ts");
+const { gtaGuideProofEnv, proofDone, REUSE_CLEAR } = await import("./gtaguide-proofenv.ts");
 Object.assign(process.env, gtaGuideProofEnv({ data, backup: path.join(out, "backup") }));
 
 const { loadConfig } = await import("../config.ts");
@@ -99,13 +103,26 @@ if (!ep) {
     [id],
   );
 }
+if (reuse) {
+  // The render again on the same episode: its outputs cleared, the plan re-made, back to the step before the render.
+  for (const f of REUSE_CLEAR)
+    await fs.rm(path.join(cfg.dataDir, "episodes", ep!.id, f), { force: true });
+  await db.query(
+    `UPDATE episodes SET status = 'voiced', last_error = NULL, next_attempt_at = NULL, attempts = 0,
+       assets_json = assets_json - 'longPlan' WHERE id = $1`,
+    [ep!.id],
+  );
+}
 console.log(
   "episode",
   ep!.id,
   ep!.status,
   JSON.stringify(ep!.factcheck_json?.gta_guide ?? {}),
 );
-for (let i = 0; i < 12; i++) {
+// --report-only: no more passes, just the report from what the sandbox already holds (a proof stopped after its render).
+// The 27 Nov which-edition proof rendered its 60 s cut as short.mp4, the long QA then failed it for being 60 s, and
+// every later pass rendered it again: the loop now stops at short.mp4 as well as render_raw.mp4.
+for (let i = 0; i < (args.includes("--report-only") ? 0 : 12); i++) {
   await db.query(
     `UPDATE episodes SET next_attempt_at = NULL, attempts = 0 WHERE id = $1 AND status NOT IN ('published','failed','rejected')`,
     [ep!.id],
@@ -119,20 +136,11 @@ for (let i = 0; i < 12; i++) {
     `pass ${i}: ${ep!.status} ${(ep!.last_error ?? "").slice(0, 300)} t=${secs()}`,
   );
   const dir = path.join(cfg.dataDir, "episodes", ep!.id);
-  const rendered = await fs
-    .stat(path.join(dir, "render_raw.mp4"))
-    .catch(() => undefined);
-  if (
-    rendered ||
-    [
-      "failed",
-      "rejected",
-      "awaiting_approval",
-      "approved",
-      "published",
-    ].includes(ep!.status)
-  )
-    break;
+  const rendered = Boolean(
+    (await fs.stat(path.join(dir, "render_raw.mp4")).catch(() => undefined)) ??
+      (await fs.stat(path.join(dir, "short.mp4")).catch(() => undefined)),
+  );
+  if (proofDone({ rendered, status: ep!.status, minutes: (Date.now() - t0) / 60_000 })) break;
 }
 const dir = path.join(cfg.dataDir, "episodes", ep!.id);
 await fs.writeFile(

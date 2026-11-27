@@ -329,6 +329,7 @@ export type LongProps = {
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
   recap?: boolean; // the weekly news recap: the chip reads THIS WEEK
+  guide?: boolean; // a GTA guide list (GTA_GUIDES): the chip and the title card read GUIDE, never TOP N or RANKED
   criterion: string;
   theme: string; // franchise or theme name
   footageCredit: string;
@@ -4682,8 +4683,8 @@ export const Long: React.FC<LongProps> = (props) => {
             : documentary
               ? "DOCUMENTARY"
               : total
-                ? `TOP ${total}`
-                : "RANKED"
+                ? props.guide ? "GUIDE" : `TOP ${total}`
+                : props.guide ? "GUIDE" : "RANKED"
         }
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
         marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
@@ -4757,7 +4758,7 @@ export const Long: React.FC<LongProps> = (props) => {
                             ? "THIS WEEK"
                             : documentary
                               ? "DOCUMENTARY"
-                              : "RANKED",
+                              : props.guide ? "GUIDE" : "RANKED",
                           game: props.theme,
                           pictures: motifPictures(undefined),
                           frames: open - cold,
@@ -5595,7 +5596,7 @@ export const Long: React.FC<LongProps> = (props) => {
                       ? "THIS WEEK"
                       : documentary
                         ? "DOCUMENTARY"
-                        : "RANKED"
+                        : props.guide ? "GUIDE" : "RANKED"
                   }
                   title={props.title}
                   sub={props.kicker}
@@ -5615,7 +5616,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   ? "THIS WEEK"
                   : documentary
                     ? "DOCUMENTARY"
-                    : "RANKED",
+                    : props.guide ? "GUIDE" : "RANKED",
                 game: props.theme,
                 pictures: motifPictures(undefined),
                 frames: drop.len - Math.max(0, drop.landAt - MOTIF_LEAD),

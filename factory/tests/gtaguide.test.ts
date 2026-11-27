@@ -1284,3 +1284,83 @@ test("a kind that failed as too thin stays out for a week; an ordinary failure f
     await db.close();
   }
 });
+
+// ---- The which-edition proof's faults (27 Nov 2026) -------------------------------------------------------------------
+
+test("cards that say nothing, repeat in an item or credit Wikipedia are dropped, in guides and every long video", async () => {
+  const { cleanGuideMoments, EMPTY_CARD, GUIDE_STILL_MAX_SHOWS } = await import("../src/gtaguide.ts");
+  const { usefulGraphic } = await import("../src/render/longplan.ts");
+  const narration =
+    "Number 3 is the platform. Pick the version for your console. Check the listing says PS5. Check it again for Xbox. Rockstar has not announced PC. The bonus ends on November 20, 2026. Order before the offer ends.";
+  const g = (kind: string, primary: string, items: string[] = [], secondary = "") => ({ kind, primary, secondary, items });
+  const ms: any[] = sentencesOf(narration).map((s) => moment(s));
+  ms[1] = { ...ms[1]!, graphic: g("list", "PS5 features", ["DualSense haptics", "Tempest 3D Audio"]) };
+  ms[2] = { ...ms[2]!, graphic: g("list", "PS5 features", ["DualSense haptics", "Tempest 3D Audio", "PS5 Pro"]) };
+  ms[3] = { ...ms[3]!, graphic: g("list", "Supported consoles", ["Tempest 3D Audio", "DualSense haptics"]) };
+  ms[4] = { ...ms[4]!, graphic: g("source", "Rockstar and Take-Two haven't announced a PC version", [], "Wikipedia: Grand Theft Auto VI") };
+  ms[5] = { ...ms[5]!, graphic: g("date", "November 20, 2026", [], "Bonus cutoff") };
+  ms[6] = { ...ms[6]!, graphic: g("date", "November 20, 2026", [], "Order before this date") };
+  const out = cleanGuideMoments(narration, ms as never).map((m) => (m as { graphic: { kind: string } }).graphic.kind);
+  assert.deepEqual(out, ["none", "list", "none", "none", "none", "date", "none"]);
+  for (const t of ["Not established", "Not announced", "No performance verdict", "Unknown"]) assert.match(t, EMPTY_CARD);
+  assert.doesNotMatch("Notable stores", EMPTY_CARD);
+  const empty: any[] = sentencesOf(narration).map((s) => moment(s));
+  empty[1] = { ...empty[1]!, graphic: g("list", "Not established", ["exact installed size", "updates"]) };
+  assert.equal((cleanGuideMoments(narration, empty as never)[1] as { graphic: { kind: string } }).graphic.kind, "none");
+  // Two untitled compares with different rows both stay; the same rows again do not.
+  const untitled: any[] = sentencesOf(narration).map((s) => moment(s));
+  untitled[1] = { ...untitled[1]!, graphic: g("compare", "", ["Standard: $79.99", "Ultimate: $99.99"]) };
+  untitled[3] = { ...untitled[3]!, graphic: g("compare", "", ["PS5: yes", "Xbox: yes"]) };
+  untitled[5] = { ...untitled[5]!, graphic: g("compare", "", ["Ultimate: $99.99", "Standard: $79.99"]) };
+  assert.deepEqual(
+    cleanGuideMoments(narration, untitled as never).map((m) => (m as { graphic: { kind: string } }).graphic.kind),
+    ["none", "compare", "none", "compare", "none", "none", "none"],
+  );
+  // Every long video: a Wikipedia credit never reaches the screen, in a card's text or an evidence page's credit.
+  assert.equal(usefulGraphic(g("source", "The game sold 10 million copies in a day.", [], "Wikipedia: Grand Theft Auto V")), false);
+  assert.equal(
+    usefulGraphic({ ...g("quote", "We are proud of it."), evidence: { credit: "From the record: Wikipedia, GTA V" } } as never),
+    false,
+  );
+  assert.equal(usefulGraphic(g("source", "The game sold 10 million copies in a day.", [], "Rockstar Newswire")), true);
+  // One showing of each still in a guide, and its opening may play the game's footage.
+  assert.equal(GUIDE_STILL_MAX_SHOWS, 1);
+  const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipe, /stillMaxShows: script\.gta_guide \? GUIDE_STILL_MAX_SHOWS/);
+  assert.match(pipe, /oneGame: isRetrospective\(ep\.factcheck_json\) \|\| Boolean\(script\.gta_guide\)/);
+  assert.match(pipe, /if \(script\.gta_guide\)\s+for \(let e = 0; e < moments\.length; e\+\+\)\s+moments\[e\] = cleanGuideMoments/);
+});
+
+test("a guide is labelled a guide on screen, never TOP N or RANKED", () => {
+  const long = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "render", "Long.tsx"), "utf8");
+  assert.match(long, /guide\?: boolean;/);
+  // Every RANKED and TOP N label is behind the guide check.
+  assert.equal((long.match(/: "RANKED"/g) ?? []).length, 4);
+  assert.equal((long.match(/props\.guide \? "GUIDE" : "RANKED"/g) ?? []).length, 4);
+  assert.match(long, /props\.guide \? "GUIDE" : \`TOP \$\{total\}\`/);
+  const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipe, /guide: !!script\.gta_guide,/);
+});
+
+test("thumbnail frames: never live play with its HUD, never murky; the edition guide uses the official art", async () => {
+  const { hudFreeClip } = await import("../src/gtaguidestep.ts");
+  assert.equal(hudFreeClip({ provenance: "Pulse's own gameplay capture: GTA VI stream 25 Nov" }), false);
+  assert.equal(hudFreeClip({ provenance: "Permitted stream capture: Spencey96" }), false);
+  assert.equal(hudFreeClip({ provenance: "Pulse's own gameplay capture, photo mode, 26 Nov" }), true);
+  assert.equal(frameScore(60, 120), -1, "the proof's dark frame");
+  assert.ok(frameScore(130, 100) > 0.8);
+  const pipe = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "pipeline.ts"), "utf8");
+  assert.match(pipe, /if \(meta\.kind === "which-edition"\) return undefined;/);
+  const studio = fs.readFileSync(path.join(import.meta.dirname, "..", "src", "render", "ThumbStudio.tsx"), "utf8");
+  assert.doesNotMatch(studio, /drop-shadow\(5px 0 0 #fff\)/, "no thick white outline");
+});
+
+test("the proof stops at its cut or its time, and a reuse clears only the render's outputs", async () => {
+  const { proofDone, PROOF_MAX_MINUTES, REUSE_CLEAR } = await import("../src/tools/gtaguide-proofenv.ts");
+  assert.equal(proofDone({ rendered: true, status: "voiced", minutes: 5 }), true, "the 60 s cut that failed duration QA");
+  assert.equal(proofDone({ rendered: false, status: "voiced", minutes: 5 }), false);
+  assert.equal(proofDone({ rendered: false, status: "failed", minutes: 5 }), true);
+  assert.equal(proofDone({ rendered: false, status: "voiced", minutes: PROOF_MAX_MINUTES }), true);
+  assert.ok(PROOF_MAX_MINUTES < 90, "under the Mac's proof cap");
+  assert.ok(REUSE_CLEAR.includes("short.mp4") && !REUSE_CLEAR.some((f) => /voice|audio|captions/.test(f)));
+});

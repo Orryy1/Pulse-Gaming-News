@@ -168,6 +168,15 @@ export interface RenderPlan {
   craft?: import("./shortcraft.ts").ShortCraft;
   /** Code scenes drawn over their shots (src/render/codescene.ts). `media.index` of a "scene" shot points here. */
   scenes?: PlannedScene[];
+  /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" when the sparse plan wrote `sfx`; absent, the v3 plan. */
+  soundPlan?: "sparse";
+  /** The sparse plan's silence beat before the verdict (frames): the music dips, no effect plays. */
+  silences?: Array<{ from: number; to: number }>;
+  /**
+   * SHORT_FIRST_SHOT_MIN_S (src/untemplatestep.ts): the minimum (s) a render held this plan's first shot to; absent,
+   * never held. On the plan, not the episode, so a plan rebuilt after a regather starts unheld.
+   */
+  firstShotHeld?: number;
 }
 
 export const QUIET_KINDS = new Set([

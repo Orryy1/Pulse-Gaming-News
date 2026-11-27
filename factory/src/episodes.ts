@@ -114,6 +114,14 @@ export interface EpisodeAssets {
   /** MENTION_*: the mention insets' pictures for the kinds the gather looked for (src/assets/mentions.ts). */
   mentions?: import("./assets/mentions.ts").MentionsFound;
   shortDepthArm?: string; // SHORT_PARALLAX_SHARE: "depth" or "flat" while the test runs
+  /** SHORT_SOUND_PLAN (src/render/untemplate.ts): "sparse" or "v3" while the sound test runs. */
+  shortSoundArm?: "sparse" | "v3";
+  /** SHORT_LAYOUTS (src/render/untemplate.ts): the arm and the opening and closing drawn, while the layout test runs. */
+  shortShape?: { arm: "on" | "off"; open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string; skipped?: string };
+  /** SHORT_SOUND_PLAN: the effect sequence the sparse plan chose, kept by a retry or regather while the arm holds. */
+  shortSoundSequence?: string;
+  /** SHORT_FIRST_SHOT_MIN_S (src/untemplatestep.ts): the arm, the minimum held to and whether it changed the plan. */
+  shortFirstShot?: import("./untemplatestep.ts").FirstShotRecord;
   evidenceArm?: "board" | "plain"; // EVIDENCE_STYLE_SHARE: the eligible (mystery or lore) episode's arm (src/evidencestyle.ts)
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];

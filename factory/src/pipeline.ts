@@ -406,6 +406,7 @@ import {
   type SegmentInput,
 } from "./render/timeline.ts";
 import { buildPlan, TAIL_SECONDS, MAX_SFX } from "./render/plan.ts";
+import { readShortMemory, restoreV3Sound, shapeShort, soundShort, soundStepDue } from "./untemplatestep.ts";
 import { planPanelStep } from "./planpanelstep.ts";
 import { frameFocusStep } from "./framefocusstep.ts";
 import { leadFrames, LEVEL, MOOD_BEDS, SFX, sfxFile } from "./render/soundscape.ts";
@@ -15861,6 +15862,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       wpmMax: shortWpmMax(s.cfg),
     });
   let plan = assets.plan ?? buildPlan(planInput);
+  // SHORT_SOUND_PLAN (src/untemplatestep.ts): a stored sparse plan now on the v3 side gets its v3 cues back here, so the
+  // word stamp, the series sting and the ident below land on it as on any v3 plan.
+  if (assets.plan) restoreV3Sound({ cfg: s.cfg, id: ep.id, plan, assets, v3: () => buildPlan(planInput).sfx });
   let rubric = rubricFor(plan);
   // SHOT_PLAN_PANEL (src/planpanelstep.ts, off by default): a blind picture editor critic reads the plan as text before
   // any render; under "on" up to three plans from the same media are marked and the best kept. A red plan is never
@@ -16374,12 +16378,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const tracklist = s.cfg.peopleInsets
     ? tracklistOf(script, segments, words, plan, people.map((p) => p.at))
     : undefined;
+  // SHORT_LAYOUTS / SHORT_SOUND_PLAN (src/untemplatestep.ts): the newest Shorts' shapes and effect sequences, read once.
+  const untemplateMemory =
+    s.cfg.shortLayouts || s.cfg.shortSoundPlan === "sparse" ? await readShortMemory(s.db, ep.id).catch(() => undefined) : undefined;
+  // SHORT_LAYOUTS: the opening and closing (before the graphics gate, which measures them); SHORT_FIRST_SHOT_MIN_S, its
+  // own test, holds the first shot (today 0.4 s on a still opening: plan.ts STING_FRAMES).
+  const shape = shapeShort({
+    cfg: s.cfg,
+    id: ep.id,
+    plan,
+    clean: shortClean,
+    rumour: Boolean(script.is_rumour),
+    headline: script.headline,
+    thumbText: script.youtube?.thumb_text,
+    memory: untemplateMemory,
+    assets,
+  });
+  if (assets.shortShape) await logEvent(s.db, ep.id, "short_shape", assets.shortShape);
+  if (assets.shortFirstShot) await logEvent(s.db, ep.id, "short_first_shot", assets.shortFirstShot);
   // MENTION_*: the mention insets on their words, scheduled once here so the audit and the render agree.
   const mentions = mentionPlacement(s.cfg, assets.mentions, words, plan, "short", [
     { from: 0, to: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames).hookEnd },
   ]).slots;
   const gfxIn = () => ({
-    ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean }),
+    ...gfxInputOf({ script, assets, segments, words, plan, stamps: shownStamps, clean: shortClean, shape }),
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
     mentions,
@@ -16398,6 +16420,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     layout: shortLayout(segments, plan.fps, plan.totalFrames, plan.tailFrames),
     stamps: shownStamps,
     sting: false,
+    shape,
     people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
     tracklist,
     mentions,
@@ -16453,6 +16476,33 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       notes: upgraded.notes,
     }).catch(() => undefined);
   }
+  // SHORT_SOUND_PLAN (src/untemplatestep.ts): on the sparse side, effects only where the gated cards and stamps land.
+  if (soundStepDue(s.cfg, plan)) {
+    const stampSound = wordSoundCue(plan.wordLook);
+    const sound = soundShort({
+      cfg: s.cfg,
+      id: ep.id,
+      plan,
+      segments,
+      words,
+      stamps: shownStamps,
+      clean: shortClean,
+      stampSound,
+      shape,
+      people: people.map((p) => ({ name: p.name, src: p.file, credit: p.credit, at: p.at })),
+      tracklist,
+      mentions,
+      // The game collage card, where the render draws it (motifSting below): it arrives like a card where it shows.
+      sting: stingAt ?? false,
+      memory: untemplateMemory,
+      assets,
+      // A stored sparse plan on the v3 side was given its v3 cues back where the plan was loaded (restoreV3Sound).
+      v3: () => plan.sfx,
+    });
+    await logEvent(s.db, ep.id, "short_sound", sound);
+  }
+  if (assets.shortShape || assets.shortSoundArm || assets.shortFirstShot || plan.soundPlan)
+    await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
   // GAME_AUDIO_BED (src/assets/gameaudio.ts): on the test's side, the footage's own sound as one bed, cut with the
   // plan, ducked under the voice, up between sentences and silent under a quote; logged for the weekly split.
   const gameAudio = gameAudioOn(s.cfg, ep.id, isRetrospective(ep.factcheck_json));
@@ -16614,6 +16664,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       ...(people.length ? { peopleFiles: people } : {}),
       ...(tracklist ? { tracklist } : {}),
       ...(mentions.length ? { mentionFiles: mentions } : {}),
+      // SHORT_LAYOUTS: the chosen opening and closing (src/render/untemplate.ts); absent, today's card at both ends.
+      ...(shape ? { shape } : {}),
       ...(upgraded && Object.keys(upgraded.upgrades).length ? { upgrades: upgraded.upgrades } : {}),
       ...(shortBoard ? { board: shortBoard } : {}),
       ...(gameBed

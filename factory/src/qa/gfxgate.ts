@@ -79,6 +79,7 @@ export function gfxInputOf(o: {
   >;
   stamps: ShortGfxInput["stamps"];
   clean: boolean;
+  shape?: ShortGfxInput["shape"];
 }): ShortGfxInput {
   return {
     segments: o.segments,
@@ -87,6 +88,7 @@ export function gfxInputOf(o: {
     stamps: o.stamps,
     stampWritten: o.script.stamp?.text,
     clean: o.clean,
+    ...(o.shape ? { shape: o.shape } : {}),
     headline: o.script.headline ?? "",
     narration: writtenNarration(o.script),
     sources: figureSources(o.script, o.assets),

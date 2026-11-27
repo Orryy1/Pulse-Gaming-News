@@ -9,9 +9,31 @@ import { tagChars } from "../youtube/upload.ts";
 import { docQuestion } from "../youtube/pinned.ts";
 
 export const TITLE_MAX = 60; // phones truncate around here; YouTube allows 100
+
+/**
+ * TITLE_KEEP_WHOLE (27 Nov 2026, on unless "false"): "GTA VI File #3: GTA 6 radio now keeps playing when you're on foot"
+ * went live as "GTA VI File : GTA 6 Radio Now Keeps Playing When You're on". The hashtag strip took the part number
+ * and the 60-character cut took the last word. With it on, a part number ("#3") stays, a numbered series title gets
+ * its prefix's length on top of the budget, a cut never ends on a dangling small word, and the word after "?" or "!"
+ * is capitalised ("Police Cars? The Honest Answer").
+ */
+export function titleKeepWhole(): boolean {
+  return (process.env.TITLE_KEEP_WHOLE ?? "").trim().toLowerCase() !== "false";
+}
+
+/** A numbered series prefix ("GTA VI File #3: ", "The Why #12: "), or "" when the title has none. */
+export function seriesPrefix(title: string): string {
+  return title.match(SERIES_PREFIX)?.[0] ?? "";
+}
 const BAD_TITLE_WORDS =
   /\b(shocking|insane|you won'?t believe|unbelievable|omg|wtf|must watch|gone wrong|clickbait|exposed|destroyed|rip)\b/i;
 const CLICKBAIT_PUNCT = /[!?]{2,}|\.{3,}|\s!$/;
+const SERIES_PREFIX = /^(GTA VI File|The Why) #\d{1,3}:\s+/;
+/** A hashtag in a title; with TITLE_KEEP_WHOLE a part number ("#3") is not one. */
+const TITLE_HASHTAG = /#[\p{L}_][\p{L}\p{N}_]*/gu;
+/** Words a cut title must not end on ("... When You're on"). */
+const DANGLING_END =
+  /\s+(a|an|and|as|at|but|by|for|from|in|into|is|its|of|on|or|than|that|the|their|to|when|with|your|you're|you’re|you|will|be|it|has|have|are|was|can)$/i;
 
 /** Franchise and platform keywords worth stacking when they appear in the story. */
 export const KEYWORD_TABLE: Array<[RegExp, string[]]> = [
@@ -120,7 +142,9 @@ export function titleCase(s: string): string {
   return s
     .split(" ")
     .map((w, i, all) => {
-      const after = i > 0 && /[:|\u2013-]$/.test(all[i - 1]!);
+      const after =
+        i > 0 &&
+        (titleKeepWhole() ? /[:|\u2013?!-]$/ : /[:|\u2013-]$/).test(all[i - 1]!);
       if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase()))
         return w.toLowerCase();
       const acro = ACRONYMS[w.toLowerCase().replace(/[^a-z]/g, "")];
@@ -130,13 +154,23 @@ export function titleCase(s: string): string {
     .join(" ");
 }
 
-function truncateWords(s: string, max: number): string {
+export function truncateWords(s: string, max: number): string {
   if (s.length <= max) return s;
   const cut = s.slice(0, max + 1);
-  return cut
+  let out = cut
     .slice(0, cut.lastIndexOf(" "))
     .replace(/[,:;\-–]$/, "")
     .trim();
+  if (titleKeepWhole()) {
+    for (let prev = ""; prev !== out; ) {
+      prev = out;
+      out = out.replace(DANGLING_END, "").replace(/[,:;\-–]$/, "").trim();
+    }
+    // A clause the cut left one or two words long ("Got a Remaster, Not") goes with its comma.
+    const clause = out.replace(/,\s+\S+(\s+\S+)?$/, "").trim();
+    if (clause.length >= 20) out = clause;
+  }
+  return out;
 }
 
 /** Keywords the story carries, from the title, headline, game and beats. */
@@ -265,11 +299,16 @@ export function polishTitle(script: Script): string {
   const evergreen = evergreenTitle(script);
   if (evergreen) return evergreen;
   const game = script.game_title.trim();
+  const keep = titleKeepWhole();
   let title = script.youtube.title
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/#\w+/g, "")
+    .replace(keep ? TITLE_HASHTAG : /#\w+/g, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
+  // A numbered series title keeps its prefix and is never rebuilt from the headline, which would drop the part.
+  const series = keep ? seriesPrefix(title) : "";
+  const budget = series ? Math.min(100, TITLE_MAX + series.length) : TITLE_MAX;
   // "Call of Duty: Modern Warfare 4" may lead as "Modern Warfare 4": no doubled colon, and room for the fact.
   const shortGame = game.includes(":")
     ? (game.split(":").pop() ?? game).trim() || game
@@ -305,7 +344,20 @@ export function polishTitle(script: Script): string {
     (initials.length >= 3 && new RegExp(`\\b${initials}\\b`).test(early));
   const gameFirst = !game || mentionsEarly;
   const clean = !BAD_TITLE_WORDS.test(title) && !CLICKBAIT_PUNCT.test(title);
-  if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
+  if (series)
+    title = (
+      series +
+      title
+        .slice(series.length)
+        .replace(new RegExp(BAD_TITLE_WORDS.source, "gi"), "")
+        .replace(/([!?])[!?]+/g, "$1")
+        .replace(/\.{3,}/g, "")
+        .replace(/\s+!$/, "")
+    )
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([?!,.:])/g, "$1")
+      .trim();
+  else if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
     const esc = (g: string) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const fact = script.headline
       .replace(
@@ -334,21 +386,24 @@ export function polishTitle(script: Script): string {
     .trim();
   title = titleCase(title);
   return (
-    truncateWords(title, TITLE_MAX) || truncateWords(script.headline, TITLE_MAX)
+    truncateWords(title, budget) || truncateWords(script.headline, TITLE_MAX)
   );
 }
 
 /** Problems a title would have on the channel; empty when it is fine. */
 export function titleProblems(title: string): string[] {
   const p: string[] = [];
-  if (title.length > TITLE_MAX)
-    p.push(`Title is ${title.length} characters; keep it under ${TITLE_MAX}.`);
+  const pre = titleKeepWhole() ? seriesPrefix(title) : "";
+  const max = pre ? Math.min(100, TITLE_MAX + pre.length) : TITLE_MAX;
+  if (title.length > max)
+    p.push(`Title is ${title.length} characters; keep it under ${max}.`);
   if (BAD_TITLE_WORDS.test(title))
     p.push(
       `Title uses a clickbait word (${title.match(BAD_TITLE_WORDS)?.[0]}).`,
     );
   if (CLICKBAIT_PUNCT.test(title)) p.push("Title uses clickbait punctuation.");
-  if (/#/.test(title)) p.push("No hashtags in the title.");
+  if ((titleKeepWhole() ? /#[\p{L}_]/u : /#/).test(title))
+    p.push("No hashtags in the title.");
   if (title === title.toUpperCase() && /[A-Z]{4,}/.test(title))
     p.push("Title is shouting (all caps).");
   return p;

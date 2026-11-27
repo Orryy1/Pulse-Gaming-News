@@ -7,6 +7,9 @@ import { z } from "zod";
 import {
   BACK_ALERT,
   PAUSED_ALERT,
+  GUARD_ALERT,
+  GUARD_LONG_ALERT,
+  BACK_ALERT as BACK_ALERT_G,
   VisionPausedError,
   createVisionRelay,
   hasImages,
@@ -448,4 +451,65 @@ test("the relay fails closed when its model list lacks LOCAL_VISION_MODEL: down,
   assert.match((await dead())!, /did not answer: ECONNREFUSED/);
   const refused = createModelCheck({ model: "qwen3-vl:8b", fetchTags: async () => ({ ok: false, status: 404, json: async () => ({}) }) });
   assert.match((await refused())!, /answered 404/);
+});
+
+test("relay refusals with the PC up are announced as the render guard, and only a long pause as an outage", async () => {
+  let t = 0;
+  let answering = false;
+  let pc = true;
+  const alerts: string[] = [];
+  const relay = createVisionRelay({
+    probe: async () => answering,
+    alert: (text) => alerts.push(text),
+    pcUp: async () => pc,
+    now: () => t,
+    probeEveryMs: 60_000,
+    guardMaxMs: 3 * 3_600_000,
+  });
+  assert.equal(await relay.down(), true);
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(alerts, [GUARD_ALERT]);
+  // Still paused two hours on: no new alert.
+  t += 2 * 3_600_000;
+  assert.equal(await relay.down(), true);
+  assert.deepEqual(alerts, [GUARD_ALERT]);
+  // Back within the guard's time: routine, no "back" alert.
+  answering = true;
+  t += 120_000;
+  assert.equal(await relay.down(), false);
+  assert.deepEqual(alerts, [GUARD_ALERT]);
+  // A second pause that outlasts three hours becomes an outage, and its end is announced.
+  answering = false;
+  t += 120_000;
+  assert.equal(await relay.down(), true);
+  await new Promise((r) => setImmediate(r));
+  t += 3 * 3_600_000 + 1;
+  await relay.down();
+  assert.deepEqual(alerts, [GUARD_ALERT, GUARD_ALERT, GUARD_LONG_ALERT]);
+  answering = true;
+  t += 120_000;
+  assert.equal(await relay.down(), false);
+  assert.deepEqual(alerts.at(-1), BACK_ALERT_G);
+  // The PC itself silent: an outage from the start.
+  const alerts2: string[] = [];
+  pc = false;
+  const relay2 = createVisionRelay({ probe: async () => false, alert: (x) => alerts2.push(x), pcUp: async () => pc });
+  await relay2.down();
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(alerts2, [PAUSED_ALERT]);
+});
+
+test("the PC's /vision-guard view says guard on only for a fresh reading", async () => {
+  const { visionGuardView } = await import("../src/assets/gamelibserve.ts");
+  const now = 1_795_797_300;
+  assert.deepEqual(visionGuardView(JSON.stringify({ guard: true, why: "orryy render", at: now - 30 }), now), {
+    guard: true, why: "orryy render", at: now - 30, stale: false,
+  });
+  // Older than 150 s: the relay may be dead, so never "guard on".
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.guard, false);
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.stale, true);
+  assert.equal(visionGuardView(JSON.stringify({ guard: false, why: "", at: now }), now)?.guard, false);
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now + 600 }), now)?.guard, false);
+  assert.equal(visionGuardView(undefined, now), undefined);
+  assert.equal(visionGuardView("not json", now), undefined);
 });

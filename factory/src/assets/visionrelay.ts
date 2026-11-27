@@ -14,6 +14,13 @@ export const PAUSED_ALERT =
   "Picture checks paused: the PC vision relay is down";
 export const BACK_ALERT =
   "Picture checks back on: the PC vision relay is answering again";
+/** The PC is up but its render guard refuses Mac vision during an Orryy render or a big GPU job: expected, not a fault. */
+export const GUARD_ALERT =
+  "Picture checks paused by the PC's render guard (expected during Orryy renders or big GPU jobs)";
+/** A guard pause that outlasts any render: the relay itself is probably down after all. Keep "3 hours" in step with
+ *  guardMaxMs's default. */
+export const GUARD_LONG_ALERT =
+  "Picture checks paused for over 3 hours: the PC vision relay is down (longer than any render guard)";
 
 /** A picture call refused because the relay is down and the paid fallback is off. */
 export class VisionPausedError extends Error {
@@ -68,6 +75,14 @@ export interface RelayOptions {
   now?: () => number;
   /** How long a probe's answer stands (default one minute). */
   probeEveryMs?: number;
+  /**
+   * True when the PC says its render guard is refusing Mac vision right now. The relay refuses by closing the
+   * connection, which looks the same as the vision service being off, so only the PC's own word counts: with the
+   * guard on, the pause is announced as GUARD_ALERT, and only a pause past guardMaxMs is called an outage.
+   */
+  pcUp?: () => Promise<boolean>;
+  /** How long a guard pause may last before it is called an outage (default 3 hours, longer than any render). */
+  guardMaxMs?: number;
 }
 
 export function createVisionRelay(opts: RelayOptions): VisionRelay {
@@ -78,6 +93,10 @@ export function createVisionRelay(opts: RelayOptions): VisionRelay {
   let sticky = false;
   let heardAt = 0;
   let probing: Promise<boolean> | undefined;
+  const guardMax = opts.guardMaxMs ?? 3 * 3_600_000;
+  // When this pause began, and whether the owner has been told it is an outage (not just the guard).
+  let downSince = 0;
+  let outageSaid = false;
   const say = (text: string) => {
     try {
       Promise.resolve(opts.alert(text)).catch(() => undefined);
@@ -94,7 +113,9 @@ export function createVisionRelay(opts: RelayOptions): VisionRelay {
       sticky = false;
       if (was === "down") {
         log("info", "PC vision relay is back; picture checks on again");
-        say(BACK_ALERT);
+        // A guard pause ending is routine: only an announced outage gets a "back" alert.
+        if (outageSaid) say(BACK_ALERT);
+        outageSaid = false;
         opts.onUp?.();
       }
       return;
@@ -102,15 +123,39 @@ export function createVisionRelay(opts: RelayOptions): VisionRelay {
     if (fromCall) sticky = true;
     if (state === "down") return;
     state = "down";
+    downSince = now();
     log(
       "warn",
       "PC vision relay is down; picture checks paused, nothing goes to the paid API",
       { error },
     );
-    say(PAUSED_ALERT);
+    if (!opts.pcUp) {
+      outageSaid = true;
+      say(PAUSED_ALERT);
+      return;
+    }
+    const since = downSince;
+    void opts
+      .pcUp()
+      .catch(() => false)
+      .then((pc) => {
+        if (state !== "down" || downSince !== since) return;
+        if (pc) {
+          log("info", "PC is up: the pause is its render guard (expected)");
+          say(GUARD_ALERT);
+        } else {
+          outageSaid = true;
+          say(PAUSED_ALERT);
+        }
+      });
   };
   return {
     async down() {
+      if (state === "down" && !outageSaid && now() - downSince > guardMax) {
+        outageSaid = true;
+        log("warn", "PC vision relay paused past the guard's longest render: calling it an outage");
+        say(GUARD_LONG_ALERT);
+      }
       if (state !== "unknown" && now() - heardAt < every)
         return state === "down";
       if (state === "down" && sticky) {

@@ -276,6 +276,27 @@ export const visionModelProblem = createModelCheck({
   model: LOCAL_VISION_MODEL,
 });
 
+/**
+ * True when the PC's relay says its render guard is refusing Mac vision now (GET :8793/vision-guard, served by
+ * C:/Claude/orchestrator/lan_relay.py, asked of the Master orchestrator 27 Nov 2026). No route, no answer or anything
+ * but {"guard": true} counts as false, so the pause is treated as an outage, as before.
+ */
+async function pcGuardOn(): Promise<boolean> {
+  try {
+    const host = new URL(LOCAL_VISION_URL).hostname;
+    if (host === "127.0.0.1" || host === "localhost") return false;
+    const res = await fetch(`http://${host}:8793/vision-guard`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) {
+      await res.body?.cancel();
+      return false;
+    }
+    const body = (await res.json().catch(() => null)) as { guard?: unknown } | null;
+    return body?.guard === true;
+  } catch {
+    return false;
+  }
+}
+
 /** The relay answers with the expected model in its list: no model run. A missing model is the relay down. */
 async function probeRelay(): Promise<boolean> {
   return (await visionModelProblem()) === undefined;
@@ -298,6 +319,8 @@ async function relayNotReady(): Promise<string | undefined> {
 export const visionRelay = createVisionRelay({
   probe: probeRelay,
   alert: (text) => relayAlert(text),
+  // The PC's own word that its render guard is refusing vision: then the pause is expected, not an outage.
+  pcUp: pcGuardOn,
   // Back: screen locally again at once rather than after the ten-minute rest.
   onUp: () => {
     downUntil = 0;

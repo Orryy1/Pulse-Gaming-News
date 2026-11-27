@@ -49,6 +49,7 @@ export function testConfig(
     qaAdSwap: true,
     qaFlattenDepth: true,
     deployWaitLong: true,
+    gameDayCap: [],
     deployWaitLongMaxMinutes: 240,
     creditScrub: true,
     strandFrames: false,

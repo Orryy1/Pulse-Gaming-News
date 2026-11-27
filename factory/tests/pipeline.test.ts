@@ -4014,3 +4014,42 @@ test("EVIDENCE_STYLE: off, a lore Short renders as before; on, the board arm's r
   assert.equal("board" in plain.props!, false);
   assert.equal(plain.arm, "plain");
 });
+
+test("GAME_DAY_CAP: once GTA VI has its Short today, the news slot makes another game's story instead", async () => {
+  const { parseGameDayCap } = await import("../src/gamecap.ts");
+  const gtaStory = (s: Services) => {
+    s.discover = async () => {
+      const at = new Date("2026-10-16T11:50:00Z");
+      return clusterItems(
+        [
+          item("GTA 6 patch brings seven fixes including broken autosaves", "Rockstar Newswire", "official", 900, at),
+          item("Rockstar's GTA 6 patch fixes broken autosaves", "IGN", "outlet", 800, at),
+          item("GTA 6 update fixes broken autosaves", "GameSpot", "outlet", 700, at),
+          item("Starfield second expansion delayed to early 2027", "PC Gamer", "outlet", 5, at),
+          item("Bethesda delays Starfield second expansion to early 2027", "IGN", "outlet", 6, at),
+        ],
+        at,
+      );
+    };
+  };
+  const pick = async (cap: string, gtaToday: boolean) => {
+    const { db, s } = await setup({ dailyTarget: 3, gameDayCap: parseGameDayCap(cap) });
+    gtaStory(s);
+    if (gtaToday)
+      await db.query(
+        `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, created_at)
+         VALUES ('ep_gta_am', 'h_gta_am', 'published', $1, 'news', 50, '2026-10-16T08:00:00Z')`,
+        [JSON.stringify({ headline: "GTA 6 Passes 39 Million PS5 Players" })],
+      );
+    await discoverTick(s);
+    const id = await maybeSelectNews(s);
+    assert.ok(id, "the slot makes a Short");
+    return (await getEpisode(db, id!))!.story_json.headline as string;
+  };
+  const GTA = "GTA VI|GTA 6|Grand Theft Auto VI|Grand Theft Auto 6=1";
+  // Off, or GTA VI's day not yet used: the editor's first pick, the GTA VI story, is made.
+  assert.match(await pick("", true), /GTA 6/);
+  assert.match(await pick(GTA, false), /GTA 6/);
+  // GTA VI already has its one Short today: the GTA VI story leaves the list and Starfield is made.
+  assert.match(await pick(GTA, true), /Starfield/);
+});

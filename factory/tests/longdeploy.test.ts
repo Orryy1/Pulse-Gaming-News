@@ -7,7 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { LONG_LEASE_TTL_S, longBusyForDeploy } from "../src/longlane.ts";
+import { LONG_LEASE_TTL_S, LONG_PLAN_MINUTES, longBusyForDeploy, longStuckMinutes } from "../src/longlane.ts";
 import { deployWindow } from "../src/handsoff/mergegate.ts";
 
 const now = new Date("2026-11-27T05:17:00Z");
@@ -168,4 +168,36 @@ echo "[$why]"`;
   const r = runBash(script, stubDir(quietHealth));
   assert.notEqual(r.status, 0);
   assert.equal(r.stdout.trim(), "");
+});
+
+// 27 Nov 2026: the Cyberpunk documentary's 06:54 build waited 150 minutes (BLENDER_WAIT_MINUTES) for its 3D clips
+// before a two-hour render; at the 240-minute mark a deploy could have restarted it before the render began.
+test("a build waiting for its 3D clips is not called stuck before its render can finish", () => {
+  const stuck = longStuckMinutes({ maxMinutes: 240, blenderOn: true, blenderWaitMinutes: 150, renderMinutes: 120 });
+  assert.equal(stuck, LONG_PLAN_MINUTES + 150 + 120);
+  // 10:55, 241 minutes after the 06:54 lease, before the render's end: still busy.
+  const at = new Date("2026-11-27T10:55:00Z");
+  const expiresAt = new Date(new Date("2026-11-27T06:54:00Z").getTime() + LONG_LEASE_TTL_S * 1000);
+  assert.deepEqual(longBusyForDeploy({ expiresAt, now: at, maxMinutes: stuck, enabled: true }), { busy: true, minutes: 241 });
+  assert.equal(longBusyForDeploy({ expiresAt, now: at, maxMinutes: 240, enabled: true }).busy, false);
+});
+
+test("the stuck mark keeps the configured figure without 3D and never passes the lease", () => {
+  assert.equal(longStuckMinutes({ maxMinutes: 240, blenderOn: false, blenderWaitMinutes: 150, renderMinutes: 120 }), 240);
+  assert.equal(longStuckMinutes({ maxMinutes: 240, blenderOn: true, blenderWaitMinutes: 600, renderMinutes: 120 }), LONG_LEASE_TTL_S / 60);
+  assert.equal(longStuckMinutes({ maxMinutes: 400, blenderOn: true, blenderWaitMinutes: 150, renderMinutes: 120 }), 400);
+  assert.equal(longStuckMinutes({ maxMinutes: 240, blenderOn: true, blenderWaitMinutes: Number.NaN, renderMinutes: 120 }), 240);
+});
+
+// The watchdog (LONG_TICK_STALL_MINUTES, default 150) uses the same floor: a 150-minute 3D wait is not a render, so
+// without it the lease would be released before the render began.
+test("the lane watchdog does not release a build still inside its 3D wait", async () => {
+  const { longLaneStalled } = await import("../src/longlane.ts");
+  const started = new Date("2026-11-27T06:54:00Z");
+  const now = new Date("2026-11-27T09:30:00Z"); // 156 minutes in, the 3D wait just over
+  const state = { lastLongTick: started.toISOString(), startedAt: started.toISOString(), longTicking: true, rendering: false, uploading: false };
+  const stall = longStuckMinutes({ maxMinutes: 150, blenderOn: true, blenderWaitMinutes: 150, renderMinutes: 120 });
+  assert.equal(stall, 315);
+  assert.equal(longLaneStalled(state, now, stall).stalled, false);
+  assert.equal(longLaneStalled(state, now, 150).stalled, true);
 });

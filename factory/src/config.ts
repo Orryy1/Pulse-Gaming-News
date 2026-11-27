@@ -1198,12 +1198,12 @@ export interface Config {
   gatherMaxMinutes: number;
   /** Every yt-dlp and ffmpeg download child is killed after this long (src/lib/child.ts; read from the environment there too). */
   downloadTimeoutSeconds: number;
-  /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released. */
+  /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released (never under a healthy build's length, src/longlane.ts longStuckMinutes). */
   longTickStallMinutes: number;
   /** DEPLOY_WAIT_LONG (default on): /health reports long_running while the long lane builds a video, and mac/deploy.sh,
-   *  the deploy hook and the merge gate wait for it (src/longlane.ts longBusyForDeploy). */
+   *  and the merge gate wait for it (src/longlane.ts longBusyForDeploy); a direct push to the Mac's hook does not. */
   deployWaitLong: boolean;
-  /** DEPLOY_WAIT_LONG_MAX_MINUTES (default 240): a long tick holding its lease longer than this counts as stuck, not busy (a real build past it is restarted by a deploy; the lane watchdog releases a lease after LONG_TICK_STALL_MINUTES anyway). */
+  /** DEPLOY_WAIT_LONG_MAX_MINUTES (default 240): a long tick holding its lease longer than this counts as stuck, not busy (a real build past it is restarted by a deploy; the lane watchdog releases a lease after LONG_TICK_STALL_MINUTES anyway). Raised to a healthy build's length when that is longer: planning, the 3D clip wait and the render (src/longlane.ts longStuckMinutes). */
   deployWaitLongMaxMinutes: number;
   /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
   localizeLanguages: string[];

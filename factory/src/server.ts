@@ -71,7 +71,7 @@ import {
   renderEngage,
   sweepRenderTemp,
 } from "./render/render.ts";
-import { LONG_LEASE, longBusyForDeploy, watchLongLane } from "./longlane.ts";
+import { LONG_LEASE, longBusyForDeploy, longStuckMinutes, watchLongLane } from "./longlane.ts";
 import {
   handleSite,
   startGameWarmer,
@@ -118,6 +118,7 @@ import {
 import { dayKey as localDay } from "./lanes.ts";
 import {
   lanRequestAllowed,
+  longRenderMinutes,
   macReservationsDoc,
   publishPcSchedule,
 } from "./pcschedule.ts";
@@ -353,7 +354,14 @@ export function createApp(
         long = longBusyForDeploy({
           expiresAt: lease?.expires_at,
           now: new Date(),
-          maxMinutes: cfg.deployWaitLongMaxMinutes,
+          maxMinutes: lease
+            ? longStuckMinutes({
+                maxMinutes: cfg.deployWaitLongMaxMinutes,
+                blenderOn: cfg.blender.on,
+                blenderWaitMinutes: cfg.blender.waitMinutes,
+                renderMinutes: longRenderMinutes(),
+              })
+            : cfg.deployWaitLongMaxMinutes,
           enabled: cfg.deployWaitLong,
         });
       } catch {
@@ -1995,7 +2003,13 @@ async function runTick(
     await watchLongLane({
       db: services.db,
       now: new Date(),
-      stallMinutes: services.cfg.longTickStallMinutes,
+      // Never under a healthy build's length (planning, the 3D clip wait, the render): the 3D wait is not a render.
+      stallMinutes: longStuckMinutes({
+        maxMinutes: services.cfg.longTickStallMinutes,
+        blenderOn: services.cfg.blender.on,
+        blenderWaitMinutes: services.cfg.blender.waitMinutes,
+        renderMinutes: longRenderMinutes(),
+      }),
       state: laneState,
       notify: (m) => services.notify(m),
       reset: () => {

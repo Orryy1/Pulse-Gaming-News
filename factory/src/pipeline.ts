@@ -15961,8 +15961,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     if (verdict === "regather") {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
       delete assets.plan;
-      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
-      throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
+      // The richer gathering is the next step, not a failure: planning again on the next pass must not spend one of
+      // MAX_ATTEMPTS (26 Nov 2026: GTA VI File #3 met the gate on its third try, so the throw gave up on it before its
+      // richer plan was ever made, and the 18:30 slot went empty). attempts and last_error stay as they were.
+      await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [ep.id, JSON.stringify(assets), s.now()]);
+      log("info", "footage gate: no moving footage on screen; gathered again, richer, and planning once more", { id: ep.id, footageShare: Math.round(footageShare * 100) / 100 });
+      return;
     }
     // A YouTube download pause that still has hours to run (24-26 Nov 2026: two days, nothing published for 24 hours)
     // is not worth waiting out: the Short goes out on its stills, filmed by the depth camera, rather than not at all.

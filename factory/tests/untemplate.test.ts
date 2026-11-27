@@ -375,8 +375,18 @@ test("the lower third takes three or four words of the spoken hook, the headline
   }
   // A whole short hook, or a whole short first clause, is taken as said.
   assert.equal(hookLine("GTA 6 slipped again."), "GTA 6 slipped again");
-  // A clause that ends inside four words is taken whole.
-  assert.equal(hookLine("GTA 6 slipped again. Here is why it matters"), "GTA 6 slipped again");
+  // Only the whole hook: what follows a short first clause or sentence can take it back or limit it.
+  assert.equal(hookLine("GTA 6 slipped again. Here is why it matters"), undefined);
+  for (const h of [
+    "Fable isn't coming. Not in 2026, anyway.",
+    "Xbox is dead, if you believe the rumours.",
+    "GTA 6 is delayed, maybe.",
+    "Silksong is out, on PC only.",
+    "The PS6 is here. Well, almost.",
+  ]) {
+    assert.equal(hookLine(h), undefined, h);
+    assert.equal(lowerLine("Headline", undefined, h), "Headline", h);
+  }
   // Never a weak last word: "Nintendo just killed the" reads "Nintendo just killed".
   assert.equal(hookLine("Nintendo just killed the Switch price cut"), undefined);
   // Never more than four words, every word whole, and always inside the width.

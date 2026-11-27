@@ -508,8 +508,6 @@ const WEAK_END = new Set(
     "never still longer only even ever also almost nearly barely hardly really very"
   ).split(" "),
 );
-/** A word that starts an attribution ("Xbox is dead, says nobody"): the clause before it is not the hook's claim. */
-const ATTRIBUTION = /^(says|said|claims|claimed|according|reportedly|insists|insisted|reports|reported|apparently)\b/i;
 /** A word that closes a clause. */
 const CLAUSE_END = /[.,!?;:\u2013\u2014]$/;
 
@@ -528,12 +526,13 @@ export function hookLine(hook?: string): string | undefined {
     .trim();
   if (!flat) return undefined;
   const words = flat.split(" ");
+  // Only the whole hook, and only when it is one clause: whatever follows a first clause or sentence can take it back
+  // or limit it ("Fable isn't coming. Not in 2026, anyway."; "Xbox is dead, if you believe the rumours."), so a
+  // short piece of a longer hook is never put on screen alone (re-review, 27 Nov 2026).
   const clauseEnd = words.findIndex((w) => CLAUSE_END.test(w));
-  // The whole first clause, or the whole hook when no clause ends before its last word.
-  const n = clauseEnd >= 0 ? clauseEnd + 1 : words.length;
+  if (clauseEnd >= 0 && clauseEnd < words.length - 1) return undefined;
+  const n = words.length;
   if (n > HOOK_LINE_MAX_WORDS) return undefined;
-  // A clause the next words attribute to someone is not a claim to put on screen alone.
-  if (n < words.length && ATTRIBUTION.test(words[n] ?? "")) return undefined;
   const out = words.slice(0, n).map((w) => w.replace(/[.,!?;:\u2013\u2014]+$/, "")).filter(Boolean);
   if (out.length < 2) return undefined;
   if (WEAK_END.has(out.at(-1)!.toLowerCase().replace(/[^a-z']/g, ""))) return undefined;
@@ -542,8 +541,8 @@ export function hookLine(hook?: string): string | undefined {
 }
 
 /**
- * The lower third's text (pure): the spoken hook's whole first clause of two to four words (hookLine); only when the
- * hook gives none,
+ * The lower third's text (pure): the whole spoken hook when it is one clause of two to four words (hookLine); only
+ * when the hook gives none,
  * the headline when it fits one readable line, else the thumbnail's words when they do, else none (and the Short does
  * not open on a lower third). A headline or thumbnail line is never cut: a cut headline can mislead.
  */

@@ -359,11 +359,47 @@ export function loadState(file: string): GateState {
   return emptyState();
 }
 
-export function saveState(file: string, s: GateState): void {
+export function saveState(
+  file: string,
+  s: GateState,
+  rename: (from: string, to: string) => void = fs.renameSync,
+): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(s, null, 1));
-  fs.renameSync(tmp, file);
+  renameWithRetry(tmp, file, rename);
+}
+
+/** Windows briefly locks a file a backup or virus scan is reading (EPERM, EBUSY, EACCES): try the rename a few times,
+ *  then copy over the target, so one lock never fails a run (27 Nov 2026: the Pulse watch reported 0x1 for this). */
+export function renameWithRetry(
+  from: string,
+  to: string,
+  rename: (from: string, to: string) => void = fs.renameSync,
+  tries = 4,
+  waitMs = 250,
+): void {
+  for (let i = 0; ; i++) {
+    try {
+      rename(from, to);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code ?? "";
+      if (!["EPERM", "EBUSY", "EACCES"].includes(code)) throw e;
+      if (i >= tries - 1) {
+        // Last resort: copy over the target. Not atomic, but the file is small and loadState treats a broken file
+        // as a fresh start, so the worst case is one forgotten fault history, never a crash.
+        fs.copyFileSync(from, to);
+        try {
+          fs.rmSync(from, { force: true });
+        } catch {
+          // the lock is on the temp file itself; the next run overwrites it
+        }
+        return;
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, waitMs);
+    }
+  }
 }
 
 export function logDecision(

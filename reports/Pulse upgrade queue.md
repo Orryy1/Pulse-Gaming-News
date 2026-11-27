@@ -609,3 +609,5 @@ Their art is AI-made illustration.
 **Build:** when a library clip is tagged, run the subtitle-band check (OCR on the lower fifth across a few frames) and mark clips with burned-in text; the Short planner either crops above the band or skips the clip. Re-check the GTA 6 library once.
 
 **Measure:** no "subtitles cut off" QA failures on GTA Shorts for a week.
+
+61. Merge gate: when the live fast-forward is blocked by untracked files identical to incoming tracked files, remove the duplicates and retry; different files still refuse. Test both cases. (27 Nov: a helper got round this by hand.)

@@ -98,3 +98,5 @@ Every fault the daily sweep finds: what broke, how often, the fix and whether th
 | 27 Nov | Shorts | 26 Nov 12:00 why slot empty: the Halo Short crashed in the graphics audit (reading primary of undefined) | 1 | Already fixed by c1ca2b9e2 (live); it went out at 17:30 instead | Fixed |
 | 27 Nov | Shorts | 26 Nov 18:30 slot empty: GTA File part 3 (ep_20261126_2f82809f) failed QA twice on burned-in trailer subtitles, then the footage gate | 1 | Retried with fresh media 27 Nov 00:20; library fix queued as upgrade item 61 | Retrying |
 | 27 Nov | PC | PulseGaming-Ollama crashed once at 26 Nov 11:19, restarted itself after 60 s | 1 | Running and answering at 00:04 27 Nov; no action | Closed |
+
+- 27 Nov 00:38: the merge gate could not fast-forward C:\PulseFactory because an untracked file matched one the merge brought in (guide_facts_gta6_mechanics.md). The helper fast-forwarded by hand and wrote pending-deploy.json itself; the deploy-only slot checks still ran and the factory is healthy. Fix queued as upgrade item 61. Helpers must never hand-write gate files.

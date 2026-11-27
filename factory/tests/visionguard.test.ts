@@ -498,3 +498,17 @@ test("relay refusals with the PC up are announced as the render guard, and only 
   await new Promise((r) => setImmediate(r));
   assert.deepEqual(alerts2, [PAUSED_ALERT]);
 });
+
+test("the PC's /vision-guard view says guard on only for a fresh reading", async () => {
+  const { visionGuardView } = await import("../src/assets/gamelibserve.ts");
+  const now = 1_795_797_300;
+  assert.deepEqual(visionGuardView(JSON.stringify({ guard: true, why: "orryy render", at: now - 30 }), now), {
+    guard: true, why: "orryy render", at: now - 30, stale: false,
+  });
+  // Older than 150 s: the relay may be dead, so never "guard on".
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.guard, false);
+  assert.equal(visionGuardView(JSON.stringify({ guard: true, why: "x", at: now - 151 }), now)?.stale, true);
+  assert.equal(visionGuardView(JSON.stringify({ guard: false, why: "", at: now }), now)?.guard, false);
+  assert.equal(visionGuardView(undefined, now), undefined);
+  assert.equal(visionGuardView("not json", now), undefined);
+});

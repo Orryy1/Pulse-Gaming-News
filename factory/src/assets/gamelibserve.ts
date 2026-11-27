@@ -75,6 +75,31 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
+/** lan_relay's vision guard file (C:/Claude/orchestrator/state/vision_guard.json unless VISION_GUARD_FILE says). */
+export function visionGuardFile(): string {
+  return process.env.VISION_GUARD_FILE || "C:/Claude/orchestrator/state/vision_guard.json";
+}
+
+/**
+ * The guard file's view for the Mac (pure). A reading older than 150 s means the relay may be dead, so it never says
+ * "guard on" then (stale: true, guard: false). Unreadable or missing: undefined (404).
+ */
+export function visionGuardView(
+  raw: string | undefined,
+  nowSec: number,
+): { guard: boolean; why: string; at: number; stale: boolean } | undefined {
+  if (!raw) return undefined;
+  let j: { guard?: unknown; why?: unknown; at?: unknown };
+  try {
+    j = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  const at = typeof j.at === "number" ? j.at : 0;
+  const stale = !(at > 0 && nowSec - at <= 150);
+  return { guard: !stale && j.guard === true, why: typeof j.why === "string" ? j.why : "", at, stale };
+}
+
 export function createLibraryServer(root: string, vod?: VodServeContext): http.Server {
   return http.createServer(async (req, res) => {
     // The stream recordings and their clips (src/vodindex/serve.ts), the only routes that take a POST.
@@ -92,6 +117,16 @@ export function createLibraryServer(root: string, vod?: VodServeContext): http.S
       } catch {
         body = undefined;
       }
+      if (!body) return res.writeHead(404).end();
+      return res
+        .writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })
+        .end(JSON.stringify(body));
+    }
+    // Whether the orchestrator's render guard is refusing Mac vision now (written by lan_relay every 60 s and at each
+    // refusal); the Mac's vision alert says "expected" only on a fresh {"guard": true}. 404 when there is no file.
+    if (req.url === "/vision-guard") {
+      const raw = await fsp.readFile(visionGuardFile(), "utf8").catch(() => undefined);
+      const body = visionGuardView(raw, Date.now() / 1000);
       if (!body) return res.writeHead(404).end();
       return res
         .writeHead(200, { "content-type": "application/json", "cache-control": "no-store" })

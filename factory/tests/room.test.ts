@@ -16,6 +16,16 @@ import {
   RoomWriterSchema,
   answerInFirst,
   answerShare,
+  blockedSentence,
+  claimCorpus,
+  firstGivesAway,
+  isCutAnswer,
+  repairFeedback,
+  retryCut,
+  unsourcedSentences,
+  verdictIn,
+  voiceRoom,
+  writeRoom,
   bothDrop,
   clearsRoom,
   factoryHosts,
@@ -104,7 +114,7 @@ const VOICED = [
 ].join(" ");
 
 const ARTICLE =
-  'Bethesda said the extra time will go to performance on Xbox Series S. "We would rather ship it right than ship it early," said Todd Howard, director. The expansion was due in December. Players were promised the date eight weeks ago and 2 million people own the game. The story missions are done.';
+  'Bethesda said the extra time will go to performance on Xbox Series S, where testers found the new planets ran badly. "We would rather ship it right than ship it early," said Todd Howard, director. The expansion was due in December. Players were promised the date eight weeks ago and 2 million people own the game. The story missions are done.';
 
 const cluster = {
   hash: "starfield-slip",
@@ -337,7 +347,10 @@ function fakeLlm(
       seen.push(req);
       const list = q[req.site];
       if (!list?.length) throw new Error(`unexpected step ${req.site}`);
-      return (list.length > 1 ? list.shift() : list[0]) as never;
+      const answer = list.length > 1 ? list.shift() : list[0];
+      // An Error in the queue is a failed call (a cut answer, a refusal).
+      if (answer instanceof Error) throw answer;
+      return answer as never;
     },
   } as unknown as Llm;
 }
@@ -430,14 +443,14 @@ test("the arm is stable per episode and follows the share", () => {
     assert.equal(roomArm(id, 0.5), roomArm(id, 0.5));
 });
 
-test("caps: one pack, one write, one edit, one voice, three reads per critic, two layouts and one repair at most", () => {
+test("caps: one pack, one write and one voice (each with one retry), one edit, three reads per critic, two layouts and one repair at most", () => {
   assert.deepEqual(roomCaps(1), {
     pack: 1,
-    write: 1,
+    write: 2,
     critic: 3,
     viewer: 3,
     edit: 1,
-    voice: 1,
+    voice: 2,
     layout: 2,
     repair: 1,
   });
@@ -1778,4 +1791,651 @@ test("the craft rules: in the room writer's and the voice pass's briefs exactly 
   assert.equal(once(note), 1);
   for (const p of [writerPrompt(WORDS), voicePrompt(WORDS)])
     assert.ok(!p.includes(note) || note === CRAFT_RULE);
+});
+// ---------------------------------------------------------------- the first week's faults (19 to 24 Nov 2026)
+
+/** The two live failures that sent room Shorts back to the normal writer. */
+const CUT_21NOV =
+  "Failed to parse structured output: SyntaxError: Unterminated string in JSON at position 934";
+const CUT_22NOV = "model output hit max_tokens";
+
+test("cut answers: the two live failures count as cut, a refusal or a timeout does not", async () => {
+  assert.ok(isCutAnswer(new Error(CUT_21NOV)));
+  assert.ok(isCutAnswer(new Error(CUT_22NOV)));
+  assert.ok(isCutAnswer(new Error("model output did not match the schema")));
+  assert.ok(isCutAnswer(new SyntaxError("Unexpected end of JSON input")));
+  assert.ok(!isCutAnswer(new Error("model refused: cyber")));
+  assert.ok(!isCutAnswer(new Error("timeout")));
+  let tries = 0;
+  const retried: string[] = [];
+  const ok = await retryCut(
+    async () => {
+      if (++tries === 1) throw new Error(CUT_22NOV);
+      return "second";
+    },
+    (why) => retried.push(why),
+  );
+  assert.equal(ok, "second");
+  assert.equal(tries, 2);
+  assert.deepEqual(retried, [CUT_22NOV]);
+  tries = 0;
+  await assert.rejects(
+    retryCut(
+      async () => {
+        tries++;
+        throw new Error("model refused: cyber");
+      },
+      () => assert.fail("a refusal is not retried"),
+    ),
+    /refused/,
+  );
+  assert.equal(tries, 1);
+});
+
+test("the writer and the voice pass ask for room: 32,000 and 24,000 output tokens, thinking included", async () => {
+  const seen: Array<{ site: string; maxTokens?: number; effort?: string }> = [];
+  const llm = {
+    structured: async (req: any) => {
+      seen.push(req);
+      return req.site === "room.write" ? writing() : voiced();
+    },
+  } as unknown as Llm;
+  await writeRoom(llm, pack(), WORDS);
+  await voiceRoom(llm, {
+    draft: { title: "t", narration: NARRATION },
+    pack: pack(),
+    words: WORDS,
+  });
+  assert.deepEqual(
+    seen.map((r) => [r.site, r.maxTokens, r.effort]),
+    [
+      ["room.write", ROOM.maxTokens.write, "high"],
+      ["room.voice", ROOM.maxTokens.voice, "high"],
+    ],
+  );
+  assert.equal(ROOM.maxTokens.write, 32000);
+  assert.equal(ROOM.maxTokens.voice, 24000);
+});
+
+test("a cut writer answer is asked again once with the same request; a second cut falls back; both are recorded", async () => {
+  const cutOnce = loopSteps({
+    editor: [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
+  });
+  const packs: unknown[] = [];
+  let n = 0;
+  const run = await runRoom({
+    ...cutOnce.steps,
+    write: async (p) => {
+      packs.push(p);
+      if (++n === 1) throw new Error(CUT_21NOV);
+      return writing();
+    },
+  });
+  assert.equal(run.stop, "cleared");
+  assert.equal(run.calls.write, 2);
+  assert.equal(packs[0], packs[1], "the same request both times");
+  assert.deepEqual(run.retries, [{ site: "room.write", why: CUT_21NOV }]);
+  const rec = roomRecord({ arm: "room", mode: "on", run });
+  assert.equal(rec.calls.write, 2);
+  assert.deepEqual(rec.retried, [{ site: "room.write", why: CUT_21NOV }]);
+  assert.deepEqual(roomEvent(rec).retried, ["room.write"]);
+
+  const cutTwice = loopSteps({ editor: [] });
+  const failed = await runRoom({
+    ...cutTwice.steps,
+    write: async () => {
+      throw new Error(CUT_22NOV);
+    },
+  });
+  assert.equal(failed.stop, "failed");
+  assert.equal(failed.error, CUT_22NOV);
+  assert.equal(failed.calls.write, 2, "one retry, never more");
+
+  const refused = loopSteps({ editor: [] });
+  const r3 = await runRoom({
+    ...refused.steps,
+    write: async () => {
+      throw new Error("model refused: cyber");
+    },
+  });
+  assert.equal(r3.calls.write, 1, "a refusal is not retried");
+  assert.equal(r3.retries, undefined);
+});
+
+test("a cut voice answer is asked again once and the voiced version is still read", async () => {
+  const { steps, calls } = loopSteps({
+    editor: [
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 7), ed("V", 8)], pick: "V" },
+    ],
+    voice: [new Error(CUT_22NOV), voiced()],
+  });
+  const run = await runRoom(steps);
+  assert.equal(calls.voice, 2);
+  assert.equal(run.calls.voice, 2);
+  assert.deepEqual(run.retries, [{ site: "room.voice", why: CUT_22NOV }]);
+  assert.equal(run.won, "voiced");
+});
+
+test("on: a cut room.write is retried inside the step, and the Short is still the room's", async () => {
+  const seen: Seen[] = [];
+  const out = await roomWriteStep(
+    input(
+      fakeLlm(
+        roomQueues({ "room.write": [new Error(CUT_21NOV), writing()] }),
+        seen,
+      ),
+    ),
+    deps(),
+  );
+  assert.equal(out.record.wrote, true);
+  assert.equal(out.record.calls.write, 2);
+  assert.deepEqual(
+    out.record.retried?.map((r) => r.site),
+    ["room.write"],
+  );
+  const writes = seen.filter((r) => r.site === "room.write") as Array<
+    Seen & { maxTokens?: number }
+  >;
+  assert.equal(writes.length, 2);
+  assert.equal(writes[0]!.content, writes[1]!.content);
+  assert.equal(writes[1]!.maxTokens, 32000);
+});
+
+// The 24 Nov 2026 Short: the story was why Kratos was almost replaced.
+const KRATOS_FIRST = "God of War made the right call keeping Kratos.";
+const KRATOS_ANGLE = {
+  question: "Why was Kratos almost replaced in God of War?",
+  answer:
+    "Sony wanted a new hero, but Cory Barlog fought to keep Kratos and make him a father.",
+};
+const KRATOS_REST =
+  "Sony's team pitched a brand new lead for the 2018 reboot. Barlog pushed back for months. He wanted an older Kratos, a father this time. That fight is the reason Atreus exists at all.";
+
+test("the answer-first check: 'God of War made the right call keeping Kratos.' is a verdict opener and is refused", () => {
+  const narration = `${KRATOS_FIRST} ${KRATOS_REST}`;
+  const lines = ["That fight is the reason Atreus exists at all."];
+  // Why it went on air: the old check only compared the first sentence with the declared answer lines.
+  assert.equal(
+    answerInFirst(narration, [...lines, KRATOS_ANGLE.answer], "God of War"),
+    false,
+  );
+  assert.equal(verdictIn(KRATOS_FIRST), "made the right call");
+  assert.match(
+    firstGivesAway(narration, {
+      answerLines: lines,
+      game: "God of War",
+      company: "Sony Santa Monica",
+      angle: KRATOS_ANGLE,
+    })!,
+    /states a verdict in its first sentence \("made the right call"\)/,
+  );
+  const checked = roomChecks({
+    narration,
+    game: "God of War",
+    company: "Sony Santa Monica",
+    words: { min: 10, max: 200 },
+  });
+  assert.ok(checked.findings.some((f) => f.rule === "first_verdict"));
+  // Other verdicts the first sentence may not state.
+  for (const v of [
+    "Sony was right to keep Kratos in God of War.",
+    "Valve should have kept that Portal 2 puzzle.",
+    "Cutting the hub from Starfield was a mistake.",
+    "God of War is the best reboot Sony ever made.",
+    "Santa Monica got it right with God of War.",
+  ])
+    assert.ok(verdictIn(v), v);
+  // Premises and plain news are not verdicts.
+  for (const p of [
+    "God of War almost shipped without Kratos.",
+    "Kratos could have been replaced in God of War.",
+    "God of War Ragnarok is the best-selling entry yet.",
+    "PS5 owners should have the patch by Friday.",
+    "Starfield's second expansion just slipped, and Bethesda already knew why.",
+  ])
+    assert.equal(verdictIn(p), undefined, p);
+  // A first sentence carrying the angle's own answer words gives it away too; the question's words do not.
+  assert.match(
+    firstGivesAway(
+      `God of War nearly lost Kratos until Cory Barlog fought for a father story. ${KRATOS_REST}`,
+      { game: "God of War", company: "Sony Santa Monica", angle: KRATOS_ANGLE },
+    )!,
+    /angle's answer away in its first sentence \(cory, barlog, fought, father\)/,
+  );
+  assert.equal(
+    firstGivesAway(`God of War almost shipped without Kratos. ${KRATOS_REST}`, {
+      answerLines: lines,
+      game: "God of War",
+      company: "Sony Santa Monica",
+      angle: KRATOS_ANGLE,
+    }),
+    undefined,
+  );
+});
+
+test("the voice pass is refused when its first sentence states a verdict, and is never read", async () => {
+  const { steps, shown } = loopSteps({
+    editor: [
+      { reads: [ed("A", 6), ed("B", 5), ed("C", 5)], pick: "A" },
+      { reads: [ed("O", 6), ed("E", 7)], pick: "E" },
+    ],
+    edits: [EDITED],
+    voice: [voiced({ narration: `${KRATOS_FIRST} ${S.slice(1).join(" ")}` })],
+  });
+  const run = await runRoom(steps);
+  assert.match(
+    run.voice!.refused!.join(" "),
+    /The voiced version states a verdict in its first sentence \("made the right call"\)/,
+  );
+  assert.deepEqual(shown[1], ["O", "E"]);
+  assert.equal(run.won, "edited");
+});
+
+const PORTAL_SOURCES = [
+  "Valve released Portal 2 in April 2011. Half-Life 2 required a Steam account to play. Players loved the co-op campaign.",
+];
+
+test("the claim guard: a name, a figure or an event word no pack field and no source has is flagged", () => {
+  const found = unsourcedSentences(
+    [
+      "Portal 2 shipped in 2011 and players loved the co-op.",
+      "Valve dropped a Portal 2 puzzle mechanic that playtesters reportedly liked.",
+      "Half-Life 2's Steam lock went to court.",
+      "Gabe Newell signed off on it personally.",
+      "It sold 9 million copies.",
+      "Players still talk about it.",
+    ].join(" "),
+    PORTAL_SOURCES,
+    { game: "Portal 2", company: "Valve" },
+  );
+  assert.deepEqual(
+    found.map((u) => [u.sentence, u.names, u.figures, u.claims]),
+    [
+      [
+        "Valve dropped a Portal 2 puzzle mechanic that playtesters reportedly liked.",
+        [],
+        [],
+        ["playtesters"],
+      ],
+      ["Half-Life 2's Steam lock went to court.", [], [], ["court"]],
+      ["Gabe Newell signed off on it personally.", ["Newell"], [], []],
+      ["It sold 9 million copies.", [], ["9"], []],
+    ],
+  );
+  // The pack is a source too, but never its unverified list.
+  const withPack = claimCorpus(
+    pack({
+      unverified: ["Gabe Newell signed off"],
+      surprise: { detail: "Playtesters hated it.", url: "" },
+    }),
+    PORTAL_SOURCES,
+  );
+  const again = unsourcedSentences(
+    "Valve dropped a puzzle that playtesters reportedly liked. Gabe Newell signed off on it.",
+    withPack,
+    { game: "Portal 2", company: "Valve" },
+  );
+  assert.deepEqual(
+    again.map((u) => u.sentence),
+    ["Gabe Newell signed off on it."],
+  );
+  // roomChecks reads it as a finding when given the sources.
+  const checked = roomChecks({
+    narration: NARRATION.replace(
+      S[2]!,
+      "Phil Spencer reportedly blocked that date in a meeting.",
+    ),
+    ...CHECK,
+    sources: claimCorpus(pack(), [ARTICLE]),
+  });
+  const u = checked.findings.filter((f) => f.rule === "unsourced");
+  assert.equal(u.length, 1);
+  assert.match(
+    u[0]!.problem,
+    /"Phil Spencer reportedly blocked that date in a meeting\." says the name Spencer, which no pack field/,
+  );
+  // The fixture story itself is clean.
+  assert.ok(
+    !roomChecks({
+      narration: NARRATION,
+      ...CHECK,
+      sources: claimCorpus(pack(), [ARTICLE]),
+    }).findings.some((f) => f.rule === "unsourced"),
+  );
+});
+
+test("a pick that clears but says something the pack lacks gets an edit on those sentences only", async () => {
+  const added = NARRATION.replace(
+    S[2]!,
+    "Phil Spencer reportedly blocked that date in a meeting.",
+  );
+  const { steps, calls } = loopSteps({
+    editor: [
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 8), ed("E", 8)], pick: "E" },
+    ],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: added })),
+    }),
+  });
+  const instructions: string[] = [];
+  const sources = claimCorpus(pack(), [ARTICLE]);
+  const run = await runRoom({
+    ...steps,
+    edit: async (draft, instruction) => {
+      instructions.push(instruction);
+      return { ...draft, narration: NARRATION };
+    },
+    check: (n, a, shape) =>
+      roomChecks({
+        narration: n,
+        answerLine: a,
+        ...CHECK,
+        sources,
+        ...(shape ? { shape } : {}),
+      }),
+  });
+  assert.equal(run.calls.edit, 1, "cleared, but the claim is fixed first");
+  assert.match(
+    instructions[0]!,
+    /^First, the facts: The sentence "Phil Spencer reportedly blocked that date in a meeting\." says/,
+  );
+  assert.match(instructions[0]!, /not even with "reportedly"/);
+  assert.ok(
+    !instructions[0]!.includes("Biggest weakness"),
+    "nothing else is touched",
+  );
+  assert.equal(run.won, "edited");
+  assert.equal(run.final?.unsourced, undefined);
+  assert.equal(calls.editor, 2);
+  // A kept version that still carries one is recorded.
+  const kept = loopSteps({
+    editor: [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: added })),
+    }),
+  });
+  const r2 = await runRoom({
+    ...kept.steps,
+    edit: async () => undefined,
+    check: (n, a) =>
+      roomChecks({ narration: n, answerLine: a, ...CHECK, sources }),
+  });
+  assert.equal(r2.final?.unsourced?.length, 1);
+  assert.equal(
+    roomRecord({ arm: "room", mode: "on", run: r2 }).unsourced?.length,
+    1,
+  );
+});
+
+test("the fact guard refuses an edit or a voiced version that adds an unsupported claim, not one it inherited", () => {
+  const corpora = {
+    quotes: [ARTICLE],
+    numbers: [ARTICLE],
+    claims: claimCorpus(pack(), [ARTICLE]),
+    game: "Starfield",
+    company: "Bethesda",
+  };
+  const court = {
+    title: "t",
+    narration: NARRATION.replace(S[2]!, "That promise later went to court."),
+  };
+  assert.match(
+    roomEditProblems(court, corpora, { title: "t", narration: NARRATION }).join(
+      " ",
+    ),
+    /adds a claim no source supports.*"court"/,
+  );
+  assert.deepEqual(
+    roomEditProblems(court, corpora, court),
+    [],
+    "already in the draft: not the edit's fault",
+  );
+  assert.deepEqual(
+    roomEditProblems(
+      court,
+      { quotes: [ARTICLE], numbers: [ARTICLE] },
+      { title: "t", narration: NARRATION },
+    ),
+    [],
+    "without the claim corpus the guard is as before",
+  );
+});
+
+test("the writer's and the voice pass's briefs: every claim from a pack field, no background even with 'reportedly'", () => {
+  for (const p of [writerPrompt(WORDS), voicePrompt(WORDS)]) {
+    assert.match(p, /comes from a field of the pack/);
+    assert.match(p, /not with "reportedly"/);
+    assert.match(p, /made the right call/);
+    assert.ok(!/—/.test(p));
+  }
+});
+
+test("room.repair gets the fact check's exact blocked sentences, to cut or replace with a pack fact, and the pack", async () => {
+  const fb = repairFeedback(
+    [
+      'Fact-check: "eight weeks ago" - not supported',
+      "The take says tomorrow, which is false when it airs.",
+    ],
+    NARRATION,
+    pack(),
+  );
+  assert.equal(
+    fb[0],
+    'Blocked sentence: "The studio promised a December launch only eight weeks ago." The fact check says: not supported Cut this sentence, or replace it with a fact from the pack below; add nothing else, and no claim the pack does not hold, not even with "reportedly". Change the matching beat\'s card and claims to agree.',
+  );
+  assert.equal(fb[1], "The take says tomorrow, which is false when it airs.");
+  assert.match(fb[2]!, /^The fact pack, the only facts a replacement may use:/);
+  assert.match(fb[2]!, /What happened: Bethesda delayed/);
+  assert.match(
+    fb[2]!,
+    /Quote: "We would rather ship it right than ship it early" \(Todd Howard, director, IGN\)/,
+  );
+  assert.match(fb[2]!, /Number: two million \(owners\)/);
+  // The live 23 Nov case: the check quotes part of the sentence; the repair sees all of it.
+  assert.equal(
+    blockedSentence(
+      "Valve tried this before. Half-Life 2's Steam lock went to court. Players hated it.",
+      "Steam lock went to court",
+    ),
+    "Half-Life 2's Steam lock went to court.",
+  );
+  assert.equal(
+    blockedSentence(NARRATION, "a card no one says"),
+    "a card no one says",
+  );
+  // Nothing blocked by the fact check: no pack list.
+  assert.deepEqual(
+    repairFeedback(["The stamp is unspoken."], NARRATION, pack()),
+    ["The stamp is unspoken."],
+  );
+
+  const seen: Seen[] = [];
+  const edits = {
+    edits: [{ find: "only eight weeks ago", replace: "recently" }],
+  };
+  const fixed = await roomWriteStep(
+    input(fakeLlm(roomQueues({ "room.repair": [edits] }), seen)),
+    deps([fail, pass]),
+  );
+  assert.equal(fixed.record.wrote, true);
+  const repair = seen.find((r) => r.site === "room.repair")!;
+  assert.ok(
+    repair.content.includes(
+      'Blocked sentence: "The studio promised a December launch only eight weeks ago."',
+    ),
+  );
+  assert.ok(
+    repair.content.includes(
+      "The fact pack, the only facts a replacement may use:",
+    ),
+  );
+});
+
+test("the record carries both critics' marks and the desk's, and the weekly lines compare all three", async () => {
+  const { steps } = loopSteps({
+    editor: [{ reads: [ed("A", 7), ed("B", 6), ed("C", 5)], pick: "A" }],
+    viewer: [{ reads: [vw("A", 6), vw("B", 5), vw("C", 5)] }],
+  });
+  const run = await runRoom({ ...steps, edit: async () => undefined });
+  const rec = {
+    ...roomRecord({ arm: "room", mode: "on", run, wrote: true }),
+    desk_overall: 4,
+  };
+  assert.equal(rec.editor_overall, 7);
+  assert.equal(rec.viewer_overall, 6);
+  const ev = roomEvent(rec);
+  assert.equal(ev.editor, 7);
+  assert.equal(ev.viewer, 6);
+  assert.equal(ev.desk, 4);
+  const rows = [
+    ...Array.from({ length: 5 }, () => ({
+      arm: "room" as const,
+      wrote: true,
+      editor: 6,
+      viewer: 6,
+      desk: 4,
+      viewed_pct: 60,
+    })),
+    ...Array.from({ length: 6 }, () => ({
+      arm: "control" as const,
+      desk: 3.3,
+    })),
+  ];
+  const lines = roomLinesForReport(rows, spearman);
+  assert.match(lines[2]!, /editor's desk: 5 of 20 Shorts so far/);
+  assert.match(
+    lines[4]!,
+    /average marks where the room wrote: editor critic 6\.0 \(5\), viewer critic 6\.0 \(5\), editor's desk 4\.0 \(5\); editor's desk on the control arm 3\.3 \(6\)/,
+  );
+});
+
+test("the verdict check leaves premises alone: possessives, compounds, deals, moves with no one judged, late launches", () => {
+  for (const p of [
+    "Nintendo's best game just got a sequel.",
+    "Elden Ring's best boss was almost cut.",
+    "Sony's worst-kept secret is out.",
+    "It's the best price Switch 2 has ever had.",
+    "Baldur's Gate 3 is the best-reviewed game of 2023.",
+    "That boss is the worst-rated fight on Steam.",
+    "One wrong move in Elden Ring deletes your save.",
+    "Valve's smart move on Steam Deck pricing just paid off.",
+    "Silksong should have launched in 2019.",
+    "GTA 6 should have arrived this autumn.",
+  ])
+    assert.equal(verdictIn(p), undefined, p);
+  for (const v of [
+    "Valve should've kept that Portal 2 puzzle.",
+    "Sony made a smart move keeping Kratos.",
+    "Keeping Kratos was the right call.",
+    "It's the best God of War there is.",
+  ])
+    assert.ok(verdictIn(v), v);
+  // A premise that shares two of the answer's words is not a giveaway; three of them at half the keys is.
+  const angle = {
+    question: "Why did Sony delay Ghost of Yotei?",
+    answer: "The multiplayer mode needed more time",
+  };
+  assert.equal(
+    firstGivesAway("Ghost of Yotei's multiplayer mode is late. More follows.", {
+      game: "Ghost of Yotei",
+      company: "Sony",
+      angle,
+    }),
+    undefined,
+  );
+});
+
+test("the claim guard leaves good lines alone: acronyms, openers, the game's numeral, outlets, rounding, plain meanings", () => {
+  const sources = [
+    "Rockstar confirmed Grand Theft Auto VI for November. Over 346,258 people signed the list. IGN reported it first.",
+  ];
+  const lines = [
+    "Imagine Rockstar's open-world RPG with NPC routines.",
+    "GTA 6 lands in November.",
+    "Almost 350,000 people signed up.",
+    "Bloomberg said the same thing.",
+    "The dust settled after the free trial.",
+    "You fired the first shot at the basketball court.",
+    "It is a band, not a ban.",
+  ];
+  const found = unsourcedSentences(lines.join(" "), sources, {
+    game: "Grand Theft Auto VI",
+    company: "Rockstar Games",
+    outlets: ["IGN"],
+  });
+  assert.deepEqual(
+    found.map((u) => [u.sentence, u.names, u.figures, u.claims]),
+    [
+      // "court" and "ban" keep their claim meaning; the rest are plain.
+      ["You fired the first shot at the basketball court.", [], [], ["court"]],
+      ["It is a band, not a ban.", [], [], ["ban"]],
+    ],
+  );
+  // "ban" is not found inside "band" or "urban" in the sources either.
+  assert.deepEqual(
+    unsourcedSentences("Sony banned the mod.", ["An urban band played."]).map(
+      (u) => u.claims,
+    ),
+    [["banned"]],
+  );
+  // A pack field's line break does not hide the word after it.
+  assert.deepEqual(
+    unsourcedSentences(
+      "Cory Barlog fought for it.",
+      claimCorpus(
+        pack({ what_happened: "Sony wanted a new hero.\nBarlog fought." }),
+        [],
+      ),
+    ),
+    [],
+  );
+});
+
+test("a cleared pick that opens on a verdict gets the edit on its first sentence only; an edit that keeps it is refused", async () => {
+  const opener = NARRATION.replace(
+    S[0]!,
+    "Bethesda made the right call delaying Starfield.",
+  );
+  const instructions: string[] = [];
+  const { steps } = loopSteps({
+    editor: [
+      { reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" },
+      { reads: [ed("O", 8), ed("E", 8)], pick: "E" },
+    ],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: opener })),
+    }),
+  });
+  const run = await runRoom({
+    ...steps,
+    edit: async (draft, instruction) => {
+      instructions.push(instruction);
+      return { ...draft, narration: NARRATION };
+    },
+  });
+  assert.equal(run.calls.edit, 1);
+  assert.match(
+    instructions[0]!,
+    /^The pick states a verdict in its first sentence \("made the right call"\) before the story has asked its question: rewrite only the first sentence/,
+  );
+  assert.ok(!instructions[0]!.includes("Biggest weakness"));
+  assert.equal(run.won, "edited");
+  assert.ok(run.final!.narration.startsWith(S[0]!));
+
+  const kept = loopSteps({
+    editor: [{ reads: [ed("A", 8), ed("B", 7), ed("C", 6)], pick: "A" }],
+    w: writing({
+      drafts: writing().drafts.map((d) => ({ ...d, narration: opener })),
+    }),
+  });
+  const r2 = await runRoom({
+    ...kept.steps,
+    edit: async (draft) => ({ ...draft, narration: `${draft.narration} ` }),
+  });
+  assert.match(
+    r2.edit!.refused!.join(" "),
+    /The edited version states a verdict/,
+  );
 });

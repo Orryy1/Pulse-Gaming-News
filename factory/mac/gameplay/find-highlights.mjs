@@ -460,6 +460,8 @@ async function main() {
   const alertDue =
     !state.notifiedAt ||
     Date.now() - Date.parse(state.notifiedAt) >= 60 * 60_000;
+  // The reset after an alert is saved even in an hour with no new clips, or the same count is re-sent hourly.
+  let alerted = false;
   if (!DRY && state.unnotified && alertDue) {
     try {
       await fetch(NTFY, {
@@ -469,9 +471,10 @@ async function main() {
       });
       state.unnotified = 0;
       state.notifiedAt = new Date().toISOString();
+      alerted = true;
     } catch {}
   }
-  if (!DRY && total) await fs.writeFile(STATE, JSON.stringify(state, null, 2));
+  if (!DRY && (total || alerted)) await fs.writeFile(STATE, JSON.stringify(state, null, 2));
   log(`done: ${total} clip(s) in ${INBOX}`);
 }
 

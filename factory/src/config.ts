@@ -88,6 +88,12 @@ export function whySlotsFrom(list: string, single: string): string[] {
   return one.length ? one : ["12:00", "18:30"];
 }
 
+/** An off|check|fix setting: anything unknown is "off". */
+function modeOf(v: string): "off" | "check" | "fix" {
+  const m = v.trim().toLowerCase();
+  return m === "check" || m === "fix" ? m : "off";
+}
+
 /**
  * The channels the download account subscribes to for the trend feed (TREND_FEED), by handle: big gaming news,
  * platform and documentary channels, picked 19 Nov 2026. src/tools/trendchannels.ts prints them as links to follow.
@@ -208,6 +214,27 @@ export interface Config {
   /** FACT_REPAIR (default on): a ranking whose fact-check still fails on one or two lines after the rewrite gets
    * those lines mended (a rounded figure hedged, an unsupported side line cut) and checked again, instead of failing. */
   factRepair: boolean;
+  /** LETTER_WATCH_NAMES (default on, src/qa/narration.ts nameShaped): names like "McCoy" are not flagged as spelled letters. */
+  letterWatchNames: boolean;
+  /**
+   * LONG_FACT_DISCIPLINE (default off, src/editorial/longfacts.ts): a long ranking is checked without a model before its
+   * fact-check (absolutes and series-wide firsts named for the rewrite; cards whose figures, games or dates are not in
+   * the fact pack dropped; an unproven "Every X" title counted; a sourceless methodology line cut), its writers get the
+   * same rules, and a blocker that survives the rewrite is mended on the card as well as the line, or as a last resort
+   * its sentence is cut (within the 15% cap) instead of the whole episode failing.
+   */
+  longFactDiscipline: boolean;
+  /**
+   * DOC_FACT_DISCIPLINE (default on, src/docfacts.ts): a documentary, weekly explainer or weekly recap chapter never
+   * keeps a line its fact-check says the source does not support. After the rewrites each disputed line is mended
+   * (src/factrepair.ts line rules) or its sentence cut, within DOC_FACT_CUT_PERCENT of the chapter's words, and the
+   * chapter is checked once more; only a clean re-check keeps it. Otherwise the chapter is dropped where
+   * DOC_DROP_REFUSED_CHAPTER allows, or the episode fails. Off only brings back the old warning, which broke the
+   * verified-sources rule (25 Nov 2026: Cyberpunk 2077 documentary, 18 disputed lines kept).
+   */
+  docFactDiscipline: boolean;
+  /** DOC_FACT_CUT_PERCENT (default 20, 0-40): the most of one chapter's spoken words DOC_FACT_DISCIPLINE may cut. */
+  docFactCutPercent: number;
   /**
    * VISION_PAID_FALLBACK: while the PC vision relay is down, picture checks may go to the paid Claude API. Off by
    * default (owner's rule after the 7-11 Nov 2026 outage): they go to Codex where CODEX_VISION allows, or are skipped.
@@ -215,9 +242,40 @@ export interface Config {
   visionPaidFallback: boolean;
   /** A Codex run is killed after this many minutes and Claude answers instead. */
   codexTimeoutMinutes: number;
+  /**
+   * CODEX_SHORT_TIMEOUT_MINUTES (default 12; 0 = no cap): inside a slot-bound Short's step (every lane but longform and
+   * evergreen) each Codex run is killed after at most this, whatever CODEX_TIMEOUT_MINUTES says, so a hung run cannot eat
+   * a slot (25 Nov 2026: search.write ran 20 min twice). 13-25 Nov the slowest good Short-path runs were 10 min
+   * (search.write 607 s, editorial 596 s); evergreen.write runs up to 18 min, so evergreen keeps the full time.
+   */
+  codexShortTimeoutMinutes: number;
   /** The Python that can import the orchestrator's codex_runner, and where that file lives. */
   codexPython: string;
   codexRunnerDir: string;
+  /**
+   * CLAUDE_VIA_MAX (default off): Claude calls go through Claude Code (`claude -p`) on the owner's Max plan first,
+   * then Codex, then the API key (src/editorial/maxplan.ts). Same model per tier; pictures and WRITER_SPLIT's Codex
+   * calls are routed as before.
+   */
+  claudeViaMax: boolean;
+  /**
+   * MAX_FOR_CODEX_SITES (default off): the CODEX_CALLS steps go to Max first too. Off: they stay on Codex (its weekly
+   * allowance is lost if unused) and Max is kept for the unlisted writing.
+   */
+  maxForCodexSites: boolean;
+  /** MAX_WEEK_CAP_PERCENT (default 60): Max stops when Claude's week reaches this, so the owner's own chats keep the rest. */
+  maxWeekCapPercent: number;
+  /** MAX_TIMEOUT_MINUTES (default 15): one `claude -p` run is killed after this (a Short's Codex cap bounds it too). */
+  maxTimeoutMinutes: number;
+  /** MAX_CONCURRENCY (default 2): `claude -p` runs at once. */
+  maxConcurrency: number;
+  /** CLAUDE_BIN: the Claude Code CLI (default /opt/homebrew/bin/claude on the Mac, "claude" elsewhere). */
+  claudeBin: string;
+  /**
+   * MAX_USAGE_URL: where the PC orchestrator's weekly reading is read (default GAMELIB_REMOTE + "/claude-budget", the
+   * PC's library server; empty: no reading, so only the CLI's own limit refusal pauses Max, for an hour).
+   */
+  maxUsageUrl: string;
   voiceProvider: VoiceProvider;
   localTtsUrl: string;
   localVoiceId: string;
@@ -248,6 +306,11 @@ export interface Config {
   slotLeadMinutes: number; // start producing this long before a slot
   slotGraceMinutes: number; // a slot missed by less than this is still filled
   maxProducing: number; // episodes allowed mid-production at once (waiting ones never block)
+  /** WHY_SLOT_SEAT: a Why slot that is due may start one Short past maxProducing (src/whyseat.ts). */
+  whySlotSeat: boolean;
+  /** LONG_RESLOT: a long video finished over LONG_RESLOT_GRACE_HOURS after its slot publishes when its planned hour next comes round; slot_at is unchanged (src/longreslot.ts). */
+  longReslot: boolean;
+  longReslotGraceHours: number;
   minUploadGapMinutes: number;
   discoverMinutes: number;
   breakingEnabled: boolean;
@@ -388,6 +451,10 @@ export interface Config {
   demandLookups: number;
   /** Days an older cached demand reading may stand in when no fresh one can be had (bot-check pause, failed search, lookups spent); 0 = never. */
   demandStaleDays: number;
+  /** Days a topic's demand reading stays fresh (DEMAND_CACHE_DAYS, 7): a game's demand barely moves day to day. */
+  demandCacheDays: number;
+  /** New topics looked up on the YouTube Data API a Pacific day (DEMAND_API_PER_DAY, 8; search.list costs 100 units). */
+  demandApiPerDay: number;
   /** A title or hook phrase in this many of the last 30 days' Shorts already is sent back for a rewrite; 0 = off (src/authenticity.ts). */
   repeatMax: number;
   spareUploads: boolean; // spend the quota left before YouTube's daily reset on extra scheduled Shorts
@@ -535,8 +602,15 @@ export interface Config {
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   /** SHORT_OPEN_FOOTAGE: every Short opens on the game's own moving footage, its first 7 s screened ad-safe (src/openingstep.ts). */
   shortOpenFootage: boolean;
-  /** SHORT_OPEN_WORDS: 1 or 2 caption words over an opening on footage, in place of the headline (0: the headline, as before). */
+  /** SHORT_OPEN_WORDS: a caption over an opening on footage, in place of the headline: 1 or 2 of the writer's hook words, else the headline's subject, up to 4 words (0: the headline, as before). */
   shortOpenWords: number;
+  /**
+   * SHORT_FULL_COVER: every Short also renders cover.jpg, its opening with the whole headline and no caption, and that is
+   * the cover wherever a platform lets us choose one: the YouTube custom thumbnail on the frame arm, Instagram's cover_url,
+   * and on TikTok a social copy whose first 0.4 s show the cover, picked by the cover offset (src/social/cover.ts). Off:
+   * covers are the raw first frame, as before, which with SHORT_OPEN_WORDS is two words and a caption fragment.
+   */
+  shortFullCover: boolean;
   /** SHORT_AD_SAFE_GATE: a Short whose first 7 s or cover frame shows a graphic kill, gore or the like fails QA (src/openingstep.ts). */
   shortAdSafeGate: boolean;
   /**
@@ -545,6 +619,7 @@ export interface Config {
    * gather picks it (src/qa/retry.ts, src/assets/screencache.ts). Off: those faults drop nothing, as before 14 Nov 2026.
    */
   qaAdSwap: boolean;
+  qaFlattenDepth: boolean; // QA_FLATTEN_DEPTH: an edge fault on a layered still renders it flat on the retry (src/qa/retry.ts)
   /**
    * CREDIT_SCRUB (default on): before a Short's fact check, a credit to an outlet or document the writer was not given
    * ("GameSpot's 2021 coverage says", "Bethesda's update notes say") is taken off and the fact kept (src/editorial/credits.ts).
@@ -579,6 +654,7 @@ export interface Config {
   freeDays: string[];
   recapDays: string[];
   recapLong: boolean; // Friday's recap is a 6-10 minute long video instead of a Short
+  longWeeklyAfterTarget: boolean; // the weekly long video is still picked once the day's Shorts allowance is used
   weeklyExplainedTest: boolean; // the weekly long video alternates the round-up with one story explained (src/weeklytest.ts)
   weeklyExplainedLeadMinutes: number; // while the test runs, the weekly long video's production starts this long before its slot
   achievementDays: string[];
@@ -615,6 +691,13 @@ export interface Config {
   shortSpeed: number;
   /** Share of news and Why Shorts written in the personal, opinionated voice (VOICE_TEST_SHARE; owner's test, 6 Nov 2026). */
   voiceTestShare: number;
+  /** Share of Pulse Check Shorts whose take ends on a varied closing form instead of a spoken "My verdict:" line
+   * (ENDING_FORMS_SHARE, frontier check 25 Nov 2026, src/editorial/endingforms.ts); 0, the default, changes nothing. */
+  endingFormsShare: number;
+  /** Share of news slots whose candidates pass the story premise gate first (STORY_PREMISE_GATE_SHARE, frontier check
+   * 25 Nov 2026, src/editorial/premisegate.ts): no "nothing known", price list, patch notes or outage story without a
+   * conflict or surprise. 0, the default, changes nothing. */
+  storyPremiseGateShare: number;
   /** Buffer's API key and its Pulse TikTok channel (BUFFER_API_KEY, BUFFER_TIKTOK_CHANNEL): TikTok posts go out with no tap. */
   bufferApiKey: string;
   bufferTiktokChannel: string;
@@ -1115,8 +1198,13 @@ export interface Config {
   gatherMaxMinutes: number;
   /** Every yt-dlp and ffmpeg download child is killed after this long (src/lib/child.ts; read from the environment there too). */
   downloadTimeoutSeconds: number;
-  /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released. */
+  /** A long-lane tick not completed for this long, with no render or upload running, is reported and its lease released (never under a healthy build's length, src/longlane.ts longStuckMinutes). */
   longTickStallMinutes: number;
+  /** DEPLOY_WAIT_LONG (default on): /health reports long_running while the long lane builds a video, and mac/deploy.sh,
+   *  and the merge gate wait for it (src/longlane.ts longBusyForDeploy); a direct push to the Mac's hook does not. */
+  deployWaitLong: boolean;
+  /** DEPLOY_WAIT_LONG_MAX_MINUTES (default 240): a long tick holding its lease longer than this counts as stuck, not busy (a real build past it is restarted by a deploy; the lane watchdog releases a lease after LONG_TICK_STALL_MINUTES anyway). Raised to a healthy build's length when that is longer: planning, the 3D clip wait and the render (src/longlane.ts longStuckMinutes). */
+  deployWaitLongMaxMinutes: number;
   /** Languages each video's title and description are also set in on YouTube (empty switches it off). */
   localizeLanguages: string[];
   /** Python with faster-whisper (PC) or MLX Whisper (Mac) for the narration check; empty switches it off. */
@@ -1168,6 +1256,8 @@ export interface Config {
   gameFetchHours: number; // GAME_FETCH_HOURS: hours between searches from release until a clean upload is found
   gameFetchRecheckHours: number; // GAME_FETCH_RECHECK_HOURS: hours between looks for a longer or better upload
   gameFetchRecheckDays: number; // GAME_FETCH_RECHECK_DAYS: days after release the looks go on (at least the spoiler window)
+  moviePlan: boolean; // MOVIE_PLAN (default on): the owner's and the calendar's games get later movie chapters and clean playthroughs planned (src/sceneindex/movieplan.ts)
+  gameFetchCleanChannels: string; // GAME_FETCH_CLEAN_CHANNELS: no-commentary channels the planner prefers (comma separated)
   /**
    * ARCHIVE_BACKLOG: the curated evergreen archive (src/sceneindex/archive.ts): a light index (captions, chapters,
    * storyboard frames, comments; no video downloaded) for every backlog game, one at a time, at night; needs SCENE_INDEX.
@@ -1206,6 +1296,12 @@ export interface Config {
   levers: LeverSettings;
   spoilerWindowDays: number; // SPOILER_WINDOW_DAYS: days after release a game's story is protected
   spoilerOpeningShare: number; // SPOILER_OPENING_SHARE: the share of the story, from its start, that counts as the opening
+  /**
+   * SPOILER_EARLY_FREE (owner, 26 Nov 2026, "Early story free"): games whose chapter 1 is free during their window and
+   * whose later moments the reveal classifier found safe may be used (src/sceneindex/reveals.ts). ";"-separated;
+   * default "Grand Theft Auto VI"; empty keeps the whole hold for every game.
+   */
+  spoilerEarlyFree: string[];
   /** CHARACTER_QUOTES: one real line from the game's cutscene, with its own voice, set up and answered by the narrator (src/charquotestep.ts). */
   characterQuotes: boolean;
   characterQuotesLong: number; // CHARACTER_QUOTES_LONG: the most quotes in one long video
@@ -1273,13 +1369,30 @@ export interface Config {
   /** APPLE_HW_ENCODE (Mac mini only, off until switched on): clip cuts and other in-between encodes on the Mac's
    * VideoToolbox encoder (src/lib/videoenc.ts); final masters stay on libx264. */
   appleHwEncode: boolean;
+  /** FILL_FRAME (off until switched on): a picture of the wrong shape (a 16:9 still in a Short, a portrait cover in a
+   * long video) is extended to fill the frame by FLUX.2 klein on the PC instead of sitting over its blurred copy,
+   * labelled "EDGES EXTENDED BY AI" (src/gpuvis/fill.ts). Needs the PC's GPU service at GPUVIS_URL. */
+  fillFrame: boolean;
+  /** UPSCALE_STILLS (off until switched on): low-resolution stills and pre-2010 games' screenshots enlarged by
+   * Real-ESRGAN on the PC, pixel art by whole pixels (src/gpuvis/upscale.ts). Needs GPUVIS_URL. */
+  upscaleStills: boolean;
+  /** THUMB_CANDIDATES (off until switched on): GPU-made thumbnail candidates (extended and relit art) beside the
+   * usual designs, all ranked by the local vision model; the top three become the thumbnail and the Test & compare
+   * variants (src/gpuvis/thumbs.ts). */
+  thumbCandidates: boolean;
+  /** The PC's GPU picture service (src/gpuvis/server.ts); on the Mac the PC's address over the cable. */
+  gpuvisUrl: string;
   ytdlpPath: string;
   /**
    * YTDLP_COOKIES_FILE (default empty: off): the cookies of a separate, disposable 18+ Google account (never the
    * Pulse or Orryy channel accounts), exported on the Mac mini by mac/ytcookies.sh, so the game footage fetcher alone
-   * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own budget,
-   * YT_SIGNED_HOURLY, and their own bot-check pause (src/lib/ytguard.ts). Nothing else uses the cookies except the
-   * opt-in switches below (each default off, together within YT_SIGNED_CLIP_SHARE), and never on Pulse's own videos.
+   * can fetch age-restricted uploads signed in (src/lib/ytsignin.ts). Its signed-in calls have their own bot-check
+   * pause and, since 25 Nov 2026, a ration (src/lib/ytguard.ts): YT_SIGNED_PER_HOUR (4; YT_SIGNED_HOURLY still read),
+   * YT_SIGNED_DAILY (30), YT_SIGNED_MIN_GAP_SECONDS (300) and YT_SIGNED_BG_SHARE (0.3), Shorts first, long videos next,
+   * background library building last. YT_ANON_LANE (auto) retires anonymous fetching for YT_ANON_RETIRE_DAYS (14)
+   * after two lifts whose first anonymous answer was a bot check; searches go to the Data API (YOUTUBE_API_KEY) within
+   * YT_API_SEARCHES_PER_DAY (40; YT_API_SEARCH=off to stop). All read from the environment by the guard. Nothing else
+   * uses the cookies except the opt-in switches below, and never on Pulse's own videos.
    */
   ytdlpCookiesFile: string;
   /**
@@ -1289,8 +1402,9 @@ export interface Config {
    */
   signedClips: boolean;
   /**
-   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of YT_SIGNED_HOURLY that clips, the light index and the trend feed may
-   * use together; the rest is always kept for the game footage fetcher (src/lib/ytguard.ts).
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of the signed-in hour that background users other than the game
+   * fetcher (the light index, the trend feed) may use together (src/lib/ytguard.ts); a Short's or long video's own clip
+   * pulls go by priority instead.
    */
   ytSignedClipShare: number;
   /**
@@ -1416,6 +1530,11 @@ export interface Config {
    * SHORT_FIRST_SHOT_MIN_S, default 0 (off).
    */
   shortFirstShotMinSeconds: number;
+  /** The documentary evidence board style (src/evidencestyle.ts; owner, 26 Nov 2026): date cards, typed case cards, red
+   * stamps and, for mystery and lore episodes, the stills pinned to a board joined by red string. EVIDENCE_STYLE, default off. */
+  evidenceStyle: boolean;
+  /** With EVIDENCE_STYLE, the share of eligible episodes in the board arm, split by episode (EVIDENCE_STYLE_SHARE, default 0.5). */
+  evidenceStyleShare: number;
   /** The 3D photo orbit (src/render/orbit.ts): the best wide key art of each chapter gets a depth mesh and the
    * camera swings round its subject, about once a chapter (DEPTH_ORBIT, default off until proven). Needs PARALLAX. */
   depthOrbit: boolean;
@@ -1443,6 +1562,10 @@ export interface Config {
   /** 3D game boxes (src/render/boxart.ts): a ranking entry's box turns in on its card; a documentary's "it came
    * out" sentence turns the game's box in beside the picture (BOX_3D, default off until proven). */
   box3d: boolean;
+  /** GTA_KIT (src/render/gtakit.ts, default off until proven): in a GTA story, a line naming a place on the map, a
+   * dollar figure with what it is, or two names set against each other gets the gta-components kit's place card, cash
+   * readout or head-to-head, in Pulse's style, in Shorts and long videos. Off: nothing changes. */
+  gtaKit: boolean;
   /**
    * The long videos' 3D and look craft in Shorts (src/render/shortupgrades.ts, src/shortupgradestep.ts), each on by
    * default but only where its long-video switch is on too, so the long switch stays the one kill switch:
@@ -1545,6 +1668,12 @@ export interface Config {
    * is sent back, and dropped if it still does. The FFXIV documentary of 4 Nov carried one, voiced.
    */
   docMetaGuard: boolean;
+  /**
+   * DOC_CHAPTER_CHECKPOINT: a documentary keeps its outline and finished chapters on disk, so a restart resumes them
+   * instead of writing every chapter again (src/editorial/doccheckpoint.ts). DOC_CHECKPOINT_HOURS: how old one may be.
+   */
+  docChapterCheckpoint: boolean;
+  docCheckpointHours: number;
   /** LONG_SENTENCE_GATE: the mean sentence stays under this many words on rankings and guides (0: not measured). */
   longSentenceGate: number;
   /** LONG_HOOK_YOU_MIN: the least "you" words in a long video's opening, which the whole-video floor cannot see (0: off). */
@@ -1553,6 +1682,30 @@ export interface Config {
   longHookStack: number;
   /** LONG_OPEN_LOOPS_MAX: the most open loops a guide plans; rankings get real ones, up to 3 (0: as before). */
   longOpenLoopsMax: number;
+  /**
+   * The long-video opening contract (src/editorial/longcontract.ts, top creator gap plan gap 3, 18 Nov 2026: San Andreas
+   * kept 63% at 36 s and 32% at 3 minutes; its opening began on "a familiar city can mislead your next purchase"):
+   * the first sentence serves the title (no buyer framing unless it's a buyer's guide), the title's question by word 40,
+   * one finish line planted before 1:30 and paid in the last 15% (an open loop marked finish_line), at most 90 words
+   * before the first chapter (140 with a quoted primary source), a dated source quote in the first 30 s where the
+   * sources hold one, chapters handed over by contrast, two honest "I" takes a documentary chapter, and the first two
+   * minutes of the edit cut about twice as fast as the body (twoSpeedCap). LONG_OPENING_CONTRACT=off (default), "check"
+   * (measure and record on the episode, change nothing) or "fix" (the writers get the rules, a missed opening goes back
+   * once and is then accepted with a note, and the edit gets its two speeds). Supersedes LONG_HOOK_STACK's stakes line
+   * in "fix". Its judge step is "long.judge" (CODEX_CALLS can route it).
+   */
+  longOpeningContract: "off" | "check" | "fix";
+  /**
+   * Rankings and commentary as arguments (src/editorial/argues.ts, gap 4: "Every Mainline GTA Game, Ranked" got 2 views
+   * with no "I", equal entries and a title restated on the thumbnail): every ranking entry ends on an "I" verdict, the
+   * contested placement and the fight inside 30 s, unequal time (bottom third under 60 s, top three twice the rest),
+   * "I" at 20 per 1,000 words and a verdict thumbnail; a run entry with format "claims" is a "claims tested"
+   * commentary (verdict by 2:15, three to six numbered claims ruled true, half true or wrong, rumours flagged); and the
+   * documentary picker leaves franchise histories alone unless a brief names a thesis, something exclusive and a
+   * finish line. LONG_ARGUES=off (default), "check" (record, change nothing) or "fix" (rules to the writers, one
+   * send-back each, then accepted with a note; the picker sticks to single stories).
+   */
+  longArgues: "off" | "check" | "fix";
   /** LOOP_NAME_PAYOFF: a payoff says out loud that it's the promise being kept. */
   loopNamePayoff: boolean;
   /** LONG_VERDICT_STAMPS: confirmed, reported and busted, spoken and stamped in a guide, under the rumour rules. */
@@ -1568,6 +1721,14 @@ export interface Config {
    */
   guideWeekly: boolean;
   guideWeeklyFile: string;
+  /**
+   * GTA_GUIDES (upgrade queue item 58, src/gtaguide.ts; off by default): post-launch GTA 6 guide lists take a share of
+   * the long slots, GTA_GUIDE_SHARE (default 0.5, decided per slot). GTA_GUIDE_FACTS: the fact files, comma separated
+   * (the three guide_facts_gta6*.md beside package.json when empty). Off, the long lane is exactly as before.
+   */
+  gtaGuides: boolean;
+  gtaGuideShare: number;
+  gtaGuideFacts: string[];
   /** GUIDE_OWN_FIRST: a weekly guide's chapters ask the owner's recordings for every footage target, not half. */
   guideOwnFirst: boolean;
   /**
@@ -1644,6 +1805,59 @@ export interface Config {
   funnelClearDays: number;
   /** LONG_SAME_PICTURE_MAX_SECONDS: no one still for more than this in any minute (src/render/picturecap.ts; 0: off). */
   longSamePictureMaxSeconds: number;
+  /**
+   * LONG_STILL_MAX_SHOWS (25 Nov 2026, the Mass Effect ranking: one IGDB screenshot shown 11 times for 52 s, because the
+   * same picture downloaded into two folders counted as two): a hard cap on how many times one picture (by its source,
+   * src/render/stillcap.ts pictureKey) is put on screen in a long video. Past it a line gets unplayed footage, then one
+   * more showing on the depth camera of a picture not seen for a minute, and only then (counted) a repeat. 0: off, the
+   * plan as before. Default 2.
+   */
+  longStillMaxShows: number;
+  /**
+   * LONG_MIN_MOVING_SHARE (25 Nov 2026: the same video was 0.6% moving footage): the share of every chapter that should
+   * be moving footage where footage exists, 0-1. Each ranking entry asks its Steam trailers for that many seconds of
+   * clean moments on top of the ones matched to its sentences, and the planner plays a chapter's unplayed footage
+   * before any still (as LONG_MOVING_FIRST does). 0: off. Default 0.5.
+   */
+  longMinMovingShare: number;
+  /**
+   * LONG_ENTRY_CLIP_TARGETS: how many of a ranking entry's sentences ask the trailers for their own moment (was 6, the
+   * first six; the rest only ever got stills). Default 24.
+   */
+  longEntryClipTargets: number;
+  /**
+   * STEAM_EDITIONS: a ranking entry may take a later Steam edition of the same game (a Legendary, Deluxe or "(2010)
+   * Edition", a remaster or a collection that contains it) where the year rule used to refuse any page more than a
+   * year off: Mass Effect 1, 2, 3 and Andromeda all lost their Steam trailers and screenshots to it. Remakes and
+   * reboots are still refused (src/assets/steamedition.ts). Default on.
+   */
+  steamEditions: boolean;
+  /**
+   * STORE_TRAILERS: official trailers straight from the platform stores' own public product data and CDNs (Microsoft
+   * Store, PlayStation, Epic Games Store, Nintendo eShop), for games not on Steam or short of Steam footage, after the
+   * game library and before any YouTube search (src/assets/storetrailers.ts). Polite by construction: robots.txt, an
+   * honest User-Agent, 1.5 s or more between requests per host, everything cached, a day's stop on a 403 or 429.
+   * Counted under PUBLISHER_FOOTAGE_SECONDS. Default off.
+   */
+  storeTrailers: boolean;
+  /** STORE_TRAILERS_STORES: which stores, in order (comma list of playstation, xbox, epic, nintendo). Default all four. */
+  storeTrailersStores: string[];
+  /** STORE_TRAILERS_MIN_FREE_GB: no store trailer is downloaded while the data disk has less free than this. Default 20. */
+  storeTrailersMinFreeGb: number;
+  /**
+   * LONG_NAMED_ART: a ranking sentence that names a character (the writer's `person`, or a name in its keywords)
+   * gets that character's official IGDB picture, only when IGDB lists them in a game of the series, pinned to that
+   * sentence and opening it (src/assets/namedart.ts). Default on.
+   */
+  longNamedArt: boolean;
+  /** LONG_NAMED_ART_MAX: named pictures fetched per entry at most. */
+  longNamedArtMax: number;
+  /**
+   * LONG_THIN_CARD_SHARE: a chapter whose footage and pictures cannot give its sentences a picture each under
+   * LONG_STILL_MAX_SHOWS takes graphics cards up to this share of its lines, before any repeat (src/assets/fillers.ts
+   * thinChapter). 0: off. Default 0.6.
+   */
+  longThinCardShare: number;
   /** LONG_CARD_SHARE: fillers may also take lines with a still of their own until this share of sentences carries a card, 0-1 (0: off). */
   longCardShare: number;
   /** LONG_STILL_XFADE_FRAMES: a long video's dissolve between stills, in frames: a test dial only (9: as today, 0: hard cuts). */
@@ -1733,12 +1947,32 @@ export function loadConfig(): Config {
     codexVision: bool("CODEX_VISION", false),
     codexGrammarFallback: bool("CODEX_GRAMMAR_FALLBACK", true),
     factRepair: bool("FACT_REPAIR", true),
+    letterWatchNames: bool("LETTER_WATCH_NAMES", true),
+    longFactDiscipline: bool("LONG_FACT_DISCIPLINE", false),
+    docFactDiscipline: bool("DOC_FACT_DISCIPLINE", true),
+    docFactCutPercent: Math.min(40, Math.max(0, int("DOC_FACT_CUT_PERCENT", 20))),
     visionPaidFallback: bool("VISION_PAID_FALLBACK", false),
     codexTimeoutMinutes: int("CODEX_TIMEOUT_MINUTES", 20),
+    codexShortTimeoutMinutes: int("CODEX_SHORT_TIMEOUT_MINUTES", 12),
     codexPython: str("CODEX_PYTHON", defaultCodexPython(process.platform)),
     codexRunnerDir: str(
       "CODEX_RUNNER_DIR",
       defaultCodexRunnerDir(process.platform, os.homedir()),
+    ),
+    claudeViaMax: bool("CLAUDE_VIA_MAX", false),
+    maxWeekCapPercent: int("MAX_WEEK_CAP_PERCENT", 60),
+    maxForCodexSites: bool("MAX_FOR_CODEX_SITES", false),
+    maxTimeoutMinutes: Math.max(1, int("MAX_TIMEOUT_MINUTES", 15)),
+    maxConcurrency: Math.max(1, int("MAX_CONCURRENCY", 2)),
+    claudeBin: str(
+      "CLAUDE_BIN",
+      process.platform === "darwin" ? "/opt/homebrew/bin/claude" : "claude",
+    ),
+    maxUsageUrl: str(
+      "MAX_USAGE_URL",
+      process.env.GAMELIB_REMOTE?.trim()
+        ? `${process.env.GAMELIB_REMOTE.trim().replace(/\/$/, "")}/claude-budget`
+        : "",
     ),
     voiceProvider: str("VOICE_PROVIDER", "auto") as VoiceProvider,
     localTtsUrl: str("LOCAL_TTS_URL", "http://127.0.0.1:8765").replace(
@@ -1791,6 +2025,9 @@ export function loadConfig(): Config {
     slotLeadMinutes: int("SLOT_LEAD_MINUTES", 75),
     slotGraceMinutes: int("SLOT_GRACE_MINUTES", 30),
     maxProducing: int("MAX_PRODUCING", 2),
+    whySlotSeat: bool("WHY_SLOT_SEAT", true),
+    longReslot: bool("LONG_RESLOT", true),
+    longReslotGraceHours: int("LONG_RESLOT_GRACE_HOURS", 3),
     minUploadGapMinutes: int("MIN_UPLOAD_GAP_MINUTES", 60),
     discoverMinutes: int("DISCOVER_MINUTES", 3),
     breakingEnabled: bool("BREAKING_ENABLED", true),
@@ -1908,7 +2145,10 @@ export function loadConfig(): Config {
     demandCheck: bool("DEMAND_CHECK", true),
     demandMinViews: Math.max(0, int("DEMAND_MIN_VIEWS", 20000)),
     demandLookups: Math.max(0, int("DEMAND_LOOKUPS", 12)),
-    demandStaleDays: Math.max(0, int("DEMAND_STALE_DAYS", 10)),
+    // 21 since 26 Nov 2026: readings are fresh for DEMAND_CACHE_DAYS (7), so the older stand-in covers days 7 to 21.
+    demandStaleDays: Math.max(0, int("DEMAND_STALE_DAYS", 21)),
+    demandCacheDays: Math.max(1, int("DEMAND_CACHE_DAYS", 7)),
+    demandApiPerDay: Math.max(0, int("DEMAND_API_PER_DAY", 8)),
     repeatMax: Math.max(0, int("REPEAT_MAX", 3)),
     // Off: with uploads on their own bucket of 100 a day there is no use-it-or-lose-it quota to spend.
     spareUploads: bool("SPARE_UPLOADS", false),
@@ -2053,8 +2293,10 @@ export function loadConfig(): Config {
     openOnMotion: bool("OPEN_ON_MOTION", true),
     shortOpenFootage: bool("SHORT_OPEN_FOOTAGE", false),
     shortOpenWords: Math.min(2, Math.max(0, int("SHORT_OPEN_WORDS", 0))),
+    shortFullCover: bool("SHORT_FULL_COVER", false),
     shortAdSafeGate: bool("SHORT_AD_SAFE_GATE", false),
     qaAdSwap: bool("QA_AD_SWAP", true),
+    qaFlattenDepth: bool("QA_FLATTEN_DEPTH", true),
     creditScrub: bool("CREDIT_SCRUB", true),
     strandFrames: bool("STRAND_FRAMES", false),
     shortTitleGameFirst: bool("SHORT_TITLE_GAME_FIRST", false),
@@ -2079,6 +2321,9 @@ export function loadConfig(): Config {
       .map((d) => d.trim().slice(0, 3))
       .filter(Boolean),
     recapLong: bool("RECAP_LONG", false), // on once a sandbox run has been checked
+    // 25 Nov 2026 (queue item 54): Friday's long video is not a Short, so the day's Shorts allowance must not hold it
+    // back. false restores the old behaviour (only spare Shorts once the allowance is used).
+    longWeeklyAfterTarget: bool("LONG_WEEKLY_AFTER_TARGET", true),
     // The owner-approved test (1 Nov 2026): the weekly long video takes turns between the round-up and the week's
     // biggest story explained (src/weeklytest.ts). Needs RECAP_LONG and LONGFORM_ENABLED; false = round-up only.
     weeklyExplainedTest: bool("WEEKLY_EXPLAINED_TEST", true),
@@ -2148,6 +2393,8 @@ export function loadConfig(): Config {
     bufferApiKey: str("BUFFER_API_KEY", ""),
     bufferTiktokChannel: str("BUFFER_TIKTOK_CHANNEL", ""),
     voiceTestShare: Math.min(1, Math.max(0, Number(str("VOICE_TEST_SHARE", "0")) || 0)),
+    endingFormsShare: Math.min(1, Math.max(0, Number(str("ENDING_FORMS_SHARE", "0")) || 0)),
+    storyPremiseGateShare: Math.min(1, Math.max(0, Number(str("STORY_PREMISE_GATE_SHARE", "0")) || 0)),
     shortSpeed: Math.min(1.25, Math.max(1, Number(str("SHORT_SPEED", "1")) || 1)),
     voiceTakeCheck: bool("VOICE_TAKE_CHECK", true),
     // Not a number keeps the default rather than 0, the most erratic delivery.
@@ -2362,6 +2609,8 @@ export function loadConfig(): Config {
     gatherMaxMinutes: int("GATHER_MAX_MINUTES", 45),
     downloadTimeoutSeconds: int("DOWNLOAD_TIMEOUT_SECONDS", 300),
     longTickStallMinutes: int("LONG_TICK_STALL_MINUTES", 150),
+    deployWaitLong: bool("DEPLOY_WAIT_LONG", true),
+    deployWaitLongMaxMinutes: int("DEPLOY_WAIT_LONG_MAX_MINUTES", 240),
     localizeLanguages: str("LOCALIZE_LANGUAGES", "es,pt,de,fr,ja")
       .split(",")
       .map((l) => l.trim())
@@ -2401,6 +2650,8 @@ export function loadConfig(): Config {
     gameFetchHours: Math.max(1, int("GAME_FETCH_HOURS", 3)),
     gameFetchRecheckHours: Math.max(6, int("GAME_FETCH_RECHECK_HOURS", 24)),
     gameFetchRecheckDays: Math.max(1, int("GAME_FETCH_RECHECK_DAYS", 28)),
+    moviePlan: bool("MOVIE_PLAN", true),
+    gameFetchCleanChannels: str("GAME_FETCH_CLEAN_CHANNELS", ""),
     archiveBacklog: bool("ARCHIVE_BACKLOG", false),
     archiveFullTop: Math.max(0, int("ARCHIVE_FULL_TOP", 15)),
     archiveHours: str("ARCHIVE_HOURS", "22-7"),
@@ -2421,6 +2672,10 @@ export function loadConfig(): Config {
     levers: leverSettings(process.env),
     spoilerWindowDays: Math.max(0, int("SPOILER_WINDOW_DAYS", 28)),
     spoilerOpeningShare: Math.min(0.5, Math.max(0.02, Number(str("SPOILER_OPENING_SHARE", "0.1")) || 0.1)),
+    spoilerEarlyFree: (process.env.SPOILER_EARLY_FREE ?? "Grand Theft Auto VI")
+      .split(/[;\n]+/)
+      .map((g) => g.trim())
+      .filter(Boolean),
     characterQuotes: bool("CHARACTER_QUOTES", false),
     characterQuotesLong: Math.max(0, int("CHARACTER_QUOTES_LONG", 3)),
     characterQuotesShort: Math.min(2, Math.max(1, int("CHARACTER_QUOTES_SHORT", 1))),
@@ -2449,6 +2704,10 @@ export function loadConfig(): Config {
   appleSmartCrop: bool("APPLE_SMART_CROP", false),
   appleSubjectLift: bool("APPLE_SUBJECT_LIFT", false),
   appleHwEncode: bool("APPLE_HW_ENCODE", false),
+  fillFrame: bool("FILL_FRAME", false),
+  upscaleStills: bool("UPSCALE_STILLS", false),
+  thumbCandidates: bool("THUMB_CANDIDATES", false),
+  gpuvisUrl: str("GPUVIS_URL", "http://127.0.0.1:8799"),
   docSandboxChapters: int("DOC_SANDBOX_CHAPTERS", 0),
   docDropRefusedChapter: bool("DOC_DROP_REFUSED_CHAPTER", true),
   docMinChapters: Math.max(1, int("DOC_MIN_CHAPTERS", 5)),
@@ -2516,6 +2775,8 @@ export function loadConfig(): Config {
     shortLayouts: ["on", "true", "1", "yes"].includes(str("SHORT_LAYOUTS", "off").trim().toLowerCase()),
     shortLayoutsShare: shareOf(str("SHORT_LAYOUTS_SHARE", "0.5"), 0.5),
     shortFirstShotMinSeconds: Math.min(4, Math.max(0, Number(str("SHORT_FIRST_SHOT_MIN_S", "0")) || 0)),
+    evidenceStyle: bool("EVIDENCE_STYLE", false),
+    evidenceStyleShare: Math.min(1, Math.max(0, Number(str("EVIDENCE_STYLE_SHARE", "0.5")) || 0)),
     depthOrbit: bool("DEPTH_ORBIT", false),
     depthOrbitMax: Math.max(0, int("DEPTH_ORBIT_MAX", 16)),
     parallaxDeep: bool("PARALLAX_DEEP", false),
@@ -2525,6 +2786,7 @@ export function loadConfig(): Config {
     compareWipe: bool("COMPARE_WIPE", false),
     subjectPop: bool("SUBJECT_POP", false),
     box3d: bool("BOX_3D", false),
+    gtaKit: bool("GTA_KIT", false),
     shortUpgrades: {
       mapPins: bool("SHORT_MAP_PINS", true),
       gameLook: bool("SHORT_GAME_LOOK", true),
@@ -2582,16 +2844,26 @@ export function loadConfig(): Config {
     longYouPer1000: int("LONG_YOU_PER_1000", 0),
     guideYouPer1000: int("GUIDE_YOU_PER_1000", 35),
     docMetaGuard: bool("DOC_META_GUARD", false),
+    docChapterCheckpoint: bool("DOC_CHAPTER_CHECKPOINT", true),
+    docCheckpointHours: int("DOC_CHECKPOINT_HOURS", 36),
     longSentenceGate: int("LONG_SENTENCE_GATE", 0),
     longHookStack: int("LONG_HOOK_STACK", 0),
     longHookYouMin: int("LONG_HOOK_YOU_MIN", 0),
     longOpenLoopsMax: int("LONG_OPEN_LOOPS_MAX", 0),
+    longOpeningContract: modeOf(str("LONG_OPENING_CONTRACT", "off")),
+    longArgues: modeOf(str("LONG_ARGUES", "off")),
     loopNamePayoff: bool("LOOP_NAME_PAYOFF", false),
     longVerdictStamps: bool("LONG_VERDICT_STAMPS", false),
     longGuideFormat: bool("LONG_GUIDE_FORMAT", false),
     guideChapterAction: bool("GUIDE_CHAPTER_ACTION", false),
     guideWeekly: bool("GUIDE_WEEKLY", false),
     guideWeeklyFile: str("GUIDE_WEEKLY_FILE", ""),
+    gtaGuides: bool("GTA_GUIDES", false),
+    gtaGuideShare: Math.min(1, Math.max(0, Number(str("GTA_GUIDE_SHARE", "0.5")) || 0)),
+    gtaGuideFacts: str("GTA_GUIDE_FACTS", "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     guideOwnFirst: bool("GUIDE_OWN_FIRST", true),
     retroEnabled: bool("RETRO_ENABLED", false),
     retroFile: str("RETRO_FILE", ""),
@@ -2619,6 +2891,19 @@ export function loadConfig(): Config {
     funnelDays: Math.max(1, int("FUNNEL_DAYS", 3)),
     funnelClearDays: Math.max(0, int("FUNNEL_CLEAR_DAYS", 60)),
     longSamePictureMaxSeconds: int("LONG_SAME_PICTURE_MAX_SECONDS", 0),
+    longStillMaxShows: Math.max(0, int("LONG_STILL_MAX_SHOWS", 2)),
+    longMinMovingShare: Math.min(0.9, Math.max(0, Number(str("LONG_MIN_MOVING_SHARE", "0.5")) || 0)),
+    longEntryClipTargets: Math.min(40, Math.max(1, int("LONG_ENTRY_CLIP_TARGETS", 24))),
+    steamEditions: bool("STEAM_EDITIONS", true),
+    storeTrailers: bool("STORE_TRAILERS", false),
+    storeTrailersStores: str("STORE_TRAILERS_STORES", "playstation,xbox,epic,nintendo")
+      .split(",")
+      .map((x) => x.trim().toLowerCase())
+      .filter((x) => ["playstation", "xbox", "epic", "nintendo"].includes(x)),
+    storeTrailersMinFreeGb: Math.max(0, int("STORE_TRAILERS_MIN_FREE_GB", 20)),
+    longNamedArt: bool("LONG_NAMED_ART", true),
+    longNamedArtMax: Math.min(20, Math.max(0, int("LONG_NAMED_ART_MAX", 8))),
+    longThinCardShare: Math.min(1, Math.max(0, Number(str("LONG_THIN_CARD_SHARE", "0.6")) || 0)),
     longCardShare: Number(str("LONG_CARD_SHARE", "0")) || 0,
     longStillXfadeFrames: int("LONG_STILL_XFADE_FRAMES", 9),
     longMinWpm: int("LONG_MIN_WPM", 0),
@@ -2726,7 +3011,12 @@ export function redactedConfig(c: Config): Record<string, unknown> {
     codexCalls: c.codexCalls,
     codexVision: c.codexVision,
     codexGrammarFallback: c.codexGrammarFallback,
+    claudeViaMax: c.claudeViaMax,
+    maxWeekCapPercent: c.maxWeekCapPercent,
+    maxForCodexSites: c.maxForCodexSites,
     factRepair: c.factRepair,
+    letterWatchNames: c.letterWatchNames,
+    longFactDiscipline: c.longFactDiscipline,
     visionPaidFallback: c.visionPaidFallback,
     voiceProvider: c.voiceProvider,
     localTtsUrl: c.localTtsUrl,

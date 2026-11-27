@@ -36,6 +36,8 @@ export interface RawSample {
   money?: number;
   moneyDelta?: number;
   texts?: Record<string, string[]>;
+  /** Subtitles on screen (a profile's talkBox): someone is talking, so a story beat may be under way. */
+  talk?: boolean;
 }
 
 export interface RawPlace {
@@ -79,6 +81,8 @@ export interface HudProfile {
   calibrated: boolean;
   events: ProfileEvent[];
   areaPattern?: string;
+  /** Where subtitles are written (GTA VI): a sample with writing there is marked talk. */
+  talkBox?: number[];
   ignoreText?: string;
   /** Metres per map unit, once measured (calibration); null: distances stay in map units. */
   metresPerUnit?: number | null;
@@ -196,7 +200,10 @@ export function wantedEvents(samples: RawSample[]): {
   let candN = 0;
   const plural = (n: number) => `${n} star${n === 1 ? "" : "s"}`;
   for (const s of samples) {
-    if (s.state !== "hud") {
+    // A frame without the HUD counts only when the reader saw stars on it anyway (GTA VI hides its radar during a
+    // chase now and then, the stars stay: the profile's wanted.anyScreen).
+    const starsAnyway = (s.stars ?? 0) > 0 || (s.dim ?? 0) > 0;
+    if (s.state !== "hud" && !starsAnyway) {
       level.set(s.t, { stars: cur, searching });
       continue;
     }
@@ -277,7 +284,8 @@ export function textEvents(
       if (!text) continue;
       const m = text.match(r.re!);
       if (!m) continue;
-      const key = `${r.kind}|${r.kind === "collectible" ? m[0].replace(/\s/g, "") : ""}`;
+      // A collectible is known by its count, not the words around it (OCR reads those differently frame to frame).
+      const key = `${r.kind}|${r.kind === "collectible" ? `${m[1]}/${m[2]}` : ""}`;
       const prev = last.get(key);
       if (prev !== undefined && s.t - prev < BANNER_GAP) {
         last.set(key, s.t);

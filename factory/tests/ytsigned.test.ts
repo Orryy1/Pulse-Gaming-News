@@ -11,6 +11,7 @@ import {
   decide,
   emptyState,
   guardSettings,
+  isYtPaused,
   YtPausedError,
   type GuardSettings,
 } from "../src/lib/ytguard.ts";
@@ -51,9 +52,10 @@ test("clip share: YT_SIGNED_CLIP_SHARE defaults to half the signed-in budget and
   );
 });
 
-test("clip share: clips stop at their share and the game fetcher still has the rest of the signed-in budget", () => {
+test("clip share: background clips stop at their share and the game fetcher still has the rest of the signed-in budget", () => {
   const st = emptyState();
-  const settings = { ...s, urgentGapMs: 0, urgentJitterMs: 0 };
+  // The share is of the hour; the daily cap and the spacing are switched off to see it alone.
+  const settings = { ...s, signedHourlyBudget: 20, signedDailyBudget: 0, signedMinGapMs: 0 };
   let clips = 0;
   for (let i = 0; i < 30; i++)
     if (decide(st, 1000 + i, "urgent", settings, 0, "signed", "clip").go)
@@ -76,6 +78,11 @@ test("clip share: clips stop at their share and the game fetcher still has the r
     undefined,
     "the anonymous lane keeps no clip count",
   );
+  const shortSt = emptyState();
+  let shortClips = 0;
+  for (let i = 0; i < 30; i++)
+    if (decide(shortSt, 1000 + i, "urgent", settings, 0, "signed", "clip", "short").go) shortClips++;
+  assert.equal(shortClips, 20, "a Short's own clips are not held to the share, only to the budget");
 });
 
 test("clip share: a share of 0 lets no clip sign in; the anonymous lane ignores purposes", () => {
@@ -330,7 +337,7 @@ test("signed pull: the clip share used up, or no cookies (Pulse's own video), le
   assert.equal(none.calls.length, 1);
 });
 
-test("signed pull: a video the guard knows is age-gated goes signed in first; a refused signed try falls back", async () => {
+test("signed pull: a video the guard knows is age-gated goes signed in first; a refused signed try never goes anonymous", async () => {
   const known = attempts(() => undefined);
   await signedPull(
     ARGS,
@@ -343,16 +350,41 @@ test("signed pull: a video the guard knows is age-gated goes signed in first; a 
   const refused = attempts((a) =>
     signed(a) ? new YtPausedError("share", 1, "signed") : undefined,
   );
-  await signedPull(
-    ARGS,
-    refused.attempt,
-    { enabled: true, what: "clip" },
-    deps({ gated: true }),
+  await assert.rejects(
+    signedPull(
+      ARGS,
+      refused.attempt,
+      { enabled: true, what: "clip" },
+      deps({ gated: true }),
+    ),
+    (e: Error) => isYtPaused(e),
   );
   assert.deepEqual(
     refused.calls.map((c) => signed(c.args)),
-    [true, false],
+    [true],
+    "no anonymous try after a signed-in one",
   );
+});
+
+test("signed pull: while the anonymous lane is retired or paused the pull goes signed in only, with no anonymous try", async () => {
+  const closed = { ...deps(), anonOpen: () => false };
+  const ok = attempts(() => undefined);
+  await signedPull(ARGS, ok.attempt, { enabled: true, what: "clip" }, closed);
+  assert.deepEqual(ok.calls.map((c) => signed(c.args)), [true]);
+  const bot = attempts((a) =>
+    signed(a)
+      ? Object.assign(new Error("yt-dlp"), { stderr: "Sign in to confirm you're not a bot" })
+      : undefined,
+  );
+  await assert.rejects(signedPull(ARGS, bot.attempt, { enabled: true, what: "clip" }, closed), /yt-dlp/);
+  assert.deepEqual(bot.calls.map((c) => signed(c.args)), [true], "a signed-in failure is never retried anonymously");
+  // No cookies: the pull is the anonymous one (which the guard itself refuses while the lane is closed).
+  const none = attempts(() => new YtPausedError("retired", undefined, "anon"));
+  await assert.rejects(
+    signedPull(ARGS, none.attempt, { enabled: true, what: "clip" }, { ...closed, cookies: async () => [] }),
+  );
+  assert.deepEqual(none.calls.map((c) => signed(c.args)), [false]);
+  assert.ok(signedRetryWorth(new YtPausedError("retired", undefined, "anon")), "a retired lane is a reason to sign in");
 });
 
 test("signed pull: the switch and the cookies file are read from the environment like the config", () => {

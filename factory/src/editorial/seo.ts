@@ -9,9 +9,31 @@ import { tagChars } from "../youtube/upload.ts";
 import { docQuestion } from "../youtube/pinned.ts";
 
 export const TITLE_MAX = 60; // phones truncate around here; YouTube allows 100
+
+/**
+ * TITLE_KEEP_WHOLE (27 Nov 2026, on unless "false"): "GTA VI File #3: GTA 6 radio now keeps playing when you're on foot"
+ * went live as "GTA VI File : GTA 6 Radio Now Keeps Playing When You're on". The hashtag strip took the part number
+ * and the 60-character cut took the last word. With it on, a part number ("#3") stays, a numbered series title gets
+ * its prefix's length on top of the budget, a cut never ends on a dangling small word, and the word after "?" or "!"
+ * is capitalised ("Police Cars? The Honest Answer").
+ */
+export function titleKeepWhole(): boolean {
+  return (process.env.TITLE_KEEP_WHOLE ?? "").trim().toLowerCase() !== "false";
+}
+
+/** A numbered series prefix ("GTA VI File #3: ", "The Why #12: "), or "" when the title has none. */
+export function seriesPrefix(title: string): string {
+  return title.match(SERIES_PREFIX)?.[0] ?? "";
+}
 const BAD_TITLE_WORDS =
   /\b(shocking|insane|you won'?t believe|unbelievable|omg|wtf|must watch|gone wrong|clickbait|exposed|destroyed|rip)\b/i;
 const CLICKBAIT_PUNCT = /[!?]{2,}|\.{3,}|\s!$/;
+const SERIES_PREFIX = /^(GTA VI File|The Why) #\d{1,3}:\s+/;
+/** A hashtag in a title; with TITLE_KEEP_WHOLE a part number ("#3") is not one. */
+const TITLE_HASHTAG = /#[\p{L}_][\p{L}\p{N}_]*/gu;
+/** Words a cut title must not end on ("... When You're on"). */
+const DANGLING_END =
+  /\s+(a|an|and|as|at|but|by|for|from|in|into|is|its|of|on|or|than|that|the|their|to|when|with|your|you're|you’re|you|will|be|it|has|have|are|was|can)$/i;
 
 /** Franchise and platform keywords worth stacking when they appear in the story. */
 export const KEYWORD_TABLE: Array<[RegExp, string[]]> = [
@@ -120,7 +142,9 @@ export function titleCase(s: string): string {
   return s
     .split(" ")
     .map((w, i, all) => {
-      const after = i > 0 && /[:|\u2013-]$/.test(all[i - 1]!);
+      const after =
+        i > 0 &&
+        (titleKeepWhole() ? /[:|\u2013?!-]$/ : /[:|\u2013-]$/).test(all[i - 1]!);
       if (i > 0 && !after && SMALL_WORDS.has(w.toLowerCase()))
         return w.toLowerCase();
       const acro = ACRONYMS[w.toLowerCase().replace(/[^a-z]/g, "")];
@@ -130,13 +154,23 @@ export function titleCase(s: string): string {
     .join(" ");
 }
 
-function truncateWords(s: string, max: number): string {
+export function truncateWords(s: string, max: number): string {
   if (s.length <= max) return s;
   const cut = s.slice(0, max + 1);
-  return cut
+  let out = cut
     .slice(0, cut.lastIndexOf(" "))
     .replace(/[,:;\-–]$/, "")
     .trim();
+  if (titleKeepWhole()) {
+    for (let prev = ""; prev !== out; ) {
+      prev = out;
+      out = out.replace(DANGLING_END, "").replace(/[,:;\-–]$/, "").trim();
+    }
+    // A clause the cut left one or two words long ("Got a Remaster, Not") goes with its comma.
+    const clause = out.replace(/,\s+\S+(\s+\S+)?$/, "").trim();
+    if (clause.length >= 20) out = clause;
+  }
+  return out;
 }
 
 /** Keywords the story carries, from the title, headline, game and beats. */
@@ -181,6 +215,9 @@ export function rankingTheme(raw: string): string {
 }
 
 export function evergreenTitle(script: Script): string | undefined {
+  // GTA_GUIDES (src/gtaguide.ts): the guide's title carries its count and completeness promise; it is ranking-shaped
+  // only for the render, so the "Every X Game Ranked" template never applies.
+  if (script.gta_guide && script.youtube.title.trim()) return script.youtube.title.trim();
   // Buy, Wait or Skip keeps its series pattern word for word ("Hades at $9.99: buy, wait or skip?"): it is how a
   // viewer knows the series at a glance (src/editorial/verdict.ts verdictTitle).
   if (script.evergreen_format === "buy_wait_skip" && script.youtube.title.trim())
@@ -243,6 +280,8 @@ export function evergreenTitle(script: Script): string | undefined {
 
 /** The short line on a ranking's thumbnail: "Every X Game Ranked" or "N X Games Ranked". */
 export function thumbTitle(script: Script): string {
+  // GTA_GUIDES: the guide's big words on every design, so Test & compare measures the design, not the words.
+  if (script.gta_guide?.thumb.big) return script.gta_guide.thumb.big;
   // The writer's own hook words (1-4, never the title restated) win: the strongest long-video
   // thumbnails in the niche study carried a short hook, the weakest a catalogue label.
   const hook = script.youtube?.thumb_text?.trim().replace(/\s+/g, " ");
@@ -260,11 +299,16 @@ export function polishTitle(script: Script): string {
   const evergreen = evergreenTitle(script);
   if (evergreen) return evergreen;
   const game = script.game_title.trim();
+  const keep = titleKeepWhole();
   let title = script.youtube.title
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/#\w+/g, "")
+    .replace(keep ? TITLE_HASHTAG : /#\w+/g, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
+  // A numbered series title keeps its prefix and is never rebuilt from the headline, which would drop the part.
+  const series = keep ? seriesPrefix(title) : "";
+  const budget = series ? Math.min(100, TITLE_MAX + series.length) : TITLE_MAX;
   // "Call of Duty: Modern Warfare 4" may lead as "Modern Warfare 4": no doubled colon, and room for the fact.
   const shortGame = game.includes(":")
     ? (game.split(":").pop() ?? game).trim() || game
@@ -300,7 +344,20 @@ export function polishTitle(script: Script): string {
     (initials.length >= 3 && new RegExp(`\\b${initials}\\b`).test(early));
   const gameFirst = !game || mentionsEarly;
   const clean = !BAD_TITLE_WORDS.test(title) && !CLICKBAIT_PUNCT.test(title);
-  if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
+  if (series)
+    title = (
+      series +
+      title
+        .slice(series.length)
+        .replace(new RegExp(BAD_TITLE_WORDS.source, "gi"), "")
+        .replace(/([!?])[!?]+/g, "$1")
+        .replace(/\.{3,}/g, "")
+        .replace(/\s+!$/, "")
+    )
+      .replace(/\s{2,}/g, " ")
+      .replace(/\s+([?!,.:])/g, "$1")
+      .trim();
+  else if (!title || !gameFirst || !clean || title.length > TITLE_MAX + 12) {
     const esc = (g: string) => g.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const fact = script.headline
       .replace(
@@ -329,21 +386,24 @@ export function polishTitle(script: Script): string {
     .trim();
   title = titleCase(title);
   return (
-    truncateWords(title, TITLE_MAX) || truncateWords(script.headline, TITLE_MAX)
+    truncateWords(title, budget) || truncateWords(script.headline, TITLE_MAX)
   );
 }
 
 /** Problems a title would have on the channel; empty when it is fine. */
 export function titleProblems(title: string): string[] {
   const p: string[] = [];
-  if (title.length > TITLE_MAX)
-    p.push(`Title is ${title.length} characters; keep it under ${TITLE_MAX}.`);
+  const pre = titleKeepWhole() ? seriesPrefix(title) : "";
+  const max = pre ? Math.min(100, TITLE_MAX + pre.length) : TITLE_MAX;
+  if (title.length > max)
+    p.push(`Title is ${title.length} characters; keep it under ${max}.`);
   if (BAD_TITLE_WORDS.test(title))
     p.push(
       `Title uses a clickbait word (${title.match(BAD_TITLE_WORDS)?.[0]}).`,
     );
   if (CLICKBAIT_PUNCT.test(title)) p.push("Title uses clickbait punctuation.");
-  if (/#/.test(title)) p.push("No hashtags in the title.");
+  if ((titleKeepWhole() ? /#[\p{L}_]/u : /#/).test(title))
+    p.push("No hashtags in the title.");
   if (title === title.toUpperCase() && /[A-Z]{4,}/.test(title))
     p.push("Title is shouting (all caps).");
   return p;
@@ -438,6 +498,8 @@ export function keywordLead(script: Script): string {
     const theme = script.cutdown.theme || script.game_title;
     return `${script.game_title} is number ${script.cutdown.rank} of ${script.cutdown.total} in our ${theme} ranking. ${theme} ranked, best ${theme} games, by Pulse Gaming News.`;
   }
+  if (script.gta_guide)
+    return `${script.youtube.title.replace(/\.$/, "")}: a practical GTA 6 guide with no story spoilers. GTA 6 guide, GTA 6 tips, GTA 6 beginner guide, GTA VI, by Pulse Gaming News.`;
   if (script.recap)
     return `This week in gaming news: ${script.headline.replace(/\.$/, "")}. Gaming news this week, video game news recap, biggest gaming stories, by Pulse Gaming News.`;
   if (script.evergreen_format === "documentary")
@@ -486,6 +548,9 @@ export function pinnedComment(script: Script): string {
         ? `${script.cutdown.question.trim()} The full ${script.cutdown.kind}: https://youtu.be/${script.cutdown.parent_video}`
         : `${script.cutdown.question.trim()} The full guide, every step from real play: https://youtu.be/${script.cutdown.parent_video}`
       : script.cutdown.question.trim();
+  // GTA_GUIDES: a guide asks for the viewer's own tip, which feeds the stream asks list and the next guide.
+  if (script.gta_guide)
+    return script.gta_guide.question ?? "What's the one tip you'd give a new GTA 6 player? No story spoilers, please.";
   if (script.cutdown)
     return `${script.cutdown.question.trim()} The full ranking, every pick explained: https://youtu.be/${script.cutdown.parent_video}`;
   const take = script.pulse_take.on_screen

@@ -24,6 +24,7 @@ import {
   LOCAL_VISION_URL,
   THINK_ROOM,
   visionAnswer,
+  visionImage,
   visionModelProblem,
 } from "./assets/localvision.ts";
 import { LOCALVIDEO_PROVENANCE } from "./assets/localvideo.ts";
@@ -286,7 +287,7 @@ export async function lookOpeningFrame(
     return undefined;
   if (await visionModelProblem()) return undefined;
   try {
-    const image = (await fs.readFile(file)).toString("base64");
+    const image = await visionImage(file);
     const res = await fetchWithTimeout(
       `${LOCAL_VISION_URL}/api/chat`,
       {
@@ -686,10 +687,142 @@ const CAPTION_FILLER = new Set(
   ),
 );
 
+/** Words a subject may carry between its other words ("God of War", "Ratchet & Clank", "Tears of the Kingdom"). */
+const SUBJECT_JOINERS = new Set(["of", "the", "and", "&", "a", "to", "in"]);
+/** A question word a "why" or "how" headline opens with; the subject comes after it. */
+const QUESTION_OPENERS = new Set(["why", "how", "what", "who", "when", "where", "inside", "is", "are", "does", "did", "can"]);
+/** First words that are never a subject although a sentence-case headline capitalises them. */
+const NOT_SUBJECT = new Set(
+  "i a an the this that these those your my our their his her its every players fans gamers people someone nobody everyone you we they it new best worst".split(
+    " ",
+  ),
+);
+/** The longest caption a subject may make: four words, 22 characters, so it reads in one glance. */
+const SUBJECT_MAX_WORDS = 4;
+const SUBJECT_MAX_CHARS = 22;
+
+/** Roman numerals a game title may use for its number. */
+const ROMAN: Record<string, string> = { ii: "2", iii: "3", iv: "4", v: "5", vi: "6", vii: "7", viii: "8", ix: "9", x: "10" };
+
 /**
- * The one or two caption words over the opening footage (pure; SHORT_OPEN_WORDS): no headline box, no sentence. The
- * writer's hook words first, else the headline's words that are not the game's name; upper case, punctuation off.
- * Empty when nothing is left: the footage then opens with no words at all.
+ * A game's name in the forms headlines use (pure): as written, with numbers for Roman numerals, and with each part's
+ * initials ("Grand Theft Auto VI" also matches GTA 6, "Red Dead Redemption II" RDR 2).
+ */
+function gameNameForms(game: string): string {
+  const forms = [norm(game)];
+  for (const part of game.split(/\s*[:\-–]\s+/)) {
+    const words = norm(part).split(" ").filter(Boolean);
+    const numbered = words.map((w) => ROMAN[w] ?? w);
+    forms.push(numbered.join(" "));
+    const named = numbered.filter((w) => !/^\d+$/.test(w) && !SUBJECT_JOINERS.has(w));
+    if (named.length >= 2) forms.push([named.map((w) => w[0]).join(""), ...numbered.filter((w) => /^\d+$/.test(w))].join(" "));
+  }
+  return forms.join(" | ");
+}
+
+/**
+ * The headline's subject (pure): the game, company or person it is about, possessive off, cut to four words and 22
+ * characters at a word boundary. First the game's own words wherever they stand in the headline ("Who Killed Anthem"
+ * gives Anthem); then, in a sentence-case headline, its leading capitalised words ("Xbox adds 21 more PC classics"
+ * gives Xbox), unless they open with a word that is never a subject ("I", "A", "Your") or a bare number. A title-case
+ * headline capitalises its verbs too, so there only the game's words count. Empty when neither finds one.
+ */
+export function headlineSubject(headline: string, game: string, clean: (w: string) => string): string[] {
+  // "&" and dotted initials ("U.S.") keep their punctuation; every other word loses its edges.
+  const raw = headline
+    .split(/\s+/)
+    .map((w) => (w === "&" ? w : /^(?:\p{L}\.){2,}$/u.test(w) ? w : clean(w)))
+    .filter(Boolean);
+  while (raw.length && QUESTION_OPENERS.has(raw[0]!.toLowerCase())) raw.shift();
+  const name = ` ${gameNameForms(game)} `;
+  const named = (w: string) =>
+    !!norm(w) && (name.includes(` ${norm(w)} `) || name.includes(` ${norm(w.replace(/['’]s$/i, ""))} `));
+  const joiner = (w: string) => SUBJECT_JOINERS.has(w.toLowerCase());
+  const capital = (w: string) => /^[\p{Lu}\p{N}$£€#]/u.test(w);
+  const possessive = (w: string) => /['’]s$/i.test(w) && !name.includes(` ${norm(w)} `);
+  /** The longest leading part that fits, never ending on a joiner, possessive off; empty when nothing fits. */
+  const fit = (ws: string[]): string[] => {
+    let out = ws.map((w, i) => (i === ws.length - 1 ? w.replace(/['’]s$/i, "") : w));
+    if (out.length > 1 && out[0]!.toLowerCase() === "the" && out.join(" ").length > 16) out = out.slice(1);
+    while (out.length && (out.length > SUBJECT_MAX_WORDS || out.join(" ").length > SUBJECT_MAX_CHARS || joiner(out[out.length - 1]!)))
+      out = out.slice(0, -1);
+    return out.length && !joiner(out[0]!) ? out : [];
+  };
+  // 1. The game's own words: every run of them in the headline, scored. A run needs a distinctive word (three or more
+  // letters, not a number), so a stray "6", "US" or "CD" never wins; then the run holding the first word of a name
+  // form ("Doom" in "Dark days for Doom fans", "GTA" in GTA 6) and then the longest; the earlier on a tie.
+  const leads = new Set(
+    name
+      .split("|")
+      .map((f) => f.trim().split(" ")[0] ?? "")
+      .filter(Boolean),
+  );
+  const distinctive = (w: string) => /\p{L}{3,}/u.test(w) && !joiner(w) && named(w);
+  let fromGame: string[] = [];
+  let bestScore = -1;
+  for (let i = 0; i < raw.length; i++) {
+    if (!named(raw[i]!) || joiner(raw[i]!)) continue;
+    const run: string[] = [];
+    for (let j = i; j < raw.length; j++) {
+      const w = raw[j]!;
+      if (!(named(w) || (joiner(w) && raw[j + 1] !== undefined && named(raw[j + 1]!)))) break;
+      run.push(w);
+      if (possessive(w)) break;
+    }
+    if (!run.some(distinctive)) continue;
+    const score = (run.some((w) => leads.has(norm(w.replace(/['’]s$/i, "")))) ? 100 : 0) + run.length;
+    if (score > bestScore) {
+      bestScore = score;
+      fromGame = run;
+    }
+  }
+  // Too long whole: a whole part of the game's name that the headline carries, the one with most words, the later one
+  // on a tie ("Call of Duty: Black Ops 7" gives Black Ops 7, "Zelda: Tears of the Kingdom" gives Tears of the Kingdom),
+  // so a name is never cut in its middle; only when no part fits is it cut at a word.
+  const whole = fit(fromGame);
+  // Whole means every word kept (a leading "The" may go: "Legend of Zelda" for "The Legend of Zelda").
+  const needed = fromGame[0]?.toLowerCase() === "the" ? fromGame.length - 1 : fromGame.length;
+  if (whole.length && whole.length >= needed) return whole;
+  const bare = (w: string) => norm(w.replace(/['’]s$/i, ""));
+  const parts = game
+    .split(/\s*[:\-–]\s+/)
+    .map((part) => norm(part))
+    .filter(Boolean)
+    .map((want) => {
+      // The part as a run of the headline's words, in order ("Black Ops 7" inside "Call of Duty Black Ops 7").
+      for (let i = 0; i < fromGame.length; i++)
+        for (let j = i + 1; j <= fromGame.length; j++)
+          if (fromGame.slice(i, j).map(bare).join(" ") === want) return fit(fromGame.slice(i, j));
+      return [];
+    })
+    .filter((part) => part.length);
+  const best = parts.reduce<string[]>((a, p) => (p.length >= a.length ? p : a), []);
+  if (best.length) return best;
+  if (whole.length) return whole;
+  // 2. A sentence-case headline's leading capitalised words. Title case (most longer words capitalised) is skipped.
+  const longer = raw.filter((w) => w.length > 3);
+  const titleCase = longer.length >= 3 && longer.filter(capital).length / longer.length >= 0.75;
+  if (titleCase || !raw.length) return [];
+  const first = raw[0]!;
+  if (NOT_SUBJECT.has(first.toLowerCase()) || /^[\p{N}$£€#]/u.test(first)) return [];
+  const lead: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const w = raw[i]!;
+    const joins = joiner(w) && lead.length > 0 && raw[i + 1] !== undefined && capital(raw[i + 1]!);
+    if (!capital(w) && !joins) break;
+    lead.push(w);
+    if (possessive(w)) break;
+  }
+  return fit(lead);
+}
+
+/**
+ * The caption over the opening footage (pure; SHORT_OPEN_WORDS): no headline box, no sentence. The writer's hook
+ * words first (at most `max`, one or two). With none, the headline's subject (up to four words, so a cold viewer
+ * knows at once what the Short is about); two words cut from the middle of a headline read as a broken fragment
+ * ("TARGETS GTA'S", "ADDS 21"; every Short with a footage opening showed one from 14 to 27 Nov, since Short writers
+ * give no hook words). With no subject either, the caption is empty and the footage opens with no words at all.
+ * Upper case, punctuation off.
  */
 export function openingCaption(
   o: { thumbText?: string; headline: string; game: string },
@@ -707,7 +840,9 @@ export function openingCaption(
       .filter((w) => !dropGame || !gameWords.has(norm(w.replace(/['’]s$/i, ""))))
       .slice(0, n);
   const words = pick(o.thumbText, false);
-  const out = words.length ? words : pick(o.headline, true);
+  const subject = words.length ? [] : headlineSubject(o.headline, o.game, clean);
+  // No hook words and no subject: the footage opens with no words rather than a fragment of the headline.
+  const out = words.length ? words : subject;
   return out.join(" ").toUpperCase();
 }
 

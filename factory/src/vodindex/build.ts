@@ -33,7 +33,8 @@ import {
 } from "../sceneindex/schema.ts";
 import type { Embedder } from "../semantic/embed.ts";
 import { embedShots, loadFailedShots, loadShotVectors, unembedded, vectorFile } from "../semantic/shots.ts";
-import { loadVodTags, tagVodStretches, untagged, type TagDeps } from "./tags.ts";
+import { loadVodTags, tagVodStretches, untagged, wordsFromTags, type TagDeps } from "./tags.ts";
+import type { VodWork } from "./slices.ts";
 import {
   asSceneIndex,
   emptyVodIndex,
@@ -62,12 +63,27 @@ export interface VodBuildSettings {
   dataDir: string;
   /** Python with Whisper (src/qa/whisperwords.py); empty: only the writing on screen is read. */
   whisperPython: string;
+  /** VOD_WHISPER_DEVICE: cpu (default for streams, src/vodindex/slices.ts) or cuda. */
+  whisperDevice?: string;
+  /** VOD_WHISPER_MODEL: the faster-whisper model for streams (medium.en unless set; vodpc.ts uses small.en). */
+  whisperModel?: string;
+  /** VOD_WHISPER_BEAM: the beam width (5 unless set; vodpc.ts uses 1). */
+  whisperBeam?: number;
   /** Frames a second the text reader looks at; 0 reads none. */
   ocrFps: number;
   /** Seconds of the recording indexed in one piece of work. */
   chunkSeconds: number;
   /** Shots looked at in one piece of work. */
   describeBatch: number;
+  /** Vision requests in flight at once while describing (2 unless set; the stream index sets 1). */
+  describeWorkers?: number;
+  /** Epoch ms after which no new shot, stretch or vector batch is started (the slice's turn is nearly over). */
+  until?: number;
+  /**
+   * Only this kind of work (the slice's turn was taken for it, src/vodindex/slices.ts): anything else answers
+   * "waiting" untouched, so a call can never start work its turn was not taken for.
+   */
+  only?: VodWork;
   /**
    * VOD_TAGS: stretches tagged in one piece of work (src/vodindex/tags.ts) once every shot is described, then the
    * shots' meaning vectors; unset: no tags.
@@ -188,7 +204,13 @@ async function hearStretch(
       wav,
     ]);
     const words = await (deps.hear?.(wav) ??
-      transcribeWords(wav, s.whisperPython));
+      transcribeWords(wav, s.whisperPython, {
+        ...(s.whisperDevice ? { device: s.whisperDevice } : {}),
+        ...(s.whisperModel ? { model: s.whisperModel } : {}),
+        ...(s.whisperBeam ? { beam: s.whisperBeam } : {}),
+        // CPU Whisper is slower: an hour for one chunk at most, still well inside a run.
+        timeoutMs: 60 * 60_000,
+      }));
     return voiceLines(
       words.map((w) => ({
         text: w.text,
@@ -270,6 +292,8 @@ export async function indexVodStretch(
 
 /** Shots that are pictures and have not been looked at yet. */
 export function undescribedVod(v: VodIndex): SceneShot[] {
+  // Stretch mode: shots take their words from the stretch tags, never described one by one.
+  if (v.describe === "stretch") return [];
   return v.shots.filter((x) => !x.blank && !x.menu && !x.desc);
 }
 
@@ -312,6 +336,7 @@ export async function describeVodShots(
   };
   const worker = async () => {
     while (next < todo.length && streak < 3) {
+      if (s.until !== undefined && Date.now() > s.until) break;
       const shot = todo[next++]!;
       const frames: string[] = [];
       try {
@@ -370,7 +395,7 @@ export async function describeVodShots(
     }
   };
   try {
-    await Promise.all(Array.from({ length: Math.min(2, todo.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(s.describeWorkers ?? 2, todo.length) }, worker));
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -378,6 +403,41 @@ export async function describeVodShots(
 }
 
 export type VodStep = "stretch" | "described" | "tagged" | "embedded" | "waiting" | "done";
+
+/**
+ * What vodIndexStep would do next on this index, and how many units are left of it (seconds of recording still
+ * uncovered, shots to describe or embed, stretches to tag), without doing it: vodpc.ts plans the slice and takes the
+ * orchestrator turn the work needs first (src/vodindex/slices.ts). vodIndexStep follows the same answer, so the two
+ * can never disagree.
+ */
+export async function vodNextWork(
+  v: VodIndex,
+  s: Pick<VodBuildSettings, "dataDir" | "chunkSeconds" | "tags">,
+): Promise<{ work: VodWork; left: number }> {
+  if (nextGap(asSceneIndex(v), s.chunkSeconds)) {
+    const covered = v.coverage.reduce((n, c) => n + Math.max(0, c.to - c.from), 0);
+    return { work: "stretch", left: Math.max(1, v.duration - covered) };
+  }
+  const todo = undescribedVod(v).length;
+  if (todo) return { work: "describe", left: todo };
+  if (!s.tags) return { work: "done", left: 0 };
+  const tags = await loadVodTags(s.dataDir, v.vodId);
+  const tagsLeft = untagged(v, tags).length;
+  if (tagsLeft) return { work: "tag", left: tagsLeft };
+  // Stretch mode, all tagged: shots still without words take them from the tags (on a copy here, to count).
+  if (
+    v.describe === "stretch" &&
+    v.shots.some((x) => !x.blank && !x.menu && !x.desc) &&
+    wordsFromTags(structuredClone(v), tags) > 0
+  )
+    return { work: "words", left: 1 };
+  if (s.tags.embedder && s.tags.model) {
+    const file = vectorFile(vodIndexDir(s.dataDir, v.vodId), s.tags.model);
+    const left = unembedded(v.shots, await loadShotVectors(file), await loadFailedShots(file)).length;
+    if (left) return { work: "embed", left };
+  }
+  return { work: "done", left: 0 };
+}
 
 /** One bounded piece of work on a recording's index. Call again until it answers "done". */
 export async function vodIndexStep(
@@ -387,39 +447,52 @@ export async function vodIndexStep(
   deps: VodBuildDeps = {},
 ): Promise<{ index: VodIndex; did: VodStep }> {
   let v = await openVodIndex(file, game, s, deps);
-  const gap = nextGap(asSceneIndex(v), s.chunkSeconds);
-  if (gap) {
+  const next = await vodNextWork(v, s);
+  if (s.only && next.work !== s.only) return { index: v, did: "waiting" };
+  if (next.work === "stretch") {
+    const gap = nextGap(asSceneIndex(v), s.chunkSeconds)!;
     v = await indexVodStretch(v, s, gap, deps);
     return { index: v, did: "stretch" };
   }
-  if (undescribedVod(v).length) {
+  if (next.work === "describe") {
     if (!(await (deps.visionUp ?? visionUp)()))
       return { index: v, did: "waiting" };
     const r = await describeVodShots(v, s, s.describeBatch, deps);
     return { index: r.index, did: r.described ? "described" : "waiting" };
   }
   if (s.tags) {
-    if (untagged(v, await loadVodTags(s.dataDir, v.vodId)).length) {
+    if (next.work === "tag") {
       if (!(await (deps.visionUp ?? visionUp)()))
         return { index: v, did: "waiting" };
-      const r = await tagVodStretches(v, { dataDir: s.dataDir, places: s.tags.places, limit: s.tags.batch }, deps.tag);
+      const r = await tagVodStretches(
+        v,
+        { dataDir: s.dataDir, places: s.tags.places, limit: s.tags.batch, ...(s.until !== undefined ? { until: s.until } : {}) },
+        deps.tag,
+      );
       return { index: v, did: r.tagged ? "tagged" : "waiting" };
     }
-    if (s.tags.embedder && s.tags.model) {
-      const file = vectorFile(vodIndexDir(s.dataDir, v.vodId), s.tags.model);
-      if (unembedded(v.shots, await loadShotVectors(file), await loadFailedShots(file)).length) {
-        const r = await embedShots({
-          shots: v.shots,
-          video: v.file,
-          vectorsFile: file,
-          embedder: s.tags.embedder,
-          model: s.tags.model,
-          work: vodIndexDir(s.dataDir, v.vodId),
-          limit: s.tags.embedBatch ?? 600,
-          ...(deps.tag?.grab ? { grab: deps.tag.grab } : {}),
-        });
-        return { index: v, did: r.added ? "embedded" : "waiting" };
+    // Stretch mode, all tagged: the shots take their words from the tags, once.
+    if (next.work === "words") {
+      const fresh = (await loadVodIndex(s.dataDir, v.vodId)) ?? v;
+      if (wordsFromTags(fresh, await loadVodTags(s.dataDir, v.vodId))) {
+        await saveVodIndex(s.dataDir, fresh);
+        return { index: fresh, did: "tagged" };
       }
+    }
+    if (next.work === "embed" && s.tags.embedder && s.tags.model) {
+      const file = vectorFile(vodIndexDir(s.dataDir, v.vodId), s.tags.model);
+      const r = await embedShots({
+        shots: v.shots,
+        video: v.file,
+        vectorsFile: file,
+        embedder: s.tags.embedder,
+        model: s.tags.model,
+        work: vodIndexDir(s.dataDir, v.vodId),
+        limit: s.tags.embedBatch ?? 600,
+        ...(s.until !== undefined ? { until: s.until } : {}),
+        ...(deps.tag?.grab ? { grab: deps.tag.grab } : {}),
+      });
+      return { index: v, did: r.added ? "embedded" : "waiting" };
     }
   }
   return { index: v, did: "done" };
@@ -427,5 +500,7 @@ export async function vodIndexStep(
 
 /** True when the whole recording is indexed and every picture shot has been looked at. */
 export function vodIndexReady(v: VodIndex): boolean {
-  return !nextGap(asSceneIndex(v), 60) && undescribedVod(v).length === 0;
+  // Stretch mode: ready once every picture shot has its words from the tags, as the miner expects.
+  const words = v.describe !== "stretch" || !v.shots.some((s) => !s.blank && !s.menu && !s.desc);
+  return !nextGap(asSceneIndex(v), 60) && undescribedVod(v).length === 0 && words;
 }

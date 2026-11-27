@@ -20,7 +20,8 @@ export interface UsageLine {
   cacheRead: number;
   cacheWrite: number;
   cacheWrite5m?: number;
-  provider?: "codex";
+  /** "max": Claude through Claude Code on the owner's Max plan (src/editorial/maxplan.ts); tokens kept, never priced. */
+  provider?: "codex" | "max";
   site?: string;
   ms?: number;
 }
@@ -95,10 +96,14 @@ const PRICES: Record<string, [number, number, number, number]> = {
   "claude-haiku-5-5": [0.1, 0.5, 0.01, 0.2],
 };
 
-/** What one usage line cost in dollars by the price table (a Codex line, at zero tokens, costs nothing). */
+/**
+ * What one usage line cost in dollars by the price table. A Codex line, at zero tokens, costs nothing; a Max line
+ * (provider "max") keeps its tokens for the record but the subscription pays for it, so it costs nothing here either.
+ */
 export function usageCost(
-  r: Pick<UsageLine, "model" | "in" | "out" | "cacheRead" | "cacheWrite" | "cacheWrite5m">,
+  r: Pick<UsageLine, "model" | "in" | "out" | "cacheRead" | "cacheWrite" | "cacheWrite5m"> & { provider?: string },
 ): number {
+  if (r.provider === "max") return 0;
   const [i, o, cr, cw] = PRICES[r.model] ?? PRICES["claude-opus-5-5"]!;
   const w5 = r.cacheWrite5m ?? 0;
   return (r.in * i + r.out * o + r.cacheRead * cr + (r.cacheWrite - w5) * cw + w5 * i * 1.25) / 1e6;
@@ -118,6 +123,7 @@ export function claudeSpend(
       for (const line of fs.readFileSync(file, "utf8").split("\n")) {
         if (!line.trim()) continue;
         const r = JSON.parse(line) as {
+          provider?: string;
           model: string;
           in: number;
           out: number;

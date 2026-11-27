@@ -3,6 +3,9 @@
 // how much of it someone is speaking (Whisper's word timings, or Sound Analysis' speech share when the Mac's finder
 // wrote one into meta.json), how many sampled frames carry cinema bars, and whether its words are a line the scene
 // index knows (which also says where in the story it is). A clip held here waits until the window closes.
+// Early story free (SPOILER_EARLY_FREE, 26 Nov 2026): the words are matched against each of the game's movie chapters,
+// so a chapter 1 scene goes on and a later one goes on when its reveal check found it safe; a cutscene no chapter
+// knows is shown to the local vision model, and goes on only when its frames show no reveal.
 
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -11,7 +14,8 @@ import { promisify } from "node:util";
 import { FFMPEG } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
 import { letterboxed } from "../assets/footagefirst.ts";
-import { loadSceneIndex } from "./schema.ts";
+import { indexNamesFor, loadSceneIndex, type SceneIndex } from "./schema.ts";
+import { framesReveal } from "./reveals.ts";
 import {
   clipStoryMoment,
   spoilerWindows,
@@ -99,6 +103,7 @@ export async function streamClipSpoiler(
   meta: {
     clip: { file?: string; seconds: number };
     sound?: { speech_share?: number };
+    frames?: string[];
   },
   game: string,
   reviewSpoiler: boolean,
@@ -117,22 +122,39 @@ export async function streamClipSpoiler(
       end?: number;
     }>;
     const seconds = meta.clip.seconds;
-    const index = await loadSceneIndex(cfg.dataDir, w.game);
     const transcript = words.map((x) => x.text).join(" ");
-    const verdict = streamClipHold(
-      w,
-      index,
-      {
-        reviewSpoiler,
-        speechShare: meta.sound?.speech_share ?? speechShare(words, seconds),
-        letterboxShare: await barsShare(
-          path.join(dir, meta.clip.file || "clip.mp4"),
-          seconds,
-        ),
-        storyAt: index ? clipStoryMoment(index, transcript) : undefined,
-      },
-      now,
-    );
+    // The game's own index first; early story free also tries its later movie chapters.
+    let index: SceneIndex | undefined;
+    let storyAt: number | undefined;
+    for (const name of w.earlyFree ? indexNamesFor(cfg.dataDir, w.game, ["movie"]) : [w.game]) {
+      const idx = await loadSceneIndex(cfg.dataDir, name);
+      if (!idx) continue;
+      index ??= idx;
+      const at = clipStoryMoment(idx, transcript);
+      if (at !== undefined) {
+        index = idx;
+        storyAt = at;
+        break;
+      }
+    }
+    const signals = {
+      reviewSpoiler,
+      speechShare: meta.sound?.speech_share ?? speechShare(words, seconds),
+      letterboxShare: await barsShare(
+        path.join(dir, meta.clip.file || "clip.mp4"),
+        seconds,
+      ),
+      storyAt,
+    };
+    let verdict = streamClipHold(w, index, signals, now);
+    // A held cutscene no chapter places: the frames decide, when the local model can look (unsure is still held).
+    if (verdict.hold && w.earlyFree && storyAt === undefined && !reviewSpoiler && meta.frames?.length) {
+      const look = await framesReveal(
+        meta.frames.map((f) => path.join(dir, f)),
+        `The game is ${w.game}.`,
+      ).catch(() => undefined);
+      if (look) verdict = streamClipHold(w, index, { ...signals, framesReveal: look.reveal }, now);
+    }
     return { ...verdict, until: w.until };
   } catch (err) {
     log("warn", "spoiler guard: stream clip not measured", {

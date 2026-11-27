@@ -53,6 +53,16 @@ export function vodsToClear(
   return out;
 }
 
+/**
+ * The finder's run settings: the Mac turn-taker's short lane. The finder takes 0 min when nothing is new and at most
+ * about 20 min scoring a fresh stream (macrun.log, 12-27 Nov 2026), and it still waits while Pulse renders or memory
+ * is short. In the main lane it queued behind a 4-hour proof job and was skipped after 120 min (27 Nov 2026).
+ */
+export function finderEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  // A fresh stream scored beside a main-lane job can pass the lane's 20 min overrun flag; 30 min keeps the log honest.
+  return { ...env, MACRUN_LANE: "short", MACRUN_SHORT_MAX_MIN: "30" };
+}
+
 /** A job behind the Mac's turn-taker, or at background priority where it is not installed. */
 function behindRenders(
   name: string,
@@ -103,14 +113,24 @@ export async function localGameplayPass(
   };
   const opts = { env, timeout: 6 * 3_600_000, maxBuffer: 16 * 1024 * 1024 };
   const scripts = path.dirname(FINDER);
+  // The finder goes first: the VOD download waits in the main lane (up to 120 min) and, run before it, kept the
+  // finder waiting too (27 Nov 2026). A VOD it brings in is scored on the next hourly pass.
+  const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
+  // A finder that fails still lets the download run (VODs leave Twitch); its error is raised first, at the end.
+  let finderError: unknown;
+  await run(c, a, { ...opts, env: finderEnv(env) }).catch((err: unknown) => {
+    finderError = err;
+  });
+  let vodError: unknown;
   if (vods) {
-    const [c, a] = behindRenders("pulse-vods", "bash", [
+    const [vc, va] = behindRenders("pulse-vods", "bash", [
       path.join(scripts, "download-vods.sh"),
     ]);
-    await run(c, a, opts);
+    // A download that gets no turn still lets the disk rule below run; the error is raised after it.
+    await run(vc, va, opts).catch((err: unknown) => {
+      vodError = err;
+    });
   }
-  const [c, a] = behindRenders("pulse-finder", process.execPath, [FINDER]);
-  await run(c, a, opts);
   const done = (() => {
     try {
       return Object.keys(
@@ -140,6 +160,8 @@ export async function localGameplayPass(
     }))
       fs.rmSync(path.join(dir, name), { force: true });
   }
+  if (finderError !== undefined) throw finderError;
+  if (vodError !== undefined) throw vodError;
 }
 
 /** One check of the timetable: at most one pass at a time, its state kept in data/admin/mac_gameplay.json. */

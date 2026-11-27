@@ -71,9 +71,11 @@ import { GameMap3DShort } from "./components/GameMap3D.tsx";
 import { DepthType } from "./components/BoldIdeas.tsx";
 import { DepthOrbit } from "./components/DepthOrbit.tsx";
 import { CompareWipeTall, ShortBlenderClip } from "./components/ShortUpgrades.tsx";
+import { KitOverlay } from "./components/GtaKit.tsx";
 import { LookContext, PULSE_LOOK, gameLookFor, type GameLook } from "./gamelook.ts";
 import { lookTitleAt } from "./shortupgrades.ts";
 import { musicDipAt } from "./gamebed.ts";
+import { BoardMarks, BoardMode } from "./components/EvidenceStyle.tsx";
 
 /** Bare names are brand files in public/; anything else is a full URL. */
 /** Frames the new-look motif sting lasts after the hook. */
@@ -627,10 +629,12 @@ export const Short: React.FC<ShortProps> = (props) => {
   };
   // A word moment over the hook: the headline is hidden for the moment's stretch (cleanframe.ts arbitrate).
   const headlineAside =
-    !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
+    !props.coverStill && !!kept && frame < hookEnd && kept.some((k) => k.kind === "stamp" && frame >= k.from && frame < k.to);
   const cardAt = (i: number) =>
     // SHORT_MAP_PINS: the line's map stands in for its card where they would overlap.
     (up.maps ?? []).some((m) => m.segment === i && m.replacesCard) ||
+    // GTA_KIT: the kit's overlay stands in for its line's card where they would overlap.
+    (up.kit ?? []).some((k) => k.line === i && k.replacesCard) ||
     // The tracklist card stands in for its line's own card.
     props.tracklist?.segment === i ||
     // MENTION_*: an inset stands in for its beat's card (cleanframe.ts settleMentions left the card out of the spans).
@@ -805,6 +809,17 @@ export const Short: React.FC<ShortProps> = (props) => {
           />
         </Sequence>
       ))}
+      {/* EVIDENCE_STYLE board mode: the stills of a mystery or lore Short pinned to the board (absent: nothing). */}
+      {props.board ? (
+        <BoardMode
+          plan={{
+            ...props.board,
+            // A window gives way to a code scene drawn over its shot.
+            windows: props.board.windows.filter((w) => !scenes.some((x) => x.from < w.to && x.to > w.from)),
+          }}
+          images={props.images}
+        />
+      ) : null}
       <Scrim
         profile={hasPlate && !props.images.length ? "plate" : props.vivid ? "vivid" : "footage"}
         bright={props.bright}
@@ -976,6 +991,12 @@ export const Short: React.FC<ShortProps> = (props) => {
           </Sequence>
         ) : null,
       )}
+      {/* GTA_KIT: the kit's place card, cash readout or head-to-head over its line (src/render/gtakit.ts). */}
+      {(up.kit ?? []).map((k) => (
+        <Sequence key={k.key} from={k.from} durationInFrames={k.len} layout="none">
+          <KitOverlay m={k} tall accent={accent} />
+        </Sequence>
+      ))}
       {/* SHORT_BLENDER: the number one's 3D podium opens its entry; its card follows. */}
       {(up.blender ?? []).map((b) =>
         b.src ? (
@@ -1023,6 +1044,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           );
         return null;
       })}
+      {/* EVIDENCE_STYLE: the date cards, the case card and the red stamps, on their words (absent: nothing). */}
+      {props.board ? <BoardMarks plan={props.board} musicSrc={props.musicSrc} /> : null}
       {(props.stamps ?? []).map((st, i) => (up.depthTypes ?? []).some((d) => d.stamp === i) ? null : (
         <Sequence
           key={`stamp${i}`}
@@ -1071,7 +1094,8 @@ export const Short: React.FC<ShortProps> = (props) => {
           totalFrames={durationInFrames}
         />
       )}
-      {inQuote(quoteSpans, frame) ? null : <Captions
+      {/* The cover still (SHORT_FULL_COVER) carries the headline alone: a caption at frame 0 is a fragment of a line. */}
+      {props.coverStill || inQuote(quoteSpans, frame) ? null : <Captions
         pages={pages}
         accent={accent}
         emphasis={emphasis}

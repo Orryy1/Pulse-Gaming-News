@@ -250,6 +250,21 @@ export function camLens(
   return { focus: pivotDepth, strength: 0.15 + 0.85 * r };
 }
 
+/**
+ * The lens a shot is filmed with (pure): sharp all through and no light leak, unless the cinema lens is asked for
+ * (`lens`; components/DepthCam.tsx). The rack focus blurred with the picture's mip levels and swept that blur across
+ * the frame, onto the depth model's nearest fifth, often the ground in front of the real subject (26 Nov 2026).
+ */
+export function shotLens(
+  plan: Pick<DepthCamPlan, "rack" | "emphasis" | "leak">,
+  t: number,
+  pivotDepth: number,
+  lens = false,
+): { focus: number; strength: number; leak: number } {
+  if (!lens) return { focus: pivotDepth, strength: 0, leak: 0 };
+  return { ...camLens(plan, t, pivotDepth), leak: plan.leak ? leakAt(t, plan.emphasis) : 0 };
+}
+
 /** The light leak's strength at time t (pure): it swells in round the stressed word and fades by the end. */
 export function leakAt(t: number, emphasis: number): number {
   const x = Math.min(1, Math.max(0, t));

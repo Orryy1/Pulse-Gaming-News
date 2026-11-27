@@ -101,6 +101,8 @@ export async function embedShots(o: {
   model: string;
   work: string;
   limit?: number;
+  /** Epoch ms after which no new batch is started (a stream-index slice's turn is nearly over). */
+  until?: number;
   grab?: (video: string, at: number, file: string) => Promise<void>;
 }): Promise<{ added: number; total: number; left: number }> {
   const vecs = await loadShotVectors(o.vectorsFile);
@@ -136,6 +138,7 @@ export async function embedShots(o: {
   let added = 0;
   try {
     for (let b = 0; b < batch.length; b += 64) {
+      if (o.until !== undefined && b > 0 && Date.now() > o.until) break;
       const chunk = batch.slice(b, b + 64);
       const files: string[] = [];
       const kept: ShotLike[] = [];

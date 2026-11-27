@@ -22,6 +22,15 @@ const UNCLAIMED_AFTER_MIN = 20;
 const KEEP_SHORT_MIN = 75;
 const KEEP_LONG_MIN = 150;
 const KEEP_DOC_MIN = 180;
+/**
+ * A Short still being made this long after its slot (or, for a breaking Short with no slot, after it was picked)
+ * is stuck, not busy: it stops keeping the PC. One stuck breaking Short held a rolling "now to an hour from now"
+ * window for two days (24-26 Nov 2026), so no long video ever found a two-hour gap and the 26 Nov long slot passed
+ * empty. It can still render when its retry comes; it just no longer holds everything else back. An owner retry
+ * (/admin/retry) starts the clock again: the time counts from the later of when it was picked and its last retry.
+ */
+const STUCK_AFTER_SLOT_MIN = 120;
+const STUCK_BREAKING_MIN = 180;
 
 export interface PlannedSlot {
   lane: string;
@@ -167,7 +176,12 @@ export function extraWindows(spec: string, now: Date): PcWindow[] {
 export function pcWindows(
   cfg: Config,
   now: Date,
-  episodes: { lane: string; status: string; slot_at: string | Date | null }[],
+  episodes: {
+    lane: string;
+    status: string;
+    slot_at: string | Date | null;
+    picked_at?: string | Date | null;
+  }[],
 ): PcWindow[] {
   const MIN = 60_000;
   const bySlot = new Map<number, string[]>();
@@ -208,6 +222,9 @@ export function pcWindows(
       const t = new Date(e.slot_at).getTime();
       if (seen.has(t)) continue;
       seen.add(t);
+      const picked = e.picked_at ? new Date(e.picked_at).getTime() : NaN;
+      const since = Number.isNaN(picked) ? t : Math.max(t, picked);
+      if (now.getTime() > since + STUCK_AFTER_SLOT_MIN * MIN) continue;
       out.push({
         lane: e.lane,
         from: new Date(t - KEEP_SHORT_MIN * MIN).toISOString(),
@@ -216,6 +233,8 @@ export function pcWindows(
         note: `in production (${e.status})`,
       });
     } else if (e.lane === "news_breaking") {
+      const picked = e.picked_at ? new Date(e.picked_at).getTime() : NaN;
+      if (now.getTime() > picked + STUCK_BREAKING_MIN * MIN) continue;
       out.push({
         lane: "breaking",
         from: now.toISOString(),
@@ -241,9 +260,19 @@ function reservationsDir(): string {
 async function scheduleRows(
   db: Db,
   now: Date,
-): Promise<{ lane: string; status: string; slot_at: string | null }[]> {
-  return db.query<{ lane: string; status: string; slot_at: string | null }>(
-    `SELECT lane, status, slot_at FROM episodes
+): Promise<
+  { lane: string; status: string; slot_at: string | null; picked_at: string | null }[]
+> {
+  return db.query<{
+    lane: string;
+    status: string;
+    slot_at: string | null;
+    picked_at: string | null;
+  }>(
+    `SELECT lane, status, slot_at,
+            greatest(created_at, (SELECT max(v.created_at) FROM events v
+                                   WHERE v.episode_id = episodes.id AND v.kind = 'retried')) AS picked_at
+       FROM episodes
       WHERE status IN ('selected','scripted','voiced')
          OR slot_at BETWEEN $1::timestamptz - interval '3 hours' AND $1::timestamptz + interval '13 hours'`,
     [now.toISOString()],

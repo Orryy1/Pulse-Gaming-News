@@ -37,7 +37,7 @@ import { isEntryCard } from "../render/rankcard.ts";
 import { keyTime } from "../render/longplan.ts";
 import { wrapText } from "../render/components/packs/fit.ts";
 import { CARD_WIDTH, HERO_TOP, BANDS } from "../render/layout.ts";
-import { speakable } from "../voice/speakable.ts";
+import { speakable, studioFigureSaid } from "../voice/speakable.ts";
 import {
   peopleGroups,
   tracklistSeconds,
@@ -190,6 +190,9 @@ const countWords = (t: string) => t.split(/\s+/).filter(Boolean).length;
 export function readNeed(n: number, perWord = READ_PER_WORD): number {
   return n <= 0 ? 0 : Math.max(READ_FLOOR, READ_BASE + perWord * n);
 }
+
+/** Whether a line draws a card of its own (a line with only an explainer has none to check). */
+const hasCard = (s: Pick<Segment, "kind" | "visual" | "label">) => cardText(s) !== "";
 
 /** The words a card shows, as the house card and the vertical styles draw them. */
 export function cardText(
@@ -382,7 +385,8 @@ export function figureSupported(
   // Nothing at all is said as "no", "none" or "without".
   if (Number(n) === 0 && spoken.some((w) => /^(no|none|without|zero)$/.test(w)))
     return true;
-  const want = tok(speakable(fig));
+  // "343" is also said "three four three" when it starts the studio's name (speakable.ts DIGIT_STUDIOS).
+  for (const want of [tok(speakable(fig)), ...studioFigureSaid(fig).map((s) => s.flatMap(tok))])
   for (let k = 0; want.length && k + want.length <= spoken.length; k++)
     if (want.every((w, j) => spoken[k + j] === w)) return true;
   // A rounded or scaled figure ("$942M" for "942 million") is the same number: the digits are what matter.
@@ -669,7 +673,9 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         `word moment "${input.stampWritten}" is cut to "${input.stampWritten.toUpperCase().slice(0, STAMP_CHARS)}"`,
         "trim",
       );
-    if (e.kind === "take" && e.segment !== undefined) {
+    // EXPLAINERS: a line whose explainer takes its card's place may have no card of its own; the explainer has
+    // its own guard (src/render/components/explainers/ground.ts), so the card checks below skip it.
+    if (e.kind === "take" && e.segment !== undefined && hasCard(segments[e.segment]!)) {
       const v = segments[e.segment]!.visual!;
       const lines = wrapText(
         v.primary.toUpperCase(),
@@ -744,6 +750,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
     if (
       (e.kind === "card" || e.kind === "take") &&
       e.segment !== undefined &&
+      hasCard(segments[e.segment]!) &&
       e.shown > 0
     ) {
       const own = e.segment;
@@ -815,7 +822,7 @@ export function auditShortGraphics(input: ShortGfxInput): GfxAudit {
         );
     }
     // Meaning: a caption repeated word for word, a generic label, or nothing to do with the narration.
-    if (e.kind === "card" && e.segment !== undefined) {
+    if (e.kind === "card" && e.segment !== undefined && hasCard(segments[e.segment]!)) {
       const v = segments[e.segment]!.visual!;
       const mine = content(cardText(segments[e.segment]!));
       const figs = figuresIn(cardText(segments[e.segment]!));

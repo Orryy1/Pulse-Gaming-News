@@ -19,7 +19,7 @@ import {
   type SceneShot,
 } from "../sceneindex/schema.ts";
 import type { SpoilerWindow } from "../sceneindex/spoilers.ts";
-import { windowFor } from "../sceneindex/spoilers.ts";
+import { gameAliases, windowFor } from "../sceneindex/spoilers.ts";
 import {
   listVodIndexes,
   vodIndexDir,
@@ -31,8 +31,11 @@ import {
   readableInTime,
   taggedSceneIndex,
   tagsAt,
+  vodMomentBlocked,
   vodMomentHeld,
+  type VodTagFile,
 } from "../vodindex/tags.ts";
+import { sourceByChannel, vodSources, type VodSource } from "../vodindex/sources.ts";
 import { sharedEmbedder, type Embedder } from "./embed.ts";
 import type { SemanticSettings } from "./settings.ts";
 import { loadShotVectors, targetScorer, vectorFile } from "./shots.ts";
@@ -95,13 +98,22 @@ export async function indexScorer(
   });
 }
 
-/** The owner's recordings of a game with tags, newest first (pure over the list). */
+/**
+ * The recordings of a game (pure over the list), however either side spells it ("GTA 6" finds Grand Theft Auto VI):
+ * the owner's own channel first, then the permitted channels in their order, each newest first.
+ */
 export function recordingsOf(
   vods: readonly VodIndex[],
   game: string,
+  sources: readonly VodSource[] = [],
 ): VodIndex[] {
-  const want = sceneSlug(game);
-  return vods.filter((v) => v.game && sceneSlug(v.game) === want);
+  const want = new Set(gameAliases(game).map(sceneSlug));
+  const rank = (v: VodIndex) => sourceByChannel(v.channel, sources)?.rank ?? 99;
+  return vods
+    .filter((v) => v.game && (want.has(sceneSlug(v.game)) || gameAliases(v.game).some((a) => sceneSlug(a) === sceneSlug(game))))
+    .map((v, i) => ({ v, i }))
+    .sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
+    .map((x) => x.v);
 }
 
 /** The provenance of a clip cut from the owner's own recording (the "own capture" prefix keeps it out of every cap). */
@@ -113,6 +125,36 @@ export function ownStreamProvenance(
 ): string {
   const title = v.title.replace(/[\r\n"]/g, " ");
   return `Pulse's own gameplay capture of ${game} (stream recording "${title}", ${v.vodId}${v.recordedOn ? `, ${v.recordedOn}` : ""}), ${seconds}s at ${from.toFixed(1)}s, muted`;
+}
+
+/**
+ * The provenance of a clip cut from a permitted channel's recording (spencey96, owner, 25 Nov 2026): the handle and
+ * Twitch only, never a personal name. The "Permitted stream capture" prefix keeps it out of the footage caps.
+ */
+export function permittedStreamProvenance(
+  v: Pick<VodIndex, "title" | "vodId" | "recordedOn" | "channel">,
+  game: string,
+  from: number,
+  seconds: number,
+  credit: string,
+): string {
+  const title = v.title.replace(/[\r\n"]/g, " ");
+  return `Permitted stream capture of ${game} (${credit}; stream recording "${title}", ${v.vodId}${v.recordedOn ? `, ${v.recordedOn}` : ""}), ${seconds}s at ${from.toFixed(1)}s, muted; used with the streamer's permission`;
+}
+
+/** Where ownStreamClips reads recordings from: this machine's own indexes by default, the PC's with VOD_REMOTE. */
+export interface OwnStreamDeps {
+  list?: (dataDir: string) => Promise<VodIndex[]>;
+  readable?: typeof readableInTime;
+  embedder?: Embedder;
+  /** A recording's tags; this machine's tags.json by default. */
+  tags?: (v: VodIndex) => Promise<VodTagFile>;
+  /** The meaning scorer for a recording's shots (VOD_REMOTE: asked of the PC); unset: this machine's vectors. */
+  scorer?: (v: VodIndex, targets: FootageTarget[]) => Promise<Scorer | undefined>;
+  /** Cuts [from, to) of the recording into `file` (VOD_REMOTE: cut on the PC and fetched); unset: ffmpeg here. */
+  cut?: (v: VodIndex, from: number, to: number, file: string) => Promise<void>;
+  /** The channels and their order (src/vodindex/sources.ts); unset: from the environment. */
+  sources?: VodSource[];
 }
 
 export interface OwnStreamOptions {
@@ -160,18 +202,16 @@ export async function ownStreamClips(
   }) => Promise<CutsceneClip[]>,
   now: Date,
   windows: readonly SpoilerWindow[],
-  deps: {
-    list?: typeof listVodIndexes;
-    readable?: typeof readableInTime;
-    embedder?: Embedder;
-  } = {},
+  deps: OwnStreamDeps = {},
 ): Promise<CutsceneClip[]> {
   const s = cfg.semantic;
   if (!s?.vodTags || !o.targets.length) return [];
+  const sources = deps.sources ?? vodSources(process.env);
   // The ten newest recordings of the game at most: older moments are rarely what a line wants, and each costs a read.
   const vods = recordingsOf(
     await (deps.list ?? listVodIndexes)(cfg.dataDir).catch(() => []),
     o.gameTitle,
+    sources,
   ).slice(0, MAX_RECORDINGS);
   // One drive test per folder per fetch: recordings side by side share a drive.
   const readable = new Map<string, Promise<boolean>>();
@@ -186,7 +226,9 @@ export async function ownStreamClips(
   let seconds = o.maxSeconds;
   for (const v of vods) {
     if (!targets.length || out.length >= o.maxClips || seconds < 1.5) break;
-    const tags = await loadVodTags(cfg.dataDir, v.vodId);
+    const tags = await (deps.tags ?? ((x: VodIndex) => loadVodTags(cfg.dataDir, x.vodId)))(v);
+    const source = sourceByChannel(v.channel, sources);
+    const own = source?.own ?? !v.channel;
     // Only a recording tagged all through: an untagged stretch could be story the guard has not seen.
     if (!Object.keys(tags.stretches).length || untagged(v, tags).length) continue;
     // The drive may be unplugged or not yet allowed for this process: tested in a child with a time limit.
@@ -197,18 +239,18 @@ export async function ownStreamClips(
       continue;
     }
     const index = taggedSceneIndex(v, tags);
-    const vecs = await loadShotVectors(
-      vectorFile(vodIndexDir(cfg.dataDir, v.vodId), s.model),
-    );
     // Meaning joins the words only with MATCH_SEMANTIC on; off, the tags and descriptions alone find the moment.
-    const semantic = s.enabled && vecs.size
-      ? await targetScorer(
-          deps.embedder ?? embedderFor(cfg.dataDir, s),
-          index.shots,
-          vecs,
-          targets,
-        ).catch(() => undefined)
-      : undefined;
+    // Remote recordings (VOD_REMOTE) are scored on the PC, where their shot vectors are.
+    const semantic = !s.enabled
+      ? undefined
+      : deps.scorer
+        ? await deps.scorer(v, targets).catch(() => undefined)
+        : await (async () => {
+            const vecs = await loadShotVectors(vectorFile(vodIndexDir(cfg.dataDir, v.vodId), s.model));
+            return vecs.size
+              ? targetScorer(deps.embedder ?? embedderFor(cfg.dataDir, s), index.shots, vecs, targets).catch(() => undefined)
+              : undefined;
+          })();
     const clips = await indexed({
       index,
       gameTitle: o.gameTitle,
@@ -219,11 +261,14 @@ export async function ownStreamClips(
       minConfidence: cfg.sceneIndexMinConfidence,
       ytdlp: cfg.ytdlpPath,
       ...(o.long ? { edgeText: false } : {}),
-      allow: (shot) =>
-        !vodMomentHeld(w, tagsAt(tags, (shot.start + shot.end) / 2), now),
+      allow: (shot) => {
+        const tag = tagsAt(tags, (shot.start + shot.end) / 2);
+        return !vodMomentBlocked(tag, own) && !vodMomentHeld(w, tag, now);
+      },
       ...(semantic ? { semantic } : {}),
       deps: {
         download: async (_id, from, to, file) => {
+          if (deps.cut) return deps.cut(v, from, to, file);
           await exec(
             FFMPEG,
             [
@@ -268,9 +313,12 @@ export async function ownStreamClips(
       const secs = c.durationSeconds ?? 0;
       out.push({
         ...c,
-        sourceUrl: `file:${path.basename(v.file)}`,
-        provenance: ownStreamProvenance(v, o.gameTitle, from, secs),
-        credit: "",
+        // The PC's recordings have Windows paths, which the Mac's own basename would not split.
+        sourceUrl: `file:${path.win32.basename(v.file)}`,
+        provenance: own
+          ? ownStreamProvenance(v, o.gameTitle, from, secs)
+          : permittedStreamProvenance(v, o.gameTitle, from, secs, source?.credit || `Gameplay: ${v.channel} on Twitch`),
+        credit: own ? "" : source?.credit || `Gameplay: ${v.channel} on Twitch`,
         youtubeSource: undefined,
         span: { source: `vod:${v.vodId}`, from, to: from + secs },
         reason: `own stream: ${c.reason?.replace(/^scene index: /, "") ?? c.label ?? ""}`,

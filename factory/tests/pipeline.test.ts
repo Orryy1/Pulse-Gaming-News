@@ -3916,3 +3916,101 @@ test("Buy, Wait or Skip takes the deals slot on its days only with SERIES_VERDIC
     await db.close();
   }
 });
+
+// STORY_PREMISE_GATE_SHARE (frontier check 25 Nov 2026): on the gate side of the slot split, a story whose whole
+// point is that nothing is known goes before the editor sees the slot, and the next story is made instead.
+import { maybeSelect as maybeSelectNews, discoverTick } from "../src/pipeline.ts";
+
+async function premiseSetup(share: number, onlyWeak = false) {
+  const { db, s } = await setup({ storyPremiseGateShare: share }, { pick: 0 });
+  const at = new Date("2026-10-16T12:00:00Z");
+  s.discover = async () =>
+    clusterItems(
+      [
+        item("GTA 6 PS5 graphics presets remain unconfirmed", "Rockstar Newswire", "official", 900, at),
+        item("GTA 6 PS5 graphics presets still unconfirmed by Rockstar", "IGN", "outlet", 900, at),
+        ...(onlyWeak
+          ? []
+          : [
+              item("Starfield second expansion delayed to early 2027", "Xbox Wire", "official", 20, at),
+              item("Bethesda delays Starfield second expansion to early 2027", "IGN", "outlet", 40, at),
+            ]),
+      ],
+      at,
+    );
+  await discoverTick(s);
+  return { db, s };
+}
+
+const premiseEvents = (db: Db) =>
+  db.query<{ detail: { arm: string; dropped: Array<{ kind: string }>; allFlagged: boolean } }>(
+    `SELECT detail FROM events WHERE kind = 'premise_gate'`,
+  );
+
+test("the premise gate drops a 'nothing known' story and the slot makes the next one", async () => {
+  const { db, s } = await premiseSetup(1);
+  const id = await maybeSelectNews(s);
+  assert.ok(id, "a news Short was selected");
+  const ep = (await getEpisode(db, id!))!;
+  assert.match(ep.story_json.headline, /Starfield/);
+  const ev = await premiseEvents(db);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.detail.arm, "gate");
+  assert.deepEqual(ev[0]!.detail.dropped.map((d) => d.kind), ["nothing_known"]);
+  await db.close();
+});
+
+test("with STORY_PREMISE_GATE_SHARE=0 a weak story is made as before and nothing is logged", async () => {
+  const { db, s } = await premiseSetup(0, true);
+  const id = await maybeSelectNews(s);
+  assert.ok(id);
+  assert.match((await getEpisode(db, id!))!.story_json.headline, /presets/);
+  assert.equal((await premiseEvents(db)).length, 0);
+  await db.close();
+});
+
+test("the premise gate never empties a slot: with only weak stories the slot keeps them", async () => {
+  const { db, s } = await premiseSetup(1, true);
+  const id = await maybeSelectNews(s);
+  assert.ok(id, "the slot is still filled");
+  assert.match((await getEpisode(db, id!))!.story_json.headline, /presets/);
+  const ev = await premiseEvents(db);
+  assert.equal(ev.length, 1);
+  assert.equal(ev[0]!.detail.allFlagged, true);
+  assert.equal(ev[0]!.detail.dropped.length, 0);
+  await db.close();
+});
+
+test("EVIDENCE_STYLE: off, a lore Short renders as before; on, the board arm's render carries the board and the arm is kept", async () => {
+  const lore = goodScript({ headline: "The secrets of Starfield's expansion" });
+  const renderOf = async (cfg: Partial<Config>) => {
+    const { s, db } = await setup(cfg, { script: lore });
+    const props: Array<Record<string, unknown>> = [];
+    const render = s.render;
+    s.render = async (input) => {
+      props.push(input.props as unknown as Record<string, unknown>);
+      await render(input);
+    };
+    await tick(s);
+    const [ep] = await db.query<{ assets_json: any; id: string }>(`SELECT id, assets_json FROM episodes`);
+    const events = await db.query<{ detail: any }>(`SELECT detail FROM events WHERE kind = 'evidence_style'`);
+    await db.close();
+    return { props: props[0], arm: ep?.assets_json?.evidenceArm, events };
+  };
+  const off = await renderOf({});
+  assert.ok(off.props, "rendered");
+  assert.equal("board" in off.props!, false, "no board prop at all when off");
+  assert.equal(off.arm, undefined);
+  assert.equal(off.events.length, 0);
+  const on = await renderOf({ evidenceStyle: true, evidenceStyleShare: 1 });
+  const board = on.props!.board as { cases: Array<{ topic: string }>; stamps: Array<{ text: string }> };
+  assert.equal(on.arm, "board");
+  assert.equal(board.cases[0]?.topic, "THE SECRETS OF STARFIELD'S", "the headline, cut at a word to fit the card");
+  // Stamped words are words the narrator says ("confirmed", "delayed"), spaced out.
+  assert.ok(board.stamps.length >= 1 && board.stamps.every((x) => /^(CONFIRMED|DELAYED)$/.test(x.text)), JSON.stringify(board.stamps));
+  assert.equal(on.events.length, 1);
+  assert.match(String(on.events[0]!.detail.passMark), /10 matched/);
+  const plain = await renderOf({ evidenceStyle: true, evidenceStyleShare: 0 });
+  assert.equal("board" in plain.props!, false);
+  assert.equal(plain.arm, "plain");
+});

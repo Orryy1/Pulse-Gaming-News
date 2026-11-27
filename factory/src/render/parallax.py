@@ -127,7 +127,6 @@ def layers(pipe, src, prefix):
 
 
 GRID_W, GRID_H = 32, 18  # the subject's footprint, cell by cell, for the pop-out's fit test (src/render/popout.ts)
-MESH_W = 1024  # the depth map's width for the 3D photo: the surface is cut at this map's resolution
 
 
 def grid_of(mask):
@@ -169,9 +168,10 @@ def mesh(pipe, src, prefix, better=False):
     sh = cv2.resize(hole.astype(np.uint8) * 255, (w // 2, h // 2), interpolation=cv2.INTER_NEAREST)
     far_d = cv2.resize(cv2.inpaint(small, sh, 8, cv2.INPAINT_TELEA), (w, h), interpolation=cv2.INTER_LINEAR)
     far_d = np.where(hole, np.minimum(far_d, int(near_t * 255) - 8), d8).astype(np.uint8)
-    mh = round(h * MESH_W / w)
-    Image.fromarray(cv2.resize(d8, (MESH_W, mh), interpolation=cv2.INTER_NEAREST)).save(f"{prefix}.depth.png")
-    Image.fromarray(cv2.resize(far_d, (MESH_W, mh), interpolation=cv2.INTER_AREA)).save(f"{prefix}.fardepth.png")
+    # Saved at the picture's own working size (at most MAX_W), the size the surface is cut at: the old 1,024-wide
+    # map, shrunk by nearest neighbour, cut the subject's edge in steps of 3 to 4 px once a Short's crop magnified it.
+    Image.fromarray(d8).save(f"{prefix}.depth.png")
+    Image.fromarray(far_d).save(f"{prefix}.fardepth.png")
     Image.fromarray(far_rgb).save(f"{prefix}.far.webp", quality=90)
     # The subject's depth (the pivot the camera swings round) and footprint.
     pivot = float(np.median(d[fg]))

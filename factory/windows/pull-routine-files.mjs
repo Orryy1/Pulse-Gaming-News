@@ -17,6 +17,15 @@ const BASE = (
 const DIR = process.env.ROUTINE_PC_DIR || "C:\\PulseFactory\\routine-files";
 const KEEP_MS = 14 * 86_400_000;
 const LOG = path.join(DIR, "pull.log");
+// When the factory last answered. A blip (a deploy restarting the factory, a dropped Wi-Fi packet) retries
+// inside the run and, failing that, waits for the next run; only an outage longer than OUTAGE_MS ends the
+// run with an error code, so the PC watchdog flags real outages and not every restart.
+const LAST_OK = path.join(DIR, "last-ok.txt");
+const OUTAGE_MS = 60 * 60_000;
+const RETRY_WAITS_MS = (process.env.ROUTINE_RETRY_WAITS_MS ?? "15000,30000")
+  .split(",")
+  .filter(Boolean)
+  .map(Number);
 
 async function log(...parts) {
   const line = `${new Date().toISOString()} ${parts.join(" ")}\n`;
@@ -31,10 +40,35 @@ async function log(...parts) {
   }
 }
 
-async function get(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  if (!res.ok) throw new Error(`${url} answered ${res.status}`);
-  return res;
+// "fetch failed" hides the real reason (refused, reset, name not found) in err.cause.
+const why = (err) => {
+  const c = err?.cause;
+  const detail = c ? ` (${c.code ?? c.name ?? ""}${c.message ? ` ${c.message}` : ""})` : "";
+  return `${err?.message ?? err}${detail}`;
+};
+
+// A refused or reset connection, a timeout, or a 5xx: what a factory restart looks like.
+const isNetwork = (err) =>
+  !!err?.network || err?.name === "TypeError" || err?.name === "TimeoutError";
+
+// Fetches and reads the body inside the retry loop, so a connection cut mid-download is retried too.
+async function get(url, as) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+      if (!res.ok) {
+        await res.body?.cancel().catch(() => {});
+        // 5xx while the factory starts up is worth another go; 4xx is not.
+        throw Object.assign(new Error(`${url} answered ${res.status}`), {
+          network: res.status >= 500,
+        });
+      }
+      return as === "json" ? await res.json() : Buffer.from(await res.arrayBuffer());
+    } catch (err) {
+      if (!isNetwork(err) || attempt >= RETRY_WAITS_MS.length) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_WAITS_MS[attempt]));
+    }
+  }
 }
 
 // "folder/name": each part plain characters, never "." or "..".
@@ -44,7 +78,7 @@ const safeRel = (rel) =>
   rel.split("/").every((p) => p !== "." && p !== "..");
 
 async function main() {
-  const list = await (await get(`${BASE}/routine/pc-files`)).json();
+  const list = await get(`${BASE}/routine/pc-files`, "json");
   if (String(list.dir).toLowerCase() !== DIR.toLowerCase()) {
     // The pages would name paths this puller does not fill.
     await log(
@@ -66,14 +100,10 @@ async function main() {
     const same =
       have && have.size === f.size && Math.abs(have.mtimeMs - f.mtimeMs) < 2000;
     if (same && f.fetched) continue;
-    const body = Buffer.from(
-      await (
-        await get(`${BASE}/routine/pc-file?id=${encodeURIComponent(f.id)}`)
-      ).arrayBuffer(),
-    );
+    const body = await get(`${BASE}/routine/pc-file?id=${encodeURIComponent(f.id)}`, "buffer");
     if (body.length !== f.size) {
-      await log(`${f.rel}: got ${body.length} bytes, expected ${f.size}`);
-      process.exitCode = 1;
+      // Usually the factory rewrote the picture between the list and the fetch; the next run gets it.
+      await log(`${f.rel}: got ${body.length} bytes, expected ${f.size}; trying again next run`);
       continue;
     }
     await fs.mkdir(path.dirname(dest), { recursive: true });
@@ -102,10 +132,16 @@ async function main() {
   }
   if (fetched || removed)
     await log(`listed ${wanted.size}, fetched ${fetched}, removed ${removed}`);
+  await fs.writeFile(LAST_OK, new Date().toISOString(), "utf8").catch(() => {});
 }
 
 main().catch(async (err) => {
-  // The Mac off or the factory restarting: the next run catches up.
-  await log(`failed: ${err?.message ?? err}`);
-  process.exitCode = 1;
+  // The Mac off or the factory restarting: the next run catches up. Only a long outage is an error, and
+  // anything that is not a network fault (a disk error, a 404, a bad answer) is an error straight away.
+  const last = Date.parse(await fs.readFile(LAST_OK, "utf8").catch(() => ""));
+  const outage = !isNetwork(err) || !Number.isFinite(last) || Date.now() - last > OUTAGE_MS;
+  await log(
+    `failed: ${why(err)}${outage ? "" : "; the factory answered within the hour, so the next run catches up"}`,
+  );
+  process.exitCode = outage ? 1 : 0;
 });

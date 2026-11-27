@@ -408,6 +408,8 @@ export async function directClip(
     "question" | "result" | "result_line" | "real_test" | "game_title"
   >,
   blacks: Array<{ start: number; end: number }>,
+  /** Another streamer's play, used with permission: the narration never says "we tested" about it. */
+  credit = "",
 ): Promise<GameplayDirection> {
   const content: LlmContent = [];
   for (const f of frames) {
@@ -431,6 +433,9 @@ export async function directClip(
       `What the reviewer says happened: ${review.result}`,
       `The result card (do not repeat its words in the payoff line): ${review.result_line}`,
       `A real test of the question: ${review.real_test ? "yes" : "no, a striking moment"}`,
+      ...(credit
+        ? [`This is another streamer's recording, used with permission (${credit}), not the owner's: never "we tested", "I" or "my".`]
+        : []),
       blacks.length
         ? `Black stretches, cut for you: ${blacks.map((b) => `${b.start.toFixed(1)}-${b.end.toFixed(1)} s`).join(", ")}`
         : "No black stretches.",

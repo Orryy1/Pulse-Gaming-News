@@ -11,6 +11,9 @@ import { packagingAtLeast } from "./packaging/settings.ts";
 import { openSession, growFromSteam, growFromResearch, growFromArticles } from "./factvault/session.ts";
 import { applyFixes as applyVaultFixes, type Fix as VaultFix } from "./factvault/check.ts";
 import { repairBlockers } from "./factrepair.ts";
+import { longWords, repairLongform } from "./longrepair.ts";
+import { disciplineChapter, docFactLine } from "./docfacts.ts";
+import { countedTitle, disciplineLongform, preFlagFeedback, titleClaimsEvery } from "./editorial/longfacts.ts";
 import { pickThumbImage, shortThumbArm, thumbWords } from "./shortthumb.ts";
 import { coverWorth, scoreAesthetics } from "./assets/appleaesthetics.ts";
 import { searchLine, searchTermsFor } from "./searchterms.ts";
@@ -28,7 +31,8 @@ import {
   whySlug,
 } from "./editorial/why.ts";
 import fs from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { COVER_FILE, SOCIAL_FILE } from "./social/cover.ts";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -47,6 +51,9 @@ import { thinSourceProblem, type ArticleText } from "./discovery/article.ts";
 import type { Narration } from "./voice/elevenlabs.ts";
 import type { VisualAsset, SteamApp, SteamFacts } from "./assets/steam.ts";
 import { factsText } from "./assets/steam.ts";
+import { steamEditionOf } from "./assets/steamedition.ts";
+import { namedSubjects } from "./assets/namedart.ts";
+import { pictureKey } from "./render/stillcap.ts";
 import { capFootage, defaultFootageSeconds, footageBudgetSeconds } from "./assets/footage.ts";
 import { targetsFor, type FootageTarget } from "./assets/clipscore.ts";
 import type { OfficialMedia } from "./assets/officialTrailer.ts";
@@ -84,6 +91,7 @@ import {
   selectLongformTopic,
   validateLongform,
   narrationOfLongform,
+  rankingRules,
   writeLongform,
 } from "./editorial/longform.ts";
 import { trailerMatchesGame } from "./assets/commons.ts";
@@ -189,7 +197,20 @@ import {
   longRuleWarnings,
   scriptMeasures,
 } from "./editorial/longrules.ts";
-import { structureLine, structureSummary } from "./render/structure.ts";
+import { openingPace, structureLine, structureSummary } from "./render/structure.ts";
+import { contractRules, openingQuotes, recordLongChecks, type LongRecord } from "./longcontractstep.ts";
+import { stockOpenerProblems, takeProblems, takesGuard } from "./editorial/longcontract.ts";
+import { groundFinishLine, type OpenLoop } from "./editorial/openloops.ts";
+import {
+  DOC_CHECKPOINT_VERSION,
+  clearDocCheckpoint,
+  docTopicKey,
+  loadDocCheckpoint,
+  pruneDocCheckpoints,
+  relinkPlans,
+  saveDocCheckpoint,
+  type DocCheckpoint,
+} from "./editorial/doccheckpoint.ts";
 import { wholeLineFiller } from "./render/fillerplan.ts";
 import {
   longCraft,
@@ -222,6 +243,7 @@ import type { ExplainedStory } from "./editorial/explained.ts";
 import { recordWeeklyArm, weeklyArm, weeklyVerdict, fallbackNotice } from "./weeklytest.ts";
 import {
   buildLongPlan,
+  chapterPictureAudit,
   momentKeys,
   planGaps,
   openChaptersAtBreaks,
@@ -365,6 +387,7 @@ import {
 } from "./editorial/affiliate.ts";
 import { pickVoice, speedUp } from "./voice/index.ts";
 import { withAlertScope } from "./alertlog.ts";
+import { withYtPriority, type YtPriority } from "./lib/ytguard.ts";
 import {
   turnDownBreaths,
   voiceProblems,
@@ -397,6 +420,8 @@ import { cameraNotice } from "./render/camera.ts";
 import { findTextDetails } from "./assets/ocr.ts";
 import { formatOpen } from "./formats.ts";
 import { blurPlate, meanLuma } from "./assets/plates.ts";
+import { framedStills, prepareImages, remoteAsk } from "./gpuvis/client.ts";
+import { thumbCandidateStep } from "./gpuvis/thumbstep.ts";
 import { TIGHT_CAP_SECONDS } from "./assets/officialTrailer.ts";
 import { cardWindow } from "./render/shortcraft.ts";
 import { CLIP_DETAIL_FLOOR_KB, clipDetailKb, stillBigText } from "./assets/cliptext.ts";
@@ -445,7 +470,7 @@ import {
   writerSplit,
   type WriterProvider,
 } from "./editorial/authorship.ts";
-import { siteListed, withRoute } from "./editorial/codex.ts";
+import { siteListed, withCodexCap, withRoute } from "./editorial/codex.ts";
 import type { UsageLine } from "./editorial/llm.ts";
 import { retentionLearnTick } from "./retentionlearn.ts";
 import { directorStep, retrainTick } from "./retentionstep.ts";
@@ -497,6 +522,7 @@ import { holdoutOf } from "./learn/holdout.ts";
 import { banditForShort, pickHook, playbookForShort } from "./learn/writer.ts";
 import { learnTick } from "./learn/tick.ts";
 import { holdSlotForCap, holdWhyForCap } from "./cadence.ts";
+import { whySeatOpen } from "./whyseat.ts";
 import {
   refreshChatter,
   bigCluster,
@@ -601,9 +627,11 @@ import { lossThumb, pickWhyDied } from "./whydied.ts";
 import { proposeCompleteCuts, stanceProblems } from "./stance.ts";
 import { applyShortTitleGameFirst, applyStrandFrame } from "./strandstep.ts";
 import {
+  dbDemandBudget,
   dbDemandCache,
   demandFor,
   demandLine,
+  demandSearchers,
   rankByDemand,
   type Demand,
 } from "./discovery/searchdemand.ts";
@@ -621,7 +649,8 @@ import { craftForShort, shortsCleanStep } from "./shortcraftstep.ts";
 import { cardCheckTimes, faultedCards, graphicsGateLong, graphicsGateShort } from "./gfxauditstep.ts";
 import { gfxInputOf, longMoments } from "./qa/gfxgate.ts";
 import { arbitrate, overlaySpans, shortLayout } from "./render/cleanframe.ts";
-import { shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
+import { kitTexts } from "./render/gtakit.ts";
+import { longGtaKitProp, shortBlenderStep, shortUpgradesFor, type ShortBlenderState } from "./shortupgradestep.ts";
 import { checksClearOfUpgrades } from "./render/shortupgrades.ts";
 import { probe as probeMedia } from "./qa/media.ts";
 import {
@@ -637,7 +666,7 @@ import {
   underFigure,
 } from "./editorial/spoilers.ts";
 import { ccCredit } from "./render/cleanframe.ts";
-import { offendingMedia, dropOffending, rememberUnsafe } from "./qa/retry.ts";
+import { offendingMedia, dropOffending, rememberUnsafe, flattenDepthFaults } from "./qa/retry.ts";
 import { CREDIT_RULE, givenSources, scrubScriptCredits } from "./editorial/credits.ts";
 import { shortSampleTimes, framesNamed } from "./qa/vision.ts";
 import {
@@ -654,8 +683,8 @@ import {
 } from "./qa/graphicscheck.ts";
 import { releaseGateStep } from "./qa/releaseGate.ts";
 import { releaseWriterNotes, writerNoteHits } from "./editorial/writernotes.ts";
-import { guardScript, stopForWriterNotes } from "./writerguard.ts";
-import { pausesEveryLane, platformAlert } from "./faultclass.ts";
+import { guardScript, scriptSpoilers, stopForWriterNotes } from "./writerguard.ts";
+import { isContentFault, pausesEveryLane, platformAlert } from "./faultclass.ts";
 import { planSlate } from "./qa/slate.ts";
 import { distinguishing, sameNumberedGame } from "./assets/commons.ts";
 import { mergeArticles } from "./discovery/wikipedia.ts";
@@ -671,6 +700,7 @@ import {
 } from "./assets/gatherbudget.ts";
 import {
   LONG_LEASE,
+  LONG_LEASE_TTL_S,
   LONG_URGENT_HOURS,
   isUrgentLong,
   orderLongEpisodes,
@@ -701,6 +731,7 @@ import { rankingSequels, sequelWinners } from "./sequels.ts";
 import { markEvidence } from "./editorial/evidence.ts";
 import { applyTitleShape, writerTitleProblems } from "./titlestep.ts";
 import { paletteOf } from "./assets/palette.ts";
+import { longReslot, whenLabel } from "./longreslot.ts";
 import {
   addDays,
   localTime,
@@ -733,7 +764,7 @@ import {
 } from "./lanes.ts";
 import { buildResource, markerTag, SessionGone } from "./youtube/upload.ts";
 import { signToken } from "./lib/crypto.ts";
-import { FatalError, errorMessage, log, shortId } from "./lib/util.ts";
+import { FatalError, codeFaultStack, errorMessage, log, shortId } from "./lib/util.ts";
 import type { RecentShapes } from "./editorial/editorial.ts";
 import { SKELETON_WINDOW, hookStyleOpenings, pickSkeleton, skeletonProblems } from "./editorial/skeletons.ts";
 import {
@@ -825,6 +856,29 @@ import {
   isWeeklyGuide,
   readGuidePlan,
 } from "./longguide.ts";
+import {
+  DEFAULT_GUIDE_FACTS,
+  GTA_GAME,
+  GUIDE_DEMAND_DAYS,
+  GUIDE_QUERIES,
+  gtaGuideSlot,
+  guideDemand,
+  guidePlanProblems,
+  guideProblems,
+  guideToScript,
+  guideQualityWarnings,
+  cleanGuideMoments,
+  GUIDE_STILL_MAX_SHOWS,
+  isGtaGuide,
+  kindOf,
+  pickGuideTopic,
+  playEvidence,
+  readFactPack,
+  type GtaGuideTopic,
+} from "./gtaguide.ts";
+import { guideLogo, loadGuideAsks, loadHudFacts, loadPlayRecordings, pickGuideFrame } from "./gtaguidestep.ts";
+import { GuideTooThinError, writeGtaGuide } from "./editorial/gtaguidewriter.ts";
+import { OPENING_WORDS_MAX as GUIDE_OPENING_MAX } from "./editorial/longcontract.ts";
 import { applyPlannedChapters, factsPath, plannedFactsText, plannedTitle } from "./plannedoc.ts";
 import { isRetrospective, readRetroPlan, retroDue, retroIndexProblems } from "./retrospective.ts";
 import { editionOf } from "./assets/junk.ts";
@@ -982,6 +1036,16 @@ import { comparedGames, hardwareStory, isHardwareAsset } from "./assets/linevisu
 import { libraryRoot, recordUsage } from "./assets/gamelib.ts";
 import { askExperiments } from "./streamasks/job.ts";
 import {
+  endingArmFor,
+  endingFormProblems,
+  endingFormRule,
+  endingRecord,
+  pickEndingForm,
+  recentEndingForms,
+  type EndingForm,
+} from "./editorial/endingforms.ts";
+import { gateCandidates, premiseArmFor } from "./editorial/premisegate.ts";
+import {
   fitClipsAroundQuotes,
   quotesAfterGaps,
   openQuotes,
@@ -997,6 +1061,7 @@ import {
   heardInBed,
   longSoundClips,
 } from "./assets/gameaudio.ts";
+import { prepareEvidence } from "./evidencestep.ts";
 
 export interface Services {
   db: Db;
@@ -1050,7 +1115,19 @@ export interface Services {
     year: number | undefined,
     episodeDir: string,
     max: number,
+    /** IGDB picture ids already held: a top-up skips them and brings the next ones. */
+    skip?: ReadonlySet<string>,
   ): Promise<VisualAsset[]>;
+  /**
+   * LONG_NAMED_ART: the official IGDB picture of a character a sentence names, only when IGDB lists them in a game of
+   * this series (src/assets/namedart.ts). Optional: undefined in tests and wherever IGDB is not set up.
+   */
+  characterArt?(
+    name: string,
+    /** The games whose series the character must be in (any of them). */
+    gameTitles: string[],
+    episodeDir: string,
+  ): Promise<(VisualAsset & { named: string }) | undefined>;
   /** Licensed gameplay (Creative Commons, then the publisher's own uploads) matched to the given lines. */
   gameplayClips(
     game: string,
@@ -1114,6 +1191,8 @@ export interface Services {
     spoilerWarned?: boolean;
     /** LONG_INDEX_FIRST: the scene index's clips alone ("index"), or the cutscene search alone ("search"). */
     mode?: "index" | "search";
+    /** The stream recordings' own allowance (src/sceneindex/footage.ts indexFirstCutscenes). */
+    ownMaxSeconds?: number;
   }): Promise<CutsceneClip[]>;
   /**
    * SCENE_MATCH for a stills-only publisher (Nintendo): one checked still of each named moment from the game's scene
@@ -1149,10 +1228,14 @@ export interface Services {
   ): Promise<import("./editorial/verdict.ts").VerdictData[]>;
   /** YouTube's most-popular US charts (Gaming and everything), cached hourly, for the editor. */
   trending(): Promise<import("./discovery/demand.ts").TrendingVideo[]>;
-  /** One YouTube search page's videos with their views, read without the API (src/discovery/searchdemand.ts); absent in tests. */
+  /** One demand search (a results-page URL) answered by the Data API (src/discovery/demandapi.ts); absent in tests. */
   searchDemand?(
     url: string,
   ): Promise<import("./discovery/searchdemand.ts").SearchRow[]>;
+  /** Several topics' demand searches at once on the Data API, view counts batched; an Error for a failed one. */
+  searchDemandMany?(
+    queries: string[],
+  ): Promise<Map<string, import("./discovery/searchdemand.ts").SearchRow[] | Error>>;
   /** A Wikipedia article's useful sections, by title or else by search (documentary research). */
   research(
     title: string,
@@ -1265,6 +1348,9 @@ export function approvalLinks(cfg: Config, id: string) {
     approve: `${cfg.publicUrl}/episodes/${id}/approve?t=${t("approve")}`,
     reject: `${cfg.publicUrl}/episodes/${id}/reject?t=${t("reject")}`,
     preview: `${cfg.publicUrl}/episodes/${id}/video.mp4?t=${t("preview")}`,
+    // SHORT_FULL_COVER (src/social/cover.ts): the cover still and the social copy, on the preview's own token.
+    cover: `${cfg.publicUrl}/episodes/${id}/cover.jpg?t=${t("preview")}`,
+    social: `${cfg.publicUrl}/episodes/${id}/social.mp4?t=${t("preview")}`,
   };
 }
 
@@ -1982,6 +2068,38 @@ async function createBig(s: Services, v: BigVerdict): Promise<string | undefined
  * publishes at the slot. Episodes waiting on approval or YouTube never block
  * the next one; only MAX_PRODUCING episodes are mid-production at once.
  */
+/**
+ * The long lanes once the day's Shorts allowance is used: a documentary or a long ranking still takes its slot, each by
+ * its own rules (lead time, banking window, slot free), then the weekly long video; no Short is made here.
+ */
+export async function maybeSelectLongAfterTarget(s: Services): Promise<string | undefined> {
+  return (
+    (await maybeSelectDocumentary(s)) ??
+    (await maybeSelectLongform(s)) ??
+    // LONG_WEEKLY_AFTER_TARGET: Friday's long round-up or explainer too. Shorts made ahead for a Friday count on
+    // Friday from midnight, so the allowance can be used before the 12:00 window opens and the slot would pass empty.
+    (s.cfg.longWeeklyAfterTarget ? await maybeSelectWeeklyLong(s) : undefined) ??
+    undefined
+  );
+}
+
+/** The day's Shorts that count toward SHORTS_PER_DAY: spare, big-story and search Shorts (and, with
+ * DAILY_TARGET_SHORTS_ONLY, long videos) are extra. */
+async function shortsTowardTarget(db: Db, cfg: Config): Promise<number> {
+  return (
+    (await countToday(db, cfg.timezone)) -
+    (await countSpareToday(db, cfg.timezone)) -
+    (await bigMadeToday(db, cfg.timezone)) -
+    (await searchMadeToday(db, cfg.timezone)) -
+    (cfg.dailyTargetShortsOnly ? await countToday(db, cfg.timezone, "longform") : 0)
+  );
+}
+
+/** Today's Shorts allowance: SHORTS_PER_DAY, plus SPRINT_EXTRA in a launch wave. */
+function dailyTargetNow(cfg: Config, now: Date): number {
+  return cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0);
+}
+
 export async function maybeSelect(s: Services): Promise<string | undefined> {
   const { db, cfg } = s;
   const now = s.now();
@@ -1997,7 +2115,24 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     await bigStep(`story selection is paused: ${paused}`);
     return undefined;
   }
-  if ((await countProducing(db)) >= cfg.maxProducing) {
+  const producing = await countProducing(db);
+  if (producing >= cfg.maxProducing) {
+    // WHY_SLOT_SEAT (src/whyseat.ts): a Why slot whose window is open gets one seat past the limit, so two slow
+    // Shorts no longer empty it (25 Nov 2026: 17:16 to 19:01 every tick waited, and the 18:30 Why never started).
+    const seated =
+      whySeatOpen(cfg.whySlotSeat, producing, cfg.maxProducing) &&
+      (await shortsTowardTarget(db, cfg)) < dailyTargetNow(cfg, now)
+        ? await maybeSelectWhy(s).catch((err) => {
+            if (err instanceof FatalError) throw err; // announced by tick(), as on the usual path
+            log("warn", "why seat selection failed", { error: errorMessage(err) });
+            return undefined;
+          })
+        : undefined;
+    if (seated) {
+      log("info", "why slot took the spare production seat", { id: seated, producing, max: cfg.maxProducing });
+      await logEvent(db, seated, "why_seat", { producing, max: cfg.maxProducing });
+      return seated;
+    }
     await bigStep(`waiting: ${cfg.maxProducing} Shorts are already in production`);
     return undefined;
   }
@@ -2040,16 +2175,12 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
   if (replied) return replied;
   // Spare-quota Shorts are extra: they never take one of the day's planned Shorts. Nor does a big story, and a long
   // video is not a Short at all (4 Nov 2026: a documentary and a ranking used up the 22:00 slot's turn, silently).
-  const total =
-    (await countToday(db, cfg.timezone)) -
-    (await countSpareToday(db, cfg.timezone)) -
-    (await bigMadeToday(db, cfg.timezone)) -
-    (await searchMadeToday(db, cfg.timezone)) -
-    (cfg.dailyTargetShortsOnly
-      ? await countToday(db, cfg.timezone, "longform")
-      : 0);
-  if (total >= cfg.dailyTarget + (launchWave(cfg, now) ? cfg.sprintExtra : 0))
-    return (await maybeSelectSpare(s)) ?? undefined;
+  const total = await shortsTowardTarget(db, cfg);
+  // A long video is not one of the day's Shorts, so the Shorts allowance never holds it back (24-25 Nov 2026: the
+  // documentary failed in the afternoon and, with the day's Shorts made, nothing could pick its replacement until
+  // the next day; the 19:00 slot passed empty). Documentary first, then the long ranking, then spare Shorts.
+  if (total >= dailyTargetNow(cfg, now))
+    return (await maybeSelectLongAfterTarget(s)) ?? (await maybeSelectSpare(s)) ?? undefined;
 
   const seen = await seenHashes(db);
   const sightings = (await recentSightings(s)).filter(
@@ -2251,12 +2382,37 @@ export async function maybeSelect(s: Services): Promise<string | undefined> {
     });
     return undefined;
   }
-  return createFromChoice(
+  // STORY_PREMISE_GATE_SHARE (src/editorial/premisegate.ts): on the "gate" side of the slot split, a story whose whole
+  // point is that nothing is known, a price or edition list, patch notes or an outage, with no conflict or surprise,
+  // is dropped before the editor sees the slot; when every candidate would go, the slot keeps them all.
+  const premiseArm =
+    cfg.storyPremiseGateShare > 0
+      ? premiseArmFor(unitHash(`premise:${slot.toISOString()}`), cfg.storyPremiseGateShare)
+      : undefined;
+  const gated = premiseArm ? gateCandidates(candidates, premiseArm) : undefined;
+  const id = await createFromChoice(
     s,
-    candidates,
+    gated?.kept ?? candidates,
     { lane: "news", priority: LANE_PRIORITY.news, slotAt: slot },
     `news slot ${slot.toISOString()}`,
   );
+  // Logged per slot, made or not (the slot is the unit of the test): the episode it made, else none. A dropped story
+  // stays eligible, so it may be made in a later "open" slot; the dropped headlines let the verdict see that.
+  if (premiseArm && gated) {
+    await logEvent(db, id ?? null, "premise_gate", {
+      arm: premiseArm,
+      slot: slot.toISOString(),
+      dropped: gated.dropped,
+      allFlagged: gated.allFlagged,
+      candidates: candidates.length,
+    }).catch(() => undefined);
+    if (gated.dropped.length)
+      log("info", "premise gate dropped stories", {
+        id: id ?? null,
+        dropped: gated.dropped.map((d) => `${d.kind}: ${d.headline}`),
+      });
+  }
+  return id;
 }
 
 /** Whether the gameplay inbox holds a clip of the franchise, so a GTA File part can open on the owner's footage. */
@@ -3392,11 +3548,13 @@ async function demandRanked(
   demand: Map<string, Demand>;
   skipped: EvergreenCandidate[];
 }> {
-  if (!s.cfg.demandCheck || !s.searchDemand)
+  if (!s.cfg.demandCheck || (!s.searchDemand && !s.searchDemandMany))
     return { candidates: base, demand: new Map(), skipped: [] };
   const demand = await demandFor(base, {
-    search: (url) => s.searchDemand!(url),
-    cache: dbDemandCache(s.db, () => s.now()),
+    ...demandSearchers(s),
+    budget: dbDemandBudget(s.db, s.cfg.demandApiPerDay, () => s.now()),
+    label: "pick",
+    cache: dbDemandCache(s.db, () => s.now(), (s.cfg.demandCacheDays ?? 7) * 24),
     lookups: s.cfg.demandLookups,
     minViews: s.cfg.demandMinViews,
     now: s.now(),
@@ -3421,7 +3579,7 @@ async function reportDemand(
   d: Demand | undefined,
   skipped: number,
 ): Promise<void> {
-  if (!s.cfg.demandCheck || !s.searchDemand) return;
+  if (!s.cfg.demandCheck || (!s.searchDemand && !s.searchDemandMany)) return;
   await s
     .notify({ content: demandLine(lane, picked, d, skipped, s.now()) })
     .catch(() => undefined);
@@ -3450,6 +3608,118 @@ async function weeklyTried(db: Db, key: string): Promise<boolean> {
     [`weekly_tried:${key}`],
   );
   return false;
+}
+
+/**
+ * The weekly long video on its own: Friday's round-up of the week's most-watched Shorts, or the explainer on its
+ * test weeks (RECAP_LONG). maybeSelectWeekly tries it in its usual place; maybeSelectLongAfterTarget tries it once
+ * the day's Shorts allowance is used (LONG_WEEKLY_AFTER_TARGET), since a long video is not one of the day's Shorts.
+ */
+export async function maybeSelectWeeklyLong(
+  s: Services,
+): Promise<string | undefined> {
+  const { db, cfg } = s;
+  if (!cfg.weeklyEnabled) return undefined;
+  const now = s.now();
+  const today = dayKey(now, cfg.timezone);
+  const plan = (days: string[]) => ({
+    days,
+    slot: cfg.weeklySlot,
+    leadMinutes: cfg.slotLeadMinutes + 30,
+    graceMinutes: cfg.slotGraceMinutes,
+    timeZone: cfg.timezone,
+  });
+  const taken = await takenSlots(db);
+  const base = (
+    hash: string,
+    headline: string,
+    gameHint: string,
+  ): StoryCluster => ({
+    hash,
+    headline,
+    items: [],
+    sources: ["Steam"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint,
+  });
+
+  // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
+  // starts five hours before the slot; with too few stories it falls back to the Short below.
+  if (cfg.recapLong && cfg.longformEnabled) {
+    const longDue = evergreenDue(
+      now,
+      {
+        ...plan(cfg.recapDays),
+        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
+        leadMinutes: cfg.weeklyExplainedTest
+          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
+          : 300,
+      },
+      taken,
+    );
+    if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
+      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
+      // the round-up below takes the slot and counts as a round-up week.
+      let fallback: string | undefined;
+      if (
+        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
+          () => "roundup" as const,
+        )) === "explained"
+      ) {
+        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
+          (err) => ({ id: undefined, reason: errorMessage(err) }),
+        );
+        if (made.id) return made.id;
+        fallback = made.reason ?? "no story";
+        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
+        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
+      }
+      const stories = await recapStoryIds(db, now);
+      if (stories.length >= RECAP_STORIES_MIN) {
+        const id = shortId();
+        const cluster = base(
+          `weekly:recaplong:${today}`,
+          "This Week in Gaming",
+          "Gaming news",
+        );
+        if (
+          await createEpisode(db, id, cluster, {
+            lane: "longform",
+            priority: LANE_PRIORITY.longform,
+            slotAt: longDue,
+          })
+        ) {
+          await db.query(
+            `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
+            [id, JSON.stringify({ recap: true, stories })],
+          );
+          await logEvent(db, id, "selected", {
+            headline: cluster.headline,
+            lane: "longform",
+            recap: true,
+            stories,
+            slot_at: longDue.toISOString(),
+          });
+          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
+            () => undefined,
+          );
+          log("info", "weekly recap video selected", {
+            id,
+            stories: stories.length,
+          });
+          return id;
+        }
+      } else
+        log("info", "weekly recap video skipped: too few stories", {
+          found: stories.length,
+        });
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -3847,78 +4117,9 @@ export async function maybeSelectWeekly(
     });
   }
 
-  // Weekly Recap as a long video: the week's most-watched Shorts, one chapter each. Production
-  // starts five hours before the slot; with too few stories it falls back to the Short below.
-  if (cfg.recapLong && cfg.longformEnabled) {
-    const longDue = evergreenDue(
-      now,
-      {
-        ...plan(cfg.recapDays),
-        // The weekly shape test (src/weeklytest.ts): both arms start early enough for a 15-20 minute explainer.
-        leadMinutes: cfg.weeklyExplainedTest
-          ? Math.max(300, cfg.weeklyExplainedLeadMinutes)
-          : 300,
-      },
-      taken,
-    );
-    if (longDue && !(await weeklyTried(db, `recaplong:${today}`))) {
-      // An explainer week (src/weeklytest.ts) makes one story in depth; with no story strong and safe enough,
-      // the round-up below takes the slot and counts as a round-up week.
-      let fallback: string | undefined;
-      if (
-        (await weeklyArm(db, cfg, now, (m) => s.notify(m)).catch(
-          () => "roundup" as const,
-        )) === "explained"
-      ) {
-        const made = await selectExplainedEpisode(s, now, longDue, today).catch(
-          (err) => ({ id: undefined, reason: errorMessage(err) }),
-        );
-        if (made.id) return made.id;
-        fallback = made.reason ?? "no story";
-        log("info", "weekly explainer fell back to the round-up", { reason: fallback });
-        await s.notify({ content: fallbackNotice(fallback) }).catch(() => undefined);
-      }
-      const stories = await recapStoryIds(db, now);
-      if (stories.length >= RECAP_STORIES_MIN) {
-        const id = shortId();
-        const cluster = base(
-          `weekly:recaplong:${today}`,
-          "This Week in Gaming",
-          "Gaming news",
-        );
-        if (
-          await createEpisode(db, id, cluster, {
-            lane: "longform",
-            priority: LANE_PRIORITY.longform,
-            slotAt: longDue,
-          })
-        ) {
-          await db.query(
-            `UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`,
-            [id, JSON.stringify({ recap: true, stories })],
-          );
-          await logEvent(db, id, "selected", {
-            headline: cluster.headline,
-            lane: "longform",
-            recap: true,
-            stories,
-            slot_at: longDue.toISOString(),
-          });
-          await recordWeeklyArm(db, cfg, id, "roundup", now, fallback).catch(
-            () => undefined,
-          );
-          log("info", "weekly recap video selected", {
-            id,
-            stories: stories.length,
-          });
-          return id;
-        }
-      } else
-        log("info", "weekly recap video skipped: too few stories", {
-          found: stories.length,
-        });
-    }
-  }
+  // Weekly Recap as a long video (maybeSelectWeeklyLong); with too few stories it falls back to the Short below.
+  const weeklyLong = await maybeSelectWeeklyLong(s);
+  if (weeklyLong) return weeklyLong;
 
   // Weekly Recap
   const recapDue = (await formatOpen(db, "weekly_recap", now))
@@ -4053,6 +4254,7 @@ export async function maybeSelectDocumentary(
     now,
     await takenSlots(db),
     cfg.timezone,
+    cfg.longArgues,
   );
   // The weekly guide (src/longguide.ts, GUIDE_WEEKLY): this week's guide, planned by date as a run's documentary is,
   // so a guide built on our own tests goes through the same evidence check just below.
@@ -4203,25 +4405,36 @@ export async function maybeSelectDocumentary(
         return undefined;
       })
     : undefined;
+  // LONG_ARGUES=fix: the picker sees no franchise list (a franchise history needs a brief it cannot write), and if that
+  // finds nothing it asks again with the full list rather than leave the month empty.
+  const pickDocTopic = async () => {
+    const demand = await topicDemand(s, "doc");
+    const stories =
+      s.cfg.longArgues === "fix"
+        ? await selectDocTopic(s.llm, covered, inTheNews, [], undefined, demand)
+        : undefined;
+    return stories ?? selectDocTopic(s.llm, covered, inTheNews, undefined, undefined, demand);
+  };
   const topic =
     plannedDoc?.topic ??
     everyTopic ??
     whyDied?.topic ??
     breakout?.topic ??
-    (await selectDocTopic(
-    s.llm,
-    covered,
-    inTheNews,
-    undefined,
-    undefined,
-    await topicDemand(s, "doc"),
-    ));
+    (await pickDocTopic());
   if (!topic) {
     log("info", "no documentary topic this month");
     return undefined;
   }
+  // A documentary that failed today is replaced under a fresh key (25 Nov 2026 review: the day's key collided with the
+  // failed row, so a same-day replacement was refused and the slot stayed empty). A live one still blocks a twin.
+  const docBase = `documentary:${dayKey(now, cfg.timezone)}:${topic.franchise.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  const [docFailed] = await db.query<{ n: string | number }>(
+    `SELECT count(*) AS n FROM episodes WHERE (story_hash = $1 OR story_hash LIKE $2) AND status IN ('failed','rejected')`,
+    [docBase, `${docBase}:r%`],
+  );
+  const docTries = Number(docFailed?.n ?? 0);
   const cluster: StoryCluster = {
-    hash: `documentary:${dayKey(now, cfg.timezone)}:${topic.franchise.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    hash: docTries ? `${docBase}:r${docTries}` : docBase,
     headline: topic.title_idea,
     items: [],
     sources: ["Wikipedia"],
@@ -4436,6 +4649,63 @@ async function stepScriptDocumentary(
   ep: Episode,
   topic: DocTopic,
 ): Promise<void> {
+  // DOC_CHAPTER_CHECKPOINT (src/editorial/doccheckpoint.ts): the outline and finished chapters are kept on disk, so a
+  // restart resumes them. Only a cut-off run resumes: once every chapter is written, a failure starts afresh.
+  const ck = docCheckpointer(s, ep, topic);
+  try {
+    await stepScriptDocumentaryBody(s, ep, topic, ck);
+    ck.clear();
+  } catch (err) {
+    // A timeout after the chapters keeps them for the retry; a script that failed on its content starts afresh.
+    if (ck.loopDone && (err instanceof FatalError || isContentFault(errorMessage(err)))) ck.clear();
+    throw err;
+  }
+}
+
+interface DocCheckpointer {
+  resume?: DocCheckpoint;
+  loopDone: boolean;
+  save: (state: Omit<DocCheckpoint, "version" | "episode" | "topicKey" | "savedAt">) => void;
+  clear: () => void;
+}
+
+function docCheckpointer(s: Services, ep: Episode, topic: DocTopic): DocCheckpointer {
+  // A retrospective or every-game outline writes state onto the topic while drafting (sections, acts, roster), which a
+  // resumed run would not have: those formats always write afresh.
+  const on = s.cfg.docChapterCheckpoint && topic.format !== "retro" && topic.format !== "everygame";
+  const dir = s.cfg.dataDir;
+  const key = docTopicKey(topic);
+  const hours = s.cfg.docCheckpointHours;
+  if (on) pruneDocCheckpoints(dir, s.now(), Math.max(hours, 72));
+  return {
+    resume: on ? loadDocCheckpoint(dir, ep.id, key, s.now(), hours) : undefined,
+    loopDone: false,
+    save: (state) => {
+      if (!on) return;
+      try {
+        saveDocCheckpoint(dir, {
+          version: DOC_CHECKPOINT_VERSION,
+          episode: ep.id,
+          topicKey: key,
+          savedAt: s.now().toISOString(),
+          ...state,
+        });
+      } catch (err) {
+        log("warn", "documentary checkpoint not saved", { episode: ep.id, error: errorMessage(err) });
+      }
+    },
+    clear: () => {
+      if (on) clearDocCheckpoint(dir, ep.id);
+    },
+  };
+}
+
+async function stepScriptDocumentaryBody(
+  s: Services,
+  ep: Episode,
+  topic: DocTopic,
+  ck: DocCheckpointer,
+): Promise<void> {
   // A full game retrospective (src/retrospective.ts): every model call under its own "retro." site, its own outline
   // from the scene index's acts, and each chapter's own sources (its section's reading, its press, its act's lines).
   const retro = topic.format === "retro" ? topic.retro : undefined;
@@ -4445,10 +4715,14 @@ async function stepScriptDocumentary(
   const records = s.cfg.docTestEvidence ? (topic.test_records ?? []) : [];
   const strict = records.length > 0;
   // The Inspiration rules (src/editorial/longrules.ts), all off by default; a guide is a planned entry's own format.
-  const rules = {
+  // LONG_OPENING_CONTRACT=fix and a "claims" entry under LONG_ARGUES add their rules (src/longcontractstep.ts).
+  const rules = contractRules(
+    {
     ...longRulesFor(s.cfg, "documentary", topic.format === "guide"),
     ...(retro ? { retro: true } : {}),
-  };
+    },
+    { contract: s.cfg.longOpeningContract, argues: s.cfg.longArgues, format: topic.format },
+  );
   // A planned entry's own sources, beside each chapter's article, so a verdict can name who said it.
   const runSources = await readRunSources(s, topic);
   // A retrospective's press goes only to the sections it belongs to (a review to reception), not to every chapter.
@@ -4480,8 +4754,11 @@ async function stepScriptDocumentary(
   const franchise = franchiseArticle
     ? withRunSources(withTestRecords(franchiseArticle, records))
     : franchiseArticle;
-  const drafted =
-    topic.format === "everygame" && topic.roster
+  // A resumed run keeps the outline it was writing to: a new outline would not match the chapters already written.
+  const resume = ck.resume;
+  const drafted = resume
+    ? undefined
+    : topic.format === "everygame" && topic.roster
       ? await everyGameOutlineFor(s, ep, topic, franchise?.text ?? "")
       : retro
       ? await retroOutlineFor(s, ep, topic, franchise?.text ?? "")
@@ -4492,28 +4769,42 @@ async function stepScriptDocumentary(
     { openLoops: s.cfg.docOpenLoops, rules },
   );
   // A search-led planned entry keeps its planned chapters: they are the YouTube chapters people search.
-  const held = applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise);
+  const held = drafted
+    ? applyPlannedChapters(drafted, topic.planned, topic.wiki ?? topic.franchise)
+    : { outline: resume!.outline, changed: [] as string[] };
   const outline = held.outline;
   if (held.changed.length) await logEvent(s.db, ep.id, "planned_chapters", { changed: held.changed });
+  // Only outlineDoc's outline can carry a finish line, and only with DOC_OPEN_LOOPS on: a retrospective or every-game
+  // outline has no such mark, so the contract neither asks for one nor counts its absence there.
+  const finishCarried = s.cfg.docOpenLoops && !retro && !(topic.format === "everygame" && topic.roster);
   // The questions it raises and answers (src/editorial/openloops.ts), kept only when they can work.
-  const openLoops = s.cfg.docOpenLoops
+  const openLoops: { loops: OpenLoop[]; removed: string[] } = resume
+    ? structuredClone(resume.openLoops)
+    : s.cfg.docOpenLoops
     ? groundOpenLoops(outline.open_loops, outline.chapters.length, {
         max: rules.loopsMax,
         coldOpen: rules.loopsMax ? Math.max(2, rules.hookStack) : 0,
       })
     : { loops: [], removed: [] };
+  // LONG_OPENING_CONTRACT=fix: one loop keeps the finish-line mark, raised in the cold open and paid in the last chapter.
+  if (!resume && rules.contract && finishCarried && openLoops.loops.length) {
+    const finish = groundFinishLine(openLoops.loops, outline.chapters.length);
+    openLoops.loops = finish.loops;
+    openLoops.removed.push(...finish.removed);
+  }
   // A rule-led revision is one call; a video gets a few at most, then a miss is a style warning (longRuleWarnings).
-  let ruleRevisions = LONG_RULE_REVISIONS;
+  let ruleRevisions = resume?.ruleRevisions ?? LONG_RULE_REVISIONS;
   // An earlier documentary on the same franchise: its wording and opening are not reused.
   const priorDoc = await priorDocNarration(s.db, ep.id, topic.franchise).catch(
     () => undefined,
   );
-  const chapters: DocDraft["chapters"] = [];
-  const warnings: string[] = [];
+  // Each kept chapter's plan is the outline's own object again (open loops are placed by identity, placeDocLoops).
+  const chapters: DocDraft["chapters"] = resume ? relinkPlans(resume, outline) : [];
+  const warnings: string[] = resume ? [...resume.warnings] : [];
   // A retrospective sandbox may pick its chapters (RETRO_SANDBOX_CHAPTERS, "1,story:1"); the outline index of each
   // chapter as written is kept, in order, for its footage and quotes.
   const pick = retro ? retroSandboxChapters(s.cfg.retroSandboxChapters, retro.chapters ?? []) : undefined;
-  const written: number[] = [];
+  const written: number[] = resume ? [...resume.written] : [];
   // A sandbox writes only the opening chapters (DOC_SANDBOX_CHAPTERS, 0 in production).
   const order =
     pick ??
@@ -4522,8 +4813,36 @@ async function stepScriptDocumentary(
       : outline.chapters
     ).map((_, i) => i);
   // Chapters dropped because the writer still refused them after widening (DOC_DROP_REFUSED_CHAPTER).
-  const droppedRefused: number[] = [];
+  const droppedRefused: number[] = resume ? [...resume.droppedRefused] : [];
+  // Outline indices already settled (written, dropped or without a source), kept after each one.
+  const done = new Set<number>(resume?.done ?? []);
+  const checkpoint = () =>
+    ck.save({
+      outline,
+      openLoops,
+      done: [...done],
+      chapters,
+      written,
+      droppedRefused,
+      warnings,
+      ruleRevisions,
+    });
+  if (resume) {
+    log("info", "documentary resumed from checkpoint", {
+      episode: ep.id,
+      chapters: chapters.length,
+      settled: done.size,
+      of: outline.chapters.length,
+    });
+    await logEvent(s.db, ep.id, "doc_checkpoint_resumed", {
+      chapters: chapters.length,
+      settled: [...done].map((i) => i + 1),
+      of: outline.chapters.length,
+      saved_at: resume.savedAt,
+    });
+  } else checkpoint();
   for (const [position, index] of order.entries()) {
+    if (done.has(index)) continue;
     const plan = outline.chapters[index]!;
     const article = await s.research(
       plan.wiki_title,
@@ -4535,6 +4854,8 @@ async function stepScriptDocumentary(
       warnings.push(
         `No Wikipedia article for ${plan.game_title}; chapter dropped.`,
       );
+      done.add(index);
+      checkpoint();
       continue;
     }
     const sourceOf = (a: import("./discovery/wikipedia.ts").WikiArticle) =>
@@ -4566,6 +4887,8 @@ async function stepScriptDocumentary(
     // In a documentary with records: what is still unsupported after the rewrites, and whether the check ever ran.
     let stillUnsupported: string[] = [];
     let checkRan = false;
+    // DOC_FACT_DISCIPLINE, without records: the last check's disputed lines (undefined when it could not run).
+    let disputed: Array<{ quote: string; problem: string }> | undefined;
     // Only the rules asked for this revision: if its edits don't land the draft stands, and it isn't checked again.
     let ruleOnly = false;
     // The last fact check came back clean with no other problem: only then does the friend pass touch the chapter.
@@ -4673,6 +4996,18 @@ async function stepScriptDocumentary(
           problems.push(...misses);
         }
       }
+      // LONG_OPENING_CONTRACT=fix: two honest takes a chapter, asked once, on the first draft.
+      if (attempt === 0 && rules.takesMin) {
+        const said = chapter.paragraphs.map((x) => x.narration).join(" ");
+        problems.push(
+          ...takeProblems(said, rules.takesMin),
+          // No stock opener ("I think", "Honestly") opens more than two takes in the whole video.
+          ...stockOpenerProblems(
+            chapters.map((c) => c.chapter.paragraphs.map((x) => x.narration).join(" ")).join(" "),
+            said,
+          ),
+        );
+      }
       let unsupported: string[];
       if (strict) {
         const items = await checkChapterItems(s.llm, chapter, source).catch(
@@ -4695,6 +5030,18 @@ async function stepScriptDocumentary(
           ),
           ...(items ? [] : ["The fact check could not run on this draft."]),
         ];
+      } else if (s.cfg.docFactDiscipline) {
+        // DOC_FACT_DISCIPLINE: each disputed line kept apart, so what survives the rewrites can be mended or cut
+        // (src/docfacts.ts); a check that could not run is undefined, never a pass.
+        disputed = await checkChapterItems(s.llm, chapter, source).catch(
+          (err) => {
+            log("warn", "documentary fact check failed", {
+              error: errorMessage(err),
+            });
+            return undefined;
+          },
+        );
+        unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
       } else
         unsupported = await checkChapter(s.llm, chapter, source).catch(
           (err) => {
@@ -4713,8 +5060,14 @@ async function stepScriptDocumentary(
       clean = !feedback.length;
       if (!feedback.length) break;
       ruleOnly = misses.length > 0 && feedback.length === misses.length;
+      // Under DOC_FACT_DISCIPLINE the disputed lines are settled after the rewrites (mended, cut or the chapter
+      // dropped), so only the other problems stay as warnings.
       if (attempt === attempts - 1)
-        warnings.push(...feedback.map((f) => `${plan.game_title}: ${f}`));
+        warnings.push(
+          ...(!strict && s.cfg.docFactDiscipline ? problems : feedback).map(
+            (f) => `${plan.game_title}: ${f}`,
+          ),
+        );
       // Lines the source doesn't back: the next try has more of the record in front of it.
       else if (unsupported.length && s.cfg.writerNotesGuard) await widen();
     }
@@ -4758,6 +5111,8 @@ async function stepScriptDocumentary(
             loopsRemoved: kept.removed,
             loopsHanging: kept.hanging,
           });
+          done.add(index);
+          checkpoint();
           await s.notify({
             content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), it still can't be written after widening its sources; the documentary goes on without it (${fate.why}). ${refused[0]!.slice(0, 240)}`,
           });
@@ -4782,6 +5137,8 @@ async function stepScriptDocumentary(
       warnings.push(
         `${plan.game_title}: chapter dropped, the writer returned a note instead of narration.`,
       );
+      done.add(index);
+      checkpoint();
       continue;
     }
     if (strict) {
@@ -4791,6 +5148,8 @@ async function stepScriptDocumentary(
         warnings.push(
           `${plan.game_title}: chapter dropped, ${checkRan ? "an unsupported line could not be cut" : "the fact check could not run"}.`,
         );
+        done.add(index);
+        checkpoint();
         continue;
       }
       if (stillUnsupported.length)
@@ -4798,6 +5157,74 @@ async function stepScriptDocumentary(
           `${plan.game_title}: ${stillUnsupported.length} unsupported line${stillUnsupported.length === 1 ? "" : "s"} cut.`,
         );
       chapter = cut.chapter;
+    } else if (s.cfg.docFactDiscipline) {
+      // DOC_FACT_DISCIPLINE (src/docfacts.ts): no line the fact check disputes goes on. What survived the rewrites
+      // is mended or its sentence cut, within the chapter's cap, and checked once more; only a clean check keeps the
+      // chapter. Otherwise it is dropped where a refused chapter could be (DOC_DROP_REFUSED_CHAPTER), or the video stops.
+      const settled = await disciplineChapter({
+        chapter: chapter!,
+        disputed,
+        check: (c) => checkChapterItems(s.llm, c, source),
+        maxCutShare: s.cfg.docFactCutPercent / 100,
+      });
+      await logEvent(s.db, ep.id, "doc_fact_discipline", {
+        chapter: index + 1,
+        ok: settled.ok,
+        disputed: disputed?.length ?? null,
+        repairs: settled.repairs,
+        ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
+      }).catch(() => undefined);
+      if (settled.ok) {
+        if (settled.repairs.length) {
+          chapter = settled.chapter;
+          // Mended text: the friend, clarity and humaniser passes stay off it, as for any chapter that wasn't clean.
+          clean = false;
+          warnings.push(docFactLine(`${plan.game_title}: chapter ${index + 1}`, settled.repairs));
+        }
+      } else {
+        // The check itself could not run: no verdict, so the step is tried again later (finished chapters resume).
+        if (settled.errored)
+          throw new Error(`documentary chapter ${index + 1}: ${settled.why}; trying again later`);
+        const title = outline.title;
+        const fate = refusedChapterFate({
+          on: s.cfg.docDropRefusedChapter,
+          position: chapters.length ? position : 0,
+          written: chapters.length,
+          left: order.length - position - 1,
+          min: s.cfg.docSandboxChapters || pick ? 1 : s.cfg.docMinChapters,
+        });
+        if (!fate.drop) {
+          await s.notify({
+            ping: true,
+            content: `🛑 Stopped the documentary "${title}": chapter ${index + 1} ("${plan.chapter_title}") still has lines its fact check disputes after the rewrites and the cuts (${settled.why}), and it can't be dropped: ${fate.why}.`,
+          });
+          throw new FatalError(
+            `documentary chapter ${index + 1} fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,
+          );
+        }
+        const kept = loopsWithoutChapter(openLoops.loops, index + 1);
+        openLoops.loops = kept.loops;
+        openLoops.removed.push(...kept.removed);
+        warnings.push(...kept.hanging.map((h) => `${plan.game_title}: ${h}`));
+        warnings.push(
+          `${plan.game_title}: chapter ${index + 1} ("${plan.chapter_title}") dropped, its fact check still disputes it after the rewrites and the cuts: ${settled.why}.`,
+        );
+        await logEvent(s.db, ep.id, "doc_chapter_dropped", {
+          chapter: index + 1,
+          title: plan.chapter_title,
+          why: [settled.why],
+          fate: fate.why,
+          facts: true,
+          loopsRemoved: kept.removed,
+          loopsHanging: kept.hanging,
+        });
+        done.add(index);
+        checkpoint();
+        await s.notify({
+          content: `✂️ "${title}": dropped chapter ${index + 1} ("${plan.chapter_title}"), its fact check still disputes it after the rewrites and the cuts (${settled.why.slice(0, 240)}); the documentary goes on without it (${fate.why}).`,
+        });
+        continue;
+      }
     }
     // Wikipedia never reaches the voice: a line that still names it loses the credit (src/editorial/attribution.ts).
     {
@@ -4820,6 +5247,15 @@ async function stepScriptDocumentary(
           },
         )
       : [];
+    // LONG_OPENING_CONTRACT=fix: a later pass that leaves the chapter with fewer takes than it had and needs (takesGuard).
+    const takesLost = (before: { paragraphs: Array<{ narration: string }> }, after: typeof before): string[] =>
+      rules.takesMin
+        ? takesGuard(
+            before.paragraphs.map((x) => x.narration).join(" "),
+            after.paragraphs.map((x) => x.narration).join(" "),
+            rules.takesMin,
+          )
+        : [];
     // The friend pass (FRIEND_PASS) on a chapter the fact check passed clean: the delivery only, kept when no figure,
     // name or quote moved, no chapter rule newly breaks and the fact check passes it again.
     if (clean && friendPassOn(s.cfg, "documentary")) {
@@ -4837,6 +5273,7 @@ async function stepScriptDocumentary(
           friendChapter(s.llm, before, {
             tier: s.cfg.friendPassTier,
             credits,
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         guard: (after) => [
           ...friendChapterProblems(before, after),
@@ -4848,6 +5285,8 @@ async function stepScriptDocumentary(
               )
             : []),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          // LONG_OPENING_CONTRACT=fix: the pass may reword a take, never cut the chapter below its takes.
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         check: (after) => checkChapter(s.llm, after, source),
@@ -4897,6 +5336,7 @@ async function stepScriptDocumentary(
                 )
               : []),
             ...newProblems(rulesFor(before), rulesFor(after)),
+            ...takesLost(before, after),
             ...chapterRefusal(after),
           ];
           return guard.length ? guard : checkChapter(s.llm, after, source);
@@ -4939,6 +5379,7 @@ async function stepScriptDocumentary(
             { removedFigures: removed },
           ),
           ...newProblems(rulesFor(before), rulesFor(after)),
+          ...takesLost(before, after),
           ...chapterRefusal(after),
         ],
         rewrite: (v, notes) =>
@@ -4946,6 +5387,7 @@ async function stepScriptDocumentary(
             tier: s.cfg.friendPassTier,
             humanNotes: notes,
             site: "humanise.rewrite",
+            ...(rules.takesMin ? { takesMin: rules.takesMin } : {}),
           }),
         check: (after) => checkChapter(s.llm, after, source),
       });
@@ -5014,16 +5456,31 @@ async function stepScriptDocumentary(
     }
     chapters.push({ plan, chapter: grounded.chapter, source, moments });
     written.push(index);
+    done.add(index);
+    checkpoint();
     log("info", "documentary chapter written", {
       episode: ep.id,
       chapter: index + 1,
       game: plan.game_title,
     });
   }
+  // Every chapter is settled: a failure from here on writes the documentary afresh, it doesn't resume.
+  ck.loopDone = true;
   if (!s.cfg.docSandboxChapters && !pick && chapters.length < s.cfg.docMinChapters)
     throw new FatalError(
       `documentary has only ${chapters.length} chapters with sources${droppedRefused.length ? ` (chapter${droppedRefused.length === 1 ? "" : "s"} ${droppedRefused.join(", ")} dropped after refusals)` : ""}`,
     );
+  // LONG_OPENING_CONTRACT and LONG_ARGUES: with both off nothing below reads, measures or calls anything new, so an
+  // older or mocked outline (no youtube block, no sources) runs exactly as before.
+  const longOn = s.cfg.longOpeningContract !== "off" || s.cfg.longArgues !== "off";
+  const sourceTexts = () => [franchise?.text ?? "", ...chapters.map((c) => c.source?.text ?? "")];
+  // The title the opening serves, as it will go out, and the source's dated quotes (contract "fix" only).
+  const finalTitle = rules.contract
+    ? topic.format === "everygame" || topic.why_died
+      ? topic.title_idea
+      : (retro?.title ?? topic.planned?.title ?? outline.youtube?.title ?? outline.title ?? topic.title_idea)
+    : "";
+  const quotes = s.cfg.longOpeningContract === "off" ? [] : openingQuotes(sourceTexts());
   const ends = {
     priorDoc,
     loops: openLoops.loops,
@@ -5032,6 +5489,17 @@ async function stepScriptDocumentary(
     chapters: chapters.map((c) =>
       c.chapter.paragraphs.map((x) => x.narration).join(" "),
     ),
+    ...(rules.contract
+      ? {
+          quotes,
+          contract: {
+            title: finalTitle,
+            quotes,
+            sources: sourceTexts(),
+            finishLine: finishCarried,
+          },
+        }
+      : {}),
   };
   let bookends = await writeBookends(
     s.llm,
@@ -5041,6 +5509,8 @@ async function stepScriptDocumentary(
     ends,
   );
   const endProblems = validateBookends(bookends, ends);
+  // LONG_OPENING_CONTRACT=fix: what the opening missed, sent back with the rest once; then it stands, with a note.
+  const contractSentBack = rules.contract ? endProblems : [];
   if (endProblems.length)
     bookends = await writeBookends(
       s.llm,
@@ -5091,10 +5561,24 @@ async function stepScriptDocumentary(
   if (warnings.length)
     await logEvent(s.db, ep.id, "style_warnings", { problems: warnings });
   // The fact check's last word used to be a line in the log nobody reads, and the FFXIV refusals were in it.
+  // DOC_FACT_DISCIPLINE: what was mended or cut, never a disputed line kept (25 Nov 2026: Cyberpunk 2077 kept 18).
+  const factLines = warnings.filter((w) => /: fact check: \d+ disputed line/.test(w));
+  if (factLines.length)
+    await s.notify({
+      content: `✂️ "${outline.title}": the fact check's disputed lines were mended or cut, then checked clean, in ${factLines.length} chapter${factLines.length === 1 ? "" : "s"}. ${factLines[0]!.slice(0, 300)}`,
+    });
   const stillUnbacked = warnings.filter((w) => /Not supported by the source/.test(w));
+  if (stillUnbacked.length && !strict && s.cfg.docFactDiscipline)
+    // Can't happen: every disputed line was settled above. If it ever does, nothing disputed goes to the voice.
+    throw new FatalError(
+      `documentary still holds ${stillUnbacked.length} disputed line${stillUnbacked.length === 1 ? "" : "s"} after the fact discipline: ${stillUnbacked[0]!.slice(0, 200)}`,
+    );
+  // With records (strict) those lines were cut above, sentence by sentence; without, only DOC_FACT_DISCIPLINE off keeps them.
   if (stillUnbacked.length)
     await s.notify({
-      content: `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in. First: ${stillUnbacked[0]!.slice(0, 280)}`,
+      content: strict
+        ? `✂️ "${outline.title}": ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} the fact check still disputed after the rewrites ${stillUnbacked.length === 1 ? "was" : "were"} cut. First: ${stillUnbacked[0]!.slice(0, 280)}`
+        : `⚠️ "${outline.title}": the fact check still disputes ${stillUnbacked.length} line${stillUnbacked.length === 1 ? "" : "s"} after the rewrites, and they stay in (DOC_FACT_DISCIPLINE is off). First: ${stillUnbacked[0]!.slice(0, 280)}`,
     });
   if (longRulesOn(rules)) {
     const said = narrationOfDoc(draft);
@@ -5151,7 +5635,39 @@ async function stepScriptDocumentary(
     script.sources = [franchise.url, ...(script.sources ?? [])];
   for (const u of runSources.urls)
     if (!script.sources?.includes(u)) (script.sources ??= []).push(u);
+  // LONG_OPENING_CONTRACT and LONG_ARGUES on the record (check and fix); off, nothing is measured or called.
+  // A finish line the outline planned but placement dropped (findFinishPlant, findFinishPayoff): a finding.
+  const finishGone = longOn
+    ? warnings.find((w) => /^finish line ".*": never (raised|answered)$/.test(w))
+    : undefined;
+  const finishQuestion = longOn ? openLoops.loops.find((l) => l.finish_line)?.question : undefined;
+  const longChecks: LongRecord = longOn
+    ? await recordLongChecks(s, ep.id, script, {
+        // A "claims" entry is measured as one under check too; only fix writes it as one.
+        kind: topic.format === "claims" ? "claims" : rules.guide ? "guide" : "documentary",
+        quotes,
+        topic,
+        fixed: contractSentBack,
+        finishLine: finishCarried,
+        sources: sourceTexts(),
+        sourceUrls: [
+          franchise?.url ?? "",
+          ...chapters.map((c) => c.source?.url ?? ""),
+          ...(runSources.urls ?? []),
+        ],
+        ...(finishQuestion && finishGone
+          ? {
+              finishMissing: {
+                question: finishQuestion,
+                why: finishGone.endsWith("never answered") ? ("not paid" as const) : ("not planted" as const),
+              },
+            }
+          : {}),
+      })
+    : { warnings: [] };
+  if (longChecks.warnings.length) warnings.push(...longChecks.warnings);
   await guardScript(s, ep, script, "after writing");
+  ck.clear();
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
@@ -5160,6 +5676,8 @@ async function stepScriptDocumentary(
       words,
       sources: script.sources,
       warnings,
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
     },
   });
 }
@@ -5170,7 +5688,8 @@ async function readRunSources(
   topic: DocTopic,
 ): Promise<{ text: string; urls: string[]; read: number; missed: string[]; parts: Array<{ url: string; text: string }> }> {
   const list = topic.sources ?? [];
-  if (!list.length || (topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
+  const claims = topic.format === "claims" && s.cfg.longArgues === "fix";
+  if (!list.length || (!claims && topic.format !== "retro" && (topic.format !== "guide" || !s.cfg.longGuideFormat)))
     return { text: "", urls: [], read: 0, missed: [], parts: [] };
   const got = await Promise.all(
     list.map((u) =>
@@ -5483,9 +6002,18 @@ export async function maybeSelectLongform(
         : undefined,
     });
   }
+  // GTA_GUIDES (src/gtaguide.ts): a share of the long slots goes to a post-launch GTA 6 guide list, decided per slot.
+  // Off (the default), gtaGuideSlot is false and nothing here runs. No guide topic left: the ranking takes the slot.
+  if (gtaGuideSlot(cfg, due)) {
+    const id = await selectGtaGuide(s, due).catch((err) => {
+      log("warn", "gta guide: selection failed, the ranking takes the slot", { error: errorMessage(err) });
+      return undefined;
+    });
+    if (id) return id;
+  }
   const covered = (
     await db.query<{ headline: string }>(
-      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days'`,
+      `SELECT story_json->>'headline' AS headline FROM episodes WHERE lane IN ('evergreen','longform') AND status NOT IN ('failed','rejected') AND created_at > $1::timestamptz - interval '180 days' AND factcheck_json->'gta_guide' IS NULL`,
       [now],
     )
   ).map((r) => r.headline);
@@ -5506,7 +6034,7 @@ export async function maybeSelectLongform(
   // the same day's duplicate check refuses it and the slot stays empty (Half-Life and Portal, 20 Nov).
   const failedThemes = (
     await db.query<{ theme: string | null }>(
-      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days'`,
+      `SELECT story_json->>'gameHint' AS theme FROM episodes WHERE lane = 'longform' AND status IN ('failed','rejected') AND created_at > $1::timestamptz - interval '2 days' AND factcheck_json->'gta_guide' IS NULL`,
       [now],
     )
   )
@@ -5617,7 +6145,116 @@ export async function maybeSelectLongform(
     skipped.length,
   );
   log("info", "long-form topic selected", { id, theme: topic.theme });
+  // GTA_GUIDES' other arm: the rankings made while it is on, for the verdict (gtaGuideVerdict).
+  if (cfg.gtaGuides) await logEvent(db, id, "gta_guide", { arm: "ranking", slot_at: due.toISOString() }).catch(() => undefined);
   quietReset("long ranking");
+  return id;
+}
+
+/**
+ * GTA_GUIDES: the guide for a long slot (src/gtaguide.ts): the kind with the most demand, viewer questions and comments
+ * that was not made in the last 30 days (nor failed in the last two), as a longform episode whose factcheck carries it.
+ * Undefined when no kind is left, so the ranking takes the slot.
+ */
+async function guideDemandReading(s: Services, now: Date): Promise<Map<string, number>> {
+  const [row] = await s.db
+    .query<{ value: string }>(`SELECT value FROM settings WHERE key = 'gta_guide_demand'`)
+    .catch(() => [] as Array<{ value: string }>);
+  try {
+    const kept = row ? (JSON.parse(row.value) as { at: string; demand: Record<string, number> }) : undefined;
+    // A reading that found something is kept a week; an empty one (every search failed or found nothing) six hours.
+    const keep = kept && Object.keys(kept.demand).length ? GUIDE_DEMAND_DAYS * 86_400_000 : 6 * 3_600_000;
+    if (kept && now.getTime() - Date.parse(kept.at) < keep) return new Map(Object.entries(kept.demand));
+  } catch {
+    // An unreadable reading is measured again.
+  }
+  if (!s.cfg.demandCheck || !s.searchDemandMany) return new Map();
+  const rows = await s.searchDemandMany(GUIDE_QUERIES).catch(() => undefined);
+  if (!rows) return new Map();
+  const demand = guideDemand(rows);
+  await s.db
+    .query(
+      `INSERT INTO settings (key, value) VALUES ('gta_guide_demand', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+      [JSON.stringify({ at: now.toISOString(), demand: Object.fromEntries(demand) })],
+    )
+    .catch(() => undefined);
+  return demand;
+}
+
+async function selectGtaGuide(s: Services, due: Date): Promise<string | undefined> {
+  const { db, cfg } = s;
+  const now = s.now();
+  // A guide that already failed for this slot hands it to the ranking: never a second guide's spend on the same slot.
+  const failedHere = await db.query(
+    `SELECT 1 FROM episodes WHERE lane = 'longform' AND slot_at = $1 AND status IN ('failed','rejected') AND factcheck_json->'gta_guide' IS NOT NULL LIMIT 1`,
+    [due],
+  );
+  if (failedHere.length) {
+    quietLog("gta guide", "a guide already failed for this slot, so the ranking takes it", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const made = await db.query<{ kind: string | null; at: string; status: string }>(
+    `SELECT factcheck_json->'gta_guide'->>'kind' AS kind, created_at AS at, status FROM episodes
+      WHERE lane = 'longform' AND factcheck_json->'gta_guide'->>'kind' IS NOT NULL
+        AND created_at > $1::timestamptz - interval '30 days'
+        AND (status NOT IN ('failed','rejected') OR created_at > $1::timestamptz - interval '2 days'
+             OR (COALESCE(last_error, '') LIKE '%too thin for this kind%' AND created_at > $1::timestamptz - interval '7 days'))`,
+    [now],
+  );
+  // The demand lookups (the Data API): one search a kind, the reading kept a week in settings so a slot never pays
+  // for it twice; trouble means no reading, and the stream asks decide alone.
+  const asks = await loadGuideAsks(cfg.dataDir).catch(() => []);
+  const madeKinds = made.filter((r) => r.kind).map((r) => ({ kind: r.kind!, at: r.at }));
+  // No kind free: nothing is searched.
+  const free = pickGuideTopic({ now, made: madeKinds, demand: new Map(), asks });
+  const demand = free ? await guideDemandReading(s, now) : new Map<string, number>();
+  const pick = pickGuideTopic({
+    now,
+    made: made.filter((r) => r.kind).map((r) => ({ kind: r.kind!, at: r.at })),
+    demand,
+    asks,
+  });
+  if (!pick) {
+    quietLog("gta guide", "every guide kind was made in the last 30 days", { slot: due.toISOString() }, now.getTime());
+    return undefined;
+  }
+  const topic: GtaGuideTopic = {
+    kind: pick.kind.key,
+    why: pick.why,
+    asks: pick.asks,
+    demandViews: pick.demandViews,
+    slot_at: due.toISOString(),
+  };
+  const cluster: StoryCluster = {
+    hash: `gtaguide:${dayKey(now, cfg.timezone)}:${pick.kind.key}`,
+    headline: `${GTA_GAME}: ${pick.kind.name}`,
+    items: [],
+    sources: ["Rockstar Games"],
+    hasOfficial: true,
+    corroborated: true,
+    rumourSignals: false,
+    newestAt: now.toISOString(),
+    score: 0,
+    gameHint: GTA_GAME,
+  };
+  const id = shortId();
+  if (!(await createEpisode(db, id, cluster, { lane: "longform", priority: LANE_PRIORITY.longform, slotAt: due }))) return undefined;
+  await db.query(`UPDATE episodes SET script_json = NULL, factcheck_json = $2 WHERE id = $1`, [id, JSON.stringify({ gta_guide: topic })]);
+  await logEvent(db, id, "selected", { headline: cluster.headline, lane: "longform", theme: GTA_GAME, reason: pick.why.join("; "), slot_at: due.toISOString() });
+  // The record the verdict reads (gtaGuideVerdict, src/gtaguide.ts). Pass mark: with 6 published videos per arm, the
+  // guides' median 7-day views AND median thumbnail CTR (from Test & compare) beat the long rankings' medians over the
+  // same weeks; under that the share goes back to 0, and a clear win raises GTA_GUIDE_SHARE.
+  await logEvent(db, id, "gta_guide", {
+    arm: "guide",
+    kind: pick.kind.key,
+    score: Math.round(pick.score * 10) / 10,
+    why: pick.why,
+    asks: pick.asks.length,
+    demand_views: pick.demandViews,
+    slot_at: due.toISOString(),
+  });
+  log("info", "gta guide selected", { id, kind: pick.kind.key });
+  quietReset("gta guide");
   return id;
 }
 
@@ -5649,6 +6286,7 @@ export async function maybeSelectCutdown(
     `SELECT e.* FROM episodes e
       WHERE e.lane = 'longform' AND e.status = 'published' AND e.youtube_video_id IS NOT NULL
         AND COALESCE(e.script_json->>'evergreen_format', '') <> 'documentary'
+        AND e.script_json->'gta_guide' IS NULL
         AND COALESCE(e.publish_at, e.updated_at) < $1::timestamptz - interval '20 hours'
         AND COALESCE(e.publish_at, e.updated_at) > $1::timestamptz - interval '21 days'
         AND NOT EXISTS (SELECT 1 FROM events v WHERE v.episode_id = e.id AND v.kind IN ('made_private','crosspost_skip') AND COALESCE(v.detail->>'reason','') IN ('not public on YouTube',''))
@@ -6370,6 +7008,7 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
         await directFrames(source, meta.clip.seconds, look),
         ref.review,
         blacks,
+        meta.source.credit ?? "",
       ).catch(whenVisionPaused(undefined))
     : undefined;
   if (s.cfg.gameplayDirect) await fs.rm(look, { recursive: true, force: true });
@@ -6386,7 +7025,13 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       throw new FatalError("no clean payoff: the clip stops before anything is answered");
     const cut = directCut(direction, blacks, meta.clip.seconds);
     const lines = fitLines(direction, cut.payoffAt);
-    const script = gameplayScript(ref.review, ref.id, await gameplayExperiments(s.cfg), ref.live);
+    const script = gameplayScript(
+      ref.review,
+      ref.id,
+      await gameplayExperiments(s.cfg),
+      ref.live,
+      meta.source.credit ?? "",
+    );
     script.hook = lines.hook;
     script.beats = [
       {
@@ -6408,7 +7053,8 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
       focus_payoff: direction.focus_payoff,
     };
     // CHALLENGE_SERIES (src/challenge.ts): a tagged stream's clip is a challenge episode, and then never a Day N.
-    if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
+    // The owner's own series ("GTA 6 Day N", challenges) never take another streamer's play.
+    if (!meta.source.credit && !(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
     await guardScript(s, ep, script, "after writing");
     await transition(s.db, ep.id, "selected", "scripted", {
       script_json: script,
@@ -6502,8 +7148,10 @@ async function stepScriptGameplay(s: Services, ep: Episode): Promise<void> {
     ref.id,
     await gameplayExperiments(s.cfg),
     ref.live,
+    meta.source.credit ?? "",
   );
-  if (!(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
+  // The owner's own series ("GTA 6 Day N", challenges) never take another streamer's play.
+  if (!meta.source.credit && !(await applyChallenge(s, ep, script, meta))) await applyGtaDaily(s, ep, script, meta);
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
@@ -7138,6 +7786,8 @@ async function stepScriptRecap(
   for (const [index, story] of stories.entries()) {
     let feedback: string[] = [];
     let chapter: import("./editorial/documentary.ts").DocChapter | undefined;
+    // DOC_FACT_DISCIPLINE: the last check's disputed lines, undefined when that check could not run.
+    let disputed: Array<{ quote: string; problem: string }> | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       chapter = await writeRecapChapter(s.llm, {
         story,
@@ -7147,25 +7797,59 @@ async function stepScriptRecap(
         previousEnding: chapters.at(-1)?.paragraphs.at(-1)?.narration,
         feedback,
       });
-      const unsupported = await checkChapter(
+      let unsupported: string[];
+      if (s.cfg.docFactDiscipline) {
+        disputed = await checkChapterItems(s.llm, chapter, story.source).catch(() => undefined);
+        unsupported = (disputed ?? []).map((u) => `"${u.quote}": ${u.problem}`);
+      } else
+        unsupported = await checkChapter(
         s.llm,
         chapter,
         story.source,
       ).catch(() => [] as string[]);
+      const others = validateRecapChapter(chapter, chapters);
       feedback = [
-        ...validateRecapChapter(chapter, chapters),
+        ...others,
         ...unsupported.map(
           (u) => `Not supported by the sources, remove or correct it: ${u}`,
         ),
       ];
       if (!feedback.length) break;
+      // Under DOC_FACT_DISCIPLINE the disputed lines are settled below, never kept as a warning.
       if (attempt === 2)
-        warnings.push(...feedback.map((f) => `${story.game}: ${f}`));
+        warnings.push(...(s.cfg.docFactDiscipline ? others : feedback).map((f) => `${story.game}: ${f}`));
     }
     if (s.cfg.writerNotesGuard && chapterRefusal(chapter!).length)
       throw new FatalError(
         `recap story "${story.game}" refused: ${chapterRefusal(chapter!)[0]!.slice(0, 200)}`,
       );
+    // DOC_FACT_DISCIPLINE (src/docfacts.ts): no disputed line goes on. Mended or cut within the story's cap and
+    // checked once more; a story still disputed stops the recap (its stories, titles and packaging go together).
+    if (s.cfg.docFactDiscipline) {
+      const settled = await disciplineChapter({
+        chapter: chapter!,
+        disputed,
+        check: (c) => checkChapterItems(s.llm, c, story.source),
+        maxCutShare: s.cfg.docFactCutPercent / 100,
+      });
+      await logEvent(s.db, ep.id, "doc_fact_discipline", {
+        story: index + 1,
+        ok: settled.ok,
+        disputed: disputed?.length ?? null,
+        repairs: settled.repairs,
+        ...(settled.ok ? { cut_words: settled.cut, of_words: settled.base } : { why: settled.why, left: settled.left }),
+      }).catch(() => undefined);
+      if (!settled.ok && settled.errored)
+        throw new Error(`recap story "${story.game}": ${settled.why}; trying again later`);
+      if (!settled.ok)
+        throw new FatalError(
+          `recap story "${story.game}" fails its fact check after rewrites and cuts: ${settled.why.slice(0, 220)}`,
+        );
+      if (settled.repairs.length) {
+        chapter = settled.chapter;
+        warnings.push(docFactLine(story.game, settled.repairs));
+      }
+    }
     const grounded = groundCallouts(chapter!, story.source);
     if (grounded.removed.length)
       warnings.push(
@@ -7281,6 +7965,8 @@ async function adjudicateRanking(
   extra: Array<{ title: string; facts: string }> = [],
   /** Applies the Fact Vault's fixes to the caller's draft (FACT_VAULT=enforce); without it a fixable blocker stands. */
   fix?: (fixes: VaultFix[]) => void | number,
+  /** LONG_FACT_DISCIPLINE: the long ranking's own draft, so a surviving blocker is mended on its cards and moments too. */
+  long?: LongRepairHooks,
 ): Promise<string[]> {
   // FACT_VAULT: the vault's facts for these games (unless each sheet already carries them) and what it verified.
   const spoken = [narrationOf(script), script.youtube.title, ...script.beats.map((b) => cardText(b.visual))];
@@ -7326,13 +8012,110 @@ async function adjudicateRanking(
     return blockers.length ? blockers : [`Fact-check failed: ${check.summary}`];
   // FACT_REPAIR (src/factrepair.ts): one or two lines still wrong after the rewrite are mended without a model
   // and the mended script is checked again; only a clean second check saves the episode.
-  if (s.cfg.factRepair && fix && blockers.length) {
+  // LONG_FACT_DISCIPLINE (src/longrepair.ts): a long ranking is mended on its structured draft, with the last resort
+  // of cutting the blocked sentences inside the 15% cap; the draft already carries any vault fixes.
+  if (long && blockers.length) {
+    if (await repairLongRanking(s, ep, long, blockers, factList)) return [];
+  } else if (s.cfg.factRepair && fix && blockers.length) {
     const base = vaultFixes.length ? applyVaultFixes(script, vaultFixes).value : script;
     if (await repairRanking(s, ep, base, blockers, factList, fix)) return [];
   }
   throw new FatalError(
     `fact-check still failing after a rewrite: ${(blockers[0] ?? check.summary).slice(0, 300)}`,
   );
+}
+
+/** The long ranking's draft as LONG_FACT_DISCIPLINE's repair reads and replaces it. */
+interface LongRepairHooks {
+  draft: () => import("./editorial/longform.ts").LongformScript;
+  set: (d: import("./editorial/longform.ts").LongformScript) => void;
+}
+
+const blockersOf = (c: { issues: Array<{ severity: string; quote: string; problem: string }> }) =>
+  c.issues.filter((i) => i.severity === "blocker").map((i) => `Fact-check: "${i.quote}" - ${i.problem}`);
+
+/**
+ * LONG_FACT_DISCIPLINE: the surviving blockers mended on the long draft (line, card and moment together) and checked
+ * again; when that fails, the last resort cuts the blocked sentences (src/longrepair.ts) and checks once more. Only a
+ * clean check replaces the caller's draft, so nothing the checker rejected goes out.
+ */
+async function repairLongRanking(
+  s: Services,
+  ep: Episode,
+  long: LongRepairHooks,
+  blockers: string[],
+  factList: Array<{ title: string; facts: string }>,
+): Promise<boolean> {
+  const start = long.draft();
+  const ctx = speakContext(longformToScript(start).say_as);
+  const speak = (t: string) => speakable(t, ctx);
+  const recheck = async (d: typeof start) => {
+    const c = await factCheckRanking(s.llm, longformToScript(d), factList);
+    const left = blockersOf(c);
+    return { passed: c.verdict !== "fail" && !left.length, left, summary: c.summary };
+  };
+  const first = repairLongform(start, blockers, speak);
+  let from = start;
+  let cut = 0;
+  let open = blockers;
+  if (!first.unrepaired.length && first.repairs.length) {
+    const r = await recheck(first.draft);
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: r.passed ? "repaired" : "recheck_failed",
+      long: true,
+      repairs: first.repairs,
+      left: r.left,
+      summary: r.summary,
+    });
+    if (r.passed) {
+      long.set(first.draft);
+      log("info", "long fact-check blockers repaired", {
+        id: ep.id,
+        repairs: first.repairs.map((x) => `${x.kind}: ${x.quote}`),
+      });
+      return true;
+    }
+    if (!r.left.length) return false;
+    from = first.draft;
+    cut = first.cut;
+    open = r.left;
+  } else {
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: "not_repairable",
+      long: true,
+      blockers,
+      unrepaired: first.unrepaired,
+    });
+  }
+  // The last resort: cut the blocked sentences rather than lose the whole video (never past the 15% cap of the
+  // draft as it stood before any repair).
+  const baseWords = longWords(start);
+  const last = repairLongform(from, open, speak, { lastResort: true, baseWords, alreadyCut: cut });
+  if (last.unrepaired.length || !last.repairs.length) {
+    await logEvent(s.db, ep.id, "fact_repair", {
+      outcome: "cut_not_possible",
+      long: true,
+      blockers: open,
+      unrepaired: last.unrepaired,
+    });
+    return false;
+  }
+  const r2 = await recheck(last.draft);
+  await logEvent(s.db, ep.id, "fact_repair", {
+    outcome: r2.passed ? "repaired_by_cut" : "cut_recheck_failed",
+    long: true,
+    repairs: last.repairs,
+    cut_words: last.cut,
+    left: r2.left,
+    summary: r2.summary,
+  });
+  log(r2.passed ? "info" : "warn", r2.passed ? "long fact-check blockers cut" : "long fact cut did not pass the re-check", {
+    id: ep.id,
+    repairs: last.repairs.map((x) => `${x.kind}: ${x.quote}`),
+  });
+  if (!r2.passed) return false;
+  long.set(last.draft);
+  return true;
 }
 
 /** FACT_REPAIR: mends the surviving blockers, re-checks, and hands the fixes to the caller's draft on a pass. */
@@ -7391,6 +8174,105 @@ async function repairRanking(
   return true;
 }
 
+/**
+ * GTA_GUIDES: the guide's script (src/gtaguide.ts, src/editorial/gtaguidewriter.ts). Facts from the fact pack only,
+ * first-hand lines only from the owner's own recordings, HUD readings and stream checks; the list shape and the story
+ * guard sent back once, then the long ranking's fact-check (with the pack and the play evidence as its facts) decides.
+ */
+async function stepScriptGtaGuide(s: Services, ep: Episode, topic: GtaGuideTopic): Promise<void> {
+  const kind = kindOf(topic.kind);
+  if (!kind) throw new FatalError(`unknown GTA guide kind "${topic.kind}"`);
+  const pack = readFactPack(s.cfg.gtaGuideFacts.length ? s.cfg.gtaGuideFacts : DEFAULT_GUIDE_FACTS, kind.key);
+  if (!pack.confirmed) throw new FatalError("GTA guide: the fact pack is empty or unreadable");
+  const recordings = await loadPlayRecordings(s.cfg.dataDir).catch(() => []);
+  const dates = new Map(recordings.map((r) => [r.vodId, r.recordedOn ?? ""] as [string, string]));
+  const asks = await loadGuideAsks(s.cfg.dataDir).catch(() => []);
+  const hud = await loadHudFacts(s.cfg.dataDir, dates).catch(() => []);
+  const evidence = playEvidence({ recordings, hudFacts: hud, asks });
+  const rumours = asks
+    .filter((a) => a.rumour && !a.spoiler && a.status === "open")
+    .slice(0, 8)
+    .map((a) => a.claim || a.question);
+  const brief = { kind, facts: pack, evidence, asks: topic.asks, rumours };
+  const openingCap = s.cfg.longOpeningContract === "fix" || s.cfg.longArgues === "fix";
+  const opts = { openingCap, discipline: s.cfg.longFactDiscipline };
+  const ctx = { kind, evidence, ...(openingCap ? { introMax: GUIDE_OPENING_MAX } : {}) };
+  // The fact-check's facts: the pack's two parts, kept apart, and the play evidence.
+  const extra = [
+    { title: "GTA VI fact pack, confirmed", facts: pack.confirmed },
+    ...(pack.reported ? [{ title: "GTA VI fact pack, reported (only ever said as reported)", facts: pack.reported }] : []),
+    ...(evidence.length ? [{ title: "Pulse's own play (the owner's recordings, HUD readings and stream checks)", facts: evidence.join("\n") }] : []),
+    ...(rumours.length ? [{ title: "Rumours viewers repeat (only ever said as rumours)", facts: rumours.join("\n") }] : []),
+  ];
+  let draft: import("./gtaguide.ts").GuideDraft | undefined;
+  let feedback: string[] = [];
+  // The last draft's checks: a rewrite whose plan comes back too thin keeps that draft only when nothing factual or
+  // hard was wrong with it (the first plan may have been fine; the rewrite must never kill it).
+  let lastFactual: string[] = [];
+  let lastHard: string[] = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      draft = await writeGtaGuide(s.llm, brief, feedback, opts, (plan) => guidePlanProblems(plan, kind, evidence));
+    } catch (err) {
+      if (attempt > 0 && err instanceof GuideTooThinError && draft && !lastFactual.length && !lastHard.length) {
+        await logEvent(s.db, ep.id, "style_warnings", { problems: [err.message, ...feedback] });
+        break;
+      }
+      throw err;
+    }
+    const script = guideToScript(draft, kind);
+    const problems = [
+      ...guideProblems(draft, ctx),
+      ...scriptSpoilers(script, spoilerWindows(), s.now()).map(
+        (x) => `Story spoiler (${x.where}): "${x.phrase}" gives away ${x.what}; GTA VI's story is held until December 18.`,
+      ),
+    ];
+    const factual = await adjudicateRanking(s, ep, script, [], attempt, extra);
+    lastFactual = factual;
+    lastHard = problems.filter((p) => /^Story spoiler|speaks first-hand|no play evidence/.test(p));
+    if (!problems.length && !factual.length) break;
+    if (attempt === 1 && problems.length) {
+      const hard = lastHard;
+      if (hard.length) throw new FatalError(`GTA guide still breaks a hard rule after the rewrite: ${hard[0]!.slice(0, 300)}`);
+      await logEvent(s.db, ep.id, "style_warnings", { problems });
+    }
+    feedback = [...factual, ...problems];
+  }
+  if (!draft) throw new Error("GTA guide produced nothing");
+  const script = guideToScript(draft, kind);
+  // Item quality: the plan check sent it back once and dropped what it could; what is left is noted, never a rewrite.
+  const thin = guideQualityWarnings(draft, kind);
+  if (thin.length) await logEvent(s.db, ep.id, "style_warnings", { problems: thin });
+  const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
+  if (longChecks.warnings.length) await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
+  await guardScript(s, ep, script, "after writing");
+  const meta = script.gta_guide!;
+  await logEvent(s.db, ep.id, "gta_guide", {
+    stage: "scripted",
+    kind: kind.key,
+    title: script.youtube.title,
+    items: meta.items,
+    labels: {
+      confirmed: meta.labels.filter((l) => l.label === "confirmed").length,
+      reported: meta.labels.filter((l) => l.label === "reported").length,
+      rumour: meta.labels.filter((l) => l.label === "rumour").length,
+    },
+    my_playthrough: meta.labels.filter((l) => l.play).length,
+    evidence_lines: evidence.length,
+    facts_missed: pack.missed,
+    thumb: meta.thumb,
+  });
+  await transition(s.db, ep.id, "selected", "scripted", {
+    script_json: script,
+    factcheck_json: {
+      gta_guide: topic,
+      evidence,
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
+    },
+  });
+}
+
 async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   const fc = ep.factcheck_json as {
     doc?: boolean;
@@ -7399,7 +8281,10 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
     story?: ExplainedStory;
     stories?: string[];
     topic?: import("./editorial/evergreen.ts").EvergreenTopic;
+    gta_guide?: GtaGuideTopic;
   } | null;
+  // GTA_GUIDES: a GTA 6 guide list (src/gtaguide.ts), written on its own, rendered as a ranking.
+  if (fc?.gta_guide && kindOf(fc.gta_guide.kind)) return stepScriptGtaGuide(s, ep, fc.gta_guide);
   if (fc?.recap && fc.stories?.length)
     return stepScriptRecap(s, ep, fc.stories);
   // The week's biggest story, explained (src/explainedstep.ts).
@@ -7442,15 +8327,42 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
   // What earlier long videos taught us about holding viewers, entry by entry (empty until there is a curve).
   const lessons = await longLessons(s.db, s.now()).catch(() => "");
   // The Inspiration rules (src/editorial/longrules.ts): measured while it's written, so they never force a whole new draft.
-  const rules = longRulesFor(s.cfg, "ranking");
+  // Under the contract's 90-word opening the stacked hook gives way (rankingRules); off, these are the rules as before.
+  const rules = rankingRules(longRulesFor(s.cfg, "ranking"), {
+    argues: s.cfg.longArgues,
+    contract: s.cfg.longOpeningContract,
+  });
   for (let attempt = 0; attempt < 2; attempt++) {
     draft = await writeLongform(s.llm, topic, lookup, feedback, lessons, {
       punchyHook: s.cfg.longPunchyHook,
       soundBeats: s.cfg.docSoundBeats,
       rules,
+      argues: s.cfg.longArgues,
+      contract: s.cfg.longOpeningContract,
+      discipline: s.cfg.longFactDiscipline,
     });
+    // LONG_FACT_DISCIPLINE (src/editorial/longfacts.ts): the checks that need no model, before the fact-check reads it.
+    let preFeedback: string[] = [];
+    if (s.cfg.longFactDiscipline) {
+      // No fact pack carries a series' complete list today, so an "Every X" title is always counted (rule a).
+      const pre = disciplineLongform(
+        draft,
+        facts.map((f) => ({ title: f.title, facts: factsText(f.facts) })),
+      );
+      draft = pre.draft;
+      preFeedback = preFlagFeedback(pre.flags);
+      if (pre.flags.length)
+        await logEvent(s.db, ep.id, "long_precheck", {
+          attempt,
+          fixed: pre.flags.filter((f) => f.fixed).map((f) => `${f.kind}: ${f.quote}`),
+          named: preFeedback,
+        });
+    }
     const problems = [
-      ...validateLongform(draft, rules),
+      ...validateLongform(draft, rules, {
+        argues: s.cfg.longArgues === "fix",
+        openingCap: s.cfg.longArgues === "fix" || s.cfg.longOpeningContract === "fix",
+      }),
       ...writerTitleProblems(s.cfg, draft.youtube.title),
       // RANKING_STANCE (src/stance.ts): the ranking's title takes a side, and nothing past Part 2.
       ...(s.cfg.rankingStance
@@ -7469,12 +8381,21 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
         draft = r.value;
         return r.applied;
       },
+      s.cfg.longFactDiscipline
+        ? {
+            draft: () => draft!,
+            set: (d) => {
+              draft = d;
+            },
+          }
+        : undefined,
     );
     if (!problems.length && !factual.length) break;
     // One rewrite with the problems named; style misses that survive are logged, facts are not (adjudicateRanking throws).
     if (attempt === 1 && problems.length)
       await logEvent(s.db, ep.id, "style_warnings", { problems });
-    feedback = [...factual, ...problems];
+    // The pre-check's named lines ride along with a rewrite that is happening anyway; alone they never cost one.
+    feedback = [...factual, ...problems, ...preFeedback];
   }
   if (!draft) throw new Error("long-form script produced nothing");
   if (longRulesOn(rules)) {
@@ -7502,12 +8423,18 @@ async function stepScriptLongform(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "style_warnings", { problems: missed });
   }
   const script = await quoteLongStep(s, ep, withSpoilerWarning(longformToScript(draft)));
+  // LONG_ARGUES and LONG_OPENING_CONTRACT on the record (check and fix); off, nothing is measured.
+  const longChecks = await recordLongChecks(s, ep.id, script, { kind: "ranking" });
+  if (longChecks.warnings.length)
+    await logEvent(s.db, ep.id, "style_warnings", { problems: longChecks.warnings });
   await guardScript(s, ep, script, "after writing");
   await transition(s.db, ep.id, "selected", "scripted", {
     script_json: script,
     factcheck_json: {
       topic,
       facts: facts.map((f) => ({ title: f.title, facts: f.facts })),
+      ...(longChecks.long_contract ? { long_contract: longChecks.long_contract } : {}),
+      ...(longChecks.long_argues ? { long_argues: longChecks.long_argues } : {}),
     },
   });
 }
@@ -8097,12 +9024,26 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
   // The series this Short belongs to (format redesign plan, src/series.ts): saved on the script for the weekly report.
   const series = seriesTagFor(ep);
   // The Pulse Check is the news desk's own segment; with NEWS_SEGMENT_SERIES every series Short ends on it too.
-  const pulseCheck = pulseCheckFor(s.cfg, {
+  const pulseCheckPlanned = pulseCheckFor(s.cfg, {
     lane: ep.lane,
     why: !!cluster.why,
     argument,
     series,
   });
+  // ENDING_FORMS_SHARE (src/editorial/endingforms.ts): half the Pulse Check Shorts drop the spoken "My verdict:" and
+  // end the take on a varied closing form instead. A room Short skips the Pulse Check already, so it is not in the test.
+  const endingArm =
+    pulseCheckPlanned && !roomOn && s.cfg.endingFormsShare > 0
+      ? endingArmFor(unitHash(`endings:${ep.id}`), s.cfg.endingFormsShare)
+      : undefined;
+  let endingForm: EndingForm | undefined;
+  if (endingArm === "forms") {
+    const recentForms = await recentEndingForms(s.db, ep.id, s.now()).catch(() => ({ used: [] as string[], kept: undefined }));
+    endingForm = pickEndingForm(unitHash(`endform:${ep.id}`), recentForms.used, recentForms.kept);
+  }
+  if (endingArm)
+    await logEvent(s.db, ep.id, "ending_forms", { arm: endingArm, ...(endingForm ? { form: endingForm } : {}) }).catch(() => undefined);
+  const pulseCheck = pulseCheckPlanned && endingArm !== "forms";
   // The next-part line test (SERIES_NEXT_LINE, plan item 9): The Why and The GTA File, on alternate days, and only
   // when the run has the next part planned and dated (src/nextpart.ts). No plan, no line.
   const lineArm =
@@ -8121,6 +9062,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     personal ? PERSONAL_VOICE : "",
     shortFloorRule(floor, s.cfg.shortSpeed),
     pulseCheck && s.cfg.newsSegmentSeries ? seriesPulseCheckNote(series) : "",
+    endingForm ? endingFormRule(endingForm) : "",
     nextPart ? nextLineRule(nextPart) : "",
   ]
     .filter(Boolean)
@@ -8174,6 +9116,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
     problems.push(...short);
     thin.push(...short);
     if (pulseCheck) problems.push(...pulseCheckProblems(sc));
+    if (endingForm) problems.push(...endingFormProblems(sc));
     if (skeleton) problems.push(...skeletonProblems(sc, skeleton));
     if (payoffFix) {
       const gateFindings = payoffFindings({
@@ -9033,6 +9976,7 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
       (s.cfg.codexLlm ? (siteListed(site, s.cfg.codexCalls) ? "codex" : "claude") : "claude");
     script = { ...script, writer: writerRecord(writerCalls, intended, split?.why) };
   }
+  if (endingArm) script = { ...script, ending: endingRecord(endingArm, endingForm, script) };
   if (lengthAb && length)
     script = { ...script, length_arm: { arm: lengthAb, band: `${length.seconds.min}-${length.seconds.max}` } };
   if (lineArm)
@@ -9151,6 +10095,9 @@ async function stepScript(s: Services, ep: Episode): Promise<void> {
           ? await roomCheckStep(roomInput(), script).catch(() => undefined)
           : roomControlRecord(s.cfg.scriptRoom === "on" ? "on" : "check");
     if (roomRec) {
+      // The desk's mark on the published script rides beside the room's own critics', so the weekly report compares all three.
+      const deskOverall = deskRec?.scores?.overall;
+      if (typeof deskOverall === "number") roomRec = { ...roomRec, desk_overall: deskOverall };
       script = { ...script, room: roomRec };
       await logEvent(s.db, ep.id, "script_room", roomEvent(roomRec)).catch(() => undefined);
     }
@@ -10435,11 +11382,15 @@ export async function gatherMedia(
           ? retroCaps.reduce((n, x) => n + x, 0)
           : isLongEpisode(ep) ? cutsceneBudgetSeconds(s.cfg.cutsceneMaxSeconds, narrationSeconds) : s.cfg.cutsceneMaxSeconds,
         jobs, existing: clips, shouldStop: () => gatherBudget.over(),
+        // Stream recordings (the owner's own, then permitted channels') fill up to 85% of the narration on their own
+        // allowance, outside every publisher's cap (owner, 25 Nov 2026).
+        ...(s.cfg.semantic?.vodTags ? { streamSeconds: Math.max(10, narrationSeconds * 0.85) } : {}),
         fetch: (job) => s.fetchCutscenes!({ gameTitle: job.gameTitle, recentRelease: job.recentRelease, episodeDir: job.episodeDir,
           targets: job.targets, maxClips: Math.min(job.maxClips ?? 24, Math.max(job.targets.length, Math.ceil(job.maxSeconds / 4.8))),
           maxSeconds: job.maxSeconds, publisher: job.publisher, ...(job.mode ? { mode: job.mode } : {}),
+          ...(job.ownMaxSeconds !== undefined ? { ownMaxSeconds: job.ownMaxSeconds } : {}),
           // A weekly guide never shows late story, warning or not (src/longguide.ts).
-          long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
+          long: isLongEpisode(ep), spoilerWarned: !isWeeklyGuide(ep.factcheck_json) && !isGtaGuide(ep.factcheck_json) && hasSpoilerWarning([script.hook, script.beats[0]?.narration]) }),
       });
       clips.push(
         ...added.map((c) => {
@@ -10894,6 +11845,8 @@ export async function gatherMedia(
       ...(a.focusX !== undefined ? { focusX: a.focusX } : {}),
       ...(a.forWords ? { forWords: a.forWords } : {}),
       ...(a.role ? { role: a.role } : {}),
+      // LONG_NAMED_ART: the character the picture shows travels with it to the planner.
+      ...(a.named ? { named: a.named } : {}),
       ...((a as { libKey?: string }).libKey ? { libKey: (a as { libKey?: string }).libKey } : {}),
     });
   }
@@ -11291,7 +12244,11 @@ export async function gatherLongEntryMedia(
   const moments = entry.moments ?? [];
   const sentences = sentencesOf(script.beats[beatIndex]?.narration ?? "");
   const scope = scopeOf(script);
-  const targets: FootageTarget[] = moments.slice(0, 6).map((m, k) => ({
+  // LONG_ENTRY_CLIP_TARGETS: every sentence (up to the dial) asks the trailers for its own moment; the first six alone
+  // did before, and the rest of a 21-sentence entry only ever got stills (Mass Effect ranking, 25 Nov 2026).
+  const targets: FootageTarget[] = moments
+    .slice(0, script.evergreen_format === "ranking" ? (s.cfg.longEntryClipTargets ?? 6) : 6)
+    .map((m, k) => ({
     key: `beat:${beatIndex}#m${k}`,
     text: `${sentences[k] ?? ""} (show: ${m.show})${scope === "campaign" ? " [single-player campaign footage only: no multiplayer, Zombies or Warzone, no multiplayer HUD]" : ""}`,
     want: script.beats[beatIndex]?.footage?.want ?? "gameplay",
@@ -11333,6 +12290,13 @@ export async function gatherLongEntryMedia(
             targets,
             targets.length,
             scopeOf(script),
+            // LONG_MIN_MOVING_SHARE: past the sentences' own moments, clean moments of the trailers up to that share
+            // of the chapter, untagged (the meaning match pins them to lines later, the planner spreads the rest).
+            entryFillSeconds(
+              script.beats[beatIndex]?.narration ?? "",
+              // Only a ranking plans its footage first under LONG_MIN_MOVING_SHARE, so only a ranking asks for it.
+              script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
+            ),
           ),
           Math.max(
             footageBudgetSeconds(eapp),
@@ -11497,6 +12461,41 @@ export async function gatherLongEntryMedia(
   for (const a of mine)
     if (!(a as { drop?: boolean }).drop)
       images.push({ ...a, file: rel(a.file), beatIndex });
+  // LONG_NAMED_ART: the character a sentence names gets their own official picture on that sentence (IGDB's
+  // character pictures, only for a character IGDB lists in this series; src/assets/namedart.ts).
+  if (s.cfg.longNamedArt && s.characterArt) {
+    const asked = new Map<string, (VisualAsset & { named: string }) | undefined>();
+    let got = 0;
+    // Lookups, found or not, are bounded too: a line-by-line roll of unknown names must not hold the gather.
+    const most = s.cfg.longNamedArtMax ?? 8;
+    for (const [k, m] of moments.entries()) {
+      if (got >= most || asked.size >= most * 2 || budget?.over()) break;
+      for (const name of namedSubjects(m, entry.game_title)) {
+        const key = name.toLowerCase();
+        if (!asked.has(key)) {
+          if (asked.size >= most * 2) break;
+          // The series of the entry's own title or of the video's (a ranking's title may be a topic): one search.
+          asked.set(
+            key,
+            await s
+              .characterArt(name, [entry.game_title, script.game_title].filter(Boolean), edir)
+              .catch(() => undefined),
+          );
+        }
+        const pic = asked.get(key);
+        if (!pic) continue;
+        images.push({ ...pic, file: rel(pic.file), beatIndex, moment: k });
+        got++;
+        break;
+      }
+    }
+    if (got)
+      log("info", "named character pictures", {
+        game: entry.game_title,
+        pictures: got,
+        names: [...asked].filter(([, p]) => p).map(([n]) => n),
+      });
+  }
   // A face for every sentence that names a person, cut from the footage chosen for that sentence.
   for (const [k, m] of moments.entries()) {
     const person = (m as { person?: string }).person?.trim();
@@ -12114,6 +13113,22 @@ const DOC_BROLL_PER_CHAPTER = 5;
 /** Named real people a documentary chapter looks up photos of. */
 const DOC_PEOPLE_PER_CHAPTER = 5;
 
+/** Spoken words a second in a long video (about 160 a minute): how long a chapter runs before its voice exists. */
+export const LONG_WORDS_PER_SECOND = 2.7;
+
+/**
+ * LONG_MIN_MOVING_SHARE: how many seconds of footage a ranking entry asks its trailers for, as fetchClips' fill
+ * (pure): the share of the chapter's estimated length. Undefined (no fill) when the share is 0 or the chapter empty.
+ */
+export function entryFillSeconds(
+  narration: string,
+  share: number,
+): { seconds: number } | undefined {
+  const words = narration.split(/\s+/).filter(Boolean).length;
+  if (share <= 0 || !words) return undefined;
+  return { seconds: Math.round((words / LONG_WORDS_PER_SECOND) * share) };
+}
+
 /**
  * The Steam page for a ranking entry, only when it is that release: Steam's
  * search hands "Call of Duty 4: Modern Warfare" (2007) the 2019 reboot, and
@@ -12121,7 +13136,7 @@ const DOC_PEOPLE_PER_CHAPTER = 5;
  * is refused, and the entry's pictures come from IGDB by exact title instead.
  */
 export async function steamAppForEntry(
-  s: Pick<Services, "findGame">,
+  s: Pick<Services, "findGame"> & { cfg?: { steamEditions?: boolean } },
   entry: { steam_search_term: string; year?: number; game_title: string },
 ): Promise<SteamApp | undefined> {
   if (!entry.steam_search_term) return undefined;
@@ -12134,6 +13149,28 @@ export async function steamAppForEntry(
       )?.[0],
     ) || undefined;
   if (appYear && Math.abs(appYear - entry.year) > 1) {
+    // STEAM_EDITIONS: a later edition of the same game, or the series collection that contains it, is still this
+    // game (src/assets/steamedition.ts); a remake or a reboot is not.
+    const edition =
+      s.cfg?.steamEditions !== false
+        ? steamEditionOf(
+            entry.game_title,
+            app.name,
+            appYear - entry.year,
+            entry.steam_search_term,
+            entry.year,
+          )
+        : undefined;
+    if (edition) {
+      log("info", "steam page taken: a later edition of the game", {
+        entry: entry.game_title,
+        year: entry.year,
+        store: app.name,
+        storeYear: appYear,
+        edition,
+      });
+      return app;
+    }
     log("info", "steam page refused: another release of the game", {
       entry: entry.game_title,
       year: entry.year,
@@ -12607,6 +13644,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     const done = await chooseEpisodeFillers({
       explainers: explainersOn(s.cfg.explainers, "long"),
       cardShare: s.cfg.longCardShare,
+      // A chapter short of pictures under the cap gets cards before repeats (LONG_THIN_CARD_SHARE).
+      ...((s.cfg.longThinCardShare ?? 0) > 0 && (s.cfg.longStillMaxShows ?? 0) > 0
+        ? { thin: { share: s.cfg.longThinCardShare, maxShows: s.cfg.longStillMaxShows } }
+        : {}),
       chapters: [...script.entries]
         .sort((a, b) => b.rank - a.rank)
         .map((e, i) => ({
@@ -12705,8 +13746,16 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       i.aspect = await s
         .imageAspect(path.join(dir, i.file))
         .catch(() => 16 / 9);
+  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts): portrait pictures extended to 16:9 and low-resolution ones
+  // enlarged on the PC's GPU before the long render.
+  {
+    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "long");
+    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
+  }
   const images = (assets.images ?? []).map((i) => ({
     file: i.file,
+    sourceUrl: i.sourceUrl,
+    named: i.named,
     kind: i.kind,
     aspect: i.aspect,
     beatIndex: i.beatIndex,
@@ -12714,11 +13763,18 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     moment: i.moment,
     label: i.label,
     layers: i.layers,
+    // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+    fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+    upFile: s.cfg.upscaleStills ? i.upFile : undefined,
   }));
   // The shot list per entry, in on-screen order (lowest rank first), for sentence-level pictures and graphics.
   const moments = [...(script.entries ?? [])]
     .sort((a, b) => b.rank - a.rank)
     .map((e) => e.moments ?? []);
+  // A guide's cards are cleaned again here: later steps add graphics to bare sentences after the script is written.
+  if (script.gta_guide)
+    for (let e = 0; e < moments.length; e++)
+      moments[e] = cleanGuideMoments(script.beats[e]?.narration ?? "", moments[e] as Parameters<typeof cleanGuideMoments>[1]) as (typeof moments)[number];
   const hasMoments = moments.some((m) => m.length);
   // MAP_PINS (src/assets/gamemaps.ts): a sentence naming a place in its game, with nothing else on screen, shows the
   // game's own map in 3D with that place pinned. Only places the game's table has checked; never a guessed spot.
@@ -12797,6 +13853,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         beatIndex: i.beatIndex,
         moment: i.moment,
         file: i.file,
+        sourceUrl: i.sourceUrl,
+        named: i.named,
       })),
       clips: clips.map((c) => ({
         durationSeconds: c.durationSeconds,
@@ -12853,10 +13911,23 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       // A clip cut short keeps its unseen rest for a later shot (LONG_CLIP_REMAINDERS).
       clipRemainders: s.cfg.longClipRemainders,
       // A retrospective is one game: its opening and closing may play footage from its chapters (LONG_MOVING_FIRST).
-      oneGame: isRetrospective(ep.factcheck_json),
+      oneGame: isRetrospective(ep.factcheck_json) || Boolean(script.gta_guide),
+      // LONG_OPENING_CONTRACT=fix: the first two minutes cut about twice as fast as the body (src/render/structure.ts).
+      twoSpeed: s.cfg.longOpeningContract === "fix",
+      // No picture on screen past LONG_STILL_MAX_SHOWS times, every copy counted as one (src/render/stillcap.ts).
+      stillMaxShows: script.gta_guide ? GUIDE_STILL_MAX_SHOWS : (s.cfg.longStillMaxShows ?? 0),
+      // A ranking chapter's footage before its stills (LONG_MIN_MOVING_SHARE): only a ranking's gather asks its
+      // trailers for that share, so documentaries and the rest keep LONG_MOVING_FIRST's own say.
+      minMovingShare: script.evergreen_format === "ranking" ? (s.cfg.longMinMovingShare ?? 0) : 0,
     });
   const freshPlan = !assets.longPlan;
   let plan = assets.longPlan ?? makePlan();
+  // LONG_OPENING_CONTRACT check or fix: the plan's two speeds go on the record (openingPace), the plan unchanged by it.
+  if (freshPlan && s.cfg.longOpeningContract !== "off")
+    await logEvent(s.db, ep.id, "long_contract_pace", {
+      mode: s.cfg.longOpeningContract,
+      ...openingPace(plan),
+    });
   if (!assets.longPlan) {
     // Real-world photos pinned to no sentence stay off screen (REAL_PHOTOS_PINNED_ONLY): say how many.
     const withheld =
@@ -12873,22 +13944,37 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       segments,
       script.take_entry,
       s.cfg.longSamePictureMaxSeconds,
+      // With LONG_STILL_MAX_SHOWS on, every copy of one picture counted as one (src/render/stillcap.ts).
+      (s.cfg.longStillMaxShows ?? 0) > 0 ? images : undefined,
     );
     let added = 0;
     for (const g of gaps) {
       const entry = ranked[g.entry];
       if (!entry) continue;
+      // The IGDB pictures this entry already has are skipped: IGDB lists a game's pictures in one order, so the
+      // top-up used to download the first eight again and add nothing new (Mass Effect ranking, 25 Nov 2026).
+      const held = new Set(
+        (assets.images ?? []).flatMap((i) => {
+          const k = pictureKey(i);
+          return k.startsWith("igdb:") ? [k.slice(5)] : [];
+        }),
+      );
       const more = await s
         .igdbArt(
           entry.game_title,
           entry.year,
           path.join(dir, `entry_${g.entry}`, "more"),
           8,
+          held,
         )
         .catch(() => [] as VisualAsset[]);
       for (const a of more.filter((x) => x.kind !== "capsule")) {
         const file = path.join(`entry_${g.entry}`, "more", a.file);
         if ((assets.images ?? []).some((i) => i.file === file)) continue;
+        // The same IGDB picture the entry already has, under a new folder, is no new picture (Mass Effect ranking,
+        // 25 Nov 2026: every "more" picture was a second copy, and each copy was counted and shown apart).
+        const key = pictureKey({ sourceUrl: a.sourceUrl, file });
+        if ((assets.images ?? []).some((i) => pictureKey(i) === key)) continue;
         const aspect = await s
           .imageAspect(path.join(dir, file))
           .catch(() => 16 / 9);
@@ -12896,6 +13982,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         (assets.images ??= []).push(img);
         images.push({
           file,
+          sourceUrl: a.sourceUrl,
+          named: undefined,
           kind: a.kind,
           aspect,
           beatIndex: g.entry,
@@ -12903,6 +13991,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           moment: undefined,
           label: undefined,
           layers: undefined,
+          fillFile: undefined,
+          upFile: undefined,
         });
         added++;
       }
@@ -12913,6 +14003,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       segments,
       script.take_entry,
       s.cfg.longSamePictureMaxSeconds,
+      // With LONG_STILL_MAX_SHOWS on, every copy of one picture counted as one (src/render/stillcap.ts).
+      (s.cfg.longStillMaxShows ?? 0) > 0 ? images : undefined,
     );
     if (gaps.length)
       log(left.length ? "warn" : "info", "thin entries topped up", {
@@ -12959,7 +14051,22 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // for the growth report's QA line.
   if (freshPlan) {
     const ms = movingShare({ shots: plan.shots, fps: plan.fps, words, clips: assets.clips ?? [] });
-    await logEvent(s.db, ep.id, "moving_share", { ...ms, movingFirst: s.cfg.longMovingFirst }).catch(() => undefined);
+    await logEvent(s.db, ep.id, "moving_share", {
+      ...ms,
+      // What the planner did: LONG_MOVING_FIRST, or a ranking under LONG_MIN_MOVING_SHARE.
+      movingFirst:
+        s.cfg.longMovingFirst ||
+        (script.evergreen_format === "ranking" && (s.cfg.longMinMovingShare ?? 0) > 0),
+    }).catch(() => undefined);
+    // LONG_STILL_MAX_SHOWS and LONG_MIN_MOVING_SHARE: each chapter's share of moving footage, the most any one picture
+    // was shown (every copy counted as one) and what went past the cap, so a thin chapter is named, not guessed at.
+    const audit = chapterPictureAudit(plan, segments, images, script.take_entry);
+    await logEvent(s.db, ep.id, "still_cap", {
+      max: s.cfg.longStillMaxShows ?? 0,
+      minMovingShare: s.cfg.longMinMovingShare ?? 0,
+      notes: plan.notes ?? null,
+      ...audit,
+    }).catch(() => undefined);
   }
   // How much of the game chapters' narration plays on moving game footage, against FOOTAGE_SHARE_TARGET.
   if (freshPlan && hasMoments && s.cfg.footageFirst) {
@@ -13239,6 +14346,14 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       allow: s.cfg.titleShapeAllow,
     }).catch(() => [] as string[]);
     script.youtube.title_variants = variants;
+    // LONG_FACT_DISCIPLINE: a Test & compare variant written after the fact-check never brings back an unproven
+    // "Every X" title: it is counted like the main title was, or left out.
+    if (s.cfg.longFactDiscipline && script.runtime === "long" && script.evergreen_format === "ranking") {
+      const n = script.entries?.length ?? 0;
+      script.youtube.title_variants = variants
+        .map((v) => countedTitle(v, n) ?? v)
+        .filter((v) => !titleClaimsEvery(v));
+    }
     await applyTitleShape(s, ep, script);
     await s.db.query(`UPDATE episodes SET script_json = $2 WHERE id = $1`, [
       ep.id,
@@ -13296,9 +14411,12 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       await logEvent(s.db, ep.id, "packaging_panel", packagingPanelEvent(panel.record)).catch(() => undefined);
     }
   }
-  const footageCredit = clips.length
-    ? "FOOTAGE: OFFICIAL TRAILERS · STEAM"
-    : "";
+  const footageCredit = !clips.length
+    ? ""
+    : script.gta_guide
+      ? // GTA_GUIDES: the owner's own play first; a permitted streamer's footage carries its own credit on screen too.
+        ["FOOTAGE: PULSE'S OWN PLAY · ROCKSTAR GAMES", ...new Set((sounded?.clips ?? assets.clips ?? []).filter((c) => /^Permitted stream capture/.test(c.provenance ?? "") && c.credit).map((c) => c.credit!.toUpperCase()))].join(" · ")
+      : "FOOTAGE: OFFICIAL TRAILERS · STEAM";
   // The thumbnail: the winner's widest art, else the topic's.
   const winnerBeat = (script.entries?.length ?? 0) - 1;
   const thumbArt =
@@ -13337,7 +14455,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
   // the first is the thumbnail, the next two go to YouTube's Test & compare. The niche study ranked them:
   // a huge subject with a rim and a few words, a giant number, an old game's nostalgia, a hard versus, a
   // circle on the thing that matters; the older designs stay as fallbacks.
-  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : "RANKED";
+  const tag = script.recap ? "THIS WEEK" : doc ? "DOC" : script.gta_guide ? "GUIDE" : "RANKED";
   const text = thumbTitle(script);
   const entryInfo = (b: number | undefined) => {
     if (b === undefined) return undefined;
@@ -13446,7 +14564,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
           },
         ]
       : []),
-    ...(lastArt && thumbArt
+    // A guide's items are not ranks: no last-against-first clash.
+    ...(lastArt && thumbArt && !script.gta_guide
       ? [
           {
             layout: "clash",
@@ -13537,7 +14656,25 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       : candidates;
   // STRAND_FRAMES: the strand's layout first, and its Test & compare variants the same layout on other art.
   const designs: Candidate[] = strand ? pinStrandLayout(designsAll, strand) : designsAll;
-  const [mainThumb, ...restThumbs] = designs;
+  // GTA_GUIDES: the guide's own thumbnail (src/render/ThumbStudio.tsx GuideThumb) leads, so Test & compare runs it
+  // against the current style's two best designs. Without a frame of the owner's footage the designs stay as they are.
+  const guideDesign =
+    script.gta_guide && isGtaGuide(ep.factcheck_json)
+      ? await gtaGuideDesign(s, dir, sounded?.clips ?? assets.clips ?? [], script.gta_guide).catch((err) => {
+          log("warn", "gta guide: thumbnail design failed, the current designs stand", { episode: ep.id, error: errorMessage(err) });
+          return undefined;
+        })
+      : undefined;
+  if (guideDesign)
+    await logEvent(s.db, ep.id, "gta_guide", {
+      stage: "thumbnail",
+      frame: guideDesign.frame,
+      lifted: Boolean(guideDesign.thumb.fgFile),
+      logo: Boolean(guideDesign.thumb.image2File),
+      words: guideDesign.thumb.headline,
+      against: designs.slice(0, 2).map((d) => d.layout),
+    }).catch(() => undefined);
+  const [mainThumb, ...restThumbs] = guideDesign ? [guideDesign as Candidate, ...designs] : designs;
   const thumbVariants = restThumbs.slice(0, 2).map((c, i) => ({
     file: path.join(dir, i === 0 ? "thumb_b.jpg" : "thumb_c.jpg"),
     thumb: c.thumb as never,
@@ -13646,6 +14783,27 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
       blenderFiles = [];
     }
   }
+  // EVIDENCE_STYLE (src/evidencestep.ts): a mystery or lore long video in the board arm gets the date cards, the case
+  // cards, the red stamps, runs of its stills on the evidence board and the board as every chapter's breather; the
+  // plan follows the shot plan as it stands (the graphics check may make it again). Off or plain arm: nothing changes.
+  const evidence = await prepareEvidence({
+    cfg: s.cfg,
+    episodeId: ep.id,
+    frame: "long",
+    fps: LONG_FPS,
+    headline: script.headline,
+    title: script.youtube?.title,
+    game: script.game_title,
+    chapters: segments.flatMap((g) => (g.visual?.kind === "chapter" && g.visual.primary ? [g.visual.primary] : [])),
+    kind: doc ? "documentary" : undefined,
+    words,
+    segments,
+    images: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, provenance: i.provenance })),
+    dir,
+    breaks: assets.breaks,
+    event: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+  });
+  if (evidence) assets.evidenceArm = evidence.arm;
   // The composition's props, read afresh each time: the graphics check below mutes faulted graphics
   // (quietMoments, quietBreaks) and the render must see the lists as they stand then.
   const longPropsNow = (): LongRenderInput["props"] => ({
@@ -13654,6 +14812,7 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         criterion: script.criterion ?? "",
         spoilers: scopeOf(script) === "campaign",
         recap: !!script.recap,
+        guide: !!script.gta_guide,
         theme: script.recap ? script.headline : script.game_title,
         footageCredit,
         endLine: script.recap
@@ -13719,6 +14878,10 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         imageFiles: images,
         clipFiles: clips,
         plan,
+        ...(() => {
+          const board = evidence?.plan(plan.shots, plan.totalFrames);
+          return board ? { board } : {};
+        })(),
         renderDate: s.now().toISOString().slice(0, 10),
         quoteFiles: quoteRenderFiles(assets, { dialogue: dialogueOn(s.cfg) }),
         ...(longMentions.insets.length ? { mentionFiles: longMentions.insets, mentionMax: longMentions.max } : {}),
@@ -13744,6 +14907,8 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
     chapterWall: s.cfg.chapterWall,
     depthType: s.cfg.depthType,
     compareWipe: s.cfg.compareWipe,
+    // GTA_KIT (src/render/gtakit.ts): a GTA story's place cards, cash readouts and head-to-heads. Off: absent.
+    ...longGtaKitProp(s.cfg.gtaKit, script.game_title),
     // Graphics measure their text to fit (GRAPHICS_FIT).
     graphicsFit: s.cfg.graphicsFit,
     // The documentary's sound craft and the narration's texture slices (src/render/soundfx.ts, voicefx.ts).
@@ -14184,6 +15349,46 @@ async function stepRenderLong(s: Services, ep: Episode): Promise<void> {
         });
       }
     }
+  // THUMB_CANDIDATES (src/gpuvis/thumbstep.ts): the main poster's art extended and relit on the PC's GPU, drawn as
+  // the same poster, and every passing design scored by the local vision model; the top three become the thumbnail
+  // and the Test & compare variants. Off, or with the PC's service down, the order above stands.
+  if (s.cfg.thumbCandidates && mainThumb?.layout === "poster" && !bad.has("thumb.jpg")) {
+    try {
+      const { renderLongThumbs } = await import("./render/render.ts");
+      const picked = await thumbCandidateStep(dir, mainThumb.thumb as never, ["thumb.jpg", ...thumbFiles], {
+        url: s.cfg.gpuvisUrl,
+        // The judge runs through the GPU service, inside its orchestrator turn (a 30B model on the shared 4090).
+        // The whole step has 15 minutes: the extension, the plate and the ranking rounds share them.
+        until: Date.now() + 15 * 60_000,
+        ask: remoteAsk(s.cfg.gpuvisUrl, Date.now() + 15 * 60_000),
+        render: (file, thumb) => renderLongThumbs({ episodeDir: dir, thumbs: [{ file, thumb: thumb as never }] }),
+        // The episode's own seed, so each video's relit candidate has its own light.
+        seed: [...ep.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 100000,
+        // The same checks the rendered designs had: the rule (under THUMB_HERO_RULE), the poster's measures and the
+        // release's vision check on thumbnails, which matters most here because these margins were drawn by AI.
+        check: async (file, thumb) => {
+          const problems = [
+            ...(s.cfg.thumbHeroRule ? designProblems(thumb as Record<string, unknown>, script, motif?.id) : []),
+            ...(await posterProblems(file, thumb as never)),
+          ];
+          if (s.cfg.visionQa) {
+            const v = await s
+              .visionQa([file], { headline: script.headline, gameTitle: script.game_title, format: "thumbs", heroRule: s.cfg.thumbHeroRule })
+              .catch(() => undefined);
+            if (!v) problems.push("the thumbnail vision check did not answer");
+            else if (v.verdict === "fail") problems.push(...(v.problems.length ? v.problems : ["failed the thumbnail vision check"]));
+          }
+          return problems;
+        },
+      });
+      if (picked) {
+        thumbFiles = picked.variants;
+        await logEvent(s.db, ep.id, "thumb_candidates", { ...picked });
+      }
+    } catch (err) {
+      log("warn", "THUMB_CANDIDATES step failed; the usual thumbnails stand", { episode: ep.id, error: errorMessage(err) });
+    }
+  }
   await transition(s.db, ep.id, "voiced", "rendered", {
     assets_json: {
       ...assets,
@@ -14768,8 +15973,12 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     if (verdict === "regather") {
       Object.assign(assets, await gatherMedia(s, ep, dir, true), { rich: true });
       delete assets.plan;
-      await s.db.query(`UPDATE episodes SET assets_json = $2 WHERE id = $1`, [ep.id, JSON.stringify(assets)]);
-      throw new Error("footage gate: no moving footage on screen; gathered again, richer, and planning once more");
+      // The richer gathering is the next step, not a failure: planning again on the next pass must not spend one of
+      // MAX_ATTEMPTS (26 Nov 2026: GTA VI File #3 met the gate on its third try, so the throw gave up on it before its
+      // richer plan was ever made, and the 18:30 slot went empty). attempts and last_error stay as they were.
+      await s.db.query(`UPDATE episodes SET assets_json = $2, next_attempt_at = $3 WHERE id = $1`, [ep.id, JSON.stringify(assets), s.now()]);
+      log("info", "footage gate: no moving footage on screen; gathered again, richer, and planning once more", { id: ep.id, footageShare: Math.round(footageShare * 100) / 100 });
+      return;
     }
     // A YouTube download pause that still has hours to run (24-26 Nov 2026: two days, nothing published for 24 hours)
     // is not worth waiting out: the Short goes out on its stills, filmed by the depth camera, rather than not at all.
@@ -14787,6 +15996,18 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     }
   }
   assets.plan = plan;
+  // The clean frame (SHORTS_CLEAN) shows every shot full-bleed, so under it no still is framed and none is filled.
+  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  // FILL_FRAME / UPSCALE_STILLS (src/gpuvis/client.ts), once the plan is final: only the stills the plan shows in the
+  // framed panel are extended (a still shown full-bleed is cover-cropped, so a fill would never show), and
+  // low-resolution and old games' stills are enlarged; anything the service cannot do keeps its blurred plate and size.
+  {
+    const gp = await prepareImages(s.cfg, dir, assets.images ?? [], "short", {}, {
+      fillOnly: shortClean ? new Set<number>() : framedStills(plan),
+      year: Number(assets.steam?.facts?.releaseDate?.match(/\b(19|20)\d\d\b/)?.[0]) || undefined,
+    });
+    if (gp.filled || gp.upscaled) await logEvent(s.db, ep.id, "gpu_pictures", gp);
+  }
   // SHORT_BLENDER (src/shortupgradestep.ts): a ranking's number one on the vertical 3D podium. A Short whose slot leaves
   // the Mac's Blender time asks for it and comes back for it (never holding the Shorts tick); any other renders now.
   const blenderState = (assets as { shortBlender?: ShortBlenderState }).shortBlender;
@@ -14916,7 +16137,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   if (s.cfg.shortParallaxShare > 0) assets.shortDepthArm = depthArm;
   if (depthArm === "depth" && s.cfg.parallaxPython && assets.images?.length) {
     const want = shortDepthWanted(
-      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) })),
+      assets.images.map((i) => ({ ...i, noDepth: isHardwareAsset(i) || i.depthFault === true })),
     );
     if (want.length) {
       const made = await makeParallax(
@@ -15026,7 +16247,13 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
   const raw = path.join(dir, "render_raw.mp4");
   const final = path.join(dir, "short.mp4");
   if (assets.suite) assets.shortThumb = "thumb_short.jpg";
-  const shortClean = await shortsCleanStep(s, ep.id, assets.test);
+  // SHORT_FULL_COVER: a Short without the new-look thumbnail gets its cover still as the custom thumbnail too, so the
+  // Shorts shelf shows the whole title rather than a frame YouTube picks; the designed search tile still wins its arm.
+  else if (s.cfg.shortFullCover) assets.shortThumb = COVER_FILE;
+  // Switched off since an earlier render: the cover is no longer made, so it is no longer the thumbnail.
+  else if (assets.shortThumb === COVER_FILE) assets.shortThumb = undefined;
+  // A new render: the social copy made from the last one is stale (crosspost makes it again from this one).
+  for (const f of [SOCIAL_FILE, "social.part.mp4"]) await fs.rm(path.join(dir, f), { force: true }).catch(() => undefined);
   // The word stamp, and an every-game Short's year stamps: one at the first game and at each change of era.
   const shownStamps = [
     ...stampsFor(script, words),
@@ -15203,6 +16430,30 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           }
         : {}),
     }).catch(() => undefined);
+  // EVIDENCE_STYLE (src/evidencestep.ts): a mystery or lore Short in the board arm gets the date cards, the case card,
+  // the red stamps and its stills on the evidence board; off, ineligible or the plain arm: no plan, nothing changes.
+  const evidence = await prepareEvidence({
+    cfg: s.cfg,
+    episodeId: ep.id,
+    frame: "short",
+    fps: plan.fps,
+    headline: script.headline,
+    title: script.youtube?.title,
+    game: script.game_title,
+    chapters: segments.flatMap((g) => (g.visual?.primary ? [g.visual.primary] : [])),
+    words,
+    segments,
+    images: (assets.images ?? []).map((i) => ({ file: i.file, kind: i.kind, provenance: i.provenance })),
+    dir,
+    avoid: [
+      [0, shortLayoutNow.hookEnd],
+      [shortLayoutNow.loopFrom, plan.totalFrames],
+      ...shownStamps.map((st): [number, number] => [Math.round(st.at * plan.fps) - 15, Math.round(st.at * plan.fps) + 84]), // the word stamp's 2.8 s (components/Stamp.tsx STAMP_FRAMES)
+    ],
+    event: (kind, detail) => logEvent(s.db, ep.id, kind, detail),
+  });
+  if (evidence) assets.evidenceArm = evidence.arm;
+  const shortBoard = evidence?.plan(plan.shots, plan.totalFrames);
   await s.render({
     episodeDir: dir,
     outFile: raw,
@@ -15210,6 +16461,8 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     thumbFile: assets.shortThumb
       ? path.join(dir, assets.shortThumb)
       : undefined,
+    // SHORT_FULL_COVER: the whole headline with no caption, the cover the platforms show (src/social/cover.ts).
+    coverFile: s.cfg.shortFullCover ? path.join(dir, COVER_FILE) : undefined,
     concurrency: s.cfg.remotionConcurrency,
     speed: s.cfg.renderSpeed,
     gl: s.cfg.remotionGl,
@@ -15222,7 +16475,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
             motifSting: stingAt ?? null,
           }
         : {}),
-      // SHORT_OPEN_WORDS: an opening on the game's footage carries one or two caption words, never the headline.
+      // SHORT_OPEN_WORDS: an opening on the game's footage carries a short caption (hook words or the headline's subject), never the headline.
       ...(s.cfg.shortOpenWords > 0 && opening?.ok && plan.shots[0]?.media.type === "clip"
         ? {
             openingWords: openingCaption(
@@ -15253,6 +16506,9 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
         kind: i.kind,
         aspect: i.aspect,
         blurFile: i.blurFile,
+        // Copies made while a switch was on are not shown once it is off (a retried or re-rendered episode).
+        fillFile: s.cfg.fillFrame ? i.fillFile : undefined,
+        upFile: s.cfg.upscaleStills ? i.upFile : undefined,
         beatIndex: i.beatIndex,
         credit: photoCredit(i),
         focusX: i.focusX,
@@ -15305,6 +16561,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
       // SHORT_LAYOUTS: the chosen opening and closing (src/render/untemplate.ts); absent, today's card at both ends.
       ...(shape ? { shape } : {}),
       ...(upgraded && Object.keys(upgraded.upgrades).length ? { upgrades: upgraded.upgrades } : {}),
+      ...(shortBoard ? { board: shortBoard } : {}),
       ...(gameBed
         ? {
             gameBedFile: {
@@ -15377,7 +16634,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           : []),
         // EXPLAINERS: the explainer's own words and its kicker are graphics, not burned-in text.
         ...(g.explainer ? explainerTexts(g.explainer) : []),
-      ]),
+      ]).concat((upgraded?.upgrades.kit ?? []).flatMap((k) => kitTexts(k.data))),
     });
   }
   // GRAPHICS_FRAME_CHECK: each card at its settled frame, for text cut off, overlapping or unreadable. A faulted card
@@ -15431,7 +16688,7 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
     if (assets.shortThumb === "thumb_search.jpg") {
       const tile = coverProblem(await lookOpeningFrame(path.join(dir, assets.shortThumb)));
       if (tile) {
-        assets.shortThumb = undefined;
+        assets.shortThumb = s.cfg.shortFullCover && existsSync(path.join(dir, COVER_FILE)) ? COVER_FILE : undefined;
         assets.shortThumbArm = "frame";
         await logEvent(s.db, ep.id, "ad_safe_tile_dropped", { problem: tile });
       }
@@ -15481,6 +16738,15 @@ async function stepRender(s: Services, ep: Episode): Promise<void> {
           off.unsafeClips?.add(shot.media.index);
         }
       }
+    // QA_FLATTEN_DEPTH: a layered still faulted for its edges (a torn cut-out, repeated strips) renders flat on the retry
+    // and keeps its place, instead of the same tear again or a good picture thrown away (src/qa/retry.ts).
+    if (s.cfg.qaFlattenDepth) {
+      const flat = flattenDepthFaults(visionProblems, times, plan, withoutPlan.images ?? [], off);
+      if (flat.length) {
+        log("warn", "depth layers dropped for the retry", { episode: ep.id, images: flat });
+        await logEvent(s.db, ep.id, "depth_flattened", { images: flat });
+      }
+    }
     const banned = rememberUnsafe(
       withoutPlan.clips ?? [],
       off,
@@ -16110,12 +17376,40 @@ async function stepApproved(s: Services, ep: Episode): Promise<void> {
   if (ep.story_json.gtaDaily) ep = await refreshGtaDailyLinks(s, ep);
   // A challenge episode: the one before and the playlist (src/challenge.ts).
   if (ep.story_json.challenge) ep = await refreshChallengeLinks(s, ep);
+  // LONG_RESLOT (src/longreslot.ts): a long video finished well after its slot goes out when its planned hour next
+  // comes round, not the moment it is ready (Cyberpunk documentary, 26 Nov). Only the publish time moves.
+  const lateTo =
+    ep.lane === "longform" && ep.slot_at && s.cfg.longReslot
+      ? longReslot(new Date(ep.slot_at), s.now(), s.cfg.timezone, s.cfg.longReslotGraceHours)
+      : undefined;
+  // A late video also keeps clear of the slots planned videos still in production hold, so it never takes their hour.
+  const planned = lateTo
+    ? (
+        await s.db.query<{ slot_at: string }>(
+          `SELECT slot_at FROM episodes WHERE slot_at > $1 AND id <> $2
+            AND status NOT IN ('failed','rejected','uploading','uploaded','published')`,
+          [s.now(), ep.id],
+        )
+      ).map((r) => new Date(r.slot_at))
+    : [];
   const publishAt = choosePublishAt(
     s.cfg,
     s.now(),
-    ep,
-    await publishTimes(s.db, s.now(), ep.lane === "twin"),
+    lateTo ? { ...ep, slot_at: lateTo.toISOString() } : ep,
+    [...(await publishTimes(s.db, s.now(), ep.lane === "twin")), ...planned],
   );
+  if (lateTo && publishAt) {
+    await logEvent(s.db, ep.id, "late_long_rescheduled", {
+      slot_at: ep.slot_at,
+      publish_at: publishAt.toISOString(),
+    });
+    await s
+      .notify({
+        level: "info",
+        content: `"${ep.script_json?.youtube.title ?? ep.story_json.headline}" was finished after its ${whenLabel(new Date(ep.slot_at!), s.cfg.timezone)} slot, so it is scheduled for ${whenLabel(publishAt, s.cfg.timezone)}.`,
+      })
+      .catch(() => undefined);
+  }
   // Public uploads are scheduled on YouTube (private until publish_at). Anything else
   // cannot be scheduled there, so the upload itself waits until the slot.
   // A Premiere documentary (PREMIERE_DOCS) uploads private as soon as it is made, for the Studio premiere step.
@@ -16169,7 +17463,7 @@ export function longChapters(ep: Episode): string[] {
         : seg.kind === "beat" && seg.visual?.kind === "chapter"
           ? seg.visual.primary
           : seg.kind === "take"
-            ? script!.evergreen_format === "documentary"
+            ? script!.evergreen_format === "documentary" || script!.gta_guide
               ? titleCaseLabel(script!.pulse_take.label)
               : "Our pick"
             : undefined;
@@ -17066,6 +18360,47 @@ async function addCaptions(s: Services, ep: Episode): Promise<void> {
  * Hands a long video's Test & compare to the Studio browser task (scheduled task pulse-studio-abtest):
  * data/abtests/pending.json lists the video, its title and the alternatives, and its thumbnails.
  */
+/**
+ * GTA_GUIDES: the guide thumbnail's design (src/render/ThumbStudio.tsx GuideThumb): the best frame of the owner's own
+ * clips in this video (a permitted streamer's when he has none), its subject lifted with APPLE_SUBJECT_LIFT when the
+ * Mac can, the 2-3 words the script carries and the official GTA VI logo. Undefined without a usable frame.
+ */
+async function gtaGuideDesign(
+  s: Services,
+  dir: string,
+  clips: Array<{ file: string; provenance?: string; durationSeconds?: number }>,
+  meta: import("./gtaguide.ts").GtaGuideMeta,
+): Promise<
+  | {
+      layout: "guide";
+      frame: "own" | "permitted";
+      thumb: Record<string, unknown> & { imageFile: string | null; headline: string; fgFile?: string | null; image2File?: string | null };
+    }
+  | undefined
+> {
+  // The edition guide shows the official art (the editions' own artwork), never a gameplay frame.
+  if (meta.kind === "which-edition") return undefined;
+  const frame = await pickGuideFrame(dir, clips, s.cfg.appleSubjectLift ? (f) => appleCut(dir, f) : undefined);
+  if (!frame) return undefined;
+  const logo = await guideLogo(s.cfg.dataDir, dir);
+  return {
+    layout: "guide",
+    frame: frame.owner,
+    thumb: {
+      layout: "guide",
+      headline: meta.thumb.big,
+      kicker: "",
+      subline: meta.thumb.small,
+      game: "",
+      accent: "#FF6B1A",
+      imageFile: frame.file,
+      fgFile: frame.fg ?? null,
+      image2File: logo ?? null,
+      ...(frame.x !== undefined ? { subjectX: frame.x } : {}),
+    },
+  };
+}
+
 async function queueAbTest(s: Services, ep: Episode): Promise<void> {
   try {
     const dir = episodeDir(s.cfg, ep.id);
@@ -17287,8 +18622,38 @@ export async function advance(s: Services, ep: Episode): Promise<boolean> {
     },
     // The learning core (src/learn/scope.ts): the holdout's baseline settings, and the step's prompts, models, settings
     // and commit stamped on the episode. Off (no LEARN_STAMPS, no LEARN_HOLDOUT_SHARE), the step runs straight through.
-    () => withLearn(s, ep, (run) => advanceStep(run, ep)),
+    // A slot-bound Short's step caps each Codex run at CODEX_SHORT_TIMEOUT_MINUTES (src/editorial/codex.ts withCodexCap);
+    // long videos and evergreen Shorts keep the full CODEX_TIMEOUT_MINUTES.
+    // The YouTube guard's order on the signed-in lane (src/lib/ytguard.ts): a Short's own fetches first, then long
+    // videos; anything outside an episode's step is background.
+    () =>
+      withYtPriority(ytPriorityFor(ep), () =>
+        withCodexCap(shortCodexCapMs(s.cfg, ep), () =>
+          withLearn(s, ep, (run) => advanceStep(run, ep)),
+        ),
+      ),
   );
+}
+
+/**
+ * The YouTube priority of an episode's fetches (pure): a slot-bound Short (its lines, named missions and characters)
+ * "short"; long videos and evergreen Shorts, made days ahead, "long".
+ */
+export function ytPriorityFor(ep: Pick<Episode, "lane">): YtPriority {
+  return isLongEpisode(ep) || ep.lane === "evergreen" ? "long" : "short";
+}
+
+/**
+ * The Codex cap for one episode's step (pure): CODEX_SHORT_TIMEOUT_MINUTES for a slot-bound Short, none for a long video
+ * or an evergreen Short (made days ahead, and its writer's good runs take up to 18 minutes).
+ */
+export function shortCodexCapMs(
+  cfg: Pick<Config, "codexShortTimeoutMinutes">,
+  ep: Pick<Episode, "lane">,
+): number | undefined {
+  if (isLongEpisode(ep) || ep.lane === "evergreen") return undefined;
+  const min = cfg.codexShortTimeoutMinutes;
+  return Number.isFinite(min) && min > 0 ? min * 60_000 : undefined;
 }
 
 /** True when a failure is about one video's own content (fact check, QA, clarity, spoilers), never the platform. */
@@ -17328,6 +18693,8 @@ async function advanceStep(s: Services, ep: Episode): Promise<boolean> {
       attempts,
       fatal,
       error: msg,
+      // A code fault carries where it broke (22-23 Nov: "reading 'primary'" lost two news Shorts with no trace).
+      ...codeFaultStack(err),
     });
     // Only a platform-wide fault (credentials, quota, policy) justifies pausing new stories;
     // a fatal error inside one episode's own content must not take the whole day with it.
@@ -17516,7 +18883,7 @@ async function pushEpisode(s: Services, ep: Episode): Promise<void> {
 export async function tickLong(
   s: Services,
 ): Promise<{ ran: boolean; episodes?: string[] }> {
-  const result = await withLease(s.db, LONG_LEASE, 360 * 60, async (lease) => {
+  const result = await withLease(s.db, LONG_LEASE, LONG_LEASE_TTL_S, async (lease) => {
     // One step at a time, the lane re-ordered after each (src/longlane.ts): the nearest slot first, and an
     // unscripted video due within hours ahead of everything, so another's gather or render never queues it
     // (30 Oct 2026: the recap for 20:00 sat behind the Halo ranking's gather and missed its slot). An episode

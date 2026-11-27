@@ -106,6 +106,8 @@ export interface ShortUpgrades {
   wipes?: ShortWipeMoment[];
   depthTypes?: ShortDepthTypeMoment[];
   orbits?: ShortOrbitMoment[];
+  /** GTA_KIT (src/render/gtakit.ts): the kit's place card, cash readout or head-to-head over their lines. */
+  kit?: import("./gtakit.ts").KitMoment[];
 }
 
 /** A span another overlay holds (frames, `to` exclusive), as src/render/cleanframe.ts keeps them. */
@@ -552,6 +554,8 @@ export function checksClearOfUpgrades<T extends { key: string; t: number }>(
       (m) => (m.replacesCard && c.key === `card${m.segment}`) || (f >= m.from && f < m.from + m.len),
     );
     if (map) continue;
+    // GTA_KIT: a card the kit stands in for is not there to check.
+    if ((up.kit ?? []).some((k) => k.replacesCard && c.key === `card${k.line}`)) continue;
     const pod = (up.blender ?? []).find((b) => f >= b.from && f < b.from + b.len);
     out.push(pod ? { ...c, t: (pod.from + pod.len + 15) / fps } : c);
   }

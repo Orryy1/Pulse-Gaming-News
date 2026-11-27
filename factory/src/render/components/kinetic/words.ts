@@ -8,7 +8,7 @@
 //     the voice reads it (speakable) and the two sequences are aligned by edit distance.
 // Nothing here imports React: the pipeline imports it from Node.
 
-import { speakable } from "../../../voice/speakable.ts";
+import { saidInName, speakable } from "../../../voice/speakable.ts";
 
 /** At most this many words of a sentence on screen at once (brief, 31 Oct 2026). */
 export const MAX_SHOWN = 6;
@@ -328,7 +328,8 @@ export function wordTimes(
   toks.forEach((t, i) => {
     const said = (() => {
       try {
-        return speakable(t);
+        // "343" before "Industries" is said "three four three", not as a count.
+        return saidInName(toks, i) ?? speakable(t);
       } catch {
         return t;
       }

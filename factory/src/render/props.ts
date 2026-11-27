@@ -11,6 +11,7 @@ export interface ShortImage {
   kind: string;
   aspect: number; // width / height
   blurSrc?: string | null; // pre-blurred plate for the framed panel
+  fillSrc?: string | null; // FILL_FRAME: the picture extended to 1080x1920 by the PC's image model, shown full-bleed instead of the panel
   luma?: number;
   beatIndex?: number; // tagged for one entry of a ranking Short
   credit?: string; // a credit its licence asks for on screen (a CC BY photo), shown while it shows
@@ -47,8 +48,10 @@ export type ShortProps = {
    * (src/render/cleanframe.ts stingPlacement); null: no collage card at all; absent: as before, a second after the hook.
    */
   motifSting?: { from: number; frames: number } | null;
-  /** SHORT_OPEN_WORDS: the one or two caption words over an opening on footage, in place of the headline ("" = none). */
+  /** SHORT_OPEN_WORDS: the caption over an opening on footage, in place of the headline: hook words or the subject ("" = none). */
   openingWords?: string;
+  /** SHORT_FULL_COVER: the cover still (cover.jpg), frame 0 with the whole headline and no caption (src/social/cover.ts). */
+  coverStill?: boolean;
   storyType: string;
   gameTitle: string;
   gameSubtitle: string; // "RELEASED 2023 · BETHESDA" style line for the game card
@@ -95,6 +98,8 @@ export type ShortProps = {
    * orbit, the game's look and the 3D box. The render step turns the map's and the clips' files into URLs.
    */
   upgrades?: import("./shortupgrades.ts").ShortUpgrades;
+  /** EVIDENCE_STYLE (src/evidencestyle.ts): the evidence board's cards, stamps and board windows. Absent: as before. */
+  board?: import("./evidenceboard.ts").EvidenceBoardPlan;
 };
 
 /** A character quote's clip on the Short's timeline (src/render/components/QuoteMoment.tsx). */

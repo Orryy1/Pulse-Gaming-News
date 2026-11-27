@@ -118,6 +118,7 @@ export interface EpisodeAssets {
   shortSoundArm?: "sparse" | "v3";
   /** SHORT_LAYOUTS (src/render/untemplate.ts): the arm and the opening and closing drawn, while the layout test runs. */
   shortShape?: { arm: "on" | "off"; open: "card" | "footage" | "lower"; close: "card" | "hold"; line?: string; skipped?: string };
+  evidenceArm?: "board" | "plain"; // EVIDENCE_STYLE_SHARE: the eligible (mystery or lore) episode's arm (src/evidencestyle.ts)
   /** Autocomplete terms this video really answers (src/searchterms.ts), for its tags and description. */
   searchTerms?: string[];
   /** The new-look opening: the hero art's subject cut out by the depth model (src/render/parallax.ts). */
@@ -134,6 +135,12 @@ export interface EpisodeAssets {
     sourceUrl: string;
     provenance: string;
     blurFile?: string;
+    /** FILL_FRAME: the picture extended to the frame's shape by the PC's image model (src/gpuvis/fill.ts). */
+    fillFile?: string;
+    /** UPSCALE_STILLS: the picture enlarged by Real-ESRGAN, or by whole pixels for pixel art (src/gpuvis/upscale.ts). */
+    upFile?: string;
+    /** FILL_FRAME: the fill failed its own margin check; not asked for again on a retry. */
+    fillRejected?: boolean;
     beatIndex?: number;
     moment?: number;
     label?: string;
@@ -148,6 +155,8 @@ export interface EpisodeAssets {
     role?: "hook";
     /** GAME_LIBRARY: the library asset this is (src/assets/gamelib.ts assetKey), for the usage ledger. */
     libKey?: string;
+    /** QA_FLATTEN_DEPTH: the final check faulted this still's depth edges, so it renders flat from then on. */
+    depthFault?: boolean;
     layers?: {
       bg: string;
       mid: string;
@@ -157,6 +166,8 @@ export interface EpisodeAssets {
     }; // 2.5D depth layers (src/render/parallax.ts)
     /** The picture before it was upscaled (src/assets/upscale.ts); `file` is then the upscaled copy. */
     upscaledFrom?: string;
+    /** LONG_NAMED_ART: the character the picture shows; it opens the sentence naming them (src/assets/namedart.ts). */
+    named?: string;
   }>; // wordy: the local screen saw menu or HUD text on it
   video?: string;
   poster?: string;

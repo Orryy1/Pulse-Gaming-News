@@ -1,0 +1,68 @@
+{
+ "Products": [
+  {
+   "ProductId": "9NP019G7NZXT",
+   "MarketProperties": [
+    {
+     "OriginalReleaseDate": "2026-11-20T05:00:00.0000000Z"
+    }
+   ],
+   "LocalizedProperties": [
+    {
+     "ProductTitle": "Grand Theft Auto VI",
+     "PublisherName": "Rockstar Games",
+     "Videos": [],
+     "CMSVideos": [
+      {
+       "HLS": "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/xbox/prod/videos/mainprofile/13733373232201794/a586634b-2747-4016-b60f-e57828dbd97d/manifest.m3u8",
+       "VideoPurpose": "trailer",
+       "Height": 1080,
+       "Caption": "Grand Theft Auto VI Trailer 1"
+      },
+      {
+       "HLS": "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/xbox/prod/videos/mainprofile/13733373232201794/791237a3-2ca4-42f2-824f-669e5fb04b7c/manifest.m3u8",
+       "VideoPurpose": "trailer",
+       "Height": 1080,
+       "Caption": "Grand Theft Auto VI Trailer 2"
+      },
+      {
+       "HLS": "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/xbox/prod/videos/mainprofile/13733373232201794/63ce7ce3-fc58-4068-b8c5-7e7713190049/manifest.m3u8",
+       "VideoPurpose": "trailer",
+       "Height": 1080,
+       "Caption": "Grand Theft Auto VI: Launch Trailer"
+      },
+      {
+       "HLS": "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/xbox/prod/videos/mainprofile/13733373232201794/ec743734-bbab-487e-bc75-98897836cb87/manifest.m3u8",
+       "VideoPurpose": "HeroTrailer",
+       "Height": 1080,
+       "Caption": "Grand Theft Auto VI: Out Now"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "ProductId": "BT5P2X999VH2",
+   "MarketProperties": [
+    {
+     "OriginalReleaseDate": "2017-07-25T00:00:00.0000000Z"
+    }
+   ],
+   "LocalizedProperties": [
+    {
+     "ProductTitle": "Fortnite",
+     "PublisherName": "Epic Games Inc.",
+     "Videos": [],
+     "CMSVideos": [
+      {
+       "HLS": "https://cdn.trailers.xboxservices.com/trailers/00000000-0000-0000-0000-000000000000/xbox/prod/videos/mainprofile/70702278257994163/21842f1c-9aa3-4b4a-86b7-231452b427f9/manifest.m3u8",
+       "VideoPurpose": "HeroTrailer",
+       "Height": 1080,
+       "Caption": "Treasure Hunters Trailer"
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

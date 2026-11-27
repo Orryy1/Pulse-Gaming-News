@@ -37,6 +37,7 @@ TEXT_REGIONS = ("banner", "centre", "area", "subtitle", "help")
 def parse_money(profile, texts):
     """(balance, change) read from the money box's lines; None where not shown."""
     bal, delta = None, None
+    first = bool(profile.get("money", "first", default=False))
     for t in texts:
         s = t.replace(" ", "")
         if profile.delta_re:
@@ -49,7 +50,8 @@ def parse_money(profile, texts):
             m = profile.money_re.search(s)
             if m:
                 digits = "".join(ch for ch in m.group(1) if ch.isdigit())
-                if digits:
+                # GTA VI ("money": {"first": true}) writes two balances, the top one first; GTA V keeps its old rule.
+                if digits and (bal is None or not first):
                     bal = int(digits)
     return bal, delta
 
@@ -65,15 +67,36 @@ def cmd_read(a):
     tracker = Tracker(atlas, reloc_matcher=reloc)
     mm = Minimap(profile, W, H)
     tracker._player = tuple(mm.player)
-    reader = Reader(a.libs) if a.ocr == "on" else None
+    if a.threads:
+        cv2.setNumThreads(a.threads)
+    reader = Reader(a.libs, a.threads or None, profile.get("ocrDet")) if a.ocr == "on" else None
     gate = ChangeGate()
+    # How much a text region is enlarged before reading: GTA V's small writing reads better at 2x; GTA VI's large
+    # banners read as well at 1x for a quarter of the time (the text finder's cost grows with the pixels).
+    upscale = float(profile.get("ocrUpscale", default=2.0))
+    track_map = profile.get("minimap", "track", default=True) is not False
+    stars_any = bool(profile.get("wanted", "anyScreen", default=False))
+    talk_box = profile.get("talkBox")
     samples = []
     t0 = time.time()
     duration = a.duration or max(0.0, dur - a.start)
     last_state = None
-    for t, frame in video.frames(a.ffmpeg, a.video, a.fps, start=a.start, duration=duration, width=W, height=H):
+    for t, frame in video.frames(a.ffmpeg, a.video, a.fps, start=a.start, duration=duration, width=W, height=H,
+                                 keyframes=a.keyframes):
         state, conf = classify(frame, profile)
         s = {"t": round(t, 2), "state": state}
+        # Spoken lines on screen (subtitles), told without reading them: the miner holds a stretch full of dialogue
+        # as a story moment (a mission's or a cutscene's talk), the spoiler rule's cheapest sure sign.
+        if talk_box and state != "black" and has_text(crop(frame, talk_box), H):
+            s["talk"] = True
+        if state == "other" and stars_any:
+            # GTA VI hides its radar now and then during a chase while the stars stay up: they are read anyway (the
+            # fixed slots, right-hand fill and outline checks keep scenery out). Only a frame that shows some count.
+            w = read_wanted(frame, profile)
+            if w["stars"] or w["dim"]:
+                s["stars"] = w["stars"]
+                if w["dim"]:
+                    s["dim"] = w["dim"]
         if state != "hud":
             if last_state == "hud":
                 tracker.reset()
@@ -88,8 +111,11 @@ def cmd_read(a):
         if w["score"]:
             s["starScore"] = w["score"]
         s["air"] = bool(mm.altimeter(frame))
-        img, msk = mm.flat(frame)
-        s["mm"] = tracker.track(img, msk, t)
+        # GTA VI's radar is in colour, which the stitcher (made for GTA V's grey radar) cannot follow: a profile may
+        # switch the map off ("track": false) rather than fill the atlas with hundreds of one-frame islands.
+        if track_map:
+            img, msk = mm.flat(frame)
+            s["mm"] = tracker.track(img, msk, t)
         if reader and reader.ok:
             texts = {}
             for region in TEXT_REGIONS:
@@ -99,7 +125,8 @@ def cmd_read(a):
                 c = crop(frame, box)
                 if not has_text(c, H) or not gate.changed(region, c, t):
                     continue
-                lines = [x[0] for x in clean_lines(reader.read(c)) if not (profile.ignore_re and profile.ignore_re.match(x[0]))]
+                lines = [x[0] for x in clean_lines(reader.read(c, upscale=upscale))
+                         if not (profile.ignore_re and profile.ignore_re.match(x[0]))]
                 if lines:
                     texts[region] = lines
             mb = profile.get("money", "box")
@@ -115,7 +142,7 @@ def cmd_read(a):
             if texts:
                 s["texts"] = texts
             area = texts.get("area")
-            pose = s["mm"]
+            pose = s.get("mm") or {}
             if area and profile.area_re and pose.get("island"):
                 for line in area:
                     if profile.area_re.match(line):
@@ -152,13 +179,18 @@ def cmd_read(a):
                 "error": reader.error if reader else None, "reads": reader.reads if reader else 0},
         "stats": tracker.stats,
         "seconds": round(time.time() - t0, 1),
+        # The reader's own CPU time (ffmpeg's decoding runs in its own process and is not in it).
+        "cpuSeconds": round(time.process_time(), 1),
+        # Whether spoken lines were looked for (a profile's talkBox): a read without it cannot tell dialogue.
+        "talkRead": bool(talk_box),
         "places": atlas.places,
         "islands": {str(i): {"coverage": c.coverage(), "bbox": c.bbox()} for i, c in atlas.islands.items()},
         "samples": samples,
     }
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(out, f, separators=(",", ":"))
-    print(json.dumps({"ok": True, "samples": len(samples), "seconds": out["seconds"], "stats": tracker.stats,
+    print(json.dumps({"ok": True, "samples": len(samples), "seconds": out["seconds"], "cpuSeconds": out["cpuSeconds"],
+                      "stats": tracker.stats,
                       "ocr": out["ocr"], "matcher": out["matcher"]}))
 
 
@@ -220,6 +252,8 @@ def main():
     r.add_argument("--duration", type=float, default=0.0)
     r.add_argument("--matcher", default="sift")
     r.add_argument("--ocr", default="on")
+    r.add_argument("--threads", type=int, default=0)
+    r.add_argument("--keyframes", action="store_true")
     r.add_argument("--libs")
     r.add_argument("--models")
     r.add_argument("--ffmpeg", default="ffmpeg")

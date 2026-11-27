@@ -28,7 +28,7 @@ import {
 } from "./footagefirst.ts";
 import { readText } from "./ocr.ts";
 import { needsUpscale, sdCopy, videoHeight } from "./upscale.ts";
-import { loadOrch } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { intermediateVideoArgs } from "../lib/videoenc.ts";
@@ -67,7 +67,7 @@ export function orchVisionLease(): (
   return async (job, est) => {
     try {
       const orch = await loadOrch();
-      return (await orch.lease("gpu", {
+      return (await leaseStrict(orch, "gpu", {
         job,
         project: "pulse",
         priority: 60,
@@ -80,7 +80,9 @@ export function orchVisionLease(): (
           log("info", "footage-first looks waiting for the GPU", { why }),
       })) as () => void;
     } catch (err) {
-      log("info", "no orchestrator turn for the footage looks; going ahead", {
+      // Only the Mac (no orchestrator at all) goes ahead; a refusal or a wait that ran out means no looks this time.
+      if (!(err instanceof NoOrchestrator)) throw err;
+      log("info", "no orchestrator here for the footage looks; going ahead", {
         error: errorMessage(err),
       });
       return () => undefined;

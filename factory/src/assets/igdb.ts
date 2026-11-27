@@ -7,6 +7,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { VisualAsset } from "./steam.ts";
+import { pickIgdbCharacter, type IgdbCharacterRow } from "./namedart.ts";
 
 export interface IgdbGame {
   id: number;
@@ -164,6 +165,8 @@ export async function fetchIgdbArt(
   episodeDir: string,
   max = 10,
   fetchFn: typeof fetch = fetch,
+  /** IGDB picture ids the episode already has: a top-up asks for the next ones, not the same ones again. */
+  skip: ReadonlySet<string> = new Set(),
 ): Promise<VisualAsset[]> {
   const out: VisualAsset[] = [];
   const dir = path.join(episodeDir, "assets");
@@ -179,7 +182,9 @@ export async function fetchIgdbArt(
       kind: "hero" as const,
       size: "t_1080p",
     })),
-  ].slice(0, max);
+  ]
+    .filter((w) => !skip.has(w.id))
+    .slice(0, max);
   if (game.cover)
     want.push({ id: game.cover, kind: "capsule", size: "t_cover_big_2x" });
   for (const w of want) {
@@ -288,4 +293,55 @@ export async function findIgdbSeries(
   return rows.sort(
     (a, b) => (a.date ?? "9999").localeCompare(b.date ?? "9999") || a.id - b.id,
   );
+}
+
+// ---------------------------------------------------------------- characters
+// LONG_NAMED_ART (src/assets/namedart.ts): a character's official mug shot, for the sentence that names them.
+
+/** IGDB's characters endpoint rows, as the pick reads them (pure). */
+export function parseIgdbCharacters(rows: any[]): IgdbCharacterRow[] {
+  return (rows ?? []).map((c: any) => ({
+    name: String(c.name ?? ""),
+    akas: Array.isArray(c.akas) ? c.akas.map(String) : undefined,
+    mugShot: c.mug_shot?.image_id ? String(c.mug_shot.image_id) : undefined,
+    games: (c.games ?? []).map((g: any) => String(g.name ?? "")).filter(Boolean),
+  }));
+}
+
+/** The named character's mug shot, saved into the episode folder, or undefined when IGDB has no sure match. */
+export async function fetchIgdbCharacter(
+  creds: { clientId: string; secret: string },
+  name: string,
+  /** The games whose series the character must be in (any of them). */
+  gameTitles: string[],
+  episodeDir: string,
+  fetchFn: typeof fetch = fetch,
+): Promise<(VisualAsset & { named: string }) | undefined> {
+  if (!creds.clientId || !creds.secret || !name.trim()) return undefined;
+  const bearer = await accessToken(creds.clientId, creds.secret, fetchFn);
+  const res = await fetchFn("https://api.igdb.com/v4/characters", {
+    method: "POST",
+    headers: { "Client-ID": creds.clientId, Authorization: `Bearer ${bearer}` },
+    body: `search "${name.replace(/"/g, "")}"; fields name,akas,mug_shot.image_id,games.name; limit 10;`,
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) return undefined;
+  const rows = parseIgdbCharacters((await res.json()) as any[]);
+  const hit = gameTitles.map((t) => pickIgdbCharacter(rows, name, t)).find(Boolean);
+  if (!hit?.mugShot) return undefined;
+  const url = IMG(hit.mugShot, "t_1080p");
+  const pic = await fetchFn(url, { signal: AbortSignal.timeout(20_000) });
+  if (!pic.ok) return undefined;
+  const file = path.join("assets", `igdb-${hit.mugShot}.jpg`);
+  await fs.mkdir(path.join(episodeDir, "assets"), { recursive: true });
+  await fs.writeFile(path.join(episodeDir, file), Buffer.from(await pic.arrayBuffer()));
+  return {
+    // Its own kind: never an entry's key art (the palette, the chapter card, the thumbnail look for "hero").
+    kind: "character",
+    file,
+    sourceUrl: url,
+    named: hit.name.replace(/\s*\([^)]*\)\s*$/, ""),
+    label: hit.name.replace(/\s*\([^)]*\)\s*$/, ""),
+    provenance: `IGDB character picture of "${hit.name}" (${hit.games.slice(0, 3).join(", ")}), publisher material via igdb.com`,
+  };
 }

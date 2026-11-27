@@ -960,17 +960,27 @@ export const FactCard: React.FC<{
         {v.primary.toUpperCase()}
       </div>
       {label ? (
-        <div
-          style={{
-            marginTop: 22,
-            fontFamily: BODY,
-            fontWeight: 800,
-            fontSize: 40,
-            color: COLOUR.paper,
-            textTransform: "uppercase",
-          }}
-        >
-          {label}
+        // The subline sits on its own dark plate: bare white type vanished into bright skies (QA failed
+        // "Captured on PS5 / Rockstar • Entirely in-game footage" three times on 25 Nov).
+        <div style={{ marginTop: 22, lineHeight: 1.5 }}>
+          <span
+            data-subline-plate=""
+            style={{
+              display: "inline",
+              background: "rgba(11, 11, 14, 0.78)",
+              boxDecorationBreak: "clone",
+              WebkitBoxDecorationBreak: "clone",
+              padding: "4px 14px",
+              fontFamily: BODY,
+              fontWeight: 800,
+              fontSize: 40,
+              color: COLOUR.paper,
+              textTransform: "uppercase",
+              textShadow: "0 2px 10px rgba(0,0,0,0.8)",
+            }}
+          >
+            {label}
+          </span>
         </div>
       ) : null}
     </div>

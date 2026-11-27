@@ -179,6 +179,8 @@ export interface ThumbScript {
   evergreen_format?: string;
   entries?: Array<{ game_title?: string }>;
   youtube?: { thumb_text?: string; title?: string };
+  /** GTA_GUIDES: a guide list, whose fallback words are a guide's, never a ranking's "#1". */
+  gta_guide?: unknown;
 }
 
 /** Everything wrong with a video's thumbnail words: the rule, a title echo and a cut. */
@@ -205,6 +207,7 @@ export function heroThumbWords(script: ThumbScript): string {
     options.find((t) => !thumbWordsForTitleProblems(t, script).length) ??
     options[options.length - 1]!;
   if (script.recap) return pick("THIS WEEK", "THE BIG WEEK");
+  if (script.gta_guide) return pick("NO SPOILERS", "START HERE", "READ THIS FIRST");
   if (script.entries?.length && script.evergreen_format !== "documentary")
     return pick("ONLY ONE IS #1", "THE TOP SPOT", "#1 IS CLEAR");
   return pick("WHAT REALLY HAPPENED", "THE REAL STORY", "THE HIDDEN SIDE");
@@ -386,6 +389,9 @@ export function layoutProblem(
   motifId?: string,
 ): string | undefined {
   if (layout === "poster") return undefined;
+  // GTA_GUIDES (src/gtaguide.ts): one frame of the owner's footage, its subject lifted by Apple Vision (not by depth),
+  // the words and the official logo in a corner.
+  if (layout === "guide") return undefined;
   if (layout === "motif" && approvedGrid(motifId)) return undefined;
   if (layout === "mystery") return "the mystery design has an arrow and a circle";
   if (layout === "hero" || layout === "depth")

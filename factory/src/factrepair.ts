@@ -70,7 +70,7 @@ const NOT_ROUNDING =
 /** A line that announces a rank: cutting it would leave a hole in the countdown. */
 const ORDINAL =
   "first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|last|\\d+(?:st|nd|rd|th)";
-const RANK_LINE = new RegExp(
+export const RANK_LINE = new RegExp(
   [
     String.raw`\bnumber\s+(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+)\b`,
     String.raw`\bno\.\s?\d`,
@@ -131,14 +131,32 @@ const LEADING_JOIN = /^\s*[,;:]\s*(?:but|yet|though|although|still)\b[\s,]*/i;
 const TRAILING_JOIN =
   /\s*[,;:]\s*(?:but|yet|and|so|though|although|while)\s*$/i;
 
-const SENTENCE_SPLIT = /(?<=[.?!])\s+/;
+/** A short phrase naming only where something was said ("in an open letter", "during an investor call"), nothing else. */
+const VENUE =
+  /^(?:in|on|via|through|during|at)\s+(?:an?|the|his|her|its|their)\s+(?:(?:open|public|internal|official|blog|social|recent|later|livestreamed|written|video|press|follow-up|financial|investor|earnings)\s+){0,2}(?:letter|tweet|post|interview|statement|video|apology|blog|call|briefing|update|stream|livestream|thread|message|email|memo|note|podcast|presentation|release|report|q&a|ama)s?$/i;
+const SENTENCE_END = /[.?!]["'”’]?$/;
+/** The venue goes only straight after a verb of saying: "Badowski said, in an open letter, that...". */
+const SPEECH_VERB =
+  /\b(?:said|says|wrote|writes|admitted|admits|told \w+|explained|claimed|announced|confirmed|promised|revealed|insisted|added|warned|apologised|apologized|stated|argued|conceded|acknowledged)$/i;
+/** What may follow the cut: a word that starts the said thing, never one that hangs off the venue noun. */
+const VENUE_TAIL_OK = /^[A-Za-z"“]/;
+const VENUE_TAIL_BAD = /^(?:of|where|which|who|whose|when|while|to|for|from|with|about)\b/i;
+/** "that" may follow only when it opens a clause of its own ("said in a letter that the port..."), never "a video that went viral". */
+const VENUE_THAT_OK = /^that\s+(?:the|a|an|he|she|it|they|we|i|you|his|her|its|their|this|these|those|there)\b|^that\s+[A-Z0-9]/;
+/** A negated verb of saying: "never said in an interview that..." would become "never said that...". */
+const NEGATED = /\b(?:never|not|no|no longer|denied|refused|nobody|none)\b|n't\b/i;
+/** The checker objected to where it was said, in so many words; a generic "this statement is not supported" is not that. */
+const VENUE_PROBLEM =
+  /\b(?:where|venue|said in|was said|were said|made in|stated in|published in|written in|wrote in|posted in|in an? (?:open |public |video )?(?:letter|interview|statement|tweet|post|video|call|apology|blog)|no (?:such )?(?:open |public )?(?:letter|interview|statement|tweet|post|video|call|apology))\b/i;
+
+export const SENTENCE_SPLIT = /(?<=[.?!])\s+/;
 const TRAILING_PUNCT = /[\s.,;:!?"'“”‘’]+$/;
 const LEADING_PUNCT = /^[\s"'“”‘’]+/;
 
-const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
-const core = (t: string) =>
+export const words = (t: string) => t.split(/\s+/).filter(Boolean).length;
+export const core = (t: string) =>
   t.replace(TRAILING_PUNCT, "").replace(LEADING_PUNCT, "").trim();
-const lower = (t: string) =>
+export const lower = (t: string) =>
   t.toLowerCase().replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
 
 /** Splits "Fact-check: "<quote>" - <problem>" into its parts; anything else is not a repairable blocker. */
@@ -154,7 +172,7 @@ export function parseBlocker(
   return quote ? { quote, problem } : undefined;
 }
 
-interface Located {
+export interface Located {
   field: string;
   sentence: string;
   index: number; // sentence position within the field
@@ -162,7 +180,7 @@ interface Located {
 }
 
 /** The raw sentence whose spoken form contains the quote (the checker reads the spoken script). */
-function locate(
+export function locate(
   fields: readonly string[],
   quote: string,
   speak: (t: string) => string,
@@ -223,7 +241,7 @@ const capitalise = (t: string) =>
   );
 
 /** The sentence with the quoted clause cut, or undefined when the cut would not leave a clean sentence. */
-function cutClause(sentence: string, quote: string): string | undefined {
+function cutClause(sentence: string, quote: string, problem = ""): string | undefined {
   const q = core(quote);
   const at = lower(sentence).indexOf(lower(q));
   if (at < 0) return undefined;
@@ -240,6 +258,26 @@ function cutClause(sentence: string, quote: string): string | undefined {
   if (!core(after) && TRAILING_JOIN.test(before)) {
     const rest = before.replace(TRAILING_JOIN, "").trim();
     if (words(rest) >= 3) return `${rest}${end}`;
+  }
+  // Where a line was said, mid-sentence: "Badowski said, in an open letter, that the old consoles were the problem."
+  // The checker can't place the venue; the claim is checked on its own when the mended chapter is re-read.
+  // Only after a verb of saying, only when the objection is about the venue, and only before a safe next word
+  // (26 Nov review: "arrived in a video that ran...", "said (in a tweet)", "in a letter: the..." all stay unrepaired).
+  if (VENUE.test(q) && core(before) && core(after) && VENUE_PROBLEM.test(problem)) {
+    const head = before.replace(/[\s,]*$/, "");
+    const tail = after.replace(/^[\s,]*/, "");
+    if (
+      SPEECH_VERB.test(head) &&
+      !NEGATED.test(head.split(/\s+/).slice(-5).join(" ")) &&
+      VENUE_TAIL_OK.test(tail) &&
+      !VENUE_TAIL_BAD.test(tail) &&
+      (!/^that\b/i.test(tail) || VENUE_THAT_OK.test(tail))
+    ) {
+      // A spoken quote keeps its comma: 'He said, "We were not ready."'
+      const join = /^["“]/.test(tail) ? ", " : " ";
+      const rest = `${head}${join}${tail}`.replace(/\s{2,}/g, " ").trim();
+      if (words(rest) >= 4 && SENTENCE_END.test(rest)) return rest;
+    }
   }
   return undefined;
 }
@@ -337,7 +375,7 @@ export function repairBlockers(
       });
       continue;
     }
-    const to = cutClause(at.sentence, parsed.quote);
+    const to = cutClause(at.sentence, parsed.quote, parsed.problem);
     if (!to || cut + qWords > maxCutShare * total) {
       out.unrepaired.push(blocker);
       continue;

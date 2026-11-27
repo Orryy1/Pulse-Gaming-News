@@ -15,6 +15,7 @@ import {
   SAID_AS_LETTERS,
   speakExact,
   SPOKEN_BACK,
+  STUDIO_SAID_BACK,
 } from "../voice/speakable.ts";
 
 const run = promisify(execFile);
@@ -66,9 +67,27 @@ const coreOf = (t: string) =>
     .replace(/[)"”’'\].,!?;:…]+$/, "")
     .replace(/['’]s$/, "");
 
+/**
+ * LETTER_WATCH_NAMES (src/config.ts, default on): a token built from capitalised word parts ("McCoy", "YouTube",
+ * "GameSpot", "LeBron") is a name, not letters, so the letter watch leaves it alone. On 25 Nov 2026 "McCoy's line" in
+ * the Titanfall 2 Short was logged and alerted as spelled letter by letter: its two capitals made it "MCCOY", and a
+ * name held before a pause looks as long as five letters. Every capital must start a lowercase run and the last part
+ * must have three letters or more, so "PvP", "PvPs", "LoL", "WoW" and "DeNA" stay watched.
+ */
+export interface LetterWatchOptions {
+  names?: boolean;
+}
+
+export const NAME_SHAPED = /^(?:[A-Z][a-z]+)+[A-Z][a-z]{2,}$/;
+
+export function nameShaped(core: string): boolean {
+  return NAME_SHAPED.test(core.replace(/['’]s$/, ""));
+}
+
 /** The letters of a capitalised token as said ("PS5" is "PS", "NPCs" is "NPC"), or undefined when it is not one. */
-export function lettersOf(core: string): string | undefined {
+export function lettersOf(core: string, opts: LetterWatchOptions = {}): string | undefined {
   if (!/^[A-Za-z0-9]{2,9}$/.test(core)) return undefined;
+  if ((opts.names ?? true) && nameShaped(core)) return undefined;
   if ((core.match(/[A-Z]/g) ?? []).length < 2) return undefined;
   const letters = core.replace(/\d+/g, "").replace(/(?<=[A-Z])s$/, "");
   if (!/^[A-Za-z]{2,7}$/.test(letters)) return undefined;
@@ -85,6 +104,7 @@ export function lettersOf(core: string): string | undefined {
 export function letterReadings(
   meant: TimedWord[],
   heard: TimedWord[],
+  opts: LetterWatchOptions = {},
 ): LetterReading[] {
   // The two clocks can sit a little apart (Whisper's own habit): their median offset on matching long words.
   const offs: number[] = [];
@@ -105,7 +125,7 @@ export function letterReadings(
   const out: LetterReading[] = [];
   for (const m of meant) {
     const core = coreOf(m.text);
-    const letters = lettersOf(core);
+    const letters = lettersOf(core, opts);
     if (
       !letters ||
       SAID_AS_LETTERS.has(letters) ||
@@ -137,7 +157,7 @@ export function letterReadings(
     // The capitals themselves, held as long as letters take at this take's own pace.
     if (!spelled) {
       const k = heard.findIndex(
-        (h) => hs.includes(h) && lettersOf(coreOf(h.text)) === letters,
+        (h) => hs.includes(h) && lettersOf(coreOf(h.text), opts) === letters,
       );
       if (k >= 0) {
         const same = heard[k]!;
@@ -257,12 +277,24 @@ export function midSentencePauses(
 export async function transcribeWords(
   file: string,
   python: string,
+  o: { device?: string; model?: string; beam?: number; timeoutMs?: number } = {},
 ): Promise<TimedWord[]> {
   const out = `${file}.words.json`;
   try {
     await run(python, ["-I", SCRIPT, file, out], {
-      timeout: 20 * 60_000,
+      timeout: o.timeoutMs ?? 20 * 60_000,
       maxBuffer: 8 * 1024 * 1024,
+      // WHISPER_DEVICE=cpu: the stream index's CPU Whisper (src/qa/whisperwords.py); unset keeps CUDA.
+      ...(o.device || o.model || o.beam
+        ? {
+            env: {
+              ...process.env,
+              ...(o.device ? { WHISPER_DEVICE: o.device } : {}),
+              ...(o.model ? { WHISPER_MODEL: o.model } : {}),
+              ...(o.beam ? { WHISPER_BEAM: String(o.beam) } : {}),
+            },
+          }
+        : {}),
     });
     return (
       JSON.parse(await fs.readFile(out, "utf8")) as { words: TimedWord[] }
@@ -413,13 +445,46 @@ const similar = (a: string, b: string) => {
   return 1 - d[m]![n]! / Math.max(m, n) >= 0.7;
 };
 
-/** Whisper splits figures ("8" then ",049", "$59" then ".99"): joined back into one word. */
+/**
+ * Whisper splits figures ("8" then ",049", "$59" then ".99"): joined back into one word. It also writes dotted
+ * initials as "A" then ".V.": the Cyberpunk 2077 documentary (26 Nov 2026) logged "AV." heard as "A .V." as a voice
+ * fault. Dotted letters after a lone capital go back onto it ("A.V."), which tokens() reads as "av". Only letters:
+ * any other word starting with a stop (".NET", ".hack") stays apart, so a glued word never hides a dropped one.
+ */
 export function joinFigures(words: TimedWord[]): TimedWord[] {
   const out: TimedWord[] = [];
   for (const w of words) {
     const prev = out[out.length - 1];
-    if (prev && /^[,.]\d/.test(w.text) && /\d$/.test(prev.text))
+    const glued =
+      prev &&
+      /^\.(?:[A-Za-z]\.)*[A-Za-z]\.?[,;:!?]?$/.test(w.text) &&
+      /^(?:[A-Z]\.)*[A-Z]$/.test(prev.text);
+    if (glued || (prev && /^[,.]\d/.test(w.text) && /\d$/.test(prev.text)))
       out[out.length - 1] = { ...prev, text: prev.text + w.text, end: w.end };
+    else out.push({ ...w });
+  }
+  return joinMoneyScale(out);
+}
+
+/**
+ * Money then its scale ("$1.85" then "billion"; only million and billion, the scales speakable.ts reads) is one figure, read the way the voice reads it: "one point eight
+ * five billion dollars" (speakable.ts). Word by word, "$1.85" alone is a price ("one dollar eighty-five"), so the
+ * Cyberpunk 2077 documentary (25 Nov 2026) failed its narration check on a correctly spoken figure.
+ */
+export function joinMoneyScale(words: TimedWord[]): TimedWord[] {
+  const out: TimedWord[] = [];
+  for (const w of words) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      /^[$£€]\d[\d,]*(?:\.\d+)?$/.test(prev.text) &&
+      /^(?:million|billion)\b/i.test(w.text)
+    )
+      out[out.length - 1] = {
+        ...prev,
+        text: `${prev.text} ${w.text}`,
+        end: w.end,
+      };
     else out.push({ ...w });
   }
   return out;
@@ -432,13 +497,17 @@ export function joinFigures(words: TimedWord[]): TimedWord[] {
 export function joinLetters(words: TimedWord[]): TimedWord[] {
   const out: TimedWord[] = [];
   const letter = (t: string) => /^[A-HJ-Z][.,;:!?)"”’]*$/.test(t);
+  // Initials written with full stops ("A. V.", 25 Nov 2026: heard as "AV") are one token too; a stop after one
+  // letter only joins when the next word is also a dotted letter, so "Plan B. A new..." stays apart.
+  const dotted = (t: string) => /^[A-HJ-Z]\.[,;:!?)"”’]*$/.test(t);
   for (let i = 0; i < words.length; i++) {
     let j = i;
     while (
       j + 1 < words.length &&
       letter(words[j]!.text) &&
       letter(words[j + 1]!.text) &&
-      !/[.,;:!?]$/.test(words[j]!.text)
+      (!/[.,;:!?]$/.test(words[j]!.text) ||
+        (/^[A-Z]\.$/.test(words[j]!.text) && dotted(words[j + 1]!.text)))
     )
       j++;
     if (j > i) {
@@ -480,6 +549,8 @@ PROTECTED.delete("and");
 
 /** A word in one spelling for both sides of the Atlantic: rumoured/rumored, realise/realize, centre/center, travelled/traveled. */
 export function usUk(w: string): string {
+  // Number words are not spellings: "four" is not "for" ("four A Games", 26 Nov 2026).
+  if (NUMBERISH.has(w) || NUMBERISH.has(w.replace(/s$/, ""))) return w;
   return w
     .replace(/our(s|ed|ing|ite|ites|able)?$/, "or$1")
     .replace(/is(e|es|ed|ing|ation|ations)$/, "iz$1")
@@ -547,6 +618,8 @@ function benign(meant: string[], heard: string[]): boolean {
   const a = meant.join(""),
     b = heard.join("");
   if (a === b) return true; // compounds: "rockstar"/"rock star"
+  // "four" and "for" are one sound: Whisper's homophone is no voice fault (usUk leaves number words alone).
+  if (meant.length === 1 && heard.length === 1 && [a, b].every((x) => x === "four" || x === "for")) return true;
   // The same word in US and UK spelling ("rumored" heard as "rumoured", 15 Nov 2026) is no voice fault.
   if (usUk(a) === usUk(b)) return true;
   // The same number written as a figure or a word, split anywhere ("GTA six's" heard as "GT A6's", 15 Nov 2026).
@@ -581,19 +654,61 @@ export function heardSpeech(heard: TimedWord[]): TimedWord[] {
   );
 }
 
+type Tok = { t: string; at: number; w: string };
+let studioTokens: Array<{ said: string[]; written: string[] }> | undefined;
+/**
+ * Studio names with digits in one form on both sides (26 Nov 2026): the voice says "three four three Industries" and
+ * Whisper writes "343 Industries" (tokens: "three hundred forty three"), or the words it heard. Both become the written
+ * name's tokens, so a correct reading passes and a different figure ("353 Industries") is still a fault.
+ */
+export function studioNames(xs: Tok[]): Tok[] {
+  studioTokens ??= STUDIO_SAID_BACK.map(([said, written]) => ({
+    said: said.flatMap((w) => tokens(w)),
+    written: written.split(" ").flatMap((w) => tokens(w)),
+  }))
+    .filter((r) => r.said.join(" ") !== r.written.join(" "))
+    .sort((a, b) => b.said.length - a.said.length);
+  const out: Tok[] = [];
+  for (let k = 0; k < xs.length; k++) {
+    const hit = studioTokens.find((r) =>
+      r.said.every((t, j) => xs[k + j]?.t === t),
+    );
+    if (!hit) {
+      out.push(xs[k]!);
+      continue;
+    }
+    const first = xs[k]!;
+    const last = xs[k + hit.said.length - 1]!;
+    const w = xs
+      .slice(k, k + hit.said.length)
+      .map((x) => x.w)
+      .filter((x, i, all) => all.indexOf(x) === i)
+      .join(" ");
+    // The last word keeps its own time ("Industries" when it was said), so the drift measure is not skewed.
+    hit.written.forEach((t, j) =>
+      out.push({ t, at: j === hit.written.length - 1 ? last.at : first.at, w }),
+    );
+    k += hit.said.length - 1;
+  }
+  return out;
+}
+
 /** Compares the script's words (with their timings) with what Whisper heard. Pure. */
 export function checkNarration(
   meant: TimedWord[],
   allHeard: TimedWord[],
   maxDrift = 0.35,
+  opts: LetterWatchOptions = {},
 ): NarrationCheck {
   const heard = heardSpeech(allHeard);
-  const A: Array<{ t: string; at: number; w: string }> = [];
+  const rawA: Tok[] = [];
   for (const w of joinLetters(meant))
-    for (const t of tokens(w.text)) A.push({ t, at: w.start, w: w.text });
-  const B: Array<{ t: string; at: number; w: string }> = [];
+    for (const t of tokens(w.text)) rawA.push({ t, at: w.start, w: w.text });
+  const rawB: Tok[] = [];
   for (const w of joinLetters(joinFigures(heard)))
-    for (const t of tokens(w.text)) B.push({ t, at: w.start, w: w.text });
+    for (const t of tokens(w.text)) rawB.push({ t, at: w.start, w: w.text });
+  const A = studioNames(rawA);
+  const B = studioNames(rawB);
   // "a hundred" is "one hundred": the voice said "100" as people do, and Whisper wrote "a" (it failed
   // a good narration and paid for a second voicing, QA notes 26 Oct 2026). Only before a scale word.
   for (const xs of [A, B])
@@ -664,7 +779,7 @@ export function checkNarration(
   const real = dropShuffles(issues);
   return {
     heard: heard.map((w) => w.text).join(" "),
-    letters: letterReadings(meant, heard),
+    letters: letterReadings(meant, heard, opts),
     ok: !real.length && drift <= maxDrift,
     issues: real,
     drift: Math.round(drift * 100) / 100,

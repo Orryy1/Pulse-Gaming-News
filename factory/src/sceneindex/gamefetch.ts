@@ -42,9 +42,14 @@ import {
   sceneSlug,
   type SceneIndex,
 } from "./schema.ts";
+import { moviePlanPass } from "./movieplan.ts";
+import { revealPass } from "./reveals.ts";
+import { setRevealDir } from "./revealbook.ts";
+import type { Llm } from "../editorial/llm.ts";
 import {
   lateTerms,
   setSpoilerWindows,
+  isEarlyFree,
   spoilerWindow,
   type SpoilerWindow,
 } from "./spoilers.ts";
@@ -81,7 +86,8 @@ export interface FetchTitle {
 
 /**
  * GAME_FETCH_TITLES (pure): titles separated by ";" or new lines, each optionally "@release" and "~window end":
- * "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-17". Commas stay inside titles.
+ * "Grand Theft Auto VI@2026-11-18T11:00Z~2026-12-03T00:00Z" (a date-only end, "~2026-12-02", runs to the end of that
+ * day). Commas stay inside titles.
  */
 export function parseFetchTitles(raw: string): FetchTitle[] {
   return raw
@@ -806,18 +812,20 @@ export function filedLines(book: FiledBook, now: Date): string[] {
 export function windowsFrom(
   sources: Array<{ game: string; release?: string; until?: string }>,
   indexes: Map<string, SceneIndex>,
-  o: { days: number; openingShare: number },
+  o: { days: number; openingShare: number; earlyFree?: readonly string[] },
 ): SpoilerWindow[] {
   const out = new Map<string, SpoilerWindow>();
   for (const s of sources) {
     const slug = sceneSlug(s.game);
     if (!s.release || !slug || out.has(slug)) continue;
     const index = indexes.get(slug);
+    const earlyFree = isEarlyFree(s.game, o.earlyFree ?? []);
     const w = spoilerWindow(s.game, s.release, {
       days: o.days,
       openingShare: o.openingShare,
       until: s.until,
-      lateTerms: index ? lateTerms(index, o.openingShare) : [],
+      lateTerms: index ? lateTerms(index, o.openingShare, { earlyFree }) : [],
+      earlyFree,
     });
     if (w) out.set(slug, w);
   }
@@ -840,7 +848,23 @@ type FetchCfg = Pick<
   | "spoilerWindowDays"
   | "spoilerOpeningShare"
   | "bigStorySize"
->;
+> &
+  Partial<Pick<Config, "moviePlan" | "gameFetchCleanChannels" | "sceneIndexMaxHours" | "spoilerEarlyFree">>;
+
+/**
+ * The games the movie planner looks after (pure): the owner's titles and the calendar's games, out and not dropped,
+ * while their launch plan runs (src/sceneindex/movieplan.ts).
+ */
+export function plannedGames(book: FiledBook, now: Date, recheckDays: number): string[] {
+  return book.games
+    .filter((g) => g.status !== "dropped" && !isGameplayIndex(g.game) && g.release)
+    .filter((g) => g.signals.some((sig) => sig === "owner" || sig === "calendar"))
+    .filter((g) => {
+      const out = Date.parse(g.release!.length === 10 ? `${g.release}T00:00:00Z` : g.release!);
+      return Number.isFinite(out) && now.getTime() >= out && now.getTime() <= out + Math.max(recheckDays, 28) * 86_400_000;
+    })
+    .map((g) => g.game);
+}
 
 const bookFile = (dataDir: string) =>
   path.join(dataDir, "sceneindex", "filed.json");
@@ -928,6 +952,8 @@ export async function gameFetchPass(
       }>
     >;
     videoGames?: () => Promise<Array<{ game: string; at: string }>>;
+    /** Early story free: the model the reveal classifier asks (src/sceneindex/reveals.ts), in the background. */
+    reveals?: { llm: Llm };
   } = {},
 ): Promise<{ book: FiledBook; windows: SpoilerWindow[] }> {
   const now = (deps.now ?? (() => new Date()))();
@@ -983,6 +1009,9 @@ export async function gameFetchPass(
           ...settings,
         }),
       );
+      // MOVIE_PLAN: later movie chapters and clean playthroughs for the covered games, through the Data API only.
+      if (cfg.moviePlan !== false)
+        await moviePlanPass(cfg, plannedGames(book, now, cfg.gameFetchRecheckDays), { now: () => now });
     }
     const queue = await readQueue(cfg.dataDir);
     const indexes = new Map<string, SceneIndex>();
@@ -1022,10 +1051,14 @@ export async function gameFetchPass(
             ...launches.map((l) => ({ game: l.game, release: l.launch })),
           ],
           indexes,
-          settings,
+          { ...settings, earlyFree: cfg.spoilerEarlyFree ?? [] },
         )
       : [];
     setSpoilerWindows(windows);
+    setRevealDir(cfg.spoilerGuard ? cfg.dataDir : undefined);
+    // The reveal books of the early-free games' indexes, brought up to date without holding the pass up.
+    if (deps.reveals && windows.some((w) => w.earlyFree))
+      void revealPass(cfg.dataDir, windows, deps.reveals.llm, now);
     return { book, windows };
   } catch (err) {
     log("warn", "game footage: pass failed", { error: errorMessage(err) });

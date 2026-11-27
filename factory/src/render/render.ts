@@ -21,7 +21,7 @@ import type { ShortProps } from "./props.ts";
 import { unloadLocalVision } from "../assets/localvision.ts";
 import { log } from "../lib/util.ts";
 import { PcTurnTimeout } from "../pcschedule.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import type { LongProps } from "./Long.tsx";
 import { BEDS, MOOD_BEDS } from "./soundscape.ts";
 import { pocketOf } from "./soundfx.ts";
@@ -51,6 +51,15 @@ import { masterEncoder, type RenderSpeed } from "./renderspeed.ts";
  * and the graphic cards that use a background picture showed none (29-30 Oct 2026 renders).
  */
 export const webPath = (file: string): string => file.replace(/\\/g, "/");
+
+/**
+ * The cover still's props (pure, SHORT_FULL_COVER): the Short's own props with the whole headline back in place of the
+ * opening words and the caption left out, so frame 0 reads as a complete title on a profile grid.
+ */
+export function coverStillProps<P extends { openingWords?: string; coverStill?: boolean }>(props: P): P {
+  const { openingWords: _w, ...rest } = props;
+  return { ...rest, coverStill: true } as P;
+}
 
 /**
  * Whether Chrome draws pages in software while still compositing on the GPU (pure). Off by default, so pages
@@ -276,7 +285,7 @@ async function withPcTurn<T>(
   let granted = false;
   try {
     const orch = await loadOrch();
-    release = await orch.lease("heavy", {
+    release = await leaseStrict(orch, "heavy", {
       job,
       project: "pulse",
       priority: 60,
@@ -661,6 +670,8 @@ export interface RenderInput {
       kind: string;
       aspect: number;
       blurFile?: string;
+      fillFile?: string;
+      upFile?: string;
       beatIndex?: number;
       credit?: string;
       focusX?: number;
@@ -693,6 +704,11 @@ export interface RenderInput {
   posterFile: string;
   /** The new-look Shorts' custom thumbnail: frame 0, the opening poster, as its own image. */
   thumbFile?: string;
+  /**
+   * SHORT_FULL_COVER: the cover still, frame 0 with the whole headline and no caption (src/social/cover.ts). When set, the
+   * thumbnail above is that same picture, since frame 0 itself may carry only the opening words and a caption fragment.
+   */
+  coverFile?: string;
   concurrency: number;
   gl?: "swangle" | "angle" | "egl" | "swiftshader" | "vulkan" | "angle-egl";
   browserExecutable?: string;
@@ -751,6 +767,8 @@ export interface LongRenderInput {
       credit?: string;
       moment?: number;
       label?: string;
+      fillFile?: string;
+      upFile?: string;
       layers?: {
         bg: string;
         mid: string;
@@ -875,7 +893,9 @@ export function longProps(
         }),
     audioSrc: audioFile ? `${filesUrl}/${webPath(audioFile)}` : null,
     images: imageFiles.map((i) => ({
-      src: `${filesUrl}/${webPath(i.file)}`,
+      src: `${filesUrl}/${webPath(i.upFile ?? i.file)}`,
+      ...(i.upFile ? { origSrc: `${filesUrl}/${webPath(i.file)}` } : {}),
+      ...(i.fillFile ? { fillSrc: `${filesUrl}/${webPath(i.fillFile)}` } : {}),
       kind: i.kind,
       aspect: i.aspect,
       beatIndex: i.beatIndex,
@@ -1293,10 +1313,11 @@ export async function renderShort(input: RenderInput): Promise<void> {
         : undefined,
       audioSrc: audioFile ? `${files.url}/${webPath(audioFile)}` : null,
       images: imageFiles.map((i) => ({
-        src: `${files.url}/${webPath(i.file)}`,
+        src: `${files.url}/${webPath(i.upFile ?? i.file)}`,
         kind: i.kind,
         aspect: i.aspect,
         blurSrc: i.blurFile ? `${files.url}/${webPath(i.blurFile)}` : null,
+        ...(i.fillFile ? { fillSrc: `${files.url}/${webPath(i.fillFile)}` } : {}),
         beatIndex: i.beatIndex,
         credit: i.credit,
         focusX: i.focusX,
@@ -1372,7 +1393,25 @@ export async function renderShort(input: RenderInput): Promise<void> {
       composition.durationInFrames - 1,
       Math.round(0.9 * composition.fps),
     );
-    if (input.thumbFile)
+    // The cover: the opening as a still, with the headline in place of the opening words and no caption.
+    // The component draws composition.props (the props selectComposition resolved), not inputProps: both carry the cover's.
+    const coverProps = coverStillProps(props);
+    const coverComposition = { ...composition, props: coverProps };
+    if (input.coverFile)
+      await renderStill({
+        composition: coverComposition,
+        serveUrl,
+        output: input.coverFile,
+        inputProps: coverProps,
+        frame: 0,
+        imageFormat: "jpeg",
+        jpegQuality: 92,
+        browserExecutable,
+        chromiumOptions: { gl: input.gl ?? "swangle" },
+      });
+    if (input.thumbFile && input.coverFile && input.thumbFile !== input.coverFile)
+      await fsp.copyFile(input.coverFile, input.thumbFile);
+    else if (input.thumbFile && !input.coverFile)
       await renderStill({
         composition,
         serveUrl,

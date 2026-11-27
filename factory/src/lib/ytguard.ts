@@ -34,6 +34,24 @@
 //   queues one Discord line (the download account needs signing in again on the Mac mini) and the fetcher goes
 //   anonymous until the file is exported again (a newer file) or a day has passed.
 //
+// Rationing (25 Nov 2026). The logs of 20-25 Nov showed the home IP refused anonymously for good (each block lift
+// was met by a bot check on the very first anonymous request, inside 34 seconds) and the signed-in download account
+// lasting only 3 to 6 hours after each lift at up to 20 requests an hour. Nothing here gets around a check either; it
+// only asks YouTube less, and in a better order:
+// - YT_ANON_LANE (auto, the default; on; off): in auto, when the first anonymous answer after a lift is a bot check
+//   twice running (two lifts), the anonymous lane retires for YT_ANON_RETIRE_DAYS (14) and every anonymous call is
+//   refused at once, with no request. Nothing goes anonymous after a signed-in try (src/lib/ytsignin.ts, build.ts).
+// - The signed-in lane is rationed: YT_SIGNED_PER_HOUR (4) and YT_SIGNED_DAILY (30) requests, at least
+//   YT_SIGNED_MIN_GAP_SECONDS (300, plus up to half again at random) apart, in priority order: the current Short's
+//   lines (and its named missions and characters), then long videos, then background library building (the scene
+//   index, the game fetcher, cutscene harvesting, the light index, the trend feed). Background goes only when no Short
+//   or long video has asked in the last 15 minutes, only into a free slot, and within YT_SIGNED_BG_SHARE (0.3) of the
+//   day; long videos leave the last 30% of the day for Shorts.
+// - Searches go to the YouTube Data API (YOUTUBE_API_KEY, src/lib/ytapisearch.ts) when it can answer in yt-dlp's own
+//   shape, within YT_API_SEARCHES_PER_DAY (40), so page requests are left for downloads.
+// - A call that failed is not asked again for a while (a gone video for a week, a bot-checked call until its lane's
+//   pause ends, anything else for 6 hours): YtRecentFailureError at once, no request.
+//
 // The rules (decide, afterCall) are pure and tested; the rest is file locking and caching around them.
 
 import fs from "node:fs";
@@ -42,6 +60,7 @@ import { createHash } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { log } from "./util.ts";
 import { ownChannel, touchesOwnChannel, type OwnChannel } from "./ytown.ts";
+import { apiSearch, isApiQuotaError, parseSearchCall, type ApiGet } from "./ytapisearch.ts";
 
 // ---------------------------------------------------------------- settings
 
@@ -64,13 +83,40 @@ export interface GuardSettings {
   urgentMaxWaitMs: number;
   /** Background calls may wait longer: nothing is waiting on them. */
   backgroundMaxWaitMs: number;
-  /** The signed-in lane's own budget (YT_SIGNED_HOURLY): the game fetcher's calls with the download account's cookies. */
+  /** YT_SIGNED_PER_HOUR (YT_SIGNED_HOURLY before 25 Nov): signed-in requests in any rolling hour; 0: no hourly cap. */
   signedHourlyBudget: number;
+  /** YT_SIGNED_DAILY: signed-in requests in any rolling 24 hours; 0: no daily cap. */
+  signedDailyBudget: number;
+  /** YT_SIGNED_MIN_GAP_SECONDS, in ms: the least gap between signed-in requests (up to half again is added at random). */
+  signedMinGapMs: number;
+  /** YT_SIGNED_BG_SHARE: the most of the daily signed-in budget background library building may use. */
+  signedBackgroundShare: number;
+  /** The share of the daily signed-in budget kept for Shorts: long videos and background stop short of it. */
+  signedShortReserve: number;
+  /** How long a Short's or a long video's signed-in request may wait for its slot (background never waits). */
+  signedShortMaxWaitMs: number;
+  signedLongMaxWaitMs: number;
   /**
-   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of that budget everything other than the game fetcher may use (age-gated
-   * Shorts clips, the light index's captions, the trend feed), so the fetcher is never starved. 0: none of it.
+   * YT_SIGNED_CLIP_SHARE (default 0.5): the most of the hourly signed-in budget that background users other than the
+   * game fetcher (the light index, the trend feed) may take. A Short's or a long video's own pulls are not held to it.
    */
   signedClipShare: number;
+  /**
+   * YT_SIGNED_MOVIE_SHARE (default 0.5; 26 Nov 2026): the share of the day's background allowance kept for the game
+   * fetcher and covered games' movies ("fetcher", "movie"): the library, clips and the trend feed together stop at the
+   * rest, so a full movie always finds room in the day.
+   */
+  signedMovieShare: number;
+  /** YT_ANON_LANE: auto (retire after failed lifts), on (never retire), off (never ask YouTube anonymously). */
+  anonLane: "auto" | "on" | "off";
+  /** YT_ANON_RETIRE_DAYS: how long the anonymous lane stays retired. */
+  anonRetireDays: number;
+  /** Lifts in a row whose first anonymous answer was a bot check before the lane retires. */
+  anonRetireAfterLiftFails: number;
+  /** YT_API_SEARCH: on unless "off"; the Data API answers searches when YOUTUBE_API_KEY is set. */
+  apiSearch: boolean;
+  /** YT_API_SEARCHES_PER_DAY: Data API searches (100 quota units each) a Pacific day; background takes at most half. */
+  apiSearchesPerDay: number;
 }
 
 const num = (v: string | undefined, d: number): number => {
@@ -83,6 +129,7 @@ const num = (v: string | undefined, d: number): number => {
 export function guardSettings(
   env: NodeJS.ProcessEnv = process.env,
 ): GuardSettings {
+  const anon = String(env.YT_ANON_LANE ?? "").trim().toLowerCase();
   return {
     hourlyBudget: Math.floor(num(env.YT_HOURLY_BUDGET, 60)),
     backgroundShare: 0.25,
@@ -94,8 +141,22 @@ export function guardSettings(
     backgroundJitterMs: 45_000,
     urgentMaxWaitMs: 3 * 60_000,
     backgroundMaxWaitMs: 15 * 60_000,
-    signedHourlyBudget: Math.floor(num(env.YT_SIGNED_HOURLY, 20)),
+    // Measured 20-25 Nov: at up to 20 an hour the download account lasted 3 to 6 hours after each lift. A fifth of
+    // that rate, spaced, and a daily ceiling below the fewest requests it can have taken before a check.
+    signedHourlyBudget: Math.floor(num(env.YT_SIGNED_PER_HOUR, num(env.YT_SIGNED_HOURLY, 4))),
+    signedDailyBudget: Math.floor(num(env.YT_SIGNED_DAILY, 30)),
+    signedMinGapMs: num(env.YT_SIGNED_MIN_GAP_SECONDS, 300) * 1000,
+    signedBackgroundShare: Math.min(1, num(env.YT_SIGNED_BG_SHARE, 0.3)),
+    signedShortReserve: 0.3,
+    signedShortMaxWaitMs: 8 * 60_000,
+    signedLongMaxWaitMs: 15 * 60_000,
     signedClipShare: Math.min(1, num(env.YT_SIGNED_CLIP_SHARE, 0.5)),
+    signedMovieShare: Math.min(1, num(env.YT_SIGNED_MOVIE_SHARE, 0.5)),
+    anonLane: anon === "on" || anon === "off" ? anon : "auto",
+    anonRetireDays: num(env.YT_ANON_RETIRE_DAYS, 14),
+    anonRetireAfterLiftFails: 2,
+    apiSearch: String(env.YT_API_SEARCH ?? "").trim().toLowerCase() !== "off",
+    apiSearchesPerDay: Math.floor(num(env.YT_API_SEARCHES_PER_DAY, 40)),
   };
 }
 
@@ -118,7 +179,11 @@ export function isBotCheck(text: string): boolean {
   return (
     /confirm (?:that )?you(?:’|'|`)?re not a bot|confirm you are not a bot/i.test(
       text,
-    ) || /HTTP Error 429|Too Many Requests/i.test(text)
+    ) ||
+    /HTTP Error 429|Too Many Requests/i.test(text) ||
+    // YouTube's soft rate limit (25 Nov 2026): "This content isn't available, try again later" and "The current session
+    // has been rate-limited". A wall like the bot check, never a gone video.
+    /content isn(?:’|'|`)?t available, try again later|session has been rate-limited|rate-limited by YouTube/i.test(text)
   );
 }
 
@@ -159,8 +224,20 @@ export type CallClass = "urgent" | "background";
  * that share YT_SIGNED_CLIP_SHARE of it: an age-gated clip pull (SIGNED_CLIPS), the light index (SIGNED_LIGHT_INDEX)
  * or the trend feed (TREND_FEED). Carried through the async call chain, so the callers' own runners need no change.
  */
-export type YtPurpose = "fetcher" | "clip" | "trend";
+export type YtPurpose = "fetcher" | "clip" | "trend" | "library" | "movie";
+// 26 Nov 2026 (every scene-index turn signs in now, src/sceneindex/job.ts): "movie" is a full cutscene movie or a
+// no-commentary playthrough for a covered game (a launch plan or a planned upload, src/sceneindex/movieplan.ts), the
+// most valuable background work, counted like the fetcher (other background yields to both, YT_SIGNED_MOVIE_SHARE).
+// "library" is the rest of the scene index (light turns, archive builds) and shares YT_SIGNED_CLIP_SHARE with clips
+// and trends. Background calls never wait for a slot (a Short's or long video's wait would grow behind a booking).
 const purposeStore = new AsyncLocalStorage<YtPurpose>();
+const PURPOSES: readonly YtPurpose[] = ["fetcher", "clip", "trend", "library", "movie"];
+
+/** YT_PURPOSE, set by the scene index job on its children (pure): the purpose their calls count as. */
+export function envPurpose(env: NodeJS.ProcessEnv = process.env): YtPurpose | undefined {
+  const v = String(env.YT_PURPOSE ?? "").trim().toLowerCase() as YtPurpose;
+  return PURPOSES.includes(v) ? v : undefined;
+}
 
 /** Runs `fn` with every YouTube call inside it counted as `purpose` on the signed-in lane. */
 export function withYtPurpose<T>(purpose: YtPurpose, fn: () => Promise<T>): Promise<T> {
@@ -169,7 +246,29 @@ export function withYtPurpose<T>(purpose: YtPurpose, fn: () => Promise<T>): Prom
 
 /** The purpose of the calls being made now (the fetcher when none was set). */
 export function currentYtPurpose(): YtPurpose {
-  return purposeStore.getStore() ?? "fetcher";
+  return purposeStore.getStore() ?? envPurpose() ?? "fetcher";
+}
+
+/**
+ * How urgent a call is on the signed-in lane and for the Data API's search quota: the current Short's own lines (and
+ * its named missions and characters) first, then a long video's footage, then background library building. Set around
+ * an episode's step (src/pipeline.ts advance); anything outside one is background.
+ */
+export type YtPriority = "short" | "long" | "background";
+const priorityStore = new AsyncLocalStorage<YtPriority>();
+
+/** Runs `fn` with every YouTube call inside it made at `priority`. */
+export function withYtPriority<T>(priority: YtPriority, fn: () => Promise<T>): Promise<T> {
+  return priorityStore.run(priority, fn);
+}
+
+/** The priority of the calls being made now: a background child or the trend feed is always background. */
+export function currentYtPriority(
+  cls: CallClass = callClass(),
+  purpose: YtPurpose = currentYtPurpose(),
+): YtPriority {
+  if (cls === "background" || purpose === "trend") return "background";
+  return priorityStore.getStore() ?? "background";
 }
 
 /** A child started with YT_CLASS=background (the scene index, the archive) is background; anything else is a video's own fetch. */
@@ -194,6 +293,8 @@ export interface LaneState {
     since: number;
     until: number;
     strikes: number;
+    /** Calls made between the last lift and this block: how long the lane lasted. */
+    calls?: number;
   };
   /** A call trying YouTube after the pause (ms), so only one tries at a time. */
   probeAt?: number;
@@ -201,8 +302,19 @@ export interface LaneState {
   liftedAt?: number;
   /** Strikes of the last block, carried into the next one when it comes within a day. */
   lastStrikes?: number;
-  /** Signed-in lane only: the calls made for clips, the light index and the trend feed (YT_SIGNED_CLIP_SHARE). */
+  /** Signed-in lane only: the background calls made for the light index and the trend feed (YT_SIGNED_CLIP_SHARE). */
   auxCalls?: number[];
+  /** Signed-in lane only: every call of the last 24 hours (YT_SIGNED_DAILY), and the background ones among them. */
+  dayCalls?: number[];
+  dayBackground?: number[];
+  /** Signed-in lane only: when a Short's or a long video's call last asked for the lane (what background yields to). */
+  demand?: { short?: number; long?: number };
+  /** Signed-in lane only: the day's background calls by the library, clips and the trend feed (YT_SIGNED_MOVIE_SHARE). */
+  dayAux?: number[];
+  /** Calls made since the last lift (or since the state began): the measured window, logged when a block starts. */
+  sinceLift?: number;
+  /** Calls made per UTC day, the last 14 days. */
+  days?: Record<string, number>;
 }
 
 export interface GuardState extends LaneState {
@@ -219,6 +331,16 @@ export interface GuardState extends LaneState {
     /** When the last warning was logged (once a day). */
     warnedAt: number;
   };
+  /** The anonymous lane retired (YT_ANON_LANE=auto): its first answer after a lift was a bot check, lifts in a row. */
+  anonRetired?: { since: number; until: number; liftFails: number };
+  /** Lifts in a row whose first anonymous answer was a bot check (a working answer clears it). */
+  anonLiftFails?: number;
+  /** Set when the anonymous lane's block lifts, until its first answer (working or a bot check) comes back. */
+  anonAfterLift?: number;
+  /** Calls that failed, not asked again until `until`: "<lane>:k:<cache key>", or "v:<video id>" for a gone video. */
+  failures?: Record<string, { until: number; why: string }>;
+  /** The Data API's searches this Pacific day (YT_API_SEARCHES_PER_DAY). */
+  api?: { day: string; used: number; background: number };
 }
 
 export const emptyLane = (): LaneState => ({
@@ -240,15 +362,156 @@ export function laneState(state: GuardState, lane: Lane): LaneState {
 }
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
 const PROBE_MS = 10 * 60_000;
+/** How long a Short's or a long video's request keeps lower priorities off the signed-in lane. */
+export const DEMAND_MS = 15 * 60_000;
+
+/** Why a call was held back without asking YouTube. */
+export type HoldReason =
+  | "blocked"
+  | "probing"
+  | "budget"
+  | "share"
+  | "busy"
+  | "daily"
+  | "reserve"
+  | "queue"
+  | "retired";
 
 export type Decision =
   | { go: true; at: number; probe: boolean }
   | {
       go: false;
-      reason: "blocked" | "probing" | "budget" | "share" | "busy";
+      reason: HoldReason;
       until?: number;
     };
+
+/**
+ * When the anonymous lane may be asked again (pure): undefined while it is open, Infinity with YT_ANON_LANE=off. A
+ * retirement that has ended is cleared in place, and the lane gets a fresh count of failed lifts.
+ */
+export function anonRetiredUntil(root: GuardState, now: number, s: GuardSettings): number | undefined {
+  if (s.anonLane === "off") return Infinity;
+  if (s.anonLane === "on" || !root.anonRetired) return undefined;
+  if (now < root.anonRetired.until) return root.anonRetired.until;
+  root.anonRetired = undefined;
+  root.anonLiftFails = 0;
+  return undefined;
+}
+
+/**
+ * The anonymous lane's closed window, for the Shorts that would wait for YouTube (pure; reads only): while it is
+ * retired, until the retirement ends (a year with YT_ANON_LANE=off), so nothing waits for it; else its bot-check pause.
+ */
+export function anonClosedWindow(
+  root: GuardState,
+  now: number,
+  s: GuardSettings,
+): { since?: number; until: number } | undefined {
+  const r = anonRetiredUntil({ ...root }, now, s);
+  if (r !== undefined) return { since: root.anonRetired?.since, until: Number.isFinite(r) ? r : now + 365 * DAY };
+  return root.block ? { since: root.block.since, until: root.block.until } : undefined;
+}
+
+/** True when an anonymous call could be asked now (pure; reads only): not retired and not paused for a bot check. */
+export function anonOpenNow(root: GuardState, now: number, s: GuardSettings): boolean {
+  if (anonRetiredUntil({ ...root }, now, s) !== undefined) return false;
+  return !(root.block && now < root.block.until);
+}
+
+const utcDay = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Counts a call that goes, for the measured windows (pure; in place). */
+function countCall(state: LaneState, at: number): void {
+  state.sinceLift = (state.sinceLift ?? 0) + 1;
+  const days = { ...(state.days ?? {}) };
+  days[utcDay(at)] = (days[utcDay(at)] ?? 0) + 1;
+  state.days = Object.fromEntries(
+    Object.entries(days)
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .slice(0, 14),
+  );
+}
+
+/**
+ * The signed-in lane's rules (pure; in place): its pause, the hourly and daily budgets, the Shorts' reserve and the
+ * background share, then the priority order and the spacing. A Short's call may wait for the next slot, a long video's
+ * too unless a Short asked in the last 15 minutes; background takes only a free slot nobody else wants.
+ */
+function decideSigned(
+  root: GuardState,
+  now: number,
+  s: GuardSettings,
+  rand: number,
+  purpose: YtPurpose,
+  priority: YtPriority,
+): Decision {
+  const state = laneState(root, "signed");
+  state.calls = state.calls.filter((t) => now - t < HOUR);
+  state.backgroundCalls = state.backgroundCalls.filter((t) => now - t < HOUR);
+  state.auxCalls = (state.auxCalls ?? []).filter((t) => now - t < HOUR);
+  state.dayCalls = (state.dayCalls ?? []).filter((t) => now - t < DAY);
+  state.dayBackground = (state.dayBackground ?? []).filter((t) => now - t < DAY);
+  const demand = (state.demand ??= {});
+  if (priority !== "background") demand[priority] = now;
+  state.dayAux = (state.dayAux ?? []).filter((t) => now - t < DAY);
+  // The light index, the library, clips and the trend feed are the smaller background users; the game fetcher and a
+  // covered game's movie keep the rest of the background allowance.
+  const aux = priority === "background" && purpose !== "fetcher" && purpose !== "movie";
+  let probe = false;
+  if (state.block) {
+    if (now < state.block.until) return { go: false, reason: "blocked", until: state.block.until };
+    if (state.probeAt && now - state.probeAt < PROBE_MS)
+      return { go: false, reason: "probing", until: state.probeAt + PROBE_MS };
+    probe = true;
+  }
+  const hourly = s.signedHourlyBudget;
+  const daily = s.signedDailyBudget;
+  if (hourly > 0 && state.calls.length >= hourly)
+    return { go: false, reason: "budget", until: state.calls[0]! + HOUR };
+  if (daily > 0) {
+    if (state.dayCalls.length >= daily) return { go: false, reason: "daily", until: state.dayCalls[0]! + DAY };
+    if (priority !== "short" && state.dayCalls.length >= Math.floor(daily * (1 - s.signedShortReserve)))
+      return { go: false, reason: "reserve", until: state.dayCalls[0]! + DAY };
+    const bgDaily = Math.floor(daily * s.signedBackgroundShare);
+    if (priority === "background" && state.dayBackground.length >= bgDaily)
+      return { go: false, reason: "share", until: (state.dayBackground[0] ?? now) + DAY };
+    // The trend feed has only its hourly share: a busy day of light turns never shuts it out.
+    if (aux && purpose !== "trend" && state.dayAux.length >= Math.floor(bgDaily * (1 - s.signedMovieShare)))
+      return { go: false, reason: "share", until: (state.dayAux[0] ?? now) + DAY };
+  }
+  // The light index and the trend feed share YT_SIGNED_CLIP_SHARE of the hour among background users; the game
+  // fetcher keeps the rest.
+  if (aux && hourly > 0 && state.auxCalls.length >= Math.floor(hourly * s.signedClipShare))
+    return { go: false, reason: "share", until: (state.auxCalls[0] ?? now) + HOUR };
+  const asked = (p: "short" | "long") => demand[p] !== undefined && now - demand[p]! < DEMAND_MS;
+  if (priority === "background" && (asked("short") || asked("long")))
+    return { go: false, reason: "queue", until: Math.max(demand.short ?? 0, demand.long ?? 0) + DEMAND_MS };
+  if (priority === "long" && asked("short")) return { go: false, reason: "queue", until: demand.short! + DEMAND_MS };
+  const at = Math.max(now, state.nextAt);
+  const maxWait =
+    priority === "short"
+      ? s.signedShortMaxWaitMs
+      : priority === "long"
+        ? s.signedLongMaxWaitMs
+        : 0;
+  if (at - now > maxWait) return { go: false, reason: "busy", until: at };
+  state.nextAt = at + s.signedMinGapMs * (1 + 0.5 * rand);
+  state.calls.push(at);
+  state.dayCalls.push(at);
+  if (priority === "background") {
+    state.backgroundCalls.push(at);
+    state.dayBackground.push(at);
+  }
+  if (aux) {
+    state.auxCalls.push(at);
+    if (purpose !== "trend") state.dayAux.push(at);
+  }
+  if (probe) state.probeAt = now;
+  countCall(state, at);
+  return { go: true, at, probe };
+}
 
 /**
  * Whether a call may go and when (pure). `rand` is in [0, 1). The state is changed in place: a call that goes is
@@ -262,15 +525,19 @@ export function decide(
   rand: number,
   lane: Lane = "anon",
   purpose: YtPurpose = "fetcher",
+  /** The signed-in lane's order (currentYtPriority); background when not given. */
+  priority: YtPriority = "background",
 ): Decision {
   // Each lane keeps its own count, spacing and pause: the anonymous pause never stops a signed-in call, nor the
-  // reverse. The signed-in lane has its own small budget and no background share (only the fetcher uses it).
-  const state = laneState(root, lane);
-  const budget = lane === "signed" ? s.signedHourlyBudget : s.hourlyBudget;
+  // reverse. The signed-in lane is rationed and ordered by priority (decideSigned).
+  if (lane === "signed") return decideSigned(root, now, s, rand, purpose, priority);
+  const retired = anonRetiredUntil(root, now, s);
+  if (retired !== undefined)
+    return { go: false, reason: "retired", until: Number.isFinite(retired) ? retired : undefined };
+  const state = root;
+  const budget = s.hourlyBudget;
   state.calls = state.calls.filter((t) => now - t < HOUR);
   state.backgroundCalls = state.backgroundCalls.filter((t) => now - t < HOUR);
-  const aux = lane === "signed" && purpose !== "fetcher";
-  if (lane === "signed") state.auxCalls = (state.auxCalls ?? []).filter((t) => now - t < HOUR);
   let probe = false;
   if (state.block) {
     if (now < state.block.until)
@@ -283,17 +550,12 @@ export function decide(
     if (state.calls.length >= budget)
       return { go: false, reason: "budget", until: state.calls[0]! + HOUR };
     const bgCap = Math.max(1, Math.floor(budget * s.backgroundShare));
-    if (lane === "anon" && cls === "background" && state.backgroundCalls.length >= bgCap)
+    if (cls === "background" && state.backgroundCalls.length >= bgCap)
       return {
         go: false,
         reason: "budget",
         until: state.backgroundCalls[0]! + HOUR,
       };
-    // Clips, the light index and the trend feed share at most YT_SIGNED_CLIP_SHARE of the signed-in budget: the rest
-    // is always left for the game fetcher.
-    const auxCap = Math.floor(budget * s.signedClipShare);
-    if (aux && state.auxCalls!.length >= auxCap)
-      return { go: false, reason: "share", until: (state.auxCalls![0] ?? now) + HOUR };
   }
   const at = Math.max(now, state.nextAt);
   const maxWait =
@@ -306,8 +568,8 @@ export function decide(
   state.nextAt = at + gap;
   state.calls.push(at);
   if (cls === "background") state.backgroundCalls.push(at);
-  if (aux) state.auxCalls!.push(at);
   if (probe) state.probeAt = now;
+  countCall(state, at);
   return { go: true, at, probe };
 }
 
@@ -368,6 +630,16 @@ export function cookieAlert(reason: "missing" | "signed-out"): string {
   );
 }
 
+/** The owner's one line when the anonymous lane retires (pure). */
+export function retireAlert(until: number, liftFails: number): string {
+  return (
+    `⏹️ YouTube refused the factory's very first anonymous request after each of the last ${liftFails} pauses, so I have ` +
+    `retired anonymous YouTube fetching until ${new Date(until).toISOString().slice(0, 10)}. Only the signed-in download ` +
+    `account fetches now, at a slow rationed pace with Shorts first; searches go through the YouTube Data API. Videos ` +
+    `keep going out with Steam, IGDB, press kits, your own footage and saved clips. Nothing for you to do.`
+  );
+}
+
 export type Outcome = "ok" | "bot" | "age" | "cookies" | "other";
 
 /**
@@ -383,6 +655,35 @@ export function afterCall(
   probe: boolean,
   s: GuardSettings,
   lane: Lane = "anon",
+): "started" | "extended" | "lifted" | "retired" | undefined {
+  // The anonymous lane's first answer after a lift (an age gate is an answer; a removed video says nothing): a bot
+  // check there, lifts in a row, retires the lane (YT_ANON_LANE=auto); a working answer clears the count.
+  // The lift this answer may be the first after (a probe lifting the block now is not its own first answer).
+  const pending = lane === "anon" ? root.anonAfterLift : undefined;
+  const alertsBefore = root.alerts.length;
+  const change = laneAfterCall(root, now, outcome, probe, s, lane);
+  if (pending === undefined || !(outcome === "ok" || outcome === "age" || outcome === "bot")) return change;
+  if (root.anonAfterLift === pending) root.anonAfterLift = undefined;
+  if (outcome !== "bot") {
+    root.anonLiftFails = 0;
+    return change;
+  }
+  root.anonLiftFails = (root.anonLiftFails ?? 0) + 1;
+  if (s.anonLane !== "auto" || root.anonLiftFails < s.anonRetireAfterLiftFails) return change;
+  root.anonRetired = { since: now, until: now + Math.round(s.anonRetireDays * DAY), liftFails: root.anonLiftFails };
+  // The retirement's line replaces the ordinary "paused, I will say when it lifts" one queued just now.
+  root.alerts.splice(alertsBefore);
+  root.alerts.push(retireAlert(root.anonRetired.until, root.anonLiftFails));
+  return "retired";
+}
+
+function laneAfterCall(
+  root: GuardState,
+  now: number,
+  outcome: Outcome,
+  probe: boolean,
+  s: GuardSettings,
+  lane: Lane,
 ): "started" | "extended" | "lifted" | undefined {
   const state = laneState(root, lane);
   const signed = lane === "signed";
@@ -404,7 +705,7 @@ export function afterCall(
       state.liftedAt !== undefined && now - state.liftedAt < 24 * HOUR;
     const strikes = recent ? (state.lastStrikes ?? 1) + 1 : 1;
     const until = now + cooldownMs(strikes, s);
-    state.block = { since: now, until, strikes };
+    state.block = { since: now, until, strikes, calls: state.sinceLift };
     state.probeAt = undefined;
     root.alerts.push(signed ? signedStartAlert(until, now) : startAlert(until, now));
     return "started";
@@ -415,6 +716,8 @@ export function afterCall(
     state.liftedAt = now;
     state.block = undefined;
     state.probeAt = undefined;
+    state.sinceLift = 0;
+    if (!signed) root.anonAfterLift = now;
     root.alerts.push(signed ? signedLiftAlert(s.signedHourlyBudget) : liftAlert(s.hourlyBudget));
     return "lifted";
   }
@@ -433,6 +736,119 @@ export function markNeedsSignIn(state: GuardState, videoId: string, now: number)
     .sort((a, b) => b[1] - a[1])
     .slice(0, SIGN_IN_KEEP_COUNT);
   state.needsSignIn = Object.fromEntries(kept);
+}
+
+const LIFT_FAIL_MS = 10 * 60_000;
+
+/**
+ * The count of failed lifts for a state written before 25 Nov (pure; in place): a block that started within ten
+ * minutes of the last lift is one, so the evidence already on the Mac mini counts.
+ */
+export function seedLiftFails(state: GuardState): void {
+  if (state.anonLiftFails !== undefined) return;
+  const b = state.block;
+  state.anonLiftFails =
+    b && state.liftedAt !== undefined && b.since >= state.liftedAt && b.since - state.liftedAt <= LIFT_FAIL_MS ? 1 : 0;
+}
+
+const GONE_MS = 7 * DAY;
+const FAIL_MS = 6 * HOUR;
+const FAIL_KEEP = 1500;
+
+/** yt-dlp saying the video itself is gone or closed to us (pure): removed, private, terminated, claimed, members only. */
+export function isGoneVideo(text: string): boolean {
+  if (isBotCheck(text) || isAgeGate(text)) return false;
+  return /video unavailable|private video|has been removed|no longer available|account associated with this video has been terminated|copyright claim|members[- ]only|join this channel to get access/i.test(
+    text,
+  );
+}
+
+/** The failure keys a call is looked up under (pure): its video when it names one, and the call itself on its lane. */
+export function failureKeys(lane: Lane, args: readonly string[]): string[] {
+  const id = videoIdOf(args);
+  return [...(id ? [`v:${id}`] : []), `${lane}:k:${cacheKey(args)}`];
+}
+
+/** A failure still standing for this call (pure; drops ended ones in place). */
+export function recentFailure(
+  root: GuardState,
+  lane: Lane,
+  args: readonly string[],
+  now: number,
+): { until: number; why: string } | undefined {
+  for (const key of failureKeys(lane, args)) {
+    const f = root.failures?.[key];
+    if (!f) continue;
+    if (now < f.until) return f;
+    delete root.failures![key];
+  }
+  return undefined;
+}
+
+/**
+ * Records a failed call so it is not asked again soon (pure; in place): a gone video for a week on both lanes, a
+ * bot-checked call until its lane's pause ends (an hour at least), anything else for 6 hours. Age gates and refused
+ * cookies are not failures of the call (the guard handles them), nor is a timeout.
+ */
+export function noteFailure(
+  root: GuardState,
+  lane: Lane,
+  args: readonly string[],
+  now: number,
+  outcome: Outcome,
+  text: string,
+): void {
+  if (outcome === "ok" || outcome === "age" || outcome === "cookies") return;
+  // Only YouTube's own answers are remembered: a local fault (yt-dlp missing, a full disk, an ffmpeg step) is fixed
+  // on our side and the call may go again at once.
+  if (outcome === "other" && !/ERROR:\s*\[youtube|HTTP Error \d{3}|video unavailable|private video/i.test(text)) return;
+  const id = videoIdOf(args);
+  let key = `${lane}:k:${cacheKey(args)}`;
+  let until = now + FAIL_MS;
+  let why = (text.split("\n").find((l) => /ERROR/.test(l)) ?? text.split("\n")[0] ?? "").trim().slice(0, 160);
+  if (outcome === "bot") {
+    until = Math.max(laneState(root, lane).block?.until ?? 0, now + HOUR);
+    why = "bot check";
+  } else if (id && isGoneVideo(text)) {
+    key = `v:${id}`;
+    until = now + GONE_MS;
+    why = "video unavailable";
+  }
+  const kept = Object.entries({ ...(root.failures ?? {}), [key]: { until, why } })
+    .filter(([, f]) => now < f.until)
+    .sort((a, b) => b[1].until - a[1].until)
+    .slice(0, FAIL_KEEP);
+  root.failures = Object.fromEntries(kept);
+}
+
+/** The day the Data API's quota counts in (it resets at midnight Pacific time). */
+export function pacificDay(now: number): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Los_Angeles",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
+/**
+ * Takes one Data API search from the day's allowance (pure; in place): YT_API_SEARCHES_PER_DAY in all, background at
+ * most half of it, so a Short's and a long video's searches always find some left. False: none left for this one.
+ */
+export function takeApiSearch(root: GuardState, now: number, priority: YtPriority, s: GuardSettings): boolean {
+  const day = pacificDay(now);
+  if (!root.api || root.api.day !== day) root.api = { day, used: 0, background: 0 };
+  if (s.apiSearchesPerDay <= 0 || root.api.used >= s.apiSearchesPerDay) return false;
+  if (priority === "background" && root.api.background >= Math.floor(s.apiSearchesPerDay / 2)) return false;
+  root.api.used++;
+  if (priority === "background") root.api.background++;
+  return true;
+}
+
+/** The Data API said its quota is spent: no more API searches until the Pacific day turns (pure; in place). */
+export function apiSpent(root: GuardState, now: number, s: GuardSettings): void {
+  const day = pacificDay(now);
+  root.api = { day, used: Math.max(s.apiSearchesPerDay, root.api?.day === day ? root.api.used : 0), background: root.api?.background ?? 0 };
 }
 
 /** True when the video was age-gated on the anonymous lane within the last 30 days (pure). */
@@ -473,7 +889,7 @@ export function cookiesUsable(state: GuardState, fileMtimeMs: number, now: numbe
 /** A YouTube call refused by the guard: the caller falls back as it does for any failed fetch. */
 export class YtPausedError extends Error {
   constructor(
-    readonly reason: "blocked" | "probing" | "budget" | "share" | "busy",
+    readonly reason: HoldReason,
     until?: number,
     readonly lane: Lane = "anon",
   ) {
@@ -485,14 +901,37 @@ export class YtPausedError extends Error {
           ? `${signed ? "signed-in " : ""}YouTube fetching is paused while one call checks whether the bot check has lifted`
           : reason === "budget"
             ? signed
-              ? "the hourly signed-in YouTube budget (YT_SIGNED_HOURLY) is used up"
+              ? "the hourly signed-in YouTube budget (YT_SIGNED_PER_HOUR) is used up"
               : "the hourly YouTube budget (YT_HOURLY_BUDGET) is used up"
-            : reason === "share"
-              ? "the clips' share of the signed-in YouTube budget (YT_SIGNED_CLIP_SHARE) is used up; the rest is kept for the game fetcher"
-              : "too many YouTube calls are queued ahead of this one";
+            : reason === "daily"
+              ? "the daily signed-in YouTube budget (YT_SIGNED_DAILY) is used up"
+              : reason === "reserve"
+                ? "the rest of today's signed-in YouTube budget is kept for Shorts"
+                : reason === "share"
+                  ? "background work has used its share of the signed-in YouTube budget (YT_SIGNED_BG_SHARE, YT_SIGNED_CLIP_SHARE)"
+                  : reason === "queue"
+                    ? "a Short or long video is using the signed-in YouTube lane; background work waits"
+                    : reason === "retired"
+                      ? `anonymous YouTube fetching is retired${until ? ` until ${new Date(until).toISOString().slice(0, 10)}` : ""} (YT_ANON_LANE)`
+                      : "too many YouTube calls are queued ahead of this one";
     super(`YouTube fetch skipped: ${why}`);
     this.name = "YtPausedError";
   }
+}
+
+/** A call that failed recently, not asked again yet (src/lib/ytguard.ts noteFailure): the caller falls back. */
+export class YtRecentFailureError extends Error {
+  constructor(
+    readonly until: number,
+    why: string,
+  ) {
+    super(`YouTube fetch skipped: the same call failed recently (${why}); not asked again until ${new Date(until).toISOString().slice(0, 16)} UTC`);
+    this.name = "YtRecentFailureError";
+  }
+}
+
+export function isYtRecentFailure(err: unknown): boolean {
+  return err instanceof YtRecentFailureError || (err as Error | undefined)?.name === "YtRecentFailureError";
 }
 
 export function isYtPaused(err: unknown): boolean {
@@ -571,12 +1010,16 @@ export interface GuardIo {
   cls: () => CallClass;
   /** Pulse's own channel (src/lib/ytown.ts); the environment's when not given. */
   own?: () => OwnChannel;
+  /** YOUTUBE_API_KEY for the Data API's searches; the environment's when not given. */
+  apiKey?: () => string;
+  /** The HTTP getter for the Data API (tests give their own); fetch with a 20-second timeout when not given. */
+  apiGet?: ApiGet;
 }
 
 function readState(file: string): GuardState {
   try {
     const j = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<GuardState>;
-    return {
+    const st: GuardState = {
       ...emptyState(),
       ...j,
       calls: Array.isArray(j.calls) ? j.calls : [],
@@ -592,9 +1035,15 @@ function readState(file: string): GuardState {
               calls: Array.isArray(j.signed.calls) ? j.signed.calls : [],
               backgroundCalls: Array.isArray(j.signed.backgroundCalls) ? j.signed.backgroundCalls : [],
               auxCalls: Array.isArray(j.signed.auxCalls) ? j.signed.auxCalls : [],
+              dayCalls: Array.isArray(j.signed.dayCalls) ? j.signed.dayCalls : [],
+              dayBackground: Array.isArray(j.signed.dayBackground) ? j.signed.dayBackground : [],
+              dayAux: Array.isArray(j.signed.dayAux) ? j.signed.dayAux : [],
             }
           : undefined,
+      failures: j.failures && typeof j.failures === "object" ? j.failures : undefined,
     };
+    seedLiftFails(st);
+    return st;
   } catch {
     return emptyState();
   }
@@ -639,14 +1088,28 @@ async function withState<T>(io: GuardIo, fn: (s: GuardState) => T): Promise<T> {
 
 // ---------------------------------------------------------------- the guard
 
+export interface GuardRunOptions {
+  cls?: CallClass;
+  cache?: boolean;
+  purpose?: YtPurpose;
+  priority?: YtPriority;
+}
+
 export interface YtGuard {
   /** Runs a yt-dlp call through the guard: cached answer, budget, spacing, block. Non-YouTube calls pass straight through. */
   run<T extends { stdout: string | Buffer; stderr: string | Buffer }>(
     cmd: string,
     args: readonly string[],
     fn: () => Promise<T>,
-    o?: { cls?: CallClass; cache?: boolean; purpose?: YtPurpose },
+    o?: GuardRunOptions,
   ): Promise<T>;
+  /**
+   * A flat search answered by the Data API only (its cache, then the day's API allowance at `priority`), in yt-dlp's
+   * own shape; undefined when the API cannot answer. Never a page request (src/sceneindex/movieplan.ts).
+   */
+  apiOnlySearch(args: readonly string[], priority?: YtPriority): Promise<string | undefined>;
+  /** True when an anonymous call could go now: the lane is neither retired nor paused (read without the lock). */
+  anonOpen(): boolean;
   /** Sends the queued Discord lines, each once. */
   flushAlerts(send: (text: string) => unknown): Promise<number>;
   /** The state now (for the doctor and tests). */
@@ -658,6 +1121,8 @@ export interface YtGuard {
   /** The cookies file is set but not there: warn once a day, one Discord line per episode. */
   cookiesMissing(file: string): Promise<void>;
 }
+
+const defaultApiGet: ApiGet = (url) => fetch(url, { signal: AbortSignal.timeout(20_000) });
 
 const errText = (err: unknown): string => {
   const e = err as
@@ -765,6 +1230,37 @@ export function createYtGuard(io: GuardIo): YtGuard {
 
   const stateFile = () => path.join(io.dir, "state.json");
 
+  // The Data API's answer to a search, in the shape yt-dlp would have printed; undefined when it cannot answer (not a
+  // search it understands, no key, the day's allowance used, an error), and the call goes on as before.
+  const searchViaApi = async (
+    args: readonly string[],
+    s: GuardSettings,
+    priority: YtPriority,
+  ): Promise<string | undefined> => {
+    if (!s.apiSearch) return undefined;
+    const call = parseSearchCall(args, io.now());
+    if (!call) return undefined;
+    // In the test runner only a key the test gives is used: no test ever reaches the real API.
+    const key = (io.apiKey ? io.apiKey() : process.env.NODE_TEST_CONTEXT ? "" : String(process.env.YOUTUBE_API_KEY ?? "")).trim();
+    if (!key) return undefined;
+    const took = await withState(io, (st) => takeApiSearch(st, io.now(), priority, s)).catch(() => false);
+    if (!took) return undefined;
+    try {
+      const out = await apiSearch(call, key, io.apiGet ?? defaultApiGet);
+      log("info", "youtube search answered by the Data API", {
+        query: call.query.slice(0, 80),
+        results: out.split("\n").filter(Boolean).length,
+        priority,
+      });
+      return out;
+    } catch (err) {
+      const msg = errText(err).split("\n")[0]!.slice(0, 200);
+      if (isApiQuotaError(msg)) await withState(io, (st) => apiSpent(st, io.now(), s)).catch(() => undefined);
+      log("warn", "youtube Data API search failed; the search goes the usual way", { error: msg });
+      return undefined;
+    }
+  };
+
   // What an answer means for signing in: an age gate on the anonymous lane marks that one video (never a strike);
   // refused cookies on the signed-in lane warn once a day and queue the one Discord line; a signed-in call that
   // works ends any cookie trouble, so the next episode is reported again.
@@ -780,7 +1276,7 @@ export function createYtGuard(io: GuardIo): YtGuard {
         if (due) {
           log(
             "warn",
-            "YouTube refused the download account's cookies (invalid or signed out): the game fetcher goes anonymous until mac/ytcookies.sh is run again on the Mac mini",
+            "YouTube refused the download account's cookies (invalid or signed out): signed-in fetching stops until mac/ytcookies.sh is run again on the Mac mini (anonymous calls only while that lane is open)",
           );
           void flushNow();
         }
@@ -810,22 +1306,36 @@ export function createYtGuard(io: GuardIo): YtGuard {
       const s = io.settings();
       const cls = o.cls ?? io.cls();
       const purpose = o.purpose ?? currentYtPurpose();
-      const d = await withState(io, (st) =>
-        decide(st, io.now(), cls, s, io.rand(), lane, purpose),
-      );
+      const priority = o.priority ?? currentYtPriority(cls, purpose);
+      // A search the Data API can answer in yt-dlp's own shape never becomes a page request.
+      const viaApi = await searchViaApi(args, s, priority);
+      if (viaApi !== undefined) {
+        const r = { stdout: viaApi, stderr: "" } as Awaited<ReturnType<typeof fn>>;
+        keep(args, r, cache);
+        return r;
+      }
+      const d = await withState(io, (st) => {
+        // The same call failed recently: not asked again yet (no request, no budget spent).
+        const failed = recentFailure(st, lane, args, io.now());
+        if (failed) return { failed } as const;
+        return decide(st, io.now(), cls, s, io.rand(), lane, purpose, priority);
+      });
+      if ("failed" in d) throw new YtRecentFailureError(d.failed.until, d.failed.why);
       if (!d.go) {
-        if (d.reason !== "blocked")
+        if (d.reason !== "blocked" && d.reason !== "retired")
           log("info", "youtube call held back", {
             reason: d.reason,
             class: cls,
             lane,
-            ...(lane === "signed" ? { purpose } : {}),
+            ...(lane === "signed" ? { purpose, priority } : {}),
           });
         throw new YtPausedError(d.reason, d.until, lane);
       }
       const wait = d.at - io.now();
       if (wait > 0) await io.sleep(wait);
       let outcome: Outcome = "other";
+      let failText = "";
+      let killed = false;
       // A signed-in call can still work while yt-dlp warns the cookies were refused (it carries on anonymously):
       // the pause counts it as working, the sign-in bookkeeping as refused cookies.
       let staleCookies = false;
@@ -837,6 +1347,8 @@ export function createYtGuard(io: GuardIo): YtGuard {
         return r;
       } catch (err) {
         const text = errText(err);
+        failText = text;
+        killed = Boolean((err as { killed?: boolean } | undefined)?.killed);
         outcome = isBotCheck(text)
           ? "bot"
           : lane === "signed" && (isCookieTrouble(text) || isAgeGate(text))
@@ -846,28 +1358,55 @@ export function createYtGuard(io: GuardIo): YtGuard {
               : "other";
         throw err;
       } finally {
-        // Only a bot answer or a probe's outcome changes the pause; an ordinary call skips the second lock.
-        const change =
-          outcome !== "bot" && !d.probe
+        // A bot answer, a probe's outcome, the first answer after an anonymous lift and a failure to remember need the
+        // second lock; an ordinary working call skips it.
+        const failed = outcome !== "ok" && outcome !== "age" && outcome !== "cookies" && !killed;
+        const afterLift = lane === "anon" && outcome !== "other" && readState(stateFile()).anonAfterLift !== undefined;
+        const wrote =
+          outcome !== "bot" && !d.probe && !failed && !afterLift
             ? undefined
-            : await withState(io, (st) =>
-                afterCall(st, io.now(), outcome, d.probe, s, lane),
-              ).catch(() => undefined);
+            : await withState(io, (st) => {
+                const change = afterCall(st, io.now(), outcome, d.probe, s, lane);
+                if (failed) noteFailure(st, lane, args, io.now(), outcome, failText);
+                return {
+                  change,
+                  block: laneState(st, lane).block,
+                  retired: st.anonRetired,
+                };
+              }).catch(() => undefined);
+        const change = wrote?.change;
         const what = lane === "signed" ? "signed-in fetching" : "fetching";
-        if (change === "started" || change === "extended") {
-          const st = await withState(io, (x) => laneState(x, lane).block).catch(() => undefined);
-          log("warn", `youtube bot check: ${what} paused (${change})`, {
+        if (change === "started" || change === "extended" || change === "retired") {
+          const st = wrote?.block;
+          log("warn", `youtube bot check: ${what} paused (${change === "retired" ? "started" : change})`, {
             until: st ? new Date(st.until).toISOString() : undefined,
             strikes: st?.strikes,
+            // How many requests the lane made between its last lift and this check: the measured window.
+            callsSinceLift: st?.calls,
           });
         } else if (change === "lifted")
           log("info", `youtube bot check lifted; ${what} again`);
-        if (change === "started" || change === "lifted") void flushNow();
+        if (change === "retired" && wrote?.retired)
+          log("warn", "youtube anonymous lane retired: its first request after a lift met a bot check, lifts in a row; signed-in fetches only", {
+            until: new Date(wrote.retired.until).toISOString(),
+            liftFails: wrote.retired.liftFails,
+          });
+        if (change === "started" || change === "lifted" || change === "retired") void flushNow();
         await afterSignIn(lane, staleCookies ? "cookies" : outcome, args);
       }
     },
+    async apiOnlySearch(args, priority = "background") {
+      const hit = fromCache<{ stdout: string; stderr: string }>(args, true);
+      if (hit) return String(hit.stdout);
+      const out = await searchViaApi(args, io.settings(), priority);
+      if (out !== undefined) keep(args, { stdout: out }, true);
+      return out;
+    },
     needsSignIn(videoId) {
       return needsSignInNow(readState(stateFile()), videoId, io.now());
+    },
+    anonOpen() {
+      return anonOpenNow(readState(stateFile()), io.now(), io.settings());
     },
     cookiesUsable(mtimeMs) {
       return cookiesUsable(readState(stateFile()), mtimeMs, io.now());
@@ -877,7 +1416,7 @@ export function createYtGuard(io: GuardIo): YtGuard {
       if (due) {
         log(
           "warn",
-          "the download account's cookies file is missing: the game fetcher goes anonymous (run mac/ytcookies.sh on the Mac mini)",
+          "the download account's cookies file is missing: signed-in fetching stops (run mac/ytcookies.sh on the Mac mini; anonymous calls only while that lane is open)",
           { file },
         );
         void flushNow();
@@ -939,6 +1478,12 @@ export function onYtGuardAlert(fn: (text: string) => unknown): void {
   setInterval(() => void flushNow(), 60_000).unref();
 }
 
+/** A Data API search through this process's guard (undefined when the guard is off or the API cannot answer). */
+export function guardedApiSearch(args: readonly string[], priority: YtPriority = "background"): Promise<string | undefined> {
+  if (!guardActive()) return Promise.resolve(undefined);
+  return ytGuard.apiOnlySearch(args, priority);
+}
+
 /** A yt-dlp call through this process's guard (or straight through when the guard is off). */
 export function guardedYt<
   T extends { stdout: string | Buffer; stderr: string | Buffer },
@@ -946,7 +1491,7 @@ export function guardedYt<
   cmd: string,
   args: readonly string[],
   fn: () => Promise<T>,
-  o?: { cls?: CallClass; cache?: boolean; purpose?: YtPurpose },
+  o?: GuardRunOptions,
 ): Promise<T> {
   if (!guardActive()) return fn();
   return ytGuard.run(cmd, args, fn, o);

@@ -14,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FFMPEG } from "../lib/bin.ts";
 import { runCapped } from "../lib/child.ts";
-import { loadOrch } from "../lib/orch.ts";
+import { leaseStrict, loadOrch } from "../lib/orch.ts";
 import { errorMessage } from "../lib/util.ts";
 import {
   canonicalGame,
@@ -63,7 +63,7 @@ async function withGpu<T>(
   let release: () => void = () => undefined;
   try {
     const orch = await loadOrch();
-    release = (await orch.lease("gpu", {
+    release = (await leaseStrict(orch, "gpu", {
       job,
       project: "pulse",
       priority: PRIORITY,

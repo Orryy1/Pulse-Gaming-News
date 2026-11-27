@@ -408,3 +408,93 @@ test("the digest line sums the day's audits", () => {
     "Graphics audit: 2 videos, 4 fixes (1 dropped), unreadable 3 -> 0, 1 failed for a wrong graphic.",
   );
 });
+
+// ep_20261126_b7fa6af6 (26 Nov), ep_20261123_2a95e764 and one on 20 Nov: a line whose explainer takes the place of a
+// card it never had crashed the audit ("reading 'primary'"), and the Short failed three times and was lost.
+test("a line with an explainer and no card of its own is audited and fixed without crashing", () => {
+  const inputs: SegmentInput[] = [
+    HOOK,
+    {
+      kind: "beat",
+      text: "You pick a mode, invite three friends and drop into a fresh map every round this winter.",
+      explainer: {
+        type: "steps",
+        title: "How it works",
+        items: [
+          { label: "Pick a mode", cue: "pick a mode" },
+          { label: "Invite friends", cue: "invite three friends" },
+          { label: "Drop in", cue: "drop into" },
+        ],
+      },
+    },
+    {
+      kind: "take",
+      text: "My Pulse check is strong because the free mode stretches your money further.",
+      label: "PULSE CHECK",
+      explainer: {
+        type: "versus",
+        title: "",
+        items: [
+          { label: "Free mode", lead: true },
+          { label: "Paid mode" },
+        ],
+      },
+    },
+    LOOP,
+  ];
+  const input = shortOf(inputs);
+  assert.equal(input.segments[1]!.visual, undefined, "the beat has no card");
+  assert.equal(input.segments[2]!.visual, undefined, "nor does the take");
+  const audit = auditShortGraphics(input);
+  assert.ok(
+    audit.elements.some((e) => e.key === "card1"),
+    "the explainer still holds its place in the frame",
+  );
+  assert.ok(
+    !audit.findings.some((f) => /undefined/.test(f.detail)),
+    "no finding about a card that is not there",
+  );
+  const fixed = fixShortGraphics(input);
+  assert.equal(fixed.wrong.length, 0);
+});
+
+test("a card the frame check faulted is not drawn again, its line's explainer included", async () => {
+  const explainer = {
+    type: "timeline" as const,
+    title: "Bungie and Halo",
+    items: [
+      { label: "Halo 3", value: "2007" },
+      { label: "Reach", value: "2010" },
+      { label: "Destiny", value: "2014" },
+    ],
+  };
+  const inputs: SegmentInput[] = [
+    HOOK,
+    {
+      kind: "beat",
+      text: "Halo 3 shipped in 2007, Reach followed in 2010 and Destiny arrived in 2014 for a new publisher.",
+      visual: { kind: "title", primary: "Bungie leaves", secondary: "" },
+      explainer,
+    },
+    {
+      kind: "take",
+      text: "My Pulse check is strong because the free mode stretches your money further.",
+      label: "PULSE CHECK",
+      visual: { kind: "title", primary: "Strong value", secondary: "" },
+      explainer: { type: "versus", title: "", items: [{ label: "Free mode", lead: true }, { label: "Paid mode" }] },
+    },
+    LOOP,
+  ];
+  const input = shortOf(inputs);
+  const db = await testDb();
+  const cfg = testConfig(await tmpDir(), { graphicsAudit: "fix" });
+  const out = await graphicsGateShort({ db, cfg }, "ep_m", input, ["card1", "card2"]);
+  assert.ok(out, "the gate ran and did not throw");
+  assert.equal(out.segments[1]!.visual, undefined, "the faulted card goes");
+  assert.equal(out.segments[1]!.explainer, undefined, "and so does the explainer drawn in its place");
+  assert.equal(out.segments[2]!.visual?.primary, "Strong value", "a take keeps its verdict card");
+  assert.equal(out.segments[2]!.explainer, undefined, "but not a faulted explainer");
+  const unmuted = await graphicsGateShort({ db, cfg }, "ep_n", input, []);
+  assert.ok(unmuted!.segments[1]!.explainer, "nothing faulted: the explainer stays");
+  await db.close();
+});

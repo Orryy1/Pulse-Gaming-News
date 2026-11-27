@@ -17,6 +17,25 @@ const MEDIA_FAULT =
 export const AD_FAULT =
   /\b(sexuali[sz]ed|sexual|suggestive(?:ly)?|revealing|cleavage|nudity|nude|naked|lingerie|underwear|bikini|swimwear|bra(?:-style)?|thong|buttocks?|groin|crotch|bare chest|shirtless|chest[- ](?:dominated|focused)|bent[- ](?:over|forward)|bends? over|bending over|twerk\w*|strip(?:per|-club| club)|pole[- ]danc\w*|provocative(?:ly)?|exposed (?:flesh|skin|upper thighs|thighs|chest|torso)|gore|gory|blood(?:y)?|dismember\w*|advertiser[- ]unfriendly|ad[- ]unsafe|not advertiser[- ]friendly|advertiser[- ]friendly (?:requirement|rule|criteria|restriction))\b|\b(?:crop|framing|shot) (?:emphasi[sz]\w*|dwell\w*|focus\w*) (?:on )?(?:the |a |her |his )?(?:chest|hips|buttocks|thighs|body)/i;
 
+/**
+ * Edge faults the depth layers leave on a still (SHORT_PARALLAX, PARALLAX_DEEP): the cut-out subject's jagged or torn
+ * outline, strips of the picture repeated where a layer slid, stray lines along a seam. After the depth camera went on
+ * (20 Nov 2026) these were most of the Shorts' final-check faults: 10 of 39 on 20 Nov, 6 of 8 on 26 Nov. The picture
+ * itself is fine, so the retry renders it flat (QA_FLATTEN_DEPTH) instead of the same tear again ("jagged cutout edges"
+ * matched no media fault) or throwing a good picture away ("rendering artefacts" did).
+ */
+const DEPTH_EDGE_SOURCE =
+  "\\b(?:jagged|blocky|stair-?stepp?(?:ed|ing)|aliased|aliasing|torn|tearing|cut-?out(?: edges?| outlines?)?|duplicated (?:image )?strips?|image strips?|repeated strips?|stray lines?|seams?|rendering (?:artefacts?|artifacts?|glitch(?:es)?)|image corruption|corrupt(?:ed|ion)|smeared edges?|ghost(?:ed|ing)|blurred into the background|halo(?:ing)? around)\\b";
+export const DEPTH_EDGE_FAULT = new RegExp(DEPTH_EDGE_SOURCE, "i");
+
+/** A problem's other faults once its depth-edge words are taken out (pure): a logo or the wrong game still drops it. */
+function otherMediaFault(problem: string): boolean {
+  const rest = problem
+    .replace(new RegExp(DEPTH_EDGE_SOURCE, "gi"), " ")
+    .replace(/\b(?:artefacts?|artifacts?)\b/gi, " ");
+  return MEDIA_FAULT.test(rest) || AD_FAULT.test(rest);
+}
+
 export interface ShotLike {
   start: number;
   end: number;
@@ -116,6 +135,48 @@ export function offendingMedia(
     }
   }
   return out;
+}
+
+/**
+ * QA_FLATTEN_DEPTH: the layered stills (with depth layers) on a frame the check faulted for a depth edge lose their
+ * layers and are marked depthFault, so the retry renders them flat and the depth step does not layer them again. A
+ * picture faulted only for its edges is taken out of the dropped set (it stays, and is not marked faulty in the game
+ * library); one with another media fault on its frame (text, a logo, the wrong game) is still dropped. Returns the
+ * flattened image indices. Problems naming no frame flatten nothing.
+ */
+export function flattenDepthFaults<T extends { layers?: unknown; depthFault?: boolean }>(
+  problems: string[],
+  sampleTimes: number[],
+  plan: { fps: number; shots: ShotLike[] },
+  images: T[],
+  off: Offending,
+): number[] {
+  const imageAt = (n: number): number | undefined => {
+    const t = sampleTimes[n - 1];
+    if (t === undefined) return undefined;
+    const f = Math.round(t * plan.fps);
+    const shot = plan.shots.find((s) => f >= s.start && f < s.end);
+    return shot?.media.type === "image" ? shot.media.index : undefined;
+  };
+  const flat = new Set<number>();
+  const stillDrop = new Set<number>();
+  for (const p of problems) {
+    const at = problemFrames(p, sampleTimes.length)
+      .map(imageAt)
+      .filter((i): i is number => i !== undefined);
+    const edge = DEPTH_EDGE_FAULT.test(p);
+    if (edge) for (const i of at) if (images[i]?.layers) flat.add(i);
+    // Only a depth-edge problem has its edge words discounted; any other media fault on the frame still drops it.
+    if (edge ? otherMediaFault(p) : MEDIA_FAULT.test(p) || AD_FAULT.test(p))
+      for (const i of at) stillDrop.add(i);
+  }
+  for (const i of flat) {
+    const img = images[i]!;
+    delete img.layers;
+    img.depthFault = true;
+    if (!stillDrop.has(i)) off.images.delete(i);
+  }
+  return [...flat].sort((a, b) => a - b);
 }
 
 /** Removes the faulted media from an assets object (clips and images arrays), returning what was dropped. */

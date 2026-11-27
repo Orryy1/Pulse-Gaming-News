@@ -35,7 +35,7 @@ import { checkClip, hasSubjectFallback, lookSubject, namedSubjects, SUBJECT_CONF
 import { rejectReason, screenFrames, subjectFrames, type FrameFlags, type SubjectLook } from "../assets/localvision.ts";
 import type { VisualAsset } from "../assets/steam.ts";
 import { brollShotAtPlace, findQuote, findShots, shotAtPlace } from "./lookup.ts";
-import { loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
+import { indexNamesFor, loadSceneIndex, sceneSlug, type SceneIndex, type SceneShot } from "./schema.ts";
 import { requestSceneIndex } from "./job.ts";
 import { sectionArgs } from "./build.ts";
 import {
@@ -46,7 +46,8 @@ import {
   type SpoilerWindow,
 } from "./spoilers.ts";
 import type { Config } from "../config.ts";
-import { indexScorer, ownStreamClips } from "../semantic/hook.ts";
+import { indexScorer, ownStreamClips, type OwnStreamDeps } from "../semantic/hook.ts";
+import { remoteVodDeps } from "../vodindex/remote.ts";
 
 export interface PlannedClip {
   key: string;
@@ -678,6 +679,19 @@ async function findIndex(dataDir: string, game: string): Promise<SceneIndex | un
 }
 
 /**
+ * The game's later movie chapters' indexes (src/sceneindex/movieplan.ts: "<game> (movie 2)" and on), in chapter
+ * order, after the game's own index: lines the first chapter cannot show are looked for in the next.
+ */
+async function chapterIndexes(dataDir: string, first: SceneIndex): Promise<SceneIndex[]> {
+  const out: SceneIndex[] = [];
+  for (const name of indexNamesFor(dataDir, first.game, ["movie"]).slice(1)) {
+    const index = await loadSceneIndex(dataDir, name).catch(() => undefined);
+    if (index && index.source.videoId !== first.source.videoId) out.push(index);
+  }
+  return out;
+}
+
+/**
  * SCENE_MATCH: the picture check run on the index's low-resolution proxy (when it is on this machine): the same three
  * frames the clip would be judged on, cut from the proxy at the shot's time. Undefined when there is no proxy here.
  */
@@ -778,6 +792,11 @@ export async function indexFirstCutscenes<
     spoilerWarned?: boolean;
     /** LONG_INDEX_FIRST: the index's clips alone ("index"), or the search alone ("search"). */
     mode?: "index" | "search";
+    /**
+     * The seconds the stream recordings may fill on their own allowance (owner's and permitted channels' capture
+     * never counts against a publisher's cap); unset: they share maxSeconds with the index and the search, as before.
+     */
+    ownMaxSeconds?: number;
   },
 >(
   cfg: Pick<Config, "sceneIndex" | "sceneIndexMinConfidence" | "dataDir" | "ytdlpPath"> &
@@ -812,13 +831,38 @@ export async function indexFirstCutscenes<
         })
     : search;
   // VOD_TAGS: the owner's own tagged recordings of the game first; the scene index and the search cover the rest.
-  if (cfg.semantic?.vodTags && options.mode !== "search")
-    return cutscenesIndexFirst(
-      options,
-      (o) => ownStreamClips(cfg, o, indexedCutsceneClips, now, windows),
-      (o) => indexChain(cfg, o, searched, deps, allow),
+  // VOD_REMOTE: the recordings and their indexes are on the PC (src/vodindex/remote.ts), never on this machine.
+  if (cfg.semantic?.vodTags && options.mode !== "search") {
+    const own = (o: O) => ownStreamClips(cfg, o, indexedCutsceneClips, now, windows, ownStreamSources(cfg));
+    if (options.ownMaxSeconds === undefined)
+      return cutscenesIndexFirst(options, own, (o) => indexChain(cfg, o, searched, deps, allow));
+    // The recordings on their own allowance: what they fill never shrinks the publisher footage for the rest.
+    const first = await own({ ...options, maxSeconds: options.ownMaxSeconds }).catch(() => [] as CutsceneClip[]);
+    const has = new Set(first.map(clipTargetKey));
+    const rest = options.targets.filter((t) => !has.has(t.key));
+    if (!rest.length || options.maxSeconds < MIN_CLIP_SECONDS || options.maxClips - first.length <= 0) return first;
+    const more = await indexChain(cfg, { ...options, targets: rest, maxClips: options.maxClips - first.length }, searched, deps, allow).catch(
+      (err) => {
+        log("warn", "cutscene media failed after the stream recordings", { game: options.gameTitle, error: errorMessage(err) });
+        return [] as CutsceneClip[];
+      },
     );
+    return [...first, ...more];
+  }
+  // A stream allowance with the recordings off: nothing of the publisher's is left to fetch when its seconds are spent.
+  if (options.ownMaxSeconds !== undefined && options.maxSeconds < MIN_CLIP_SECONDS) return [];
   return indexChain(cfg, options, searched, deps, allow);
+}
+
+/** The key of the line a clip serves, with its moment ("hook", "beat:3", "beat:3#m1") (pure). */
+function clipTargetKey(c: CutsceneClip): string {
+  return c.role === "hook" ? "hook" : c.beatIndex === undefined ? "" : `beat:${c.beatIndex}${c.moment === undefined ? "" : `#m${c.moment}`}`;
+}
+
+/** Where the stream recordings come from: the PC with VOD_REMOTE and GAMELIB_REMOTE, else this machine (pure). */
+export function ownStreamSources(cfg: Pick<Config, "dataDir"> & Partial<Pick<Config, "semantic">>): OwnStreamDeps {
+  const s = cfg.semantic;
+  return s?.vodRemote && s.vodRemoteUrl ? remoteVodDeps(s.vodRemoteUrl, path.join(cfg.dataDir, "vodremote")) : {};
 }
 
 /** The scene index first, the cutscene search for the rest (indexFirstCutscenes after the spoiler wrapping). */
@@ -839,6 +883,21 @@ async function indexChain<O extends Parameters<typeof indexFirstCutscenes>[1]>(
         return [];
       }
       if (!indexFitsRelease(index, o.recentRelease)) return [];
+      // The game's own index first, then its later chapters' (each with its own spoiler tag), for what is still unfilled.
+      const out: CutsceneClip[] = [];
+      for (const ix of [index, ...(await chapterIndexes(cfg.dataDir, index))]) {
+        const filled = new Set(out.map(clipTargetKey));
+        const targets = o.targets.filter((t) => !filled.has(t.key));
+        const used = out.reduce((n, c) => n + Math.max(0, c.span.to - c.span.from), 0);
+        if (!targets.length || out.length >= o.maxClips || o.maxSeconds - used < MIN_CLIP_SECONDS) break;
+        out.push(...(await clipsFrom(ix, { ...o, targets, maxClips: o.maxClips - out.length, maxSeconds: o.maxSeconds - used })));
+      }
+      return out;
+    },
+    options.mode === "index" ? async () => [] : searched,
+  );
+
+  async function clipsFrom(index: SceneIndex, o: O): Promise<CutsceneClip[]> {
       // MATCH_SEMANTIC: the index's shot vectors against each line, blended into the word lookup.
       const semantic = await indexScorer(cfg, index, o.targets);
       return indexedCutsceneClips({
@@ -881,9 +940,7 @@ async function indexChain<O extends Parameters<typeof indexFirstCutscenes>[1]>(
           : {}),
         deps,
       });
-    },
-    options.mode === "index" ? async () => [] : searched,
-  );
+  }
 }
 /** SCENE_MATCH stills: a still is one frame, checked on its own (the frame on the word is the whole picture). */
 export function stillConfirmed(

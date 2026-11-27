@@ -1,10 +1,12 @@
 // Short, muted sections of a game's cutscenes, screened before they enter the footage pool.
 
+import { STREAM_CAPTURE } from "../vodindex/sources.ts";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { runCapped } from "../lib/child.ts";
+import { isYtPaused } from "../lib/ytguard.ts";
 import { downloadSectionRetrying, streamRefused } from "../lib/ytsection.ts";
 import { FFMPEG, YTDLP_TEXT } from "../lib/bin.ts";
 import { errorMessage, log } from "../lib/util.ts";
@@ -891,7 +893,7 @@ export function chapterFootageUsed(
 ): number {
   return clips.reduce(
     (n, c) =>
-      c.beatIndex === beatIndex && !c.stock && !/^Pulse's own gameplay capture/.test(c.provenance)
+      c.beatIndex === beatIndex && !c.stock && !STREAM_CAPTURE.test(c.provenance)
         ? n + (c.durationSeconds ?? 0)
         : n,
     0,
@@ -956,7 +958,8 @@ export function reconcileCutsceneBudgets<
       ? { key: rule.name, seconds: rule.clipSeconds }
       : cutscenePublisher(game);
     const used = [...other, ...kept.values()].reduce((sum, item) => {
-      if (item.stock) return sum;
+      // Stock and stream captures (the owner's or a permitted channel's play) never count against a publisher.
+      if (item.stock || STREAM_CAPTURE.test(item.provenance)) return sum;
       const known =
         explicitOwner(item)?.name ??
         (item.beatIndex === undefined
@@ -993,7 +996,7 @@ export function reconcileCutsceneBudgets<
           clip.beatIndex === beat &&
           !isCutscene(clip) &&
           !clip.stock &&
-          !/^Pulse's own gameplay capture/.test(clip.provenance) &&
+          !STREAM_CAPTURE.test(clip.provenance) &&
           !/Creative Commons/i.test(clip.provenance),
       )
       .sort((a, b) => Number(/trailer/i.test(b.clip.provenance)) - Number(/trailer/i.test(a.clip.provenance)) || b.i - a.i);
@@ -1018,11 +1021,16 @@ export async function gatherCutsceneSources(o: {
     stock?: boolean;
   }>;
   fetch: (
-    job: CutsceneJob & { maxSeconds: number; publisher?: string },
+    job: CutsceneJob & { maxSeconds: number; publisher?: string; ownMaxSeconds?: number },
   ) => Promise<CutsceneClip[]>;
   shouldStop?: () => boolean;
+  /**
+   * The seconds stream recordings (the owner's and permitted channels', src/vodindex/sources.ts) may fill across the
+   * video, outside every publisher's cap; unset: they share the publisher allowance, as before.
+   */
+  streamSeconds?: number;
 }): Promise<CutsceneClip[]> {
-  if (!o.enabled || o.videoLimit < 1.6) return [];
+  if (!o.enabled || (o.videoLimit < 1.6 && o.streamSeconds === undefined)) return [];
   const owners = o.jobs.map((job) =>
     cutscenePublisher(job.gameTitle, job.publisherNames),
   );
@@ -1037,11 +1045,14 @@ export async function gatherCutsceneSources(o: {
     .filter((c) => /^Cutscenes for "/.test(c.provenance))
     .reduce((n, c) => n + c.durationSeconds, 0);
   const added: CutsceneClip[] = [];
+  const streamed = () =>
+    [...o.existing, ...added].reduce((n, c) => (STREAM_CAPTURE.test(c.provenance) ? n + (c.durationSeconds ?? 0) : n), 0);
   for (const [i, job] of o.jobs.entries()) {
     if (o.shouldStop?.()) break;
     const owner = owners[i]!;
     const used = [...o.existing, ...added].reduce((sum, clip) => {
       if (clip.stock) return sum;
+      if (o.streamSeconds !== undefined && STREAM_CAPTURE.test(clip.provenance)) return sum;
       const explicit = PUBLISHER_CHANNELS.find((r) =>
         clip.provenance.includes(`publisher: ${r.name}`),
       )?.name;
@@ -1059,12 +1070,14 @@ export async function gatherCutsceneSources(o: {
       job.ownSeconds !== undefined
         ? cutsceneAllowance(o.videoLimit, videoUsed, job.ownSeconds, chapterFootageUsed([...o.existing, ...added], job.beatIndex))
         : cutsceneAllowance(o.videoLimit, videoUsed, owner.seconds, used);
-    if (maxSeconds < 1.6 || !job.targets.length) continue;
+    const streamLeft = o.streamSeconds === undefined ? undefined : Math.max(0, o.streamSeconds - streamed());
+    if ((maxSeconds < 1.6 && !(streamLeft !== undefined && streamLeft >= 1.6)) || !job.targets.length) continue;
     const found = await o
       .fetch({
         ...job,
-        maxSeconds,
+        maxSeconds: Math.max(0, maxSeconds),
         publisher: owner.key.startsWith("game:") ? undefined : owner.key,
+        ...(streamLeft !== undefined ? { ownMaxSeconds: streamLeft } : {}),
       })
       .catch((err) => {
         log("warn", "cutscene media failed", {
@@ -1073,7 +1086,10 @@ export async function gatherCutsceneSources(o: {
         });
         return [] as CutsceneClip[];
       });
-    for (const clip of capFootage(found, maxSeconds, 4.8, true)) {
+    // Stream captures ride on their own allowance (streamSeconds): only the rest is held to the publisher's.
+    const streams = streamLeft === undefined ? [] : capFootage(found.filter((c) => STREAM_CAPTURE.test(c.provenance)), streamLeft, 4.8, true);
+    const rest = streamLeft === undefined ? found : found.filter((c) => !STREAM_CAPTURE.test(c.provenance));
+    for (const clip of [...streams, ...capFootage(rest, maxSeconds, 4.8, true)]) {
       const durationSeconds = clip.durationSeconds ?? 4.8;
       added.push({
         ...clip,
@@ -1083,7 +1099,7 @@ export async function gatherCutsceneSources(o: {
         audio: false,
         span: { ...clip.span, to: clip.span.from + durationSeconds },
       });
-      videoUsed += durationSeconds;
+      if (streamLeft === undefined || !STREAM_CAPTURE.test(clip.provenance)) videoUsed += durationSeconds;
     }
   }
   return added;
@@ -1183,10 +1199,13 @@ export async function cutsceneMedia(
     // watermark on every frame, the wrong moment) gives way to the next one.
     const triedScenes = new Map<string, Set<string>>();
     const noMoreScenes = new Set<string>();
+    // The YouTube guard holding calls back (a pause, the lane retired, the budget used): the rest of this video's scene
+    // searches would be refused the same way, so they stop with one line instead of one failure per query.
+    let ytHeld = false;
     const scenePlan = async (target: FootageTarget): Promise<SectionPlan | undefined> => {
       const tried = triedScenes.get(target.key) ?? new Set<string>();
       triedScenes.set(target.key, tried);
-      if (noMoreScenes.has(target.key) || tried.size >= SCENE_UPLOADS_PER_TARGET) return undefined;
+      if (ytHeld || noMoreScenes.has(target.key) || tried.size >= SCENE_UPLOADS_PER_TARGET) return undefined;
       let scene: CutsceneUpload | undefined;
       for (const query of sceneQueries(o.gameTitle, target)) {
         const keyword = query.slice(o.gameTitle.trim().length + 1).replace(/^all /i, "").replace(/ scenes?$/i, "");
@@ -1200,6 +1219,11 @@ export async function cutsceneMedia(
             break;
           }
         } catch (err) {
+          if (isYtPaused(err)) {
+            ytHeld = true;
+            log("info", "cutscene scene searches stopped for this video: YouTube is held back", { error: errorMessage(err) });
+            return undefined;
+          }
           log("warn", "cutscene scene search failed", { query, error: errorMessage(err) });
         }
       }

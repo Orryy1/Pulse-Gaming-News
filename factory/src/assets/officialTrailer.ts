@@ -760,6 +760,15 @@ export interface OfficialMediaOptions {
    * no YouTube search or download (YouTube refused downloads from 14 Nov 2026). Same matching, same publisher cap.
    */
   localTrailers?: (gameTitle: string) => Promise<Array<{ file: string; name: string; url: string; publisher: string }>>;
+  /**
+   * STORE_TRAILERS: the game's official trailers from the platform stores' own CDNs (src/assets/storetrailers.ts),
+   * after the library's and before any YouTube search. Same matching, same publisher cap; each trailer's `host` names
+   * the store for its rights label ("Official trailer (PlayStation Store)"). `hint` is the release year when known.
+   */
+  storeTrailers?: (
+    gameTitle: string,
+    hint: string,
+  ) => Promise<Array<{ file: string; name: string; url: string; publisher: string; host: string }>>;
 }
 
 /** The sharpest of a few frames across a stretch, largest JPEG first (fine detail costs bytes): at most `take`, kept apart. */
@@ -903,6 +912,10 @@ export async function trailerFrames(
   textCheck: boolean,
 ): Promise<VisualAsset[]> {
   if (count <= 0) return [];
+  // A trailer file from a store or the publisher's site (an https link off YouTube) is never handed to yt-dlp: it would
+  // fetch it with a browser's User-Agent, past robots.txt and the store client's gap, cache and stops.
+  if (/^https?:/.test(trailer.videoId) && !/^https?:\/\/(www\.|m\.)?youtube\.com\/|^https?:\/\/youtu\.be\//.test(trailer.videoId))
+    return [];
   const frames = await trailerStills(
     { ...o, targets: [], stillFrames: count },
     trailer,
@@ -941,6 +954,13 @@ export async function officialMedia(
       return undefined;
     });
     if (local) return local;
+  }
+  if (o.storeTrailers && !o.story) {
+    const store = await storeTrailerMedia(o).catch((err) => {
+      log("warn", "store trailers failed", { game: o.gameTitle, error: errorMessage(err) });
+      return undefined;
+    });
+    if (store) return store;
   }
   if (o.quotaOk && !(await o.quotaOk())) {
     log("info", "official trailer search skipped: quota reserved for uploads", {
@@ -1070,14 +1090,60 @@ export async function officialMedia(
  */
 async function siteTrailerMedia(o: OfficialMediaOptions): Promise<OfficialMedia | undefined> {
   const files = (await o.localTrailers!(o.gameTitle)).slice(0, 4);
-  if (!files.length) return undefined;
-  const owner = franchisePublisher(o.gameTitle) ?? files[0]!.publisher;
+  return filesMedia(o, files, (owner) => `${owner} (official site)`, (t, owner) => `from ${owner}'s own site (${t.url})`, "site");
+}
+
+/**
+ * STORE_TRAILERS: footage from the stores' own trailer files (src/assets/storetrailers.ts), cached on disk, through the
+ * same matcher and owner's cap as the library's. The rights label names the store: "Official trailer (<store>)".
+ */
+async function storeTrailerMedia(o: OfficialMediaOptions): Promise<OfficialMedia | undefined> {
+  // An owner that takes no moving footage (Nintendo without an override): nothing is downloaded for it.
+  const known = franchisePublisher(o.gameTitle);
+  const knownRule = known ? PUBLISHER_CHANNELS.find((r) => r.name === known) : undefined;
+  if (knownRule && knownRule.clipSeconds <= 0) return undefined;
+  if (o.maxClips <= 0 || !o.targets.length) return undefined;
+  const files = (await o.storeTrailers!(o.gameTitle, o.hint ?? "")).slice(0, 4);
+  const hostOf = new Map(files.map((f) => [f.url, f.host]));
+  const hosts = [...new Set(files.map((f) => f.host))];
+  const out = await filesMedia(
+    o,
+    files,
+    () => `Official trailer (${hosts.join(", ") || "store"})`,
+    (t) => `from the ${hostOf.get(t.url) ?? "store"} (${t.url}); rights: Official trailer (${hostOf.get(t.url) ?? "store"})`,
+    "store",
+    true,
+  );
+  // Nothing matched: the YouTube route still gets its turn (its thumbnail and frames).
+  return out && (out.clips.length || out.stills.length) ? out : undefined;
+}
+
+/**
+ * Seconds of footage an owner allows from its trailer files: its PUBLISHER_CHANNELS rule (PUBLISHER_FOOTAGE_SECONDS
+ * applied), else 14; with `starDefault` (STORE_TRAILERS) an owner with no rule takes the "*" setting first (pure).
+ */
+export function ownerCapSeconds(owner: string, starDefault = false): number {
   const rule = PUBLISHER_CHANNELS.find((r) => r.name === owner);
-  const clipSeconds = rule?.clipSeconds ?? 14;
+  return rule?.clipSeconds ?? (starDefault ? publisherFootageOverride(owner) : undefined) ?? 14;
+}
+
+/** Trailer files on disk, matched to the lines under the footage owner's cap. Undefined when there are none. */
+async function filesMedia(
+  o: OfficialMediaOptions,
+  files: Array<{ file: string; name: string; url: string; publisher: string }>,
+  channelTitle: (owner: string) => string,
+  from: (t: { name: string; url: string }, owner: string) => string,
+  prefix: string,
+  /** STORE_TRAILERS: an owner with no rule of its own takes PUBLISHER_FOOTAGE_SECONDS's "*" default, as footage.ts does. */
+  starDefault = false,
+): Promise<OfficialMedia | undefined> {
+  if (!files.length) return undefined;
+  const owner = franchisePublisher(o.gameTitle) ?? (files[0]!.publisher || "unknown publisher");
+  const clipSeconds = ownerCapSeconds(owner, starDefault);
   const first = files[0]!;
   const out: OfficialMedia = {
     storyVideo: false,
-    trailer: { videoId: first.url, title: first.name, publisher: owner, channelTitle: `${owner} (official site)`, url: first.url, clipSeconds },
+    trailer: { videoId: first.url, title: first.name, publisher: owner, channelTitle: channelTitle(owner), url: first.url, clipSeconds },
     clips: [],
     stills: [],
   };
@@ -1086,7 +1152,7 @@ async function siteTrailerMedia(o: OfficialMediaOptions): Promise<OfficialMedia 
   await fs.mkdir(work, { recursive: true });
   const trailers: Array<{ file: string; name: string; url: string; total: number }> = [];
   for (const [i, t] of files.entries()) {
-    const link = path.join(work, `site_${i}.mp4`);
+    const link = path.join(work, `${prefix}_${i}.mp4`);
     await fs.rm(link, { force: true });
     await fs.link(t.file, link).catch(() => fs.copyFile(t.file, link));
     const { stdout } = await run(FFPROBE, ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", link], { timeout: 60_000 }).catch(() => ({ stdout: "0" }));
@@ -1099,10 +1165,10 @@ async function siteTrailerMedia(o: OfficialMediaOptions): Promise<OfficialMedia 
       targets: o.targets,
       maxClips: o.maxClips,
       llm: o.llm,
-      prefix: "site",
+      prefix,
       fillSeconds: o.fill?.seconds ? Math.min(o.fill.seconds, clipSeconds) : undefined,
       textCheck: o.fill?.textCheck,
-      describe: (t, seconds, at) => `Official trailer "${t.name}" from ${owner}'s own site (${t.url}), publisher: ${owner}, ${seconds}s at ${at.toFixed(1)}s, muted`,
+      describe: (t, seconds, at) => `Official trailer "${t.name}" ${from(t, owner)}, publisher: ${owner}, ${seconds}s at ${at.toFixed(1)}s, muted`,
     });
   } finally {
     await fs.rm(work, { recursive: true, force: true }).catch(() => undefined);

@@ -194,3 +194,46 @@ test("agreed keep-free windows are listed from two days ahead until they are ove
   assert.deepEqual(extraWindows("", at("2026-11-18T12:00:00Z")), []);
   assert.deepEqual(extraWindows("nonsense", at("2026-11-18T12:00:00Z")), []);
 });
+test("a Short stuck in production stops keeping the PC, so a long render can find its gap", () => {
+  const cfg = testConfig("/tmp", { ...base, newsSlots: [] });
+  const now = at("2026-11-26T15:00:00Z");
+  const w = pcWindows(cfg, now, [
+    // Picked an hour ago: still being made, keeps the PC.
+    { lane: "news_breaking", status: "voiced", slot_at: null, picked_at: "2026-11-26T14:00:00Z" },
+    // Picked two days ago and still "voiced": stuck, lets go.
+    { lane: "news_breaking", status: "voiced", slot_at: null, picked_at: "2026-11-24T15:00:00Z" },
+    // Slot missed an hour ago: goes out as soon as it can, keeps the PC.
+    { lane: "why", status: "voiced", slot_at: "2026-11-26T14:00:00Z" },
+    // Slot missed three hours ago: stuck, lets go.
+    { lane: "news", status: "voiced", slot_at: "2026-11-26T12:00:00Z" },
+    // Same, but the owner retried it ten minutes ago: being made again, keeps the PC.
+    { lane: "gameplay", status: "selected", slot_at: "2026-11-26T11:00:00Z", picked_at: "2026-11-26T14:50:00Z" },
+  ]);
+  assert.deepEqual(
+    w.map((x) => [x.lane, x.note]),
+    [
+      ["gameplay", "in production (selected)"],
+      ["why", "in production (voiced)"],
+      ["breaking", "in production (voiced), publishes as soon as it's ready"],
+    ],
+  );
+});
+
+test("an owner retry of a long-stuck breaking Short gives it back its hold on the PC", async () => {
+  const db = await testDb();
+  try {
+    const cfg = testConfig("/tmp", { ...base, newsSlots: [] });
+    await db.query(
+      `INSERT INTO episodes (id, story_hash, status, story_json, lane, priority, created_at)
+       VALUES ('b1', 'h1', 'voiced', '{}', 'news_breaking', 90, '2026-11-24T15:00:00Z')`,
+    );
+    const now = at("2026-11-26T15:00:00Z");
+    assert.deepEqual(await shortWindows(db, cfg, now), []);
+    await db.query(
+      `INSERT INTO events (episode_id, kind, detail, created_at) VALUES ('b1', 'retried', '{}', '2026-11-26T14:50:00Z')`,
+    );
+    assert.deepEqual((await shortWindows(db, cfg, now)).map((w) => w.lane), ["breaking"]);
+  } finally {
+    await db.close?.();
+  }
+});

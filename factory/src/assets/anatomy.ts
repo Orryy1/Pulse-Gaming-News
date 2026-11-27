@@ -48,11 +48,10 @@ export async function anatomyAsk(
   prompt: string,
   timeoutMs = 120_000,
 ): Promise<unknown> {
-  const fs = await import("node:fs/promises");
-  const { visionTarget, visionAnswer } = await import("./localvision.ts");
+  const { visionTarget, visionAnswer, visionImage } = await import("./localvision.ts");
   const { fetchWithTimeout } = await import("../lib/util.ts");
   const where = await visionTarget();
-  const image = (await fs.readFile(file)).toString("base64");
+  const image = await visionImage(file);
   const res = await fetchWithTimeout(
     `${where.url}/api/chat`,
     {

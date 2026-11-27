@@ -278,6 +278,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   next_line?: { arm: "line" | "none"; said: boolean; part?: number; day?: string };
   /** The Why length test (WHY_LENGTH_AB, src/shortlengths.ts): the day's arm and the band the writer was given. */
   length_arm?: { arm: import("../shortlengths.ts").LengthArm; band: string };
+  /** The ending test (ENDING_FORMS_SHARE, src/editorial/endingforms.ts): the side, the closing form and whether a lead-in slipped through. */
+  ending?: import("./endingforms.ts").EndingRecord;
   /**
    * Who wrote the script (always recorded, src/editorial/authorship.ts): Claude or Codex for the main draft's last
    * answer, the model, whether it fell back from the provider it was meant for, and WRITER_SPLIT's reason.
@@ -385,6 +387,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
     real_test?: boolean;
     /** Cut from the live stream minutes after it happened (LIVE_CLIPS): one-tap card, out on approval. */
     live?: boolean;
+    /** Another streamer's play, used with permission: the credit shown ("Gameplay: Spencey96 on Twitch"). */
+    credit?: string;
     /** The rebuilt Short (src/gameplaydirect.ts): the cut's timing and the narrator's lines; older Shorts lack it. */
     direct?: {
       hook: string;
@@ -407,6 +411,8 @@ export type Script = z.infer<typeof ScriptSchema> & {
   };
   /** CHARACTER_QUOTES (src/editorial/charquote.ts): the game's own lines played between the narrator's lines. */
   character_quotes?: import("./charquote.ts").CharacterQuote[];
+  /** GTA_GUIDES (src/gtaguide.ts): a GTA 6 guide list: its kind, count, thumbnail words and each item's label. */
+  gta_guide?: import("../gtaguide.ts").GtaGuideMeta;
 };
 export type BeatVisual = z.infer<typeof BeatSchema>["visual"];
 

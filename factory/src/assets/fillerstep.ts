@@ -127,6 +127,8 @@ export async function chooseEpisodeFillers(args: {
   headline: string;
   /** LONG_CARD_SHARE (./fillers.ts ChooseOptions). */
   cardShare?: number;
+  /** LONG_THIN_CARD_SHARE with LONG_STILL_MAX_SHOWS (./fillers.ts ChooseOptions.thin). */
+  thin?: { share: number; maxShows: number };
   /** EXPLAINERS on for long videos (fillers.ts ChooseOptions.explainers). */
   explainers?: boolean;
   /** The owner's word for the format in the notice (src/longformat.ts longKindLabel); default Documentary. */
@@ -149,6 +151,7 @@ export async function chooseEpisodeFillers(args: {
       sketches: args.sketches,
       pickedWords: args.pickedWords,
       cardShare: args.cardShare,
+      ...(args.thin ? { thin: args.thin } : {}),
       explainers: args.explainers,
     });
     applyFillers(args.chapters, choice);

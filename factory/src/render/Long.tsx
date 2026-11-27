@@ -68,6 +68,7 @@ import {
 } from "remotion";
 import { COLOUR } from "./brand.ts";
 import { BODY, DISPLAY } from "./components/fonts.ts";
+import { FILL_LABEL } from "../gpuvis/label.ts";
 import { moveTransform, SPRING, type MovePreset } from "./motion.ts";
 import {
   buildLongPlan,
@@ -79,6 +80,7 @@ import {
   gameSoundVolume,
   type LongPlan,
   type LongShot,
+  keyTime,
   usefulEmphasis,
   usefulGraphic,
 } from "./longplan.ts";
@@ -127,6 +129,7 @@ import {
   VersusMoment,
   WipeCompare,
 } from "./components/DocGraphics.tsx";
+import { BoardMarks, BoardMode } from "./components/EvidenceStyle.tsx";
 import {
   EvidenceBoard,
   Letterbox,
@@ -214,6 +217,8 @@ import { DepthOrbit } from "./components/DepthOrbit.tsx";
 import { DepthCam } from "./components/DepthCam.tsx";
 import { depthCamPlan, stressedFrame } from "./depthcam.ts";
 import { CompareWipe, DepthType, ScreenshotWall } from "./components/BoldIdeas.tsx";
+import { KitOverlay } from "./components/GtaKit.tsx";
+import { LONG_KIT_GAP, LONG_KIT_MAX, planGtaKit, voicedLines, type KitSpan } from "./gtakit.ts";
 import { compareWipePlan, depthTypePlan, wallPictures } from "./boldideas.ts";
 import { Box3D, BoxReveal } from "./components/Box3D.tsx";
 import { PopOut } from "./components/PopOut.tsx";
@@ -275,6 +280,10 @@ export interface LongImageProp {
   label?: string;
   /** 2.5D layers (src/render/parallax.ts): drifted at different speeds so the still moves like footage. */
   layers?: { bg: string; mid: string; fg: string; mesh?: LongMeshProp };
+  /** FILL_FRAME: a portrait picture extended to 16:9 by the PC's image model, shown full-bleed instead of the poster. */
+  fillSrc?: string;
+  /** UPSCALE_STILLS: the original picture's URL when src is its enlarged copy, so a lookup by file name still finds it. */
+  origSrc?: string;
 }
 
 /** A still's 3D photo maps as URLs (src/render/orbit.ts): the orbit and the subject pop-out use them. */
@@ -320,6 +329,7 @@ export type LongProps = {
   kicker: string; // line under the title in the intro
   spoilers?: boolean; // a story ranking: the intro says so on screen
   recap?: boolean; // the weekly news recap: the chip reads THIS WEEK
+  guide?: boolean; // a GTA guide list (GTA_GUIDES): the chip and the title card read GUIDE, never TOP N or RANKED
   criterion: string;
   theme: string; // franchise or theme name
   footageCredit: string;
@@ -390,6 +400,9 @@ export type LongProps = {
   depthType?: boolean;
   /** COMPARE_WIPE: a line comparing two chapters' games shows both pictures behind a sliding wipe. Absent: off. */
   compareWipe?: boolean;
+  /** GTA_KIT (src/render/gtakit.ts): a GTA story's map places and region; with it, lines with no graphic of their own
+   * that name a place, say a dollar figure or set two names against each other get the kit's overlay. Absent: off. */
+  gtaKit?: import("./gtakit.ts").GtaKitInput;
   /** Previews only (data/smoke/gfx_mutes.mts): print which style draws each sentence's graphic. */
   debugGraphics?: boolean;
   /** The documentary's sound craft (src/render/soundfx.ts): J and L cuts, foley, risers and the rest. Absent: the old mix. */
@@ -410,6 +423,9 @@ export type LongProps = {
   /** MENTION_* (src/render/mentions.ts): the mention insets on their words, and the video's cap. */
   mentions?: MentionInset[];
   mentionMax?: number;
+  /** EVIDENCE_STYLE (src/evidencestyle.ts): the evidence board's cards, stamps and board windows; in board mode the
+   * chapter breathers are the evidence board too. Absent: as before. */
+  board?: import("./evidenceboard.ts").EvidenceBoardPlan;
 };
 
 const resolveSrc = (src: string | null) =>
@@ -599,6 +615,8 @@ export const Still: React.FC<{
   focus?: { at: number; origin: { x: number; y: number }; zoom: number };
   /** A punch-in: from this frame the picture jumps a tenth closer, on the narrator's key word. */
   punchAt?: number;
+  /** FILL_FRAME: the portrait picture extended to 16:9 (src/gpuvis/fill.ts), shown full-bleed and labelled. */
+  fillSrc?: string;
 }> = ({
   src,
   aspect,
@@ -611,6 +629,7 @@ export const Still: React.FC<{
   dir = 1,
   focus,
   punchAt,
+  fillSrc,
 }) => {
   const frame = useCurrentFrame();
   const punch =
@@ -721,6 +740,44 @@ export const Still: React.FC<{
               filter: "contrast(1.04) saturate(0.92)",
             }}
           />
+        </div>
+      </AbsoluteFill>
+    );
+  }
+  if (aspect < 0.9 && fillSrc) {
+    // FILL_FRAME: the portrait picture continued left and right by the PC's image model fills the frame; the
+    // original is untouched in the middle and the margins are labelled as made by AI.
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", opacity: fade }}>
+        <Img
+          src={fillSrc}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            filter: "contrast(1.03) saturate(1.05)",
+            transform: `scale(${(m.scale + 0.02) * punch}) translate(${m.x * 0.5}px, ${m.y * 0.5}px)`,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            // Top right, under the footage credit: the lower part of the frame sits under the titles' dark shade,
+            // which left the label unreadable (21 Nov 2026 proof render).
+            // Under the footage credit (about y 55 to 88 at the top right), never on it.
+            right: 40,
+            top: 104,
+            padding: "4px 10px",
+            background: "rgba(11,11,14,0.78)",
+            borderRadius: 6,
+            fontFamily: BODY,
+            fontWeight: 800,
+            fontSize: 16,
+            letterSpacing: 1.5,
+            color: "rgba(245,245,242,0.96)",
+          }}
+        >
+          {FILL_LABEL}
         </div>
       </AbsoluteFill>
     );
@@ -1560,6 +1617,7 @@ const Backdrop: React.FC<{
                           : undefined
                       }
                       src={img.src}
+                      fillSrc={img.fillSrc}
                       aspect={img.aspect}
                       durationFrames={len + (i > 0 ? xf : 0)}
                         move={camera?.moves.get(i) ?? s.move}
@@ -2644,7 +2702,7 @@ export const Long: React.FC<LongProps> = (props) => {
       const pic = d.explainer.picture;
       const served =
         pic && !/^https?:/.test(pic)
-          ? props.images.find((im) => im.src.endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
+          ? props.images.find((im) => (im.origSrc ?? im.src).endsWith(`/${pic.replace(/\\/g, "/")}`))?.src
           : pic;
       if (d.explainer.type === "anatomy" && !served) return null;
       return (
@@ -3213,6 +3271,16 @@ export const Long: React.FC<LongProps> = (props) => {
     [craft.jl, plan, props.clips, fps, entryFrames.join(",")],
   );
   // Zoom to the detail: each annotation's window, the shot showing its picture then, and the box on screen.
+  // EVIDENCE_STYLE: the words the narrator says, so a board print's caption is shown only when it is said.
+  const saidWords = useMemo(
+    () => new Set(props.words.map((w) => w.text.toLowerCase().replace(/[^a-z0-9]/g, ""))),
+    [props.words],
+  );
+  const saidAloud = (t: string) =>
+    t
+      .split(/\s+/)
+      .map((x) => x.toLowerCase().replace(/[^a-z0-9]/g, ""))
+      .every((x) => !x || saidWords.has(x));
   const details = useMemo(() => {
     const out: Array<{
       k: number;
@@ -4119,6 +4187,103 @@ export const Long: React.FC<LongProps> = (props) => {
     // A line already set behind its subject (DEPTH_TYPE) keeps that: a wipe over it would hide both.
     return compareWipePlan(windows, words, games, props.images, fps).filter((w) => !typedWindows.has(w.window));
   })();
+  // GTA_KIT (src/render/gtakit.ts): a GTA story's lines with no graphic of their own that name a place, say a dollar
+  // figure or set two names against each other get the kit's overlay, read from the words as voiced. It stands in for
+  // its own line's caption and pop-in picture, and keeps clear of every other line's overlay, the wipes, 3D clips,
+  // mention insets, quotes, breaks and chapter openings. Planned once, not per frame.
+  const kitMoments = useMemo(() => {
+    if (!props.gtaKit) return [];
+    const taken: KitSpan[] = [
+      ...wipes.map((w) => ({ kind: "wipe", from: w.from, to: w.from + w.len })),
+      ...blenderPlaced.map((c) => ({
+        kind: "blender",
+        from: c.from,
+        to: c.from + c.len,
+      })),
+      ...mentionsPlaced.map((m) => ({ kind: "mention", from: m.from, to: m.to })),
+      ...quoteSpans.map((q) => ({
+        kind: "quote",
+        from: q.from,
+        to: q.from + q.frames,
+      })),
+      ...breakFrames.map((b) => ({
+        kind: "break",
+        from: b.from - 20,
+        to: b.to + 30,
+      })),
+      ...entryFrames.map((f) => ({
+        kind: "entry",
+        from: f - 30,
+        to: f + 3 * fps,
+      })),
+      ...openings.map((o) => ({
+        kind: "opening",
+        from: o.from - 10,
+        to: o.from + montageFrames(o.items.length) + 30,
+      })),
+    ];
+    // Every line's own overlay span (graphic, name tag, caption, pop-in), keyed so the kit may stand in for its own.
+    windows.forEach((w, k) => {
+      if (!props.moments?.[w.entry]?.[w.moment]) return;
+      const sp = spanOf(k);
+      taken.push({
+        kind: "line",
+        key: `win${k}`,
+        from: sp.from,
+        to: sp.from + sp.len,
+      });
+    });
+    const wipeWindows = new Set(wipes.map((w) => w.window));
+    const range = (k: number): [number, number] => {
+      const w = windows[k]!;
+      const lo = Math.max(
+        0,
+        words.findIndex((x) => x.start >= w.start - 0.05),
+      );
+      let hi = words.findIndex((x) => x.start >= w.end);
+      if (hi < 0) hi = words.length;
+      return [lo, hi];
+    };
+    return planGtaKit({
+      lines: voicedLines(windows, words),
+      kit: props.gtaKit,
+      wordAt: (k, key) => keyTime(words, ...range(k), key),
+      fps,
+      startAfter: Math.round(12 * fps),
+      endBefore: durationInFrames - Math.round(20 * fps),
+      taken,
+      card: (k) => `win${k}`,
+      max: LONG_KIT_MAX,
+      gapSeconds: LONG_KIT_GAP,
+      skip: (k) => {
+        const w = windows[k]!;
+        const raw = props.moments?.[w.entry]?.[w.moment];
+        return (
+          !raw ||
+          usefulGraphic(raw.graphic) ||
+          !!raw.person ||
+          fillerShots.has(`${w.entry}:${w.moment}`) ||
+          typedWindows.has(k) ||
+          wipeWindows.has(k)
+        );
+      },
+    });
+    // Everything it reads is fixed for the render (wipes, typedWindows and openings come from the same props).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    props,
+    plan,
+    openings,
+    windows,
+    words,
+    props.moments,
+    fps,
+    durationInFrames,
+    mentionsPlaced,
+    blenderPlaced,
+  ]);
+  const kitLines = new Set(kitMoments.map((m) => m.line));
+  const kitSpans: HudSpan[] = kitMoments.map((m) => ({ from: m.from, to: m.from + m.len }));
 
   const richSoundAt = new Map<number, number>();
   const soundCands: LongSoundCandidate[] = windows
@@ -4204,7 +4369,9 @@ export const Long: React.FC<LongProps> = (props) => {
           graphic === "none" &&
           shot?.media.type === "clip" &&
           pic &&
-          w.moment > 0
+          w.moment > 0 &&
+          // GTA_KIT: a kit line has no pop-in picture, so no whoosh either.
+          !kitLines.has(k)
         )
           return [
             {
@@ -4427,6 +4594,11 @@ export const Long: React.FC<LongProps> = (props) => {
           />
         </Sequence>
       ))}
+      {kitMoments.map((m) => (
+        <Sequence key={m.key} from={m.from} durationInFrames={m.len} layout="none">
+          <KitOverlay m={m} tall={false} accent={COLOUR.amber} />
+        </Sequence>
+      ))}
       {accents.map((a, k) => (
         <Sequence
           key={`acc${k}`}
@@ -4457,6 +4629,22 @@ export const Long: React.FC<LongProps> = (props) => {
           <Montage items={o.items} />
         </Sequence>
       ))}
+      {/* EVIDENCE_STYLE board mode: runs of stills pinned to the board, the camera pin to pin (absent: nothing). */}
+      {props.board && !props.audioOnly ? (
+        <BoardMode
+          plan={{
+            ...props.board,
+            // A window gives way to what is drawn on a still's own picture (a detail box, a marker) and to the
+            // opening montages, so nothing points at the cork or plays its sound under it.
+            windows: props.board.windows.filter(
+              (w) =>
+                !details.some((d) => d.from < w.to && d.from + d.len > w.from) &&
+                !openings.some((o) => o.from < w.to && o.from + montageFrames(o.items.length) > w.from),
+            ),
+          }}
+          images={props.images}
+        />
+      ) : null}
       {/* The lens's edges over the picture, under the type (CameraMoves.tsx LensOverlay). */}
       {cameraMoves?.plan.lens ? <LensOverlay /> : null}
       <Scrim />
@@ -4495,8 +4683,8 @@ export const Long: React.FC<LongProps> = (props) => {
             : documentary
               ? "DOCUMENTARY"
               : total
-                ? `TOP ${total}`
-                : "RANKED"
+                ? props.guide ? "GUIDE" : `TOP ${total}`
+                : props.guide ? "GUIDE" : "RANKED"
         }
         progress={Math.min(1, frame / Math.max(1, durationInFrames))}
         marks={entryFrames.map((f) => f / Math.max(1, durationInFrames))}
@@ -4509,7 +4697,7 @@ export const Long: React.FC<LongProps> = (props) => {
       {marks.length ? (
         <AbsoluteFill
           style={{
-            opacity: hudYield(frame, hudSpans.all),
+            opacity: hudYield(frame, kitSpans.length ? [...hudSpans.all, ...kitSpans] : hudSpans.all),
             pointerEvents: "none",
           }}
         >
@@ -4570,7 +4758,7 @@ export const Long: React.FC<LongProps> = (props) => {
                             ? "THIS WEEK"
                             : documentary
                               ? "DOCUMENTARY"
-                              : "RANKED",
+                              : props.guide ? "GUIDE" : "RANKED",
                           game: props.theme,
                           pictures: motifPictures(undefined),
                           frames: open - cold,
@@ -4689,17 +4877,26 @@ export const Long: React.FC<LongProps> = (props) => {
             ({ photo: 0, portrait: 1, screenshot: 2, article: 3, hero: 4 })[
               k
             ] ?? 9;
+          // EVIDENCE_STYLE: only the pictures the style cleared (Pulse's own, no likeness) go on its boards.
+          const boardOk = new Set(props.board?.allowed ?? []);
           const boardPics: BoardPicture[] = props.images
             .filter(
-              (im) =>
-                im.beatIndex === b && im.aspect >= 0.75 && rankPic(im.kind) < 9,
+              (im, k) =>
+                im.beatIndex === b &&
+                im.aspect >= 0.75 &&
+                rankPic(im.kind) < 9 &&
+                (!props.board?.mode || boardOk.has(k)),
             )
             .sort((x, y) => rankPic(x.kind) - rankPic(y.kind))
             .slice(0, 3)
             .map((im, k) => ({
               src: im.src,
-              caption:
-                im.label && im.label.length <= 22
+              // EVIDENCE_STYLE: a print's caption only when the narration says its words; otherwise none.
+              caption: props.board?.mode
+                ? im.label && im.label.length <= 22 && saidAloud(im.label)
+                  ? displayText(im.label)
+                  : ""
+                : im.label && im.label.length <= 22
                   ? displayText(im.label)
                   : `Exhibit ${"ABC"[k]}`,
             }));
@@ -4734,8 +4931,18 @@ export const Long: React.FC<LongProps> = (props) => {
           const sameMotif =
             !!motif?.card &&
             chapterEntries.every((e) => motifOf(e)?.id === motif.id);
+          // EVIDENCE_STYLE board mode: every breather is the evidence board (a faulted one keeps the plain card).
+          const everyBoard = chapterEntries.every((e) =>
+            props.images.some(
+              (im, k) => im.beatIndex === e && im.aspect >= 0.75 && rankPic(im.kind) < 9 && boardOk.has(k),
+            ),
+          );
           const baseLook: string =
-            sameMotif && !(props.quietBreaks ?? []).length ? "motif" : "title";
+            props.board?.mode && everyBoard && boardPics.length && !(props.quietBreaks ?? []).includes(breakIndex)
+              ? "board"
+              : sameMotif && !(props.quietBreaks ?? []).length
+                ? "motif"
+                : "title";
           // SUBJECT_POP: on every other title opener (never a quiet break or the motif card), the chapter's subject
           // steps in front of its title when a picture's footprint lets it overlap the words a little without hiding
           // them (src/render/popout.ts). The pop-out is the title interlude with depth, so the one-look rule holds.
@@ -4969,7 +5176,7 @@ export const Long: React.FC<LongProps> = (props) => {
             ? raw.graphic
             : { ...raw.graphic, kind: "none" as const },
           emphasis:
-            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k)
+            raw.emphasis && usefulEmphasis(raw.emphasis) && !short && !captionWaits(k) && !typedWindows.has(k) && !kitLines.has(k)
               ? raw.emphasis
               : "",
         };
@@ -5014,6 +5221,8 @@ export const Long: React.FC<LongProps> = (props) => {
             : undefined;
         const showPop =
           !nameTag &&
+          // GTA_KIT: the kit's overlay stands in for the line's pop-in picture.
+          !kitLines.has(k) &&
           m.graphic.kind === "none" &&
           shot?.media.type === "clip" &&
           pic &&
@@ -5203,6 +5412,8 @@ export const Long: React.FC<LongProps> = (props) => {
           </Sequence>
         );
       })}
+      {/* EVIDENCE_STYLE: the date cards, the case cards and the red stamps, on their words (absent: nothing). */}
+      {props.board ? <BoardMarks plan={props.board} musicSrc={props.musicSrc} /> : null}
       {/* Zoom to the detail: the labelled box over the pushed-in picture. */}
       {details.map((d, i) => (
         <Sequence
@@ -5385,7 +5596,7 @@ export const Long: React.FC<LongProps> = (props) => {
                       ? "THIS WEEK"
                       : documentary
                         ? "DOCUMENTARY"
-                        : "RANKED"
+                        : props.guide ? "GUIDE" : "RANKED"
                   }
                   title={props.title}
                   sub={props.kicker}
@@ -5405,7 +5616,7 @@ export const Long: React.FC<LongProps> = (props) => {
                   ? "THIS WEEK"
                   : documentary
                     ? "DOCUMENTARY"
-                    : "RANKED",
+                    : props.guide ? "GUIDE" : "RANKED",
                 game: props.theme,
                 pictures: motifPictures(undefined),
                 frames: drop.len - Math.max(0, drop.landAt - MOTIF_LEAD),

@@ -59,6 +59,13 @@ export function errorMessage(err: unknown): string {
   return String(err);
 }
 
+/** A programming fault (TypeError, ReferenceError, RangeError) keeps the top of its stack for the log; other errors add nothing. */
+export function codeFaultStack(err: unknown): { stack?: string } {
+  if (!(err instanceof TypeError || err instanceof ReferenceError || err instanceof RangeError)) return {};
+  const lines = (err.stack ?? "").split("\n").slice(1, 7).map((l) => l.trim());
+  return lines.length ? { stack: lines.join(" | ") } : {};
+}
+
 /** Errors that must never be retried automatically (bad credentials, policy). */
 export class FatalError extends Error {
   constructor(message: string) {

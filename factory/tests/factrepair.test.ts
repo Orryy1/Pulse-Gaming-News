@@ -419,3 +419,95 @@ test("'absolute' as an adjective is not an objection to an absolute", () => {
   );
   assert.ok(r.repairs.every((x) => x.kind !== "soften"));
 });
+
+test("a venue phrase mid-sentence is cut with its commas; at the start or end of a sentence it is left alone", () => {
+  const venue = (q: string) => `Fact-check: "${q}" - The source does not establish where this was said.`;
+  const mid = repairBlockers(
+    [HOOK, "Iwinski admitted, in a video apology, that the console versions were not good enough. It still lands.", PAD],
+    [venue("in a video apology")],
+    speak,
+  );
+  assert.deepEqual(mid.unrepaired, []);
+  assert.equal(mid.repairs[0]!.kind, "drop_clause");
+  assert.equal(mid.fixes[0]!.to, "Iwinski admitted that the console versions were not good enough.");
+  // Venue last: nothing safe to keep the full stop on, so it stays unrepaired (the sentence rule judges it).
+  const end = repairBlockers(
+    [HOOK, "The console versions were not good enough, he said in an interview. It still lands.", PAD],
+    [venue("in an interview")],
+    speak,
+  );
+  assert.notEqual(end.repairs[0]?.kind, "drop_clause");
+  // Not a venue: "in an open world" is a claim, never cut as a venue.
+  const world = repairBlockers(
+    [HOOK, "The city streams in an open world that never loads, and it still lands. It still lands.", PAD],
+    [venue("in an open world")],
+    speak,
+  );
+  assert.notEqual(world.repairs[0]?.kind, "drop_clause");
+});
+
+test("the venue cut refuses every shape that would break the sentence or change the claim (26 Nov review)", () => {
+  const venue = (q: string) => `Fact-check: "${q}" - The source does not establish where this was said.`;
+  const cases: Array<[string, string]> = [
+    ["Badowski put it plainly in an open letter: the old consoles were the problem.", "in an open letter"],
+    ["He said (in a tweet) that the patch was coming soon.", "in a tweet"],
+    ["The apology arrived in a video that ran for nine long minutes.", "in a video"],
+    ["Fans saw him at the press briefing where he named the date.", "at the press briefing"],
+    ["He apologised in a statement of regret to all players.", "in a statement"],
+    ["He admitted it only in a tweet, never on stage at any show.", "in a tweet"],
+    ["He did not say it in an interview, but in a letter to fans.", "in an interview"],
+    ["Players found the bug in the update, which broke saves for many.", "in the update"],
+    ["Johnny appears in the video as a ghost in the machine.", "in the video"],
+    ["After the launch, in a video apology, Iwinski admitted the faults.", "in a video apology"],
+    ["Iwinski said in a video that ran long that the faults were his.", "in a video"],
+  ];
+  for (const [line, q] of cases) {
+    const r = repairBlockers([HOOK, `${line} It still lands.`, PAD], [venue(q)], speak);
+    assert.notEqual(r.repairs[0]?.kind, "drop_clause", line);
+  }
+  // A problem with the claim itself, not the venue: the quote is not just trimmed of where it was said.
+  const fabricated = repairBlockers(
+    [HOOK, "Iwinski admitted, in a video apology, that the console versions were not good enough. It still lands.", PAD],
+    ['Fact-check: "in a video apology" - The source does not support this admission at all.'],
+    speak,
+  );
+  assert.notEqual(fabricated.repairs[0]?.kind, "drop_clause");
+  // A speech verb with an object still works: "told fans in an interview that...".
+  const told = repairBlockers(
+    [HOOK, "Badowski told fans in an interview that the patches would keep coming. It still lands.", PAD],
+    [venue("in an interview")],
+    speak,
+  );
+  assert.equal(told.fixes[0]?.to, "Badowski told fans that the patches would keep coming.");
+});
+
+test("venue cut, second review: negated verbs, 'that' describing the venue and generic objections stay unrepaired", () => {
+  const venue = (q: string) => `Fact-check: "${q}" - The source does not establish where this was said.`;
+  const cases: Array<[string, string, string?]> = [
+    ["He never said in an interview that the port was easy to make.", "in an interview"],
+    ["He has not confirmed in a statement that the port is cancelled.", "in a statement"],
+    ["He apologised in a video that went viral within hours of launch.", "in a video"],
+    ["He told fans in a livestream that sold out the arena that patches were coming.", "in a livestream"],
+    [
+      "Iwinski admitted, in a statement, that the consoles were not ready.",
+      "in a statement",
+      'Fact-check: "in a statement" - This statement is not supported by the source.',
+    ],
+    [
+      "He announced, in a post, that fans loved the Switch 2 version.",
+      "in a post",
+      'Fact-check: "in a post" - The source does not call it a post.',
+    ],
+  ];
+  for (const [line, q, blocker] of cases) {
+    const r = repairBlockers([HOOK, `${line} It still lands.`, PAD], [blocker ?? venue(q)], speak);
+    assert.notEqual(r.repairs[0]?.kind, "drop_clause", line);
+  }
+  // A spoken quote keeps the comma before it.
+  const quoted = repairBlockers(
+    [HOOK, "Badowski said in an interview, \"We were not ready for the old consoles.\" It still lands.", PAD],
+    [venue("in an interview")],
+    speak,
+  );
+  assert.match(quoted.fixes[0]?.to ?? "", /^Badowski said, "We were not ready/);
+});

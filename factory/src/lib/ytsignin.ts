@@ -16,6 +16,14 @@
 // of an age-gated upload; src/sceneindex/light.ts) and TREND_FEED (the account's subscriptions feed, read as story
 // leads; src/discovery/trendfeed.ts). signedPull below is the one retry rule. The hard rule for all of them: the
 // download account never touches Pulse's own channel or videos (src/lib/ytown.ts), here or in the guard.
+//
+// Since 26 Nov 2026 (upgrade queue item 56) every scene-index build and light turn signs in, within the signed-in
+// ration (src/sceneindex/job.ts hands YTDLP_COOKIES_FILE and YT_PURPOSE to each turn): builds through fetcherRun,
+// light turns through signedPull with signedOnly; neither makes an anonymous call when the cookies cannot be used.
+//
+// Since 25 Nov 2026 (the anonymous lane retired, src/lib/ytguard.ts YT_ANON_LANE): a pull goes signed in straight away
+// while the anonymous lane is retired or paused, with no anonymous try first, and nothing is ever made again
+// anonymously after a signed-in try, whatever its answer.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -98,14 +106,15 @@ const failText = (err: unknown): string =>
 
 /**
  * True when an anonymous pull may be made again signed in (pure): YouTube age-gated the video, or the anonymous lane is
- * paused for a bot check (the signed-in lane has its own pause). Anything else (a removed video, a 403 on one stream,
- * the anonymous budget) is not a reason to spend the download account's small budget.
+ * paused for a bot check or retired (the signed-in lane has its own pause). Anything else (a removed video, a 403 on
+ * one stream, the anonymous budget) is not a reason to spend the download account's small budget.
  */
 export function signedRetryWorth(err: unknown): boolean {
   if (isYtPaused(err)) {
     const e = err as { lane?: string; reason?: string };
     return (
-      e.lane !== "signed" && (e.reason === "blocked" || e.reason === "probing")
+      e.lane !== "signed" &&
+      (e.reason === "blocked" || e.reason === "probing" || e.reason === "retired")
     );
   }
   return isAgeGate(failText(err));
@@ -120,6 +129,11 @@ export interface SignedPullOptions {
   purpose?: YtPurpose;
   /** The cookies file; YTDLP_COOKIES_FILE from the environment when not given. */
   cookiesFile?: string;
+  /**
+   * Signed in only (26 Nov 2026, the scene index's turns): no anonymous try at all; when the cookies cannot be used the
+   * pull fails at once with no request.
+   */
+  signedOnly?: boolean;
 }
 
 export interface SignedPullDeps {
@@ -127,14 +141,16 @@ export interface SignedPullDeps {
   cookies?: (target: readonly string[]) => Promise<string[]>;
   /** True when the guard already knows the video needs sign-in (no anonymous call is wasted on it). */
   knownGated?: (videoId: string) => boolean;
+  /** False while the anonymous lane is retired or paused: the pull goes signed in first, with no anonymous try. */
+  anonOpen?: () => boolean;
 }
 
 /**
  * One YouTube pull about one video, anonymous first and signed in only when it is worth it (signedRetryWorth), or
- * signed in first when the guard already knows the video is age-gated. A signed-in try refused by its own lane (the
- * clips' share used, its pause) falls back to the anonymous answer, and the caller sees the anonymous failure and
- * moves to its usual fallbacks. Searches, listings, non-YouTube calls and Pulse's own videos are never signed in.
- * Logs which lane served the pull.
+ * signed in only when the guard already knows the video is age-gated or the anonymous lane is retired or paused. A
+ * signed-in try is never followed by an anonymous one: its failure (or its own lane's refusal) is what the caller sees,
+ * and the caller moves to its usual fallbacks. Searches, listings, non-YouTube calls and Pulse's own videos are never
+ * signed in. Logs which lane served the pull.
  */
 export async function signedPull<T>(
   args: readonly string[],
@@ -157,6 +173,7 @@ export async function signedPull<T>(
       ));
   const knownGated =
     deps.knownGated ?? ((v: string) => guardActive() && ytGuard.needsSignIn(v));
+  const anonOpen = deps.anonOpen ?? (() => !guardActive() || ytGuard.anonOpen());
   const served = (lane: "anon" | "signed") =>
     log("info", "youtube pull served", { lane, videoId: id, what: o.what });
   const signedTry = async (signed: string[]): Promise<T> => {
@@ -164,20 +181,15 @@ export async function signedPull<T>(
     served("signed");
     return r;
   };
-  if (knownGated(id)) {
+  if (o.signedOnly) {
     const signed = await cookies(args);
-    if (signed.length) {
-      try {
-        return await signedTry(signed);
-      } catch (err) {
-        if (!isYtPaused(err)) throw err;
-        log("info", "signed-in pull not possible now, trying anonymously", {
-          videoId: id,
-          what: o.what,
-          why: errorMessage(err),
-        });
-      }
-    }
+    if (!signed.length) throw new Error(`${o.what}: the download account's cookies cannot be used now; nothing is fetched anonymously`);
+    return signedTry(signed);
+  }
+  if (knownGated(id) || !anonOpen()) {
+    const signed = await cookies(args);
+    // Signed in only: never made again anonymously, whatever the answer.
+    if (signed.length) return signedTry(signed);
   }
   try {
     const r = await attempt([...args]);

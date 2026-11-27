@@ -7,7 +7,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FFMPEG, FFPROBE } from "../lib/bin.ts";
-import { loadOrch, NoOrchestrator } from "../lib/orch.ts";
+import { leaseStrict, loadOrch, NoOrchestrator } from "../lib/orch.ts";
 import { log } from "../lib/util.ts";
 import type { HudSettings } from "./settings.ts";
 
@@ -24,6 +24,13 @@ export interface ReadJob {
   atlas?: string;
   start?: number;
   duration?: number;
+  /** Key frames only, at 0.5 fps (a whole recording; HUD_READER_VOD_KEYFRAMES). */
+  keyframes?: boolean;
+}
+
+/** Frames a second for a read: key frames come every 2 s, so a key-frame read is 0.5 fps whatever is set (pure). */
+export function readFps(s: HudSettings, keyframes = false): number {
+  return keyframes ? 0.5 : s.fps;
 }
 
 /** The reader's arguments for one recording (pure). */
@@ -37,11 +44,12 @@ export function readArgs(s: HudSettings, j: ReadJob): string[] {
     "--out",
     j.out,
     "--fps",
-    String(s.fps),
+    String(readFps(s, j.keyframes)),
     "--matcher",
     s.matcher,
     "--ocr",
     s.ocr ? "on" : "off",
+    ...(s.threads ? ["--threads", String(s.threads)] : []),
     "--libs",
     s.libs,
     "--models",
@@ -52,6 +60,7 @@ export function readArgs(s: HudSettings, j: ReadJob): string[] {
     FFPROBE,
     "--progress",
   ];
+  if (j.keyframes) a.push("--keyframes");
   if (j.atlas) a.push("--atlas", j.atlas);
   if (j.start) a.push("--start", String(j.start));
   if (j.duration) a.push("--duration", String(j.duration));
@@ -118,7 +127,7 @@ export async function runHud(
   if (runner === "orch") {
     try {
       const orch = await loadOrch();
-      release = await orch.lease("gpu", {
+      release = await leaseStrict(orch, "gpu", {
         job: `pulse hud: ${o.job}`,
         project: "pulse",
         priority: 20,

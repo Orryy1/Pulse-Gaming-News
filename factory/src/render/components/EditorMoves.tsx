@@ -313,7 +313,8 @@ export const Letterbox: React.FC<{ len: number }> = ({ len }) => {
 };
 
 /** A red pushpin. */
-const Pin: React.FC<{ x: number; y: number; show: number }> = ({
+/** A red map pin pushed into the board (also the evidence style's, components/EvidenceStyle.tsx). */
+export const Pin: React.FC<{ x: number; y: number; show: number }> = ({
   x,
   y,
   show,

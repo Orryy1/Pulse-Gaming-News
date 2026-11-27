@@ -27,6 +27,13 @@ export interface SemanticSettings {
   vodTags: boolean;
   /** VOD_TAGS_BATCH: shots tagged in one piece of work. */
   vodTagsBatch: number;
+  /**
+   * VOD_REMOTE: the stream recordings are searched on the PC (GAMELIB_REMOTE, src/vodindex/remote.ts) instead of
+   * this machine's own indexes; their clips are cut there and fetched. Off until switched on (the Mac).
+   */
+  vodRemote: boolean;
+  /** GAMELIB_REMOTE: the PC's game library server, which serves the recordings too. */
+  vodRemoteUrl: string;
 }
 
 const bool = (env: NodeJS.ProcessEnv, name: string, fallback: boolean) => {
@@ -80,10 +87,12 @@ export function semanticSettings(
     ),
     vodTags: bool(env, "VOD_TAGS", true),
     vodTagsBatch: Math.round(num(env, "VOD_TAGS_BATCH", 200, 5, 5000)),
+    vodRemote: bool(env, "VOD_REMOTE", false),
+    vodRemoteUrl: (env.GAMELIB_REMOTE ?? "").replace(/\/$/, ""),
   };
 }
 
 /** One line for the boot summary. */
 export function semanticSummary(s: SemanticSettings): string {
-  return `meaning match ${s.enabled ? `on (${s.model}, pin from ${s.minScore})` : "off"}; stream tags ${s.vodTags ? "on" : "off"}`;
+  return `meaning match ${s.enabled ? `on (${s.model}, pin from ${s.minScore})` : "off"}; stream tags ${s.vodTags ? "on" : "off"}${s.vodRemote ? `, recordings from the PC (${s.vodRemoteUrl || "GAMELIB_REMOTE unset"})` : ""}`;
 }

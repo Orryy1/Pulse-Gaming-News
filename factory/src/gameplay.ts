@@ -40,6 +40,8 @@ export interface GameplayMeta {
     title: string;
     kind: string;
     duration_seconds?: number;
+    /** A permitted channel's recording (src/vodindex/sources.ts): its on-screen credit, "Gameplay: Spencey96 on Twitch". */
+    credit?: string;
   };
   clip: {
     file: string;
@@ -64,6 +66,8 @@ export interface GameplayMeta {
   };
   /** Sound Analysis on the Mac, when the finder ran it: the share of the clip with speech in it. */
   sound?: { speech_share?: number };
+  /** "Early story free" (26 Nov 2026): a spoiler-held clip looked at again (src/sceneindex/reveals.ts recheckHeld). */
+  spoiler_recheck?: { at: string; reveal: boolean; why: string };
   /** LIVE_CLIPS: found while the owner was live (src/liveclips): what gave it away, and the stream ask it seems to answer. */
   live?: {
     stream_id: string;
@@ -341,6 +345,9 @@ export async function reviewClip(
               : []),
           ]
         : []),
+      ...(meta.source.credit
+        ? [`This is another streamer's play, used with permission (${meta.source.credit}), not the owner's: never "I tested" or "we tested".`]
+        : []),
       `Stream title: ${meta.source.title || "(none)"}`,
       `Clip length: ${meta.clip.seconds} s; the finder's peak is at ${meta.clip.peak_in_clip ?? "?"} s`,
       `What Whisper heard: ${transcript.trim() || "(nothing, or it could not listen)"}`,
@@ -469,10 +476,11 @@ export function isRehearsal(
  * those two fields go in only for a real test of GTA 6 itself. Everything else leaves them off.
  */
 export function articleFields(
-  g: { question: string; result: string; real_test?: boolean },
+  g: { question: string; result: string; real_test?: boolean; credit?: string },
   game: string,
 ): { question?: string; result?: string } {
-  return g.real_test && /grand theft auto vi\b|\bgta (6|vi)\b/i.test(game)
+  // "We tested it" is never written about another streamer's play.
+  return g.real_test && !g.credit && /grand theft auto vi\b|\bgta (6|vi)\b/i.test(game)
     ? { question: g.question, result: g.result }
     : {};
 }
@@ -488,6 +496,8 @@ export function gameplayScript(
   inboxId: string,
   experiments: Experiment[],
   live = false,
+  /** A permitted channel's credit: it is the attribution and the description's last line. */
+  credit = "",
 ): Script {
   const exp = experiments.find((e) => e.number === r.experiment_number);
   const question = /\?$/.test(r.question.trim())
@@ -515,11 +525,14 @@ export function gameplayScript(
     },
     loop_line: "",
     is_rumour: false,
-    attribution: "Gameplay: Pulse Gaming",
+    attribution: credit || "Gameplay: Pulse Gaming",
     hashtags: tags,
     youtube: {
       title: r.youtube_title.slice(0, 100),
-      description: r.description.trim(),
+      description:
+        credit && !r.description.includes(credit)
+          ? `${r.description.trim()}\n\n${credit}`
+          : r.description.trim(),
       tags: [
         ...new Set([
           r.game_title,
@@ -541,6 +554,7 @@ export function gameplayScript(
       radio: r.radio_audible,
       real_test: r.real_test,
       ...(live ? { live: true } : {}),
+      ...(credit ? { credit } : {}),
     },
   };
 }

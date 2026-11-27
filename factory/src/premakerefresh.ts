@@ -39,7 +39,7 @@ export const PREMAKE_RECHECK_HOURS = 6;
 export const PREMADE_VIDEO = "short.premade.mp4";
 export const PREMADE_POSTER = "poster.premade.jpg";
 /** The Short's own thumbnails, written by the render under fixed names: kept beside the remake too. */
-export const MADE_THUMBS = ["thumb_short.jpg", "thumb_search.jpg"] as const;
+export const MADE_THUMBS = ["thumb_short.jpg", "thumb_search.jpg", "cover.jpg"] as const;
 const premadeName = (f: string) => f.replace(/\.jpg$/, ".premade.jpg");
 
 /** The media a gather made: dropped so the render gathers again (images missing is what makes it gather). */
@@ -309,6 +309,9 @@ export async function putMadeFilesBack(dir: string): Promise<boolean> {
     const kept = await fs.copyFile(path.join(dir, premadeName(t)), path.join(dir, t)).then(() => true, () => false);
     if (!kept) await fs.rm(path.join(dir, t), { force: true }).catch(() => undefined);
   }
+  // Platform copies made from the remake (src/social/cover.ts, crosspost.ts) are made again from the made video.
+  for (const f of ["social.mp4", "social.part.mp4", "tiktok.mp4", "instagram.mp4"])
+    await fs.rm(path.join(dir, f), { force: true }).catch(() => undefined);
   return true;
 }
 

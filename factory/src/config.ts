@@ -602,7 +602,7 @@ export interface Config {
   openOnMotion: boolean; // Shorts open on the hook clip, not the hero still
   /** SHORT_OPEN_FOOTAGE: every Short opens on the game's own moving footage, its first 7 s screened ad-safe (src/openingstep.ts). */
   shortOpenFootage: boolean;
-  /** SHORT_OPEN_WORDS: 1 or 2 caption words over an opening on footage, in place of the headline (0: the headline, as before). */
+  /** SHORT_OPEN_WORDS: a caption over an opening on footage, in place of the headline: 1 or 2 of the writer's hook words, else the headline's subject, up to 4 words (0: the headline, as before). */
   shortOpenWords: number;
   /**
    * SHORT_FULL_COVER: every Short also renders cover.jpg, its opening with the whole headline and no caption, and that is
